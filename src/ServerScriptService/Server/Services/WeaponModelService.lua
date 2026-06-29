@@ -11,8 +11,11 @@ local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
-local WeaponConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("WeaponConfig"))
+local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
+local WeaponConfig = require(SharedConfig:WaitForChild("WeaponConfig"))
+local AnimationConfig = require(SharedConfig:WaitForChild("AnimationConfig"))
 
 local MatchService = require(script.Parent.MatchService)
 local CombatService = require(script.Parent.CombatService)
@@ -26,6 +29,11 @@ local HELD_NAME = "HeldWeapon"
 
 local templates: { [string]: Model } = {}  -- weaponId -> Model
 local templatesFolder: Folder
+
+-- Per-player held-weapon state for recoil + animations.
+local held: { [number]: any } = {}              -- userId -> { weld, baseC0 }
+local charHoldTrack: { [number]: AnimationTrack } = {}  -- userId -> looping hold pose
+local animCache: { [string]: Animation } = {}   -- animId -> Animation instance
 
 -- Resolve a model name to a weaponId by matching either the id ("pistol") OR the display name ("m1911"
 -- for the M1911, "ak47"/"ak-47" for the AK-47), case/space/dash-insensitive. So you can name a gun model
@@ -55,6 +63,83 @@ local function clearHeld(character: Model)
 	if existing then
 		existing:Destroy()
 	end
+end
+
+-- ===== ANIMATION / RECOIL =====
+local function getAnim(id: string): Animation
+	local a = animCache[id]
+	if not a then
+		a = Instance.new("Animation")
+		a.AnimationId = id
+		animCache[id] = a
+	end
+	return a
+end
+
+local function getAnimator(character: Model): Animator?
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return nil
+	end
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = hum
+	end
+	return animator
+end
+
+-- Loop the weapon's "hold" pose on the character (ID-gated; no-op if not configured).
+local function playHold(player: Player, weaponId: string)
+	local prev = charHoldTrack[player.UserId]
+	if prev then
+		prev:Stop(0.1)
+		charHoldTrack[player.UserId] = nil
+	end
+	local cfg = AnimationConfig.Weapons[weaponId]
+	local id = cfg and AnimationConfig.Resolve(cfg.Hold)
+	local character = player.Character
+	local animator = id and character and getAnimator(character)
+	if not animator then
+		return
+	end
+	local track = animator:LoadAnimation(getAnim(id))
+	track.Looped = true
+	track.Priority = Enum.AnimationPriority.Action
+	track:Play(0.1)
+	charHoldTrack[player.UserId] = track
+end
+
+-- Play the weapon's reload animation once (ID-gated).
+local function playReload(player: Player, weaponId: string)
+	local cfg = AnimationConfig.Weapons[weaponId]
+	local id = cfg and AnimationConfig.Resolve(cfg.Reload)
+	local character = player.Character
+	local animator = id and character and getAnimator(character)
+	if not animator then
+		return
+	end
+	local track = animator:LoadAnimation(getAnim(id))
+	track.Priority = Enum.AnimationPriority.Action2
+	track:Play(0.1)
+end
+
+-- Procedural gun recoil: kick the hand→handle weld and tween it back. Server-side so everyone sees it.
+local function recoil(player: Player)
+	if not AnimationConfig.Recoil.Enabled then
+		return
+	end
+	local h = held[player.UserId]
+	if not h or not h.weld or not h.weld.Parent then
+		return
+	end
+	local cfg = AnimationConfig.Recoil
+	h.weld.C0 = h.baseC0 * CFrame.new(0, 0, cfg.KickBack) * CFrame.Angles(math.rad(cfg.KickUp), 0, 0)
+	TweenService:Create(
+		h.weld,
+		TweenInfo.new(cfg.RecoverTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ C0 = h.baseC0 }
+	):Play()
 end
 
 -- Attach the player's currently-equipped weapon model to their hand (or clear it if there's no model).
@@ -116,6 +201,9 @@ local function attach(player: Player)
 	weld.Parent = handle
 
 	model.Parent = character
+
+	held[player.UserId] = { weld = weld, baseC0 = c0 }
+	playHold(player, ps.equippedWeapon)
 end
 
 -- ===== TEMPLATE REGISTRATION (tag-driven) =====
@@ -210,10 +298,16 @@ function WeaponModelService.Start()
 
 	-- Re-attach on equip changes and on (re)spawn.
 	CombatService.Equipped:Connect(attach)
+	CombatService.Fired:Connect(recoil)
+	CombatService.ReloadStarted:Connect(playReload)
 	Players.PlayerAdded:Connect(function(player)
 		player.CharacterAdded:Connect(function()
 			task.defer(attach, player)
 		end)
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		held[player.UserId] = nil
+		charHoldTrack[player.UserId] = nil
 	end)
 	for _, player in Players:GetPlayers() do
 		if player.Character then

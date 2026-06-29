@@ -21,10 +21,11 @@ Wave-survival co-op zombie shooter. Each phase is independently testable in Robl
 | 2 | Core combat | ✅ |
 | 3 | Zombies + waves | ✅ |
 | 4 | Cash + shop | ✅ |
-| 5 | Combat juice | ⬜ |
-| 6 | Elites + bosses | ⬜ |
-| 7 | Meta-progression + leaderboard | ⬜ |
-| 8 | Polish & security pass | ⬜ |
+| 5 | Animation overhaul | ✅ |
+| 6 | Combat juice | ⬜ |
+| 7 | Elites + bosses | ⬜ |
+| 8 | Meta-progression + leaderboard | ⬜ |
+| 9 | Polish & security pass | ⬜ |
 
 ---
 
@@ -51,25 +52,35 @@ weapon for cash, server-validated), `ShopController` (the **B** menu), weapon sw
 weapon Models tagged `WeaponModel` (named the weaponId, with a `Handle`); a styled shop/HUD if you want.
 **Acceptance:** kills earn cash; the shop buys + upgrades guns; bought guns are usable and visible in-hand.
 
-## 5 — Combat juice ⬜
-`CombatFeedbackController` — stylized blood/goo, headshot pops, hitmarkers, screen shake, hitstop, driven
-by the `HitConfirmed`/`ZombieDied` remotes. **You provide:** optional VFX/sound assets (or accept defaults).
-**Acceptance:** shooting + killing feels punchy; headshots pop; hits read instantly.
+## 5 — Animation overhaul ✅
+Two layers. **Procedural (works now, no uploads):** bullet tracers (yours predicted, others' broadcast via
+`ShotFired`), muzzle flash, impact bursts, a hitmarker (`CombatFeedbackController`), and server-side gun
+**recoil** (weld kick) so everyone sees it. **Animation-id playback (you upload, paste ids in
+`AnimationConfig`):** weapon **Hold** pose + **Reload** on the character, **zombie** walk/attack/death, and
+**player** walk/run overrides (defaults animate walk/run already). All id-gated — blank ids fall back
+gracefully. **You provide:** uploaded animations (optional), and a `Muzzle` attachment on guns for a precise
+tracer origin (optional). **Acceptance:** shots show tracers + muzzle flash + recoil + hitmarkers; once ids
+are filled in, guns/zombies/players animate.
 
-## 6 — Elites + bosses ⬜
+## 6 — Combat juice ⬜
+The rest of the feel pass: screen shake, hitstop, headshot pops, bigger stylized blood/goo, kill feedback,
+sound. Builds on the Phase 5 hooks. **You provide:** optional VFX/sound assets. **Acceptance:** killing feels
+chunky and impactful.
+
+## 7 — Elites + bosses ⬜
 Runner/Brute/Mutant elites + the Abomination boss at higher waves (they already exist in `ZombieConfig`,
 gated by `minRound`), special spawn announce + VFX via `ZombieSpawned`. **You provide:** elite/boss Models
 (or reuse the default with `ZombieConfig` tints). **Acceptance:** elites appear at their waves; a boss on
 the interval; they force you to move.
 
-## 7 — Meta-progression + leaderboard ⬜
+## 8 — Meta-progression + leaderboard ⬜
 `ProgressionService` (account XP/levels — kill-weighted — + weapon unlocks at run end), `LeaderboardService`
 (global **best wave**), end-of-run summary. **You provide:** a leaderboard board model; styled summary UI.
 > ⚠ **Persistence dependency:** `DataService` is an in-memory stub today, so XP/unlocks/leaderboard won't
 > survive a restart. This phase swaps it to a real datastore (one-file change by design).
 **Acceptance:** runs grant XP + unlocks that persist; the best-wave leaderboard populates.
 
-## 8 — Polish & security pass ⬜
+## 9 — Polish & security pass ⬜
 Full anti-exploit audit (every remote validated + rate-limited), perf tuning at 4 players, onboarding,
 settings, sound. **Acceptance:** exploit-resistant; performant with full hordes; polished first run.
 

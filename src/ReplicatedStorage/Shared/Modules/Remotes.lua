@@ -30,6 +30,7 @@ local DEFINITIONS: { [string]: string } = {
 	FireWeapon        = "RemoteEvent",     -- C->S: intent (origin, direction, weaponId)
 	Reload            = "RemoteEvent",     -- C->S: intent
 	HitConfirmed      = "RemoteEvent",     -- S->C: drives hit juice
+	ShotFired         = "RemoteEvent",     -- S->C broadcast: (shooterUserId, origin, endpoint) for tracers
 	AmmoChanged       = "RemoteEvent",     -- S->C: (weaponId, mag, reserve)
 	EquipWeapon       = "RemoteEvent",     -- NEW (Phase 3): C->S: (weaponId) request equip
 	LoadoutChanged    = "RemoteEvent",     -- NEW (Phase 3): S->C: (ownedWeapons, equippedWeaponId)

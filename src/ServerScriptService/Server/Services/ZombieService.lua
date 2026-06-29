@@ -27,6 +27,7 @@ local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
 local ZombieConfig = require(Config.ZombieConfig)
+local AnimationConfig = require(Config.AnimationConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
@@ -379,8 +380,12 @@ local function onZombieDied(record)
 	if hum then
 		hum.WalkSpeed = 0
 	end
-	-- Ragdoll-lite for placeholders / standard rigs: let limbs go limp where joints exist.
-	-- (Phase 4 juice will add gibs / a proper ragdoll.)
+	if record.walkTrack then
+		record.walkTrack:Stop()
+	end
+	if record.deathTrack then
+		record.deathTrack:Play()
+	end
 	task.delay(DESPAWN_DELAY, function()
 		release(record)
 	end)
@@ -392,6 +397,47 @@ local function pickType(round: number): string?
 		local t = ZOMBIE_TYPES[id]
 		return t.spawnWeight > 0 and round >= t.minRound
 	end)
+end
+
+-- ===== ZOMBIE ANIMATIONS (ID-gated via AnimationConfig.Zombies) =====
+local zAnimCache: { [string]: Animation } = {}
+local function zGetAnim(id: string): Animation
+	local a = zAnimCache[id]
+	if not a then
+		a = Instance.new("Animation")
+		a.AnimationId = id
+		zAnimCache[id] = a
+	end
+	return a
+end
+
+local function loadZombieTracks(record)
+	local hum = record.hum
+	local animator = hum and hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+	local cfg = AnimationConfig.Zombies[record.typeId] or AnimationConfig.Zombies.Default
+	if not cfg then
+		return
+	end
+	local walk = AnimationConfig.Resolve(cfg.Walk)
+	if walk then
+		record.walkTrack = animator:LoadAnimation(zGetAnim(walk))
+		record.walkTrack.Looped = true
+		record.walkTrack.Priority = Enum.AnimationPriority.Movement
+		record.walkTrack:Play()
+	end
+	local attack = AnimationConfig.Resolve(cfg.Attack)
+	if attack then
+		record.attackTrack = animator:LoadAnimation(zGetAnim(attack))
+		record.attackTrack.Priority = Enum.AnimationPriority.Action
+	end
+	local death = AnimationConfig.Resolve(cfg.Death)
+	if death then
+		record.deathTrack = animator:LoadAnimation(zGetAnim(death))
+		record.deathTrack.Priority = Enum.AnimationPriority.Action2
+	end
 end
 
 local warnedNoSpawns = false
@@ -486,6 +532,7 @@ local function spawnOne(round: number): boolean
 
 	active[model] = record
 	aliveCount += 1
+	loadZombieTracks(record)
 
 	if t.isSpecial then
 		Remotes.Get("ZombieSpawned"):FireAllClients(typeId, root.Position)
@@ -548,6 +595,9 @@ local function think(record, now: number)
 	if dist <= ATTACK_RANGE and (now - record.lastAttack) >= ATTACK_COOLDOWN then
 		record.lastAttack = now
 		PlayerStateService.Damage(target, record.damage, "zombie")
+		if record.attackTrack then
+			record.attackTrack:Play(0.1)
+		end
 	end
 
 	-- Stuck detection: moving OR meleeing a player both count as progress. A zombie that does neither

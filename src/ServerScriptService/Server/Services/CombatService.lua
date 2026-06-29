@@ -40,9 +40,13 @@ local MAX_RANGE_HARD     = 1000  -- absolute raycast distance ceiling regardless
 local hitEvent = Instance.new("BindableEvent")
 local killEvent = Instance.new("BindableEvent")
 local equippedEvent = Instance.new("BindableEvent")
-CombatService.Hit = hitEvent.Event          -- (player, humanoid, isHeadshot, weaponId, damage)
-CombatService.Kill = killEvent.Event        -- (player, humanoid, isHeadshot, weaponId)
-CombatService.Equipped = equippedEvent.Event -- (player) — fired whenever a player's loadout/equip changes
+local firedEvent = Instance.new("BindableEvent")
+local reloadEvent = Instance.new("BindableEvent")
+CombatService.Hit = hitEvent.Event           -- (player, humanoid, isHeadshot, weaponId, damage)
+CombatService.Kill = killEvent.Event         -- (player, humanoid, isHeadshot, weaponId)
+CombatService.Equipped = equippedEvent.Event -- (player) — loadout/equip changed
+CombatService.Fired = firedEvent.Event       -- (player, weaponId) — a valid shot went out (drives recoil)
+CombatService.ReloadStarted = reloadEvent.Event -- (player, weaponId, duration) — drives the reload anim
 
 -- ===== PER-PLAYER COMBAT STATE =====
 -- combat[userId] = { lastShot = {[weaponId]=clock}, reloading = {[weaponId]=bool} }
@@ -180,6 +184,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	ammo.mag -= 1
 	ps.equippedWeapon = weaponId
 	fireAmmo(player, weaponId, ammo)
+	firedEvent:Fire(player, weaponId) -- drives the server-side gun recoil
 
 	-- 6) server raycast(s)
 	local character = player.Character
@@ -193,6 +198,8 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- Shop upgrades scale weapon damage (replaces the old Pack-a-Punch multiplier).
 	local upgradeMult = ShopConfig.DamageMultFor(ps.upgrades and ps.upgrades[weaponId] or 0)
 	local pellets = math.max(1, weapon.pellets)
+	local tracerEnd = origin + dir * range -- where the tracer beam lands (first hit, else max range)
+	local tracerSet = false
 
 	for i = 1, pellets do
 		-- Single-pellet weapons fire exactly on aim (point-and-click is precise; the server's spread
@@ -200,6 +207,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		local pelletDir = (pellets == 1) and dir or applySpread(dir, weapon.spread)
 		local result = Workspace:Raycast(origin, pelletDir * range, rayParams)
 		if result then
+			if not tracerSet then
+				tracerEnd = result.Position
+				tracerSet = true
+			end
 			local hitPart = result.Instance
 			local humanoid = findHumanoid(hitPart)
 			if humanoid and humanoid.Health > 0 and not isPlayerHumanoid(humanoid) then
@@ -219,6 +230,9 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			end
 		end
 	end
+
+	-- Broadcast the shot so EVERY client can draw a tracer (the shooter draws its own, predicted).
+	Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, tracerEnd)
 end
 
 -- ===== RELOAD =====
@@ -252,6 +266,7 @@ local function onReload(player: Player, weaponId: any)
 
 	c.reloading[weaponId] = true
 	local duration = effectiveReload(ps, weapon)
+	reloadEvent:Fire(player, weaponId, duration) -- drives the reload animation
 
 	task.delay(duration, function()
 		c.reloading[weaponId] = false
