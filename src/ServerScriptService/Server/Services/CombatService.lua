@@ -29,7 +29,9 @@ local MatchService = require(script.Parent.MatchService)
 local CombatService = {}
 
 -- ===== TUNABLES =====
-local MAX_ORIGIN_DIST   = 14    -- studs the claimed shot origin may be from the player's HumanoidRootPart
+local MAX_ORIGIN_DIST   = 6     -- studs the claimed shot origin may be from the player's HumanoidRootPart
+                                -- (legit client sends Head.Position, ~2 studs out; tight enough that a
+                                --  spoofed origin can't be relocated past cover to peek around walls)
 local FIRE_RATE_SLACK    = 0.85  -- allow shots up to 15% faster than nominal (latency/jitter); still gated
 local MAX_RANGE_HARD     = 1000  -- absolute raycast distance ceiling regardless of weapon.range
 
@@ -109,10 +111,14 @@ local function applySpread(direction: Vector3, spreadDeg: number): Vector3
 	if spreadDeg <= 0 then
 		return direction
 	end
+	local dir = direction.Unit
+	-- Pick an up reference that is never parallel to `dir`, so CFrame.lookAt stays well-defined even
+	-- when aiming exactly straight up/down (otherwise its LookVector is NaN → a wasted, no-effect shot).
+	local up = (math.abs(dir.Y) > 0.999) and Vector3.xAxis or Vector3.yAxis
 	local s = math.rad(spreadDeg)
 	local yaw = (math.random() * 2 - 1) * s
 	local pitch = (math.random() * 2 - 1) * s
-	return (CFrame.lookAt(Vector3.zero, direction) * CFrame.Angles(pitch, yaw, 0)).LookVector
+	return (CFrame.lookAt(Vector3.zero, dir, up) * CFrame.Angles(pitch, yaw, 0)).LookVector
 end
 
 -- ===== FIRE =====
@@ -184,8 +190,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	local packMult = ps.packAPunched[weaponId] and weapon.ppDamageMult or 1
 	local pellets = math.max(1, weapon.pellets)
 
-	for _ = 1, pellets do
-		local pelletDir = applySpread(dir, weapon.spread)
+	for i = 1, pellets do
+		-- Single-pellet weapons fire exactly on aim (point-and-click is precise; the server's spread
+		-- randomness only applies to multi-pellet shotguns). Keeps headshots reliable.
+		local pelletDir = (pellets == 1) and dir or applySpread(dir, weapon.spread)
 		local result = Workspace:Raycast(origin, pelletDir * range, rayParams)
 		if result then
 			local hitPart = result.Instance

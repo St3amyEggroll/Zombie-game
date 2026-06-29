@@ -52,7 +52,7 @@ GameConfig.GameOverHoldSeconds = 10    -- summary screen time before returning t
 
 -- ===== RATE LIMITS (token bucket, max requests/sec per player) =====
 GameConfig.RateLimits = {
-	Fire = 20, Reload = 3, Buy = 6, Revive = 3, Interact = 8,
+	Fire = 20, Reload = 3, Buy = 6, Revive = 3, Interact = 8, Sprint = 10,
 }
 
 return GameConfig

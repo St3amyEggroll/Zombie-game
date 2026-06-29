@@ -16,6 +16,7 @@ local PerkConfig = require(Config.PerkConfig)
 local Remotes = require(Modules.Remotes)
 
 local MatchService = require(script.Parent.MatchService)
+local SecurityService = require(script.Parent.SecurityService)
 
 local PlayerStateService = {}
 
@@ -30,7 +31,14 @@ local runtime: { [number]: any } = {}
 local function getRuntime(player: Player)
 	local r = runtime[player.UserId]
 	if not r then
-		r = { lastDamage = 0, sprintWanted = false, stamina = GameConfig.SprintStaminaMax, lastWalkSpeed = -1 }
+		r = {
+			lastDamage = 0,
+			sprintWanted = false,
+			stamina = GameConfig.SprintStaminaMax,
+			lastWalkSpeed = -1,
+			lastSentHealth = -1,     -- for coalescing HealthChanged pushes
+			lastSentMaxHealth = -1,
+		}
 		runtime[player.UserId] = r
 	end
 	return r
@@ -67,12 +75,24 @@ local function computeMaxHealth(player: Player): number
 end
 
 local function fireHealth(player: Player, humanoid: Humanoid)
-	Remotes.Get("HealthChanged"):FireClient(player, humanoid.Health, humanoid.MaxHealth)
+	-- Always keep match state exact.
 	local ps = MatchService.GetPlayerState(player)
 	if ps then
 		ps.health = humanoid.Health
 		ps.maxHealth = humanoid.MaxHealth
 	end
+	-- Coalesce the network push: only send when the DISPLAYED (integer) HP/MaxHealth changes, or at a
+	-- 0/full boundary. Avoids ~10 redundant HealthChanged RemoteEvents/sec while a player regenerates.
+	local r = getRuntime(player)
+	local h = math.floor(humanoid.Health + 0.5)
+	local mh = math.floor(humanoid.MaxHealth + 0.5)
+	local atBoundary = humanoid.Health <= 0 or humanoid.Health >= humanoid.MaxHealth
+	if r.lastSentHealth == h and r.lastSentMaxHealth == mh and not atBoundary then
+		return
+	end
+	r.lastSentHealth = h
+	r.lastSentMaxHealth = mh
+	Remotes.Get("HealthChanged"):FireClient(player, humanoid.Health, humanoid.MaxHealth)
 end
 
 -- ===== CHARACTER SETUP =====
@@ -207,6 +227,9 @@ end
 
 -- ===== SPRINT REMOTE =====
 local function onSprint(player: Player, wantSprint: any)
+	if not SecurityService.Allow(player, "Sprint") then
+		return
+	end
 	getRuntime(player).sprintWanted = wantSprint == true
 end
 

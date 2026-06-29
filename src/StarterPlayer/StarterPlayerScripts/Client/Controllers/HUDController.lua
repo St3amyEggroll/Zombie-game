@@ -31,12 +31,22 @@ local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 -- ===== ELEMENT LOOKUP (by name, anywhere under PlayerGui) =====
-local function findLabel(name: string): TextLabel?
+-- Cached lazily: steady-state cost is one .Parent check, not a full PlayerGui scan per update.
+-- Re-resolves automatically if a cached label is destroyed/reparented (respawn, styled HUD swap).
+local labelCache: { [string]: Instance? } = {}
+
+local function findLabel(name: string)
+	local cached = labelCache[name]
+	if cached and cached.Parent then
+		return cached
+	end
 	for _, d in playerGui:GetDescendants() do
 		if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Name == name then
+			labelCache[name] = d
 			return d
 		end
 	end
+	labelCache[name] = nil
 	return nil
 end
 
