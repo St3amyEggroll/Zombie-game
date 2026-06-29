@@ -21,8 +21,9 @@ local START_ORDER = {
 	"PlayerStateService",
 	"MatchService",
 	"CombatService",
+	"ZombieService",
 	-- Later phases append here as their services land:
-	-- "ZombieService", "PointsService", "PerkService",
+	-- "PointsService", "PerkService",
 	-- "BuyService", "ReviveService", "ProgressionService", "LeaderboardService",
 }
 

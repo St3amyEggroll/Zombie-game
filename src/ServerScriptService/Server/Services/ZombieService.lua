@@ -1,0 +1,459 @@
+--!nonstrict
+-- ZombieService.lua — spawn, AI, scaling, pooling, and performance for the horde (CLAUDE.md §13).
+--
+-- PERFORMANCE DESIGN (this is the whole challenge):
+--   • HARD CAP at GameConfig.MaxAliveZombies — the round "owes" more, but they only spawn as others die.
+--   • STAGGERED AI — each zombie thinks on its own timer (~ZombieAITickRate), not every zombie every frame.
+--   • SPARSE PATHFINDING — recompute a path every ~PathRecompute seconds (async, off the heartbeat) and
+--     STEER between waypoints in between, instead of full pathfinding per frame.
+--   • POOLING — zombie models are reused, not created/destroyed every spawn.
+--
+-- MODEL CONTRACT (when you build zombie models): put a Model at
+--   ReplicatedStorage > Assets > Zombies > <typeId>   (or a single "Default" model used for all types)
+-- with a Humanoid, a HumanoidRootPart (PrimaryPart), and a part named "Head" (for headshots).
+-- No model? A tinted placeholder rig is built so the horde works immediately.
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ServerStorage = game:GetService("ServerStorage")
+local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+local PathfindingService = game:GetService("PathfindingService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = Shared:WaitForChild("Config")
+local Modules = Shared:WaitForChild("Modules")
+
+local GameConfig = require(Config.GameConfig)
+local ZombieConfig = require(Config.ZombieConfig)
+local Util = require(Modules.Util)
+local Remotes = require(Modules.Remotes)
+
+local PlayerStateService = require(script.Parent.PlayerStateService)
+
+local ZombieService = {}
+
+-- ===== TUNABLES (most live in GameConfig; these are local feel knobs) =====
+local SPAWN_INTERVAL   = 0.6    -- seconds between spawns while a round still owes zombies
+local ATTACK_RANGE     = 4.5    -- studs within which a zombie can hit a player
+local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
+local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
+local DESPAWN_DELAY    = 3      -- seconds a corpse lingers before returning to the pool
+local MAX_LIFETIME     = 120    -- safety: a zombie alive this long is force-killed (anti soft-lock)
+local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
+
+-- ===== STATE =====
+local active: { [Model]: any } = {}   -- model -> record
+local aliveCount = 0
+local remaining = 0                   -- zombies still owed this round
+local currentRound = 0
+local roundToken = 0                  -- bumped to cancel in-flight spawn loops / rounds
+
+local pool: { [string]: { Model } } = {}  -- typeId -> reusable models
+local spawnPoints: { BasePart } = {}
+local zombieFolder: Folder
+local poolFolder: Folder
+
+-- The spawnable archetypes (ZombieConfig also holds non-type scalars like BossInterval — filter them out).
+local ZOMBIE_TYPES: { [string]: any } = {}
+local ALL_WEIGHTS: { [string]: number } = {}
+for id, t in ZombieConfig do
+	if type(t) == "table" and t.id then
+		ZOMBIE_TYPES[id] = t
+		ALL_WEIGHTS[id] = t.spawnWeight
+	end
+end
+
+-- ===== SCALING (CLAUDE.md §8) =====
+local function scaledHealth(round: number, t): number
+	return math.floor(GameConfig.ZombieBaseHealth * (GameConfig.ZombieHealthGrowth ^ (round - 1)) * t.healthMult)
+end
+
+local function scaledSpeed(round: number, t): number
+	local s = (GameConfig.ZombieBaseSpeed + GameConfig.ZombieSpeedPerRound * (round - 1)) * t.speedMult
+	return math.min(GameConfig.ZombieMaxSpeed, s)
+end
+
+-- ===== SPAWN POINTS =====
+local function refreshSpawnPoints()
+	local list = {}
+	for _, inst in CollectionService:GetTagged("ZombieSpawn") do
+		if inst:IsA("BasePart") then
+			table.insert(list, inst)
+		end
+	end
+	spawnPoints = list
+end
+
+-- ===== MODEL BUILD / POOL =====
+local function buildPlaceholder(t): Model
+	local model = Instance.new("Model")
+	model.Name = "Zombie"
+
+	local root = Instance.new("Part")
+	root.Name = "HumanoidRootPart"
+	root.Size = Vector3.new(2, 2, 1)
+	root.Transparency = 1
+	root.CanCollide = true
+	root.Parent = model
+
+	local torso = Instance.new("Part")
+	torso.Name = "Torso"
+	torso.Size = Vector3.new(2, 2, 1)
+	torso.Color = t.tint
+	torso.Material = Enum.Material.SmoothPlastic
+	torso.CanCollide = false
+	torso.CFrame = root.CFrame
+	torso.Parent = model
+	local w1 = Instance.new("WeldConstraint")
+	w1.Part0 = root
+	w1.Part1 = torso
+	w1.Parent = root
+
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Size = Vector3.new(1.2, 1.2, 1.2)
+	head.Color = t.tint
+	head.Material = Enum.Material.SmoothPlastic
+	head.CanCollide = false
+	head.CFrame = root.CFrame * CFrame.new(0, 1.6, 0)
+	head.Parent = model
+	local w2 = Instance.new("WeldConstraint")
+	w2.Part0 = root
+	w2.Part1 = head
+	w2.Parent = root
+
+	local hum = Instance.new("Humanoid")
+	hum.HipHeight = 0
+	hum.Parent = model
+
+	model.PrimaryPart = root
+	return model
+end
+
+local function findAsset(typeId: string): Model?
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local folder = assets and assets:FindFirstChild("Zombies")
+	if not folder then
+		return nil
+	end
+	local m = folder:FindFirstChild(typeId) or folder:FindFirstChild("Default")
+	if m and m:IsA("Model") then
+		return m
+	end
+	return nil
+end
+
+local function prepModel(model: Model)
+	if not model.PrimaryPart then
+		model.PrimaryPart = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+			or model:FindFirstChildWhichIsA("BasePart")
+	end
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.BreakJointsOnDeath = false
+		if not hum:FindFirstChildOfClass("Animator") then
+			Instance.new("Animator").Parent = hum
+		end
+	end
+end
+
+local function buildZombie(typeId: string, t): Model
+	local asset = findAsset(typeId)
+	local model = asset and asset:Clone() or buildPlaceholder(t)
+	prepModel(model)
+	return model
+end
+
+local function acquire(typeId: string, t): Model
+	local list = pool[typeId]
+	if list and #list > 0 then
+		return table.remove(list) :: Model
+	end
+	return buildZombie(typeId, t)
+end
+
+local function release(record)
+	local model = record.model
+	if record.diedConn then
+		record.diedConn:Disconnect()
+		record.diedConn = nil
+	end
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.Health = hum.MaxHealth
+		hum.WalkSpeed = 0
+	end
+	model.Parent = poolFolder
+	local list = pool[record.typeId]
+	if not list then
+		list = {}
+		pool[record.typeId] = list
+	end
+	table.insert(list, model)
+end
+
+-- ===== TARGETING =====
+local function nearestAlivePlayer(fromPos: Vector3): (Player?, BasePart?)
+	local bestPlayer, bestRoot, bestDist = nil, nil, math.huge
+	for _, player in Players:GetPlayers() do
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if hum and root and hum.Health > 0 then
+			local d = (root.Position - fromPos).Magnitude
+			if d < bestDist then
+				bestDist, bestPlayer, bestRoot = d, player, root
+			end
+		end
+	end
+	return bestPlayer, bestRoot
+end
+
+-- ===== PATHFINDING (async, off the heartbeat) =====
+local function recomputePath(record, targetPos: Vector3)
+	record.computing = true
+	local path = PathfindingService:CreatePath({
+		AgentRadius = 2,
+		AgentHeight = 5,
+		AgentCanJump = true,
+		AgentMaxSlope = 45,
+	})
+	local ok = pcall(function()
+		path:ComputeAsync(record.root.Position, targetPos)
+	end)
+	if not record.dead and ok and path.Status == Enum.PathStatus.Success then
+		local wps = path:GetWaypoints()
+		record.waypoints = wps
+		record.waypointIndex = math.min(2, #wps) -- skip the start point
+	else
+		record.waypoints = nil
+	end
+	record.computing = false
+end
+
+-- ===== DEATH =====
+local function onZombieDied(record)
+	if record.dead then
+		return
+	end
+	record.dead = true
+	aliveCount = math.max(0, aliveCount - 1)
+	active[record.model] = nil
+
+	Remotes.Get("ZombieDied"):FireAllClients(record.typeId, record.root.Position)
+
+	local hum = record.model:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.WalkSpeed = 0
+	end
+	-- Ragdoll-lite for placeholders / standard rigs: let limbs go limp where joints exist.
+	-- (Phase 4 juice will add gibs / a proper ragdoll.)
+	task.delay(DESPAWN_DELAY, function()
+		release(record)
+	end)
+end
+
+-- ===== SPAWN =====
+local function pickType(round: number): string?
+	return Util.WeightedChoiceFiltered(ALL_WEIGHTS, function(id)
+		local t = ZOMBIE_TYPES[id]
+		return t.spawnWeight > 0 and round >= t.minRound
+	end)
+end
+
+local function spawnOne(round: number)
+	if #spawnPoints == 0 then
+		return
+	end
+	local typeId = pickType(round) or "walker"
+	local t = ZOMBIE_TYPES[typeId]
+	if not t then
+		return
+	end
+
+	local model = acquire(typeId, t)
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	local root = model.PrimaryPart
+	if not hum or not root then
+		return
+	end
+
+	local hp = scaledHealth(round, t)
+	hum.MaxHealth = hp
+	hum.Health = hp
+	hum.WalkSpeed = scaledSpeed(round, t)
+
+	local sp = spawnPoints[math.random(#spawnPoints)]
+	model:PivotTo(sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0))
+	model.Parent = zombieFolder
+
+	-- Keep the server authoritative over zombie physics (perf + anti-exploit).
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
+
+	local now = os.clock()
+	local record = {
+		model = model,
+		root = root,
+		hum = hum,
+		typeId = typeId,
+		type = t,
+		damage = t.damage,
+		target = nil,
+		waypoints = nil,
+		waypointIndex = 1,
+		computing = false,
+		lastPath = 0,
+		lastAttack = 0,
+		spawnTime = now,
+		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
+		dead = false,
+		diedConn = nil,
+	}
+	record.diedConn = hum.Died:Connect(function()
+		onZombieDied(record)
+	end)
+
+	active[model] = record
+	aliveCount += 1
+
+	if t.isSpecial then
+		Remotes.Get("ZombieSpawned"):FireAllClients(typeId, root.Position)
+	end
+end
+
+-- ===== AI HEARTBEAT (steering only; pathfinding is async) =====
+local function think(record, now: number)
+	if record.dead then
+		return
+	end
+	local root = record.root
+	if not root or not root.Parent then
+		return
+	end
+
+	local target, targetRoot = nearestAlivePlayer(root.Position)
+	record.target = target
+	if not targetRoot then
+		record.hum:MoveTo(root.Position) -- nobody alive: idle in place
+		record.nextThink = now + GameConfig.ZombieAITickRate
+		return
+	end
+
+	-- Sparse path recompute (off the heartbeat).
+	if not record.computing and (now - record.lastPath) >= GameConfig.PathRecompute then
+		record.lastPath = now
+		task.spawn(recomputePath, record, targetRoot.Position)
+	end
+
+	-- Steer toward the current waypoint, or straight at the target if we have no path.
+	local goal = targetRoot.Position
+	if record.waypoints and record.waypointIndex <= #record.waypoints then
+		local wp = record.waypoints[record.waypointIndex]
+		goal = wp.Position
+		local flat = Vector3.new(root.Position.X - goal.X, 0, root.Position.Z - goal.Z)
+		if flat.Magnitude < WAYPOINT_REACH then
+			if wp.Action == Enum.PathWaypointAction.Jump then
+				record.hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			end
+			record.waypointIndex += 1
+		end
+	end
+	record.hum:MoveTo(goal)
+
+	-- Attack on contact.
+	local dist = (root.Position - targetRoot.Position).Magnitude
+	if dist <= ATTACK_RANGE and (now - record.lastAttack) >= ATTACK_COOLDOWN then
+		record.lastAttack = now
+		PlayerStateService.Damage(target, record.damage, "zombie")
+	end
+
+	-- Safety: never let a stuck zombie soft-lock a round.
+	if (now - record.spawnTime) > MAX_LIFETIME then
+		record.hum.Health = 0
+	end
+
+	record.nextThink = now + GameConfig.ZombieAITickRate
+end
+
+local function onHeartbeat()
+	local now = os.clock()
+	for _, record in active do
+		if now >= record.nextThink then
+			think(record, now)
+		end
+	end
+end
+
+-- ===== PUBLIC API (the round loop in MatchService drives these) =====
+
+-- Begin spawning `count` zombies for `round`, throttled by SPAWN_INTERVAL and the MaxAliveZombies cap.
+function ZombieService.BeginRound(round: number, count: number)
+	currentRound = round
+	remaining = count
+	roundToken += 1
+	local myToken = roundToken
+
+	task.spawn(function()
+		while remaining > 0 and myToken == roundToken do
+			if aliveCount < GameConfig.MaxAliveZombies and #spawnPoints > 0 then
+				spawnOne(round)
+				remaining -= 1
+			end
+			task.wait(SPAWN_INTERVAL)
+		end
+	end)
+end
+
+-- True once every owed zombie has spawned and the world is clear of living zombies.
+function ZombieService.IsRoundCleared(): boolean
+	return remaining <= 0 and aliveCount <= 0
+end
+
+function ZombieService.GetAliveCount(): number
+	return aliveCount
+end
+
+function ZombieService.GetRemaining(): number
+	return remaining
+end
+
+-- Wipe everything (used on game over / reset). Cancels spawning and pools all live zombies.
+function ZombieService.ClearAll()
+	roundToken += 1
+	remaining = 0
+	for model, record in active do
+		record.dead = true
+		if record.diedConn then
+			record.diedConn:Disconnect()
+			record.diedConn = nil
+		end
+		release(record)
+		active[model] = nil
+	end
+	aliveCount = 0
+end
+
+-- ===== LIFECYCLE =====
+function ZombieService.Start()
+	zombieFolder = Instance.new("Folder")
+	zombieFolder.Name = "Zombies"
+	zombieFolder.Parent = Workspace
+
+	poolFolder = Instance.new("Folder")
+	poolFolder.Name = "ZombiePool"
+	poolFolder.Parent = ServerStorage
+
+	refreshSpawnPoints()
+	CollectionService:GetInstanceAddedSignal("ZombieSpawn"):Connect(refreshSpawnPoints)
+	CollectionService:GetInstanceRemovedSignal("ZombieSpawn"):Connect(refreshSpawnPoints)
+
+	RunService.Heartbeat:Connect(onHeartbeat)
+
+	print(("[ZombieService] started (%d spawn point(s) tagged)"):format(#spawnPoints))
+end
+
+return ZombieService
