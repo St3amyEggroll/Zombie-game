@@ -44,7 +44,7 @@ muzzle, placeholder-friendly), minimal `HUDController` (ammo/health, debug fallb
 **You provide:** a **test dummy** (any rig with a `Humanoid`, and a part named `Head` for headshots) to shoot.
 Optional: viewmodel gun models at `ReplicatedStorage>Assets>Viewmodels>{weaponId}` (placeholder used otherwise).
 **Acceptance:** shoot the dummy → server validates, damage applies, ammo counts down, reload works, headshots do
-more; first-person/third-person toggle (default **V**); recoil + muzzle flash present.
+more; third-person by default with a first-person toggle (**V**); recoil + muzzle flash present.
 
 ## Phase 2 — Zombies + rounds ⬜
 **Goal:** escalating hordes that chase and attack; the round loop; performance that holds.

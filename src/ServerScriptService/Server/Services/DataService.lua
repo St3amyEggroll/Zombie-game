@@ -34,7 +34,7 @@ local TEMPLATE = {
 		totalRevives = 0,
 		matchesPlayed = 0,
 	},
-	settings = { firstPerson = true, sfx = true, music = true, lowGfx = false },
+	settings = { firstPerson = false, sfx = true, music = true, lowGfx = false },
 }
 
 -- userId -> data table (deep copy of TEMPLATE). Cleared on leave.

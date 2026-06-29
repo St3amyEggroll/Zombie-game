@@ -9,7 +9,7 @@ local Workspace = game:GetService("Workspace")
 local CameraController = {}
 
 -- ===== TUNABLES =====
-local DEFAULT_MODE     = "first"   -- "first" | "third"
+local DEFAULT_MODE     = "third"   -- "first" | "third" (game is third-person by default)
 local TP_MIN_ZOOM      = 8         -- third-person zoom distance bounds
 local TP_MAX_ZOOM      = 14
 local TP_SHOULDER      = Vector3.new(1.75, 0.5, 0)  -- over-the-shoulder offset in third person

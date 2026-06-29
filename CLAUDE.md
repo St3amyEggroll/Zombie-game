@@ -3,7 +3,7 @@
 A 3D co-op last-stand zombie survival shooter (Call of Duty Zombies lineage): **hold the line → earn
 points from kills → spend on weapons, perks, and Pack-a-Punch between waves → survive escalating
 rounds with elite and boss zombies → revive your friends when they go down → push for a higher round
-than last time.** First-person with a third-person toggle, built for drop-in co-op.
+than last time.** Third-person by default (with an optional first-person toggle), built for drop-in co-op.
 
 > Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **Zombie Lobby**.
 > Build **phase by phase** — each phase is independently testable in Roblox Studio before the next.
