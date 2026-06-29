@@ -117,17 +117,17 @@ function HUDController.Start()
 		setText("HealthLabel", string.format("HP  %d / %d", math.floor(health + 0.5), math.floor(maxHealth + 0.5)))
 	end)
 
-	-- Round + points (populated for real in Phases 2/3; wired now so styled labels just work).
+	-- Wave + cash.
 	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
-		setText("RoundLabel", "Round " .. tostring(round))
+		setText("RoundLabel", "Wave " .. tostring(round))
 	end)
 	Remotes.Get("PointsChanged").OnClientEvent:Connect(function(points)
-		setText("PointsLabel", Util.FormatNumber(points) .. " pts")
+		setText("PointsLabel", "$" .. Util.FormatNumber(points))
 	end)
 
 	-- Seed initial text.
-	setText("PointsLabel", Util.FormatNumber(GameConfig.StartingPoints) .. " pts")
-	setText("RoundLabel", "Round 0")
+	setText("PointsLabel", "$" .. Util.FormatNumber(GameConfig.StartingPoints))
+	setText("RoundLabel", "Wave 0")
 
 	print("[HUDController] started" .. (SHOW_DEBUG_HUD and " (debug HUD on)" or ""))
 end

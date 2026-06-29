@@ -23,9 +23,10 @@ local START_ORDER = {
 	"CombatService",
 	"ZombieService",
 	"PointsService",
-	"BuyService",
+	"ShopService",
+	"WeaponModelService",
 	-- Later phases append here as their services land:
-	-- "PerkService", "ReviveService", "ProgressionService", "LeaderboardService",
+	-- "ReviveService", "ProgressionService", "LeaderboardService",
 }
 
 local started: { [string]: boolean } = {}

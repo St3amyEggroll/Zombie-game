@@ -20,6 +20,7 @@ local Modules = Shared:WaitForChild("Modules")
 
 local WeaponConfig = require(Config.WeaponConfig)
 local PerkConfig = require(Config.PerkConfig)
+local ShopConfig = require(Config.ShopConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
@@ -38,8 +39,10 @@ local MAX_RANGE_HARD     = 1000  -- absolute raycast distance ceiling regardless
 -- ===== SIGNALS (other services subscribe; fired on damage/kill of a non-player Humanoid) =====
 local hitEvent = Instance.new("BindableEvent")
 local killEvent = Instance.new("BindableEvent")
-CombatService.Hit = hitEvent.Event    -- (player, humanoid, isHeadshot, weaponId, damage)
-CombatService.Kill = killEvent.Event  -- (player, humanoid, isHeadshot, weaponId)
+local equippedEvent = Instance.new("BindableEvent")
+CombatService.Hit = hitEvent.Event          -- (player, humanoid, isHeadshot, weaponId, damage)
+CombatService.Kill = killEvent.Event        -- (player, humanoid, isHeadshot, weaponId)
+CombatService.Equipped = equippedEvent.Event -- (player) — fired whenever a player's loadout/equip changes
 
 -- ===== PER-PLAYER COMBAT STATE =====
 -- combat[userId] = { lastShot = {[weaponId]=clock}, reloading = {[weaponId]=bool} }
@@ -187,7 +190,8 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 
 	local dir = direction.Unit
 	local range = math.min(weapon.range, MAX_RANGE_HARD)
-	local packMult = ps.packAPunched[weaponId] and weapon.ppDamageMult or 1
+	-- Shop upgrades scale weapon damage (replaces the old Pack-a-Punch multiplier).
+	local upgradeMult = ShopConfig.DamageMultFor(ps.upgrades and ps.upgrades[weaponId] or 0)
 	local pellets = math.max(1, weapon.pellets)
 
 	for i = 1, pellets do
@@ -200,7 +204,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			local humanoid = findHumanoid(hitPart)
 			if humanoid and humanoid.Health > 0 and not isPlayerHumanoid(humanoid) then
 				local isHead = (hitPart.Name == "Head")
-				local damage = weapon.damage * (isHead and weapon.headshotMult or 1) * packMult
+				local damage = weapon.damage * (isHead and weapon.headshotMult or 1) * upgradeMult
 				humanoid.Health = math.max(0, humanoid.Health - damage)
 				local killed = humanoid.Health <= 0
 
@@ -276,6 +280,7 @@ end
 -- ===== LOADOUT (Phase 3: buying weapons makes weapon switching matter) =====
 local function fireLoadout(player: Player, ps)
 	Remotes.Get("LoadoutChanged"):FireClient(player, ps.ownedWeapons, ps.equippedWeapon)
+	equippedEvent:Fire(player) -- WeaponModelService re-attaches the in-hand model
 end
 
 -- Grant a weapon (wall-buy / box) and auto-equip it. Idempotent on ownership; always refills its ammo.

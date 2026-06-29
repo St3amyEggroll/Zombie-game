@@ -1,12 +1,11 @@
 --!nonstrict
--- MatchService.lua — match lifecycle + round manager. **THE core service.**
+-- MatchService.lua — match lifecycle + wave manager (Zombie Rush style). **THE core service.**
 --
--- Owns the ephemeral per-match state (CLAUDE.md §6) and runs the real round loop:
---   Lobby -> Starting -> Playing (round 1) -> [spawn escalating zombies, wait for clear,
---   RoundBreak, advance] looping -> on a full team wipe: GameOver -> reset -> Lobby.
+-- Endless waves: Lobby -> Starting -> Playing (wave 1) -> [spawn escalating zombies, clear, short break,
+-- next wave] forever. Death is FORGIVING — you respawn after a short delay and keep your cash/weapons/
+-- upgrades; there is no team-wipe game over. The match idles back to Lobby only when everyone leaves.
 --
--- Player respawn is manual (CharacterAutoLoads is off) so a death stays a death until the next match —
--- Phase 6 swaps that bare death for the down/revive system; the all-dead → GameOver hook is already here.
+-- Owns the ephemeral per-match state (cash, owned weapons, ammo, upgrades) keyed by userId.
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -20,44 +19,46 @@ local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
 local Remotes = require(Modules.Remotes)
 
--- ZombieService is required lazily in Start() to break the require cycle
--- (Match -> Zombie -> PlayerState -> Match). Stored as an upvalue the round loop reads.
+-- Required lazily in Start() to break the cycle (Match -> Zombie -> PlayerState -> Match).
 local ZombieService
 
 local MatchService = {}
 
--- ===== EPHEMERAL MATCH STATE (server memory only; discarded at game over) =====
+-- ===== TUNABLES =====
+local RESPAWN_DELAY = 4   -- seconds before a dead player respawns
+
+-- ===== EPHEMERAL MATCH STATE =====
 local state = {
-	phase = "Lobby",        -- Lobby | Starting | Playing | RoundBreak | GameOver
-	round = 0,
+	phase = "Lobby",       -- Lobby | Starting | Playing | RoundBreak
+	round = 0,             -- the current wave
 	zombiesRemaining = 0,
 	zombiesAlive = 0,
-	players = {},           -- [userId] = PlayerMatchState
+	players = {},          -- [userId] = PlayerMatchState
 	startedAt = 0,
 }
 MatchService.State = state
 
 local matchRunning = false
-local forceEnd = false
-local tryStartMatch  -- forward declaration (runMatch calls it before it's defined below)
+local tryStartMatch  -- forward declaration
 
 -- ===== INTERNAL =====
 local function setPhase(phase: string)
 	state.phase = phase
 	Remotes.Get("MatchStateChanged"):FireAllClients(phase, state.round)
-	print(("[MatchService] phase -> %s (round %d)"):format(phase, state.round))
+	print(("[MatchService] phase -> %s (wave %d)"):format(phase, state.round))
 end
 
 local function makePlayerState(player: Player)
 	local pistol = WeaponConfig.pistol
 	return {
 		userId = player.UserId,
-		points = GameConfig.StartingPoints,
+		points = GameConfig.StartingPoints,      -- "cash"
 		ownedWeapons = { "pistol" },
 		equippedWeapon = "pistol",
 		ammo = { pistol = { mag = pistol.magSize, reserve = pistol.reserveAmmo } },
-		perks = {},
-		packAPunched = {},
+		upgrades = {},                            -- [weaponId] = upgrade level (shop)
+		perks = {},                               -- (unused now; kept for the effect plumbing)
+		packAPunched = {},                        -- (unused now)
 		isDown = false,
 		isDead = false,
 		health = GameConfig.PlayerMaxHealth,
@@ -78,39 +79,41 @@ local function getPlayerSpawns(): { BasePart }
 	return list
 end
 
--- (Re)spawn a player's character and place it at a PlayerSpawn. Resets their down/dead flags.
+-- (Re)spawn a player at a PlayerSpawn and arm the respawn-on-death loop. Cash/weapons/upgrades persist.
 local function spawnCharacter(player: Player)
 	player:LoadCharacter()
 	local char = player.Character or player.CharacterAdded:Wait()
 	char:WaitForChild("HumanoidRootPart", 5)
+
 	local spawns = getPlayerSpawns()
 	if #spawns > 0 and char.PrimaryPart then
 		local sp = spawns[math.random(#spawns)]
 		char:PivotTo(sp.CFrame * CFrame.new(0, 4, 0))
 	end
+
 	local ps = state.players[player.UserId]
 	if ps then
 		ps.isDead = false
 		ps.isDown = false
 	end
-end
 
--- True only if there is at least one player and every one of them is dead.
-local function allPlayersDead(): boolean
-	local any = false
-	for _, player in Players:GetPlayers() do
-		local ps = state.players[player.UserId]
-		if ps then
-			any = true
-			if not ps.isDead then
-				return false
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.Died:Once(function()
+			local p = state.players[player.UserId]
+			if p then
+				p.isDead = true
 			end
-		end
+			task.delay(RESPAWN_DELAY, function()
+				if player.Parent then
+					spawnCharacter(player)
+				end
+			end)
+		end)
 	end
-	return any
 end
 
--- Zombies owed this round (CLAUDE.md §8).
+-- Zombies owed this wave (CLAUDE.md §8).
 local function computeCount(round: number, playerCount: number): number
 	local c = GameConfig.BaseZombiesPerRound
 		* (GameConfig.RoundZombieGrowth ^ (round - 1))
@@ -118,11 +121,13 @@ local function computeCount(round: number, playerCount: number): number
 	return math.max(1, math.floor(c))
 end
 
--- ===== THE MATCH =====
-local function runMatch()
-	forceEnd = false
-	setPhase("Starting")
+local function noPlayers(): boolean
+	return #Players:GetPlayers() == 0
+end
 
+-- ===== THE MATCH (endless) =====
+local function runMatch()
+	setPhase("Starting")
 	for _, player in Players:GetPlayers() do
 		task.spawn(spawnCharacter, player)
 	end
@@ -135,22 +140,20 @@ local function runMatch()
 	setPhase("Playing")
 	Remotes.Get("RoundChanged"):FireAllClients(state.round)
 
-	local wiped = false
-	while true do
+	while not noPlayers() do
 		local count = computeCount(state.round, #Players:GetPlayers())
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
 
 		while not ZombieService.IsRoundCleared() do
-			if forceEnd or allPlayersDead() then
-				wiped = true
+			if noPlayers() then
 				break
 			end
 			state.zombiesAlive = ZombieService.GetAliveCount()
 			state.zombiesRemaining = ZombieService.GetRemaining()
 			task.wait(0.3)
 		end
-		if wiped then
+		if noPlayers() then
 			break
 		end
 
@@ -161,26 +164,13 @@ local function runMatch()
 		setPhase("Playing")
 	end
 
-	-- Team wipe -> game over -> reset -> back to lobby.
-	setPhase("GameOver")
-	task.wait(GameConfig.GameOverHoldSeconds)
+	-- Everyone left: clear the field and idle back to Lobby until someone joins.
 	ZombieService.ClearAll()
 	state.round = 0
 	state.zombiesAlive = 0
 	state.zombiesRemaining = 0
-	-- Rebuild each player's ephemeral state from scratch (CLAUDE.md §6: owned weapons, ammo, perks,
-	-- Pack-a-Punch, points are all discarded at game over — you start the next run with a pistol).
-	for _, player in Players:GetPlayers() do
-		if state.players[player.UserId] then
-			local fresh = makePlayerState(player)
-			state.players[player.UserId] = fresh
-			Remotes.Get("PointsChanged"):FireClient(player, fresh.points)
-		end
-	end
 	matchRunning = false
 	setPhase("Lobby")
-	-- (Phase 8: ProgressionService awards XP / bestRound off the GameOver phase before this reset.)
-	tryStartMatch()
 end
 
 tryStartMatch = function()
@@ -220,7 +210,6 @@ function MatchService.ForEachPlayer(fn: (Player, any) -> ())
 	end
 end
 
--- Advance to the next round manually (the loop does this itself; exposed for tooling/later phases).
 function MatchService.AdvanceRound()
 	state.round += 1
 	Remotes.Get("RoundChanged"):FireAllClients(state.round)
@@ -231,17 +220,10 @@ function MatchService.SetPhase(phase: string)
 	setPhase(phase)
 end
 
--- Force the current match to end after the current round-wait tick (used by later phases / admin).
-function MatchService.EndMatch()
-	forceEnd = true
-end
-
 -- ===== LIFECYCLE =====
 function MatchService.Start()
 	ZombieService = require(script.Parent.ZombieService)
-
-	-- Manual respawn control: a death stays a death until the next match.
-	Players.CharacterAutoLoads = false
+	Players.CharacterAutoLoads = false -- manual respawn control
 
 	for _, player in Players:GetPlayers() do
 		state.players[player.UserId] = makePlayerState(player)
@@ -260,7 +242,7 @@ function MatchService.Start()
 	end)
 
 	tryStartMatch()
-	print("[MatchService] started (round manager live)")
+	print("[MatchService] started (endless waves)")
 end
 
 return MatchService

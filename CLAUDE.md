@@ -1,12 +1,13 @@
 # ZOMBIE LOBBY — Build Doc & Source of Truth
 
-A 3D co-op last-stand zombie survival shooter (Call of Duty Zombies lineage): **hold the line → earn
-points from kills → spend on weapons, perks, and Pack-a-Punch between waves → survive escalating
-rounds with elite and boss zombies → revive your friends when they go down → push for a higher round
-than last time.** Third-person by default (with an optional first-person toggle), built for drop-in co-op.
+A 3D co-op wave-survival zombie shooter (**Zombie Rush** style): **kill rushing zombies → earn cash →
+buy & upgrade weapons from a shop menu → survive escalating, endless waves → respawn and keep going,
+push for a higher wave than last time.** Third-person by default (optional first-person toggle), drop-in co-op.
 
 > Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **Zombie Lobby**.
-> Build **phase by phase** — each phase is independently testable in Roblox Studio before the next.
+> **Pivoted from a Call-of-Duty-Zombies loop to a simpler Zombie Rush loop** — no doors, wall-buys,
+> Pack-a-Punch, perks, or Mystery Box; a **menu shop** (buy + upgrade weapons for cash) instead, and
+> respawn-on-death endless waves rather than a team-wipe game over. Build incrementally, testable in Studio.
 
 ---
 
@@ -16,6 +17,7 @@ than last time.** Third-person by default (with an optional first-person toggle)
 
 | Decision | Choice |
 |---|---|
+| Game style | **Zombie Rush** — wave survival; cash from kills; **menu shop** to buy + upgrade weapons; endless waves; **respawn on death** (no team-wipe game over). Replaced the CoD-Zombies loop (removed doors, wall-buys, Pack-a-Punch, perks, Mystery Box). |
 | Game name | **Zombie Lobby** (project name in `default.project.json`) |
 | Data persistence | **SKIPPED for now.** `DataService` is an in-memory stub with the final API — swap in ProfileStore later by editing one file. No data survives a server restart yet. |
 | Progression XP | **Kill-weighted** (most XP from kills; round reached is a small bonus). See `ProgressionConfig`. |
@@ -25,29 +27,31 @@ than last time.** Third-person by default (with an optional first-person toggle)
 | UI | **The owner styles all UI; Claude writes all the code.** Controllers own the logic and look up the owner's named UI elements (named-instance contract). Each UI-driving controller will document the exact element names it expects, and tolerate missing elements gracefully. |
 
 ### Phase tracker
-- [x] **Phase 0 — Scaffold** ✅ (project file, folder tree, all Config modules, Remotes/Util/Types, bootstraps, in-memory DataService, SecurityService, MatchService state skeleton)
-- [x] **Phase 1 — Core combat** ✅ (PlayerStateService, InputController, CameraController FP/TP, server-authoritative CombatService + raycast, WeaponViewController recoil/muzzle, ammo+reload, minimal HUD; added Sprint remote)
-- [x] **Phase 2 — Zombies + rounds** ✅ (ZombieService spawn/AI/scaling/pooling/caps + stuck recovery, MatchService real round loop + manual respawn + team-wipe game over, chase/attack via PlayerStateService.Damage; placeholder zombie rig)
-- [x] **Phase 3 — Points + buying** ✅ (PointsService earn/spend per §8, BuyService wall-buys/ammo/doors via server-validated ProximityPrompts, weapon switching + loadout, HUD points/ammo+weapon name)
-- [ ] **Phase 4 — Combat juice** (blood/goo, headshot pops, hitmarkers, shake, hitstop)
-- [ ] **Phase 5 — Perks + PaP + Mystery Box** (PerkService, Pack-a-Punch, the roller)
-- [ ] **Phase 6 — Down/revive co-op** (ReviveService, revive UI, all-down game over)
-- [ ] **Phase 7 — Elites + bosses** (runner/brute/mutant, boss on BossInterval, special VFX)
-- [ ] **Phase 8 — Meta-progression + leaderboard** (ProgressionService XP/unlocks, LeaderboardService, GameOver summary)
-- [ ] **Phase 9 — Polish & security pass** (full anti-exploit audit, perf tuning, onboarding, settings)
+- [x] **Scaffold** ✅ (project file, folder tree, all Config modules, Remotes/Util/Types, bootstraps, in-memory DataService, SecurityService)
+- [x] **Core combat** ✅ (PlayerStateService, InputController, CameraController FP/TP, server-authoritative CombatService + raycast, WeaponViewController recoil/muzzle, ammo+reload)
+- [x] **Zombies + waves** ✅ (ZombieService spawn/AI/scaling/pooling/caps + stuck recovery, endless wave loop, chase/attack, **respawn on death**; tag-driven zombie models)
+- [x] **Cash + shop** ✅ (cash from kills, **menu shop** to buy + upgrade weapons, weapon switching, **in-hand weapon models** welded server-side)
+- [ ] **Combat juice** (blood/goo, headshot pops, hitmarkers, screen shake, hitstop)
+- [ ] **Elites + bosses** (runner/brute/mutant + Abomination at higher waves, special spawn announce/VFX)
+- [ ] **Meta-progression + leaderboard** (account XP/levels, weapon unlocks, global best-wave board)
+- [ ] **Polish & security pass** (anti-exploit audit, perf at full hordes, onboarding, settings, sound)
+
+> **Removed in the Zombie Rush pivot:** doors, wall-buys, Pack-a-Punch, perk machines, the Mystery Box,
+> and down/revive (replaced by respawn). The `PerkConfig`/`MysteryBoxConfig` modules still exist but are
+> unused; `ShopConfig` is the new economy config.
 
 ---
 
 ## 1. The loop (the whole game)
 
-**kill → points → spend → survive harder → snowball → die a little deeper than last time.**
+**kill → cash → buy/upgrade → survive harder → push a higher wave than last time.**
 
-Start with a pistol, 500 points, one locked door. Shoot zombies for points (10/hit, 60/kill,
-100/headshot-kill). Spend points between waves on wall guns, the Mystery Box (gamble a random gun,
-maybe the Ray Gun), perk machines (Juggernog +150 HP, Speed Cola faster reload…), opening new map
-areas, Pack-a-Punch (upgrade your gun), and ammo. Special zombies (Runner/Brute/Mutant) and bosses
-(Abomination) force you off your camp spot. Downs aren't death — a friend can revive you. Everyone
-down at once = game over. Reward = account XP (kill-weighted) + a best-round leaderboard number to beat.
+Start with a pistol and some cash. Zombies rush you in escalating **waves**; kill them for cash
+(10/hit, 60/kill, 100/headshot-kill — tune in `GameConfig`). Open the **shop menu** (press **B**) anytime
+to buy better guns (SMG → Ray Gun) and **upgrade** your current gun's damage for cash. Waves get bigger
+and tougher endlessly. Die and you **respawn** after a few seconds, keeping your cash and weapons — no
+game over, just see how far you get. Special/boss zombies (Runner/Brute/Mutant/Abomination) appear at
+higher waves to force you to move. (Account XP/levels + a best-wave leaderboard come in a later phase.)
 
 ---
 
@@ -133,17 +137,14 @@ on parts as **Attributes** so the map stays data-driven. The map lives in `Serve
 cloned into Workspace on match start (clean resets) — or just build it in Workspace for now while
 greyboxing.
 
-| Tag | What to tag | Required Attributes | Read by (phase) |
+| Tag | What to tag | Required Attributes | Read by |
 |---|---|---|---|
-| `ZombieSpawn` | a Part at each spawn point (can be invisible) | — | ZombieService (P2) |
-| `PlayerSpawn` | a Part / SpawnLocation for player starts | — | MatchService (P2) |
-| `Barricade` | boardable window models | — | ZombieService break-in (P2), BuyService repair (P3) |
-| `Door` | a Part that blocks an area | `Cost` (number) | BuyService (P3) |
-| `WallBuy` | a Part showing a wall weapon | `WeaponId` (string), `Cost` (number) | BuyService (P3) |
-| `AmmoBuy` | (optional) a Part for ammo refill | `Cost` (number, or omit to use weapon.ammoCost) | BuyService (P3) |
-| `PerkMachine` | each perk machine model | `PerkId` (string, e.g. "jug") | PerkService (P5) |
-| `MysteryBox` | the box model | — | BuyService (P5) |
-| `PackAPunch` | the PaP machine model | — | BuyService (P5) |
+| `PlayerSpawn` | a Part where players spawn | — | MatchService |
+| `ZombieSpawn` | a Part at each zombie spawn point (can be invisible) | — | ZombieService |
+| `ZombieTemplate` | your zombie **Model** (needs a `Humanoid`, a `HumanoidRootPart`/PrimaryPart, and a part named `Head`) | — | ZombieService (cloned + pooled as the zombie; named after a zombie typeId, else used as the default) |
+| `WeaponModel` | your weapon **Model**, **named the weaponId** (e.g. `pistol`), with a part named `Handle` (or a PrimaryPart) | optional `Grip` (CFrame) | WeaponModelService (welds it into the holder's hand on equip) |
+
+(Removed in the Zombie Rush pivot: `Door`, `WallBuy`, `AmmoBuy`, `PerkMachine`, `MysteryBox`, `PackAPunch`.)
 
 **Naming for models** (so later code can find sub-parts): give weapon/zombie models a
 `HumanoidRootPart` (or a `PrimaryPart`), and zombies a `Humanoid` + a part named `Head` for headshots.

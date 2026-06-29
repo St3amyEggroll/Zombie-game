@@ -37,17 +37,10 @@ local DEFINITIONS: { [string]: string } = {
 	-- PointsService
 	PointsChanged     = "RemoteEvent",     -- S->C: (points)
 
-	-- PerkService
-	BuyPerk           = "RemoteEvent",     -- C->S: intent
-	PerksChanged      = "RemoteEvent",     -- S->C: (perks)
-
-	-- BuyService
-	BuyWall           = "RemoteEvent",     -- C->S
-	BuyAmmo           = "RemoteEvent",     -- C->S
-	OpenDoor          = "RemoteEvent",     -- C->S
-	PackAPunch        = "RemoteEvent",     -- C->S
-	RollMysteryBox    = "RemoteEvent",     -- C->S
-	MysteryBoxResult  = "RemoteEvent",     -- S->C: drives the roller animation
+	-- ShopService (Zombie Rush menu shop — buy + upgrade weapons for cash)
+	BuyWeapon         = "RemoteEvent",     -- C->S: (weaponId) buy a weapon
+	UpgradeWeapon     = "RemoteEvent",     -- C->S: (weaponId) upgrade a weapon
+	ShopChanged       = "RemoteEvent",     -- S->C: (ownedWeapons, upgrades, cash) refresh the menu
 
 	-- ReviveService (co-op heart)
 	Revive            = "RemoteEvent",     -- C->S: start/stop a revive hold
