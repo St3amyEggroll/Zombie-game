@@ -1,0 +1,8 @@
+# Client controllers live here. Each is a ModuleScript returning a table with a .Start() method;
+# init.client.lua auto-discovers and starts them. Added per phase:
+#   Phase 1: InputController, CameraController, WeaponViewController
+#   Phase 3: HUDController, BuyPromptController
+#   Phase 4: CombatFeedbackController
+#   Phase 5: MysteryBoxController
+#   Phase 6: ReviveController
+#   Phase 8: GameOverController
