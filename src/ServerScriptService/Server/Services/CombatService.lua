@@ -273,8 +273,71 @@ local function onReload(player: Player, weaponId: any)
 	end)
 end
 
+-- ===== LOADOUT (Phase 3: buying weapons makes weapon switching matter) =====
+local function fireLoadout(player: Player, ps)
+	Remotes.Get("LoadoutChanged"):FireClient(player, ps.ownedWeapons, ps.equippedWeapon)
+end
+
+-- Grant a weapon (wall-buy / box) and auto-equip it. Idempotent on ownership; always refills its ammo.
+function CombatService.GrantWeapon(player: Player, weaponId: string): boolean
+	local weapon = WeaponConfig[weaponId]
+	if not weapon then
+		return false
+	end
+	local ps = MatchService.GetPlayerState(player)
+	if not ps then
+		return false
+	end
+	if not Util.Contains(ps.ownedWeapons, weaponId) then
+		table.insert(ps.ownedWeapons, weaponId)
+	end
+	ps.ammo[weaponId] = { mag = weapon.magSize, reserve = weapon.reserveAmmo }
+	ps.equippedWeapon = weaponId
+	fireAmmo(player, weaponId, ps.ammo[weaponId])
+	fireLoadout(player, ps)
+	return true
+end
+
+-- Refill a weapon's reserve to full (wall ammo / Ammo buy). Leaves the magazine for the player to reload.
+function CombatService.RefillAmmo(player: Player, weaponId: string): boolean
+	local weapon = WeaponConfig[weaponId]
+	if not weapon then
+		return false
+	end
+	local ps = MatchService.GetPlayerState(player)
+	if not ps then
+		return false
+	end
+	local a = ensureAmmo(ps, weaponId, weapon)
+	a.reserve = weapon.reserveAmmo
+	fireAmmo(player, weaponId, a)
+	return true
+end
+
+-- Client requests to equip an owned weapon.
+local function onEquip(player: Player, weaponId: any)
+	if not SecurityService.Allow(player, "Interact") then
+		return
+	end
+	if typeof(weaponId) ~= "string" then
+		return
+	end
+	local weapon = WeaponConfig[weaponId]
+	if not weapon then
+		return
+	end
+	local ps = MatchService.GetPlayerState(player)
+	if not ps or not Util.Contains(ps.ownedWeapons, weaponId) then
+		return
+	end
+	ps.equippedWeapon = weaponId
+	local a = ensureAmmo(ps, weaponId, weapon)
+	fireAmmo(player, weaponId, a)
+	fireLoadout(player, ps)
+end
+
 -- ===== INITIAL SYNC =====
--- Send the client its current ammo (and reset fire timing) when a character spawns.
+-- Send the client its current ammo + loadout (and reset fire timing) when a character spawns.
 local function onCharacterAdded(player: Player)
 	local c = getCombat(player)
 	c.lastShot = {}
@@ -290,6 +353,7 @@ local function onCharacterAdded(player: Player)
 			fireAmmo(player, weaponId, a)
 		end
 	end
+	fireLoadout(player, ps)
 end
 
 local function hookPlayer(player: Player)
@@ -315,6 +379,7 @@ function CombatService.Start()
 
 	Remotes.Get("FireWeapon").OnServerEvent:Connect(onFire)
 	Remotes.Get("Reload").OnServerEvent:Connect(onReload)
+	Remotes.Get("EquipWeapon").OnServerEvent:Connect(onEquip)
 
 	print("[CombatService] started (server-authoritative fire)")
 end

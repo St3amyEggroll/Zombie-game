@@ -17,6 +17,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
+local WeaponConfig = require(Config.WeaponConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
@@ -90,11 +91,13 @@ local function buildDebugHud()
 end
 
 -- ===== UPDATES =====
-local function refreshAmmo(weaponId: string?, mag: number?, reserve: number?)
-	local a = InputController.GetAmmo(weaponId)
-	local m = mag ~= nil and mag or a.mag
-	local r = reserve ~= nil and reserve or a.reserve
-	setText("AmmoLabel", string.format("%d / %d", m, r))
+-- Always reflect the EQUIPPED weapon (ammo events for other owned weapons shouldn't change the display).
+local function refreshAmmo()
+	local id = InputController.GetEquipped()
+	local a = InputController.GetAmmo(id)
+	local weapon = WeaponConfig[id]
+	local name = weapon and weapon.name or id
+	setText("AmmoLabel", string.format("%s   %d / %d", name, a.mag, a.reserve))
 end
 
 -- ===== LIFECYCLE =====
@@ -103,9 +106,9 @@ function HUDController.Start()
 		buildDebugHud()
 	end
 
-	-- Ammo (from the predicted mirror + server corrections).
-	InputController.AmmoUpdated:Connect(function(weaponId, mag, reserve)
-		refreshAmmo(weaponId, mag, reserve)
+	-- Ammo (from the predicted mirror + server corrections); always shows the equipped weapon.
+	InputController.AmmoUpdated:Connect(function()
+		refreshAmmo()
 	end)
 	refreshAmmo()
 

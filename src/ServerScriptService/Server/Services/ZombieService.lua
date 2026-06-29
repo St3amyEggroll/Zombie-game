@@ -353,6 +353,10 @@ local function spawnOne(round: number)
 	hum.Health = hp
 	hum.WalkSpeed = scaledSpeed(round, t)
 
+	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
+	model:SetAttribute("PointsMult", t.pointsMult)
+	model:SetAttribute("IsSpecial", t.isSpecial)
+
 	local sp = spawnPoints[math.random(#spawnPoints)]
 	model:PivotTo(sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0))
 	model.Parent = zombieFolder

@@ -29,10 +29,18 @@ local KEY_SPRINT        = Enum.KeyCode.LeftShift
 local KEY_INTERACT      = Enum.KeyCode.E
 local KEY_CAMERA_TOGGLE = Enum.KeyCode.V
 
+-- Number keys 1..9 select owned weapon slots.
+local NUMBER_KEYS = {
+	[Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3,
+	[Enum.KeyCode.Four] = 4, [Enum.KeyCode.Five] = 5, [Enum.KeyCode.Six] = 6,
+	[Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
+}
+
 local localPlayer = Players.LocalPlayer
 
 -- ===== STATE =====
 local equipped = "pistol"
+local ownedWeapons: { string } = { "pistol" }
 local ammoMirror: { [string]: { mag: number, reserve: number } } = {}
 local firing = false
 
@@ -120,6 +128,25 @@ local function stopFiring()
 	firing = false
 end
 
+-- ===== WEAPON SWITCHING =====
+local function equip(weaponId: string)
+	if weaponId == equipped or not WeaponConfig[weaponId] then
+		return
+	end
+	equipped = weaponId
+	stopFiring()
+	Remotes.Get("EquipWeapon"):FireServer(weaponId) -- server validates ownership + sends authoritative ammo
+	local m = getMirror(weaponId)
+	ammoEvent:Fire(weaponId, m.mag, m.reserve) -- refresh the HUD to the newly held weapon
+end
+
+local function equipSlot(i: number)
+	local id = ownedWeapons[i]
+	if id then
+		equip(id)
+	end
+end
+
 -- ===== INPUT =====
 local function onInputBegan(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then
@@ -137,6 +164,8 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 			Remotes.Get("Interact"):FireServer()
 		elseif input.KeyCode == KEY_CAMERA_TOGGLE then
 			CameraController.Toggle()
+		elseif NUMBER_KEYS[input.KeyCode] then
+			equipSlot(NUMBER_KEYS[input.KeyCode])
 		end
 	end
 end
@@ -156,6 +185,18 @@ function InputController.Start()
 	Remotes.Get("AmmoChanged").OnClientEvent:Connect(function(weaponId, mag, reserve)
 		ammoMirror[weaponId] = { mag = mag, reserve = reserve }
 		ammoEvent:Fire(weaponId, mag, reserve)
+	end)
+
+	-- Server tells us our owned weapons + which one is equipped (spawn, buy, equip).
+	Remotes.Get("LoadoutChanged").OnClientEvent:Connect(function(owned, eq)
+		if type(owned) == "table" then
+			ownedWeapons = owned
+		end
+		if type(eq) == "string" then
+			equipped = eq
+			local m = getMirror(eq)
+			ammoEvent:Fire(eq, m.mag, m.reserve)
+		end
 	end)
 
 	UserInputService.InputBegan:Connect(onInputBegan)
