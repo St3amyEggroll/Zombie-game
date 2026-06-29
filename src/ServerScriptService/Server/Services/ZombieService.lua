@@ -58,6 +58,12 @@ local spawnPoints: { BasePart } = {}
 local zombieFolder: Folder
 local poolFolder: Folder
 
+-- Owner-supplied zombie models, registered by tagging a Model "ZombieTemplate" (anywhere in the place).
+-- A template named after a zombie typeId is used for that type; otherwise it's the default for all types.
+local templates: { [string]: Model } = {}
+local defaultTemplate: Model? = nil
+local templatesFolder: Folder
+
 -- The spawnable archetypes (ZombieConfig also holds non-type scalars like BossInterval — filter them out).
 local ZOMBIE_TYPES: { [string]: any } = {}
 local ALL_WEIGHTS: { [string]: number } = {}
@@ -146,14 +152,19 @@ local function buildPlaceholder(t): Model
 end
 
 local function findAsset(typeId: string): Model?
+	-- 1) a tagged "ZombieTemplate" matching this type, else the default tagged template
+	if templates[typeId] then
+		return templates[typeId]
+	end
+	if defaultTemplate then
+		return defaultTemplate
+	end
+	-- 2) ReplicatedStorage > Assets > Zombies > {typeId|Default}
 	local assets = ReplicatedStorage:FindFirstChild("Assets")
 	local folder = assets and assets:FindFirstChild("Zombies")
-	if not folder then
-		return nil
-	end
-	local m = folder:FindFirstChild(typeId) or folder:FindFirstChild("Default")
+	local m = folder and (folder:FindFirstChild(typeId) or folder:FindFirstChild("Default"))
 	if m and m:IsA("Model") then
-		return m
+		return m :: Model
 	end
 	return nil
 end
@@ -163,9 +174,38 @@ local function prepModel(model: Model)
 		model.PrimaryPart = model:FindFirstChild("HumanoidRootPart") :: BasePart?
 			or model:FindFirstChildWhichIsA("BasePart")
 	end
+	-- A walking Humanoid rig must be unanchored (in case the owner placed a static prop).
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = false
+		end
+	end
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	if hum then
 		configureHumanoid(hum)
+	end
+end
+
+-- Pull a tagged "ZombieTemplate" model out of the live world and store it as a spawn template.
+local function registerTemplate(inst: Instance)
+	if not inst:IsA("Model") then
+		return
+	end
+	if templatesFolder and inst:IsDescendantOf(templatesFolder) then
+		return -- already registered
+	end
+	inst.Parent = templatesFolder
+	prepModel(inst)
+	templates[inst.Name] = inst
+	if not defaultTemplate then
+		defaultTemplate = inst
+	end
+	print(("[ZombieService] registered zombie template '%s'"):format(inst.Name))
+end
+
+local function loadTaggedTemplates()
+	for _, inst in CollectionService:GetTagged("ZombieTemplate") do
+		registerTemplate(inst)
 	end
 end
 
@@ -484,6 +524,13 @@ function ZombieService.Start()
 	poolFolder = Instance.new("Folder")
 	poolFolder.Name = "ZombiePool"
 	poolFolder.Parent = ServerStorage
+
+	templatesFolder = Instance.new("Folder")
+	templatesFolder.Name = "ZombieTemplates"
+	templatesFolder.Parent = ServerStorage
+
+	loadTaggedTemplates()
+	CollectionService:GetInstanceAddedSignal("ZombieTemplate"):Connect(registerTemplate)
 
 	refreshSpawnPoints()
 	CollectionService:GetInstanceAddedSignal("ZombieSpawn"):Connect(refreshSpawnPoints)
