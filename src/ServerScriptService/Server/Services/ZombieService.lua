@@ -160,12 +160,25 @@ local function findAsset(typeId: string): Model?
 	if defaultTemplate then
 		return defaultTemplate
 	end
-	-- 2) ReplicatedStorage > Assets > Zombies > {typeId|Default}
+	-- 2) a model in ReplicatedStorage > Assets — any of these locations/names works:
+	--    Assets/Zombies/{typeId|Default}, or Assets/{typeId|Zombie|Default}
 	local assets = ReplicatedStorage:FindFirstChild("Assets")
-	local folder = assets and assets:FindFirstChild("Zombies")
-	local m = folder and (folder:FindFirstChild(typeId) or folder:FindFirstChild("Default"))
-	if m and m:IsA("Model") then
-		return m :: Model
+	if not assets then
+		return nil
+	end
+	local candidates = {}
+	local zf = assets:FindFirstChild("Zombies")
+	if zf then
+		table.insert(candidates, zf:FindFirstChild(typeId))
+		table.insert(candidates, zf:FindFirstChild("Default"))
+	end
+	table.insert(candidates, assets:FindFirstChild(typeId))
+	table.insert(candidates, assets:FindFirstChild("Zombie"))
+	table.insert(candidates, assets:FindFirstChild("Default"))
+	for _, m in candidates do
+		if m and m:IsA("Model") then
+			return m :: Model
+		end
 	end
 	return nil
 end
