@@ -341,21 +341,51 @@ local function pickType(round: number): string?
 	end)
 end
 
-local function spawnOne(round: number)
-	if #spawnPoints == 0 then
-		return
+local warnedNoSpawns = false
+local function getSpawnCFrame(): CFrame?
+	if #spawnPoints > 0 then
+		local sp = spawnPoints[math.random(#spawnPoints)]
+		return sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0)
+	end
+	-- No ZombieSpawn parts tagged: fall back to ~35 studs from a random living player so the game works
+	-- with zero map setup. (Tag `ZombieSpawn` parts to place real spawn points.)
+	if not warnedNoSpawns then
+		warnedNoSpawns = true
+		warn("[ZombieService] no parts tagged 'ZombieSpawn' — spawning zombies near players as a fallback.")
+	end
+	local candidates = {}
+	for _, player in Players:GetPlayers() do
+		local char = player.Character
+		local r = char and char:FindFirstChild("HumanoidRootPart")
+		local h = char and char:FindFirstChildOfClass("Humanoid")
+		if r and h and h.Health > 0 then
+			table.insert(candidates, r)
+		end
+	end
+	if #candidates == 0 then
+		return nil
+	end
+	local root = candidates[math.random(#candidates)]
+	local angle = math.random() * 2 * math.pi
+	return CFrame.new(root.Position + Vector3.new(math.cos(angle) * 35, SPAWN_HEIGHT, math.sin(angle) * 35))
+end
+
+local function spawnOne(round: number): boolean
+	local spawnCF = getSpawnCFrame()
+	if not spawnCF then
+		return false
 	end
 	local typeId = pickType(round) or "walker"
 	local t = ZOMBIE_TYPES[typeId]
 	if not t then
-		return
+		return false
 	end
 
 	local model = acquire(typeId, t)
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	local root = model.PrimaryPart
 	if not hum or not root then
-		return
+		return false
 	end
 
 	local hp = scaledHealth(round, t)
@@ -367,8 +397,7 @@ local function spawnOne(round: number)
 	model:SetAttribute("PointsMult", t.pointsMult)
 	model:SetAttribute("IsSpecial", t.isSpecial)
 
-	local sp = spawnPoints[math.random(#spawnPoints)]
-	model:PivotTo(sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0))
+	model:PivotTo(spawnCF)
 	model.Parent = zombieFolder
 
 	-- Keep the server authoritative over zombie physics (perf + anti-exploit).
@@ -408,6 +437,7 @@ local function spawnOne(round: number)
 	if t.isSpecial then
 		Remotes.Get("ZombieSpawned"):FireAllClients(typeId, root.Position)
 	end
+	return true
 end
 
 -- ===== AI HEARTBEAT (steering only; pathfinding is async) =====
@@ -519,9 +549,10 @@ function ZombieService.BeginRound(round: number, count: number)
 
 	task.spawn(function()
 		while remaining > 0 and myToken == roundToken do
-			if aliveCount < GameConfig.MaxAliveZombies and #spawnPoints > 0 then
-				spawnOne(round)
-				remaining -= 1
+			if aliveCount < GameConfig.MaxAliveZombies then
+				if spawnOne(round) then
+					remaining -= 1
+				end
 			end
 			task.wait(SPAWN_INTERVAL)
 		end

@@ -24,8 +24,25 @@ local WeaponModelService = {}
 local DEFAULT_GRIP = CFrame.new(0, -0.1, -0.6) * CFrame.Angles(math.rad(-90), 0, 0)
 local HELD_NAME = "HeldWeapon"
 
-local templates: { [string]: Model } = {}
+local templates: { [string]: Model } = {}  -- weaponId -> Model
 local templatesFolder: Folder
+
+-- Resolve a model name to a weaponId by matching either the id ("pistol") OR the display name ("m1911"
+-- for the M1911, "ak47"/"ak-47" for the AK-47), case/space/dash-insensitive. So you can name a gun model
+-- whatever the gun is actually called.
+local function sanitize(s: string): string
+	return (s:lower():gsub("[%s%-_]", ""))
+end
+local nameToId: { [string]: string } = {}
+for id, w in WeaponConfig do
+	nameToId[sanitize(id)] = id
+	if type(w) == "table" and w.name then
+		nameToId[sanitize(w.name)] = id
+	end
+end
+local function resolveWeaponId(modelName: string): string?
+	return nameToId[sanitize(modelName)]
+end
 
 -- ===== HELPERS =====
 local function getHand(character: Model): BasePart?
@@ -109,13 +126,17 @@ local function registerTemplate(inst: Instance)
 	if templatesFolder and inst:IsDescendantOf(templatesFolder) then
 		return
 	end
+	local id = resolveWeaponId(inst.Name)
+	if not id then
+		return -- model name doesn't match any weapon
+	end
 	inst.Parent = templatesFolder
-	templates[inst.Name] = inst
-	print(("[WeaponModelService] registered weapon model '%s'"):format(inst.Name))
+	templates[id] = inst
+	print(("[WeaponModelService] registered weapon model '%s' as %s"):format(inst.Name, id))
 	-- Re-attach for anyone already holding this weapon.
 	for _, player in Players:GetPlayers() do
 		local ps = MatchService.GetPlayerState(player)
-		if ps and ps.equippedWeapon == inst.Name then
+		if ps and ps.equippedWeapon == id then
 			task.spawn(attach, player)
 		end
 	end
@@ -135,9 +156,13 @@ local function scanAssets()
 		return
 	end
 	local function consider(inst: Instance)
-		if inst:IsA("Model") and WeaponConfig[inst.Name] and not templates[inst.Name] then
-			templates[inst.Name] = inst
-			print(("[WeaponModelService] using Assets model for '%s'"):format(inst.Name))
+		if not inst:IsA("Model") then
+			return
+		end
+		local id = resolveWeaponId(inst.Name)
+		if id and not templates[id] then
+			templates[id] = inst
+			print(("[WeaponModelService] using Assets model '%s' for %s"):format(inst.Name, id))
 		end
 	end
 	for _, c in assets:GetChildren() do

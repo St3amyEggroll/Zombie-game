@@ -1,7 +1,7 @@
 --!nonstrict
--- CameraController.lua — first-person + third-person toggle, and the authoritative aim solution.
--- GetAim() returns (origin, direction): origin is a point ON the player (so the server's origin-sanity
--- check passes), direction points exactly where the crosshair is aimed (camera ray → world target).
+-- CameraController.lua — third-person camera + the authoritative aim solution for shooting.
+-- (First person was removed.) GetAim() returns (origin, direction): origin is a point ON the player (so
+-- the server's origin-sanity check passes), direction points exactly where the crosshair is aimed.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -9,45 +9,22 @@ local Workspace = game:GetService("Workspace")
 local CameraController = {}
 
 -- ===== TUNABLES =====
-local DEFAULT_MODE     = "third"   -- "first" | "third" (game is third-person by default)
-local MAX_AIM_DIST     = 1000      -- how far the aim ray reaches to find a target point
+local MAX_AIM_DIST = 1000 -- how far the aim ray reaches to find a target point
 
 local localPlayer = Players.LocalPlayer
-local mode: string = DEFAULT_MODE
 
--- ===== MODE =====
-local function applyMode()
+-- Plain stock third-person camera.
+local function applyThirdPerson()
+	localPlayer.CameraMode = Enum.CameraMode.Classic
+	localPlayer.CameraMinZoomDistance = 0.5
+	localPlayer.CameraMaxZoomDistance = 128
 	local character = localPlayer.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if mode == "first" then
-		localPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
-		localPlayer.CameraMinZoomDistance = 0.5
-		localPlayer.CameraMaxZoomDistance = 0.5
-	else
-		-- Regular Roblox third-person camera — no custom shoulder offset or zoom clamp.
-		localPlayer.CameraMode = Enum.CameraMode.Classic
-		localPlayer.CameraMinZoomDistance = 0.5
-		localPlayer.CameraMaxZoomDistance = 128
-	end
 	if humanoid then
 		humanoid.CameraOffset = Vector3.zero
 	end
 end
 
-function CameraController.SetMode(newMode: string)
-	mode = (newMode == "third") and "third" or "first"
-	applyMode()
-end
-
-function CameraController.Toggle()
-	CameraController.SetMode(mode == "first" and "third" or "first")
-end
-
-function CameraController.GetMode(): string
-	return mode
-end
-
--- ===== AIM =====
 -- Returns (origin: Vector3, direction: Vector3) or nil if the character isn't ready.
 function CameraController.GetAim(): (Vector3?, Vector3?)
 	local camera = Workspace.CurrentCamera
@@ -60,7 +37,6 @@ function CameraController.GetAim(): (Vector3?, Vector3?)
 		return nil, nil
 	end
 
-	-- Ray from the screen center → find the world point the crosshair is over.
 	local vp = camera.ViewportSize
 	local screenRay = camera:ViewportPointToRay(vp.X * 0.5, vp.Y * 0.5)
 
@@ -80,14 +56,12 @@ function CameraController.GetAim(): (Vector3?, Vector3?)
 	return origin, direction.Unit
 end
 
--- ===== LIFECYCLE =====
 function CameraController.Start()
-	applyMode()
+	applyThirdPerson()
 	localPlayer.CharacterAdded:Connect(function()
-		-- Re-apply on respawn (CameraOffset lives on the new humanoid).
-		task.defer(applyMode)
+		task.defer(applyThirdPerson)
 	end)
-	print("[CameraController] started (" .. mode .. " person)")
+	print("[CameraController] started (third-person)")
 end
 
 return CameraController

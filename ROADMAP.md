@@ -33,9 +33,9 @@ Project file, folder tree, all Config modules, Remotes/Util/Types, server+client
 `DataService` stub, `SecurityService`. **Acceptance:** join → no errors, services start.
 
 ## 2 — Core combat ✅
-Server-authoritative shooting (validated fire + server raycast + ammo + reload), third-person camera with
-a first-person toggle (**V**), recoil/muzzle viewmodel, health/regen/sprint. **You provide:** a test
-dummy (Humanoid + `Head`). **Acceptance:** shoot it → damage, ammo down, reload, headshots do more.
+Server-authoritative shooting (validated fire + server raycast + ammo + reload), third-person camera,
+health/regen/sprint. **You provide:** a test dummy (Humanoid + `Head`). **Acceptance:** shoot it →
+damage, ammo down, reload, headshots do more.
 
 ## 3 — Zombies + waves ✅
 `ZombieService` (spawn by tag, HP/speed scaling per wave, model pooling, hard cap, staggered AI, sparse
@@ -78,8 +78,8 @@ settings, sound. **Acceptance:** exploit-resistant; performant with full hordes;
 ## Parallel tracks you can run anytime
 - **Map:** build the arena to the tag contract in `CLAUDE.md` §10 (`PlayerSpawn`, `ZombieSpawn`, a floor).
 - **Models:** zombie → Model tagged `ZombieTemplate` (Humanoid + HumanoidRootPart + `Head`). Weapon → Model
-  named the weaponId tagged `WeaponModel` (with a `Handle`). First-person viewmodels go at
-  `ReplicatedStorage > Assets > Viewmodels > {weaponId}`.
+  named after the gun (e.g. `m1911`, `ak47`) with a `Handle`, placed in `ReplicatedStorage > Assets` (or
+  tagged `WeaponModel`); it's welded into the character's hand. (Third-person only — no viewmodels.)
 - **UI:** name your HUD text elements `AmmoLabel`/`HealthLabel`/`RoundLabel`/`PointsLabel`; restyle the
   `ShopMenu` ScreenGui freely. The code populates them with data.
 

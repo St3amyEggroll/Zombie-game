@@ -2,7 +2,7 @@
 
 A 3D co-op wave-survival zombie shooter (**Zombie Rush** style): **kill rushing zombies → earn cash →
 buy & upgrade weapons from a shop menu → survive escalating, endless waves → respawn and keep going,
-push for a higher wave than last time.** Third-person by default (optional first-person toggle), drop-in co-op.
+push for a higher wave than last time.** Third-person, drop-in co-op.
 
 > Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **Zombie Lobby**.
 > **Pivoted from a Call-of-Duty-Zombies loop to a simpler Zombie Rush loop** — no doors, wall-buys,

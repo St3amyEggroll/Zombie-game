@@ -4,7 +4,7 @@
 -- camera toggle, and interact. It NEVER computes damage — it only asks the server to fire.
 --
 -- Exposes for other controllers:
---   InputController.Fired      : Signal (weaponId)            -> WeaponViewController recoil/muzzle
+--   InputController.Fired      : Signal (weaponId)            -> (for combat-juice FX later)
 --   InputController.AmmoUpdated: Signal (weaponId, mag, reserve) -> HUDController
 --   InputController.GetEquipped() / GetAmmo(weaponId)
 
@@ -24,10 +24,9 @@ local CameraController = require(script.Parent.CameraController)
 local InputController = {}
 
 -- ===== TUNABLES (keybinds) =====
-local KEY_RELOAD        = Enum.KeyCode.R
-local KEY_SPRINT        = Enum.KeyCode.LeftShift
-local KEY_INTERACT      = Enum.KeyCode.E
-local KEY_CAMERA_TOGGLE = Enum.KeyCode.V
+local KEY_RELOAD   = Enum.KeyCode.R
+local KEY_SPRINT   = Enum.KeyCode.LeftShift
+local KEY_INTERACT = Enum.KeyCode.E
 
 -- Number keys 1..9 select owned weapon slots.
 local NUMBER_KEYS = {
@@ -162,8 +161,6 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 			Remotes.Get("Sprint"):FireServer(true)
 		elseif input.KeyCode == KEY_INTERACT then
 			Remotes.Get("Interact"):FireServer()
-		elseif input.KeyCode == KEY_CAMERA_TOGGLE then
-			CameraController.Toggle()
 		elseif NUMBER_KEYS[input.KeyCode] then
 			equipSlot(NUMBER_KEYS[input.KeyCode])
 		end
