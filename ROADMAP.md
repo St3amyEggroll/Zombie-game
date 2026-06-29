@@ -17,7 +17,7 @@ Phase-by-phase plan. Each phase is independently testable in Roblox Studio befor
 | 0 | Scaffold | ✅ |
 | 1 | Core combat | ✅ |
 | 2 | Zombies + rounds | ✅ |
-| 3 | Points + buying | ⬜ |
+| 3 | Points + buying | ✅ |
 | 4 | Combat juice | ⬜ |
 | 5 | Perks + Pack-a-Punch + Mystery Box | ⬜ |
 | 6 | Down / revive co-op | ⬜ |
@@ -57,7 +57,7 @@ tagged `ZombieSpawn` parts; a `PlayerSpawn`; optional `Barricade` windows. (Grey
 **Acceptance:** rounds spawn escalating walkers that path to and attack players; clearing a round advances it; the
 frame rate holds at the zombie cap.
 
-## Phase 3 — Points + buying ⬜
+## Phase 3 — Points + buying ✅
 **Goal:** the economy — earn points, spend them on the wall.
 **Claude builds:** `PointsService` (award on hit/kill from `CombatService` signals, §8), `BuyService` (wall-buys,
 ammo refill, doors/area unlocks), expand `HUDController` (points/round/team), `BuyPromptController` (logic for prompts).

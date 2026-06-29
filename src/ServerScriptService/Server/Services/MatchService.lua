@@ -168,10 +168,14 @@ local function runMatch()
 	state.round = 0
 	state.zombiesAlive = 0
 	state.zombiesRemaining = 0
-	for _, ps in state.players do
-		ps.isDead = false
-		ps.isDown = false
-		ps.points = GameConfig.StartingPoints
+	-- Rebuild each player's ephemeral state from scratch (CLAUDE.md §6: owned weapons, ammo, perks,
+	-- Pack-a-Punch, points are all discarded at game over — you start the next run with a pistol).
+	for _, player in Players:GetPlayers() do
+		if state.players[player.UserId] then
+			local fresh = makePlayerState(player)
+			state.players[player.UserId] = fresh
+			Remotes.Get("PointsChanged"):FireClient(player, fresh.points)
+		end
 	end
 	matchRunning = false
 	setPhase("Lobby")

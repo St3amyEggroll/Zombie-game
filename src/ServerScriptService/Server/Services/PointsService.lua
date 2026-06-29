@@ -56,19 +56,29 @@ function PointsService.TrySpend(player: Player, cost: number): boolean
 end
 
 -- ===== AWARD HOOKS =====
-local function pointsMultOf(humanoid: Humanoid): number
+-- Returns the zombie's points multiplier, or nil if this Humanoid isn't a scorable zombie (no PointsMult
+-- attribute). Only models ZombieService stamps mint points — a stray non-player Humanoid can't be farmed.
+local function pointsMultOf(humanoid: Humanoid): number?
 	local model = humanoid.Parent
 	local m = model and model:GetAttribute("PointsMult")
-	return (typeof(m) == "number") and m or 1
+	return (typeof(m) == "number") and m or nil
 end
 
 local function onHit(player: Player, humanoid: Humanoid, _isHead: boolean, _weaponId: string, _damage: number)
-	PointsService.Award(player, GameConfig.PointsPerHit * pointsMultOf(humanoid))
+	local mult = pointsMultOf(humanoid)
+	if not mult then
+		return
+	end
+	PointsService.Award(player, GameConfig.PointsPerHit * mult)
 end
 
 local function onKill(player: Player, humanoid: Humanoid, isHead: boolean, _weaponId: string)
+	local mult = pointsMultOf(humanoid)
+	if not mult then
+		return
+	end
 	local base = isHead and GameConfig.PointsHeadshotKill or GameConfig.PointsPerKill
-	PointsService.Award(player, base * pointsMultOf(humanoid))
+	PointsService.Award(player, base * mult)
 
 	local ps = MatchService.GetPlayerState(player)
 	if ps then
@@ -88,18 +98,21 @@ local function pushInitial(player: Player)
 	end
 end
 
+local function hookPlayer(player: Player)
+	player.CharacterAdded:Connect(function()
+		task.defer(pushInitial, player)
+	end)
+	task.defer(pushInitial, player)
+end
+
 function PointsService.Start()
 	CombatService.Hit:Connect(onHit)
 	CombatService.Kill:Connect(onKill)
 
-	Players.PlayerAdded:Connect(function(player)
-		player.CharacterAdded:Connect(function()
-			task.defer(pushInitial, player)
-		end)
-	end)
 	for _, player in Players:GetPlayers() do
-		task.defer(pushInitial, player)
+		hookPlayer(player)
 	end
+	Players.PlayerAdded:Connect(hookPlayer)
 
 	print("[PointsService] started")
 end

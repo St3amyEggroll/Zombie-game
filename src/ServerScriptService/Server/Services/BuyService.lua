@@ -90,7 +90,7 @@ local function setupWallBuy(inst: Instance)
 		warn(("[BuyService] WallBuy needs valid WeaponId + Cost attributes: %s"):format(inst:GetFullName()))
 		return
 	end
-	local prompt = makePrompt(inst, weapon.name, ("Buy  $%d"):format(cost))
+	local prompt = makePrompt(inst, weapon.name, ("Buy  $%d"):format(math.floor(cost)))
 	if not prompt then
 		return
 	end
@@ -103,7 +103,12 @@ local function setupWallBuy(inst: Instance)
 			return
 		end
 		if Util.Contains(ps.ownedWeapons, weaponId) then
-			-- Already owned -> sell ammo at the weapon's ammoCost.
+			-- Already owned -> sell ammo at the weapon's ammoCost, but only if the reserve isn't full
+			-- (don't charge for a no-op refill).
+			local a = ps.ammo[weaponId]
+			if a and a.reserve >= weapon.reserveAmmo then
+				return
+			end
 			if PointsService.TrySpend(player, weapon.ammoCost) then
 				CombatService.RefillAmmo(player, weaponId)
 			end
@@ -118,9 +123,10 @@ end
 local function setupDoor(inst: Instance)
 	local cost = inst:GetAttribute("Cost")
 	if typeof(cost) ~= "number" then
-		cost = 0
+		warn(("[BuyService] Door needs a numeric Cost attribute: %s"):format(inst:GetFullName()))
+		return
 	end
-	local prompt = makePrompt(inst, "Door", ("Open  $%d"):format(cost))
+	local prompt = makePrompt(inst, "Door", ("Open  $%d"):format(math.floor(cost)))
 	if not prompt then
 		return
 	end
@@ -136,7 +142,7 @@ end
 
 local function setupAmmoBuy(inst: Instance)
 	local cost = inst:GetAttribute("Cost")
-	local label = (typeof(cost) == "number") and ("Ammo  $%d"):format(cost) or "Ammo"
+	local label = (typeof(cost) == "number") and ("Ammo  $%d"):format(math.floor(cost)) or "Ammo"
 	local prompt = makePrompt(inst, "Ammo", label)
 	if not prompt then
 		return
@@ -153,6 +159,10 @@ local function setupAmmoBuy(inst: Instance)
 		local weapon = WeaponConfig[weaponId]
 		if not weapon then
 			return
+		end
+		local a = ps.ammo[weaponId]
+		if a and a.reserve >= weapon.reserveAmmo then
+			return -- already full; don't charge
 		end
 		local price = (typeof(cost) == "number") and cost or weapon.ammoCost
 		if PointsService.TrySpend(player, price) then
