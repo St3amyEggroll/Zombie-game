@@ -16,7 +16,7 @@ Phase-by-phase plan. Each phase is independently testable in Roblox Studio befor
 |---|---|---|
 | 0 | Scaffold | ✅ |
 | 1 | Core combat | ✅ |
-| 2 | Zombies + rounds | ⬜ |
+| 2 | Zombies + rounds | ✅ |
 | 3 | Points + buying | ⬜ |
 | 4 | Combat juice | ⬜ |
 | 5 | Perks + Pack-a-Punch + Mystery Box | ⬜ |
@@ -46,7 +46,7 @@ Optional: viewmodel gun models at `ReplicatedStorage>Assets>Viewmodels>{weaponId
 **Acceptance:** shoot the dummy → server validates, damage applies, ammo counts down, reload works, headshots do
 more; third-person by default with a first-person toggle (**V**); recoil + muzzle flash present.
 
-## Phase 2 — Zombies + rounds ⬜
+## Phase 2 — Zombies + rounds ✅
 **Goal:** escalating hordes that chase and attack; the round loop; performance that holds.
 **Claude builds:** `ZombieService` (spawn by tag, weighted type pick, health/speed scaling per §8, **model pooling**,
 **hard cap** at `MaxAliveZombies`, staggered AI, sparse pathfinding + steering — §13), `MatchService` real round

@@ -27,7 +27,7 @@ than last time.** Third-person by default (with an optional first-person toggle)
 ### Phase tracker
 - [x] **Phase 0 — Scaffold** ✅ (project file, folder tree, all Config modules, Remotes/Util/Types, bootstraps, in-memory DataService, SecurityService, MatchService state skeleton)
 - [x] **Phase 1 — Core combat** ✅ (PlayerStateService, InputController, CameraController FP/TP, server-authoritative CombatService + raycast, WeaponViewController recoil/muzzle, ammo+reload, minimal HUD; added Sprint remote)
-- [ ] **Phase 2 — Zombies + rounds** (ZombieService spawn/AI/scaling/pooling/caps, MatchService round loop, chase/attack, death+ragdoll)
+- [x] **Phase 2 — Zombies + rounds** ✅ (ZombieService spawn/AI/scaling/pooling/caps + stuck recovery, MatchService real round loop + manual respawn + team-wipe game over, chase/attack via PlayerStateService.Damage; placeholder zombie rig)
 - [ ] **Phase 3 — Points + buying** (PointsService, BuyService wall-buys/ammo/doors, HUD, BuyPrompt)
 - [ ] **Phase 4 — Combat juice** (blood/goo, headshot pops, hitmarkers, shake, hitstop)
 - [ ] **Phase 5 — Perks + PaP + Mystery Box** (PerkService, Pack-a-Punch, the roller)

@@ -40,7 +40,10 @@ local ATTACK_RANGE     = 4.5    -- studs within which a zombie can hit a player
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
 local DESPAWN_DELAY    = 3      -- seconds a corpse lingers before returning to the pool
-local MAX_LIFETIME     = 120    -- safety: a zombie alive this long is force-killed (anti soft-lock)
+local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
+local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
+local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
+local MAX_LIFETIME     = 30     -- backstop: a zombie alive this long is force-killed (anti soft-lock)
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
 
 -- ===== STATE =====
@@ -87,6 +90,15 @@ local function refreshSpawnPoints()
 end
 
 -- ===== MODEL BUILD / POOL =====
+-- Shared humanoid setup (no joint-snap on death, auto-jump small ledges, an Animator for poses).
+local function configureHumanoid(hum: Humanoid)
+	hum.BreakJointsOnDeath = false
+	hum.AutoJumpEnabled = true
+	if not hum:FindFirstChildOfClass("Animator") then
+		Instance.new("Animator").Parent = hum
+	end
+end
+
 local function buildPlaceholder(t): Model
 	local model = Instance.new("Model")
 	model.Name = "Zombie"
@@ -127,6 +139,7 @@ local function buildPlaceholder(t): Model
 	local hum = Instance.new("Humanoid")
 	hum.HipHeight = 0
 	hum.Parent = model
+	configureHumanoid(hum)
 
 	model.PrimaryPart = root
 	return model
@@ -152,10 +165,7 @@ local function prepModel(model: Model)
 	end
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	if hum then
-		hum.BreakJointsOnDeath = false
-		if not hum:FindFirstChildOfClass("Animator") then
-			Instance.new("Animator").Parent = hum
-		end
+		configureHumanoid(hum)
 	end
 end
 
@@ -180,11 +190,26 @@ local function release(record)
 		record.diedConn:Disconnect()
 		record.diedConn = nil
 	end
-	local hum = model:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.Health = hum.MaxHealth
-		hum.WalkSpeed = 0
+
+	-- A Humanoid that reached 0 HP is permanently Dead — raising Health does NOT revive it and
+	-- MoveTo() is a no-op on it. Replace it with a fresh Humanoid for reuse, carrying over the rig's
+	-- HipHeight/RigType so user-built models keep standing correctly.
+	local oldHum = model:FindFirstChildOfClass("Humanoid")
+	local hipHeight = oldHum and oldHum.HipHeight or 0
+	local rigType = oldHum and oldHum.RigType or Enum.HumanoidRigType.R6
+	if oldHum then
+		oldHum:Destroy()
 	end
+	local hum = Instance.new("Humanoid")
+	hum.HipHeight = hipHeight
+	hum.RigType = rigType
+	hum.WalkSpeed = 0
+	hum.Parent = model
+	configureHumanoid(hum)
+
+	-- Free the cap slot only now (the corpse occupied a real Workspace instance until this moment).
+	aliveCount = math.max(0, aliveCount - 1)
+
 	model.Parent = poolFolder
 	local list = pool[record.typeId]
 	if not list then
@@ -227,8 +252,10 @@ local function recomputePath(record, targetPos: Vector3)
 		local wps = path:GetWaypoints()
 		record.waypoints = wps
 		record.waypointIndex = math.min(2, #wps) -- skip the start point
+		record.pathFailed = false
 	else
 		record.waypoints = nil
+		record.pathFailed = true -- triggers a faster retry (PATH_RETRY) next think
 	end
 	record.computing = false
 end
@@ -239,8 +266,9 @@ local function onZombieDied(record)
 		return
 	end
 	record.dead = true
-	aliveCount = math.max(0, aliveCount - 1)
 	active[record.model] = nil
+	-- aliveCount is freed in release() (after the corpse linger), so corpses still count against the
+	-- MaxAliveZombies cap until they're actually pooled — keeping true simultaneous bodies under the cap.
 
 	Remotes.Get("ZombieDied"):FireAllClients(record.typeId, record.root.Position)
 
@@ -312,6 +340,9 @@ local function spawnOne(round: number)
 		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
 		dead = false,
 		diedConn = nil,
+		lastPos = root.Position,    -- for stuck detection
+		lastMoveTime = now,
+		pathFailed = false,
 	}
 	record.diedConn = hum.Died:Connect(function()
 		onZombieDied(record)
@@ -343,8 +374,9 @@ local function think(record, now: number)
 		return
 	end
 
-	-- Sparse path recompute (off the heartbeat).
-	if not record.computing and (now - record.lastPath) >= GameConfig.PathRecompute then
+	-- Sparse path recompute (off the heartbeat). Retry quickly after a failed path, otherwise sparsely.
+	local recomputeInterval = record.pathFailed and PATH_RETRY or GameConfig.PathRecompute
+	if not record.computing and (now - record.lastPath) >= recomputeInterval then
 		record.lastPath = now
 		task.spawn(recomputePath, record, targetRoot.Position)
 	end
@@ -371,9 +403,15 @@ local function think(record, now: number)
 		PlayerStateService.Damage(target, record.damage, "zombie")
 	end
 
-	-- Safety: never let a stuck zombie soft-lock a round.
-	if (now - record.spawnTime) > MAX_LIFETIME then
-		record.hum.Health = 0
+	-- Stuck detection: moving OR meleeing a player both count as progress. A zombie that does neither
+	-- for STUCK_TIMEOUT (wedged on geometry / unreachable) force-kills itself so the round can clear.
+	if (root.Position - record.lastPos).Magnitude > STUCK_DIST or dist <= ATTACK_RANGE then
+		record.lastPos = root.Position
+		record.lastMoveTime = now
+	end
+	if (now - record.lastMoveTime) > STUCK_TIMEOUT or (now - record.spawnTime) > MAX_LIFETIME then
+		record.hum.Health = 0 -- triggers Died -> onZombieDied -> aliveCount frees, round can clear
+		return
 	end
 
 	record.nextThink = now + GameConfig.ZombieAITickRate
