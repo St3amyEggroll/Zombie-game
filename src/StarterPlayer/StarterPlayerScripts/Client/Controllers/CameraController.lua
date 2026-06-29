@@ -10,9 +10,6 @@ local CameraController = {}
 
 -- ===== TUNABLES =====
 local DEFAULT_MODE     = "third"   -- "first" | "third" (game is third-person by default)
-local TP_MIN_ZOOM      = 8         -- third-person zoom distance bounds
-local TP_MAX_ZOOM      = 14
-local TP_SHOULDER      = Vector3.new(1.75, 0.5, 0)  -- over-the-shoulder offset in third person
 local MAX_AIM_DIST     = 1000      -- how far the aim ray reaches to find a target point
 
 local localPlayer = Players.LocalPlayer
@@ -20,19 +17,20 @@ local mode: string = DEFAULT_MODE
 
 -- ===== MODE =====
 local function applyMode()
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if mode == "first" then
 		localPlayer.CameraMode = Enum.CameraMode.LockFirstPerson
 		localPlayer.CameraMinZoomDistance = 0.5
 		localPlayer.CameraMaxZoomDistance = 0.5
 	else
+		-- Regular Roblox third-person camera — no custom shoulder offset or zoom clamp.
 		localPlayer.CameraMode = Enum.CameraMode.Classic
-		localPlayer.CameraMinZoomDistance = TP_MIN_ZOOM
-		localPlayer.CameraMaxZoomDistance = TP_MAX_ZOOM
+		localPlayer.CameraMinZoomDistance = 0.5
+		localPlayer.CameraMaxZoomDistance = 128
 	end
-	local character = localPlayer.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.CameraOffset = (mode == "third") and TP_SHOULDER or Vector3.zero
+		humanoid.CameraOffset = Vector3.zero
 	end
 end
 
