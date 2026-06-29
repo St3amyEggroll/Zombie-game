@@ -45,6 +45,7 @@ local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie 
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
 local MAX_LIFETIME     = 30     -- backstop: a zombie alive this long is force-killed (anti soft-lock)
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
+local DEBUG            = false  -- set true to print a live zombie's state every 2s (diagnose "not moving")
 
 -- ===== STATE =====
 local active: { [Model]: any } = {}   -- model -> record
@@ -413,7 +414,7 @@ local function think(record, now: number)
 	local target, targetRoot = nearestAlivePlayer(root.Position)
 	record.target = target
 	if not targetRoot then
-		record.hum:MoveTo(root.Position) -- nobody alive: idle in place
+		record.hum:Move(Vector3.zero) -- nobody alive to chase: idle in place
 		record.nextThink = now + GameConfig.ZombieAITickRate
 		return
 	end
@@ -438,10 +439,20 @@ local function think(record, now: number)
 			record.waypointIndex += 1
 		end
 	end
-	record.hum:MoveTo(goal)
+
+	local dist = (root.Position - targetRoot.Position).Magnitude
+	-- Drive the walk with Humanoid:Move (a continuous direction; more reliable than MoveTo for chasing —
+	-- no 8s MoveTo timeout, and it keeps walking between AI ticks).
+	if dist <= ATTACK_RANGE then
+		record.hum:Move(Vector3.zero) -- in melee range: stop shoving the player around
+	else
+		local toGoal = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z)
+		if toGoal.Magnitude > 0.1 then
+			record.hum:Move(toGoal.Unit, false)
+		end
+	end
 
 	-- Attack on contact.
-	local dist = (root.Position - targetRoot.Position).Magnitude
 	if dist <= ATTACK_RANGE and (now - record.lastAttack) >= ATTACK_COOLDOWN then
 		record.lastAttack = now
 		PlayerStateService.Damage(target, record.damage, "zombie")
@@ -461,11 +472,29 @@ local function think(record, now: number)
 	record.nextThink = now + GameConfig.ZombieAITickRate
 end
 
+local lastDebug = 0
 local function onHeartbeat()
 	local now = os.clock()
 	for _, record in active do
 		if now >= record.nextThink then
 			think(record, now)
+		end
+	end
+
+	if DEBUG and (now - lastDebug) > 2 then
+		lastDebug = now
+		print(("[ZombieDebug] alive=%d remaining=%d spawnPoints=%d"):format(aliveCount, remaining, #spawnPoints))
+		for _, record in active do
+			local h = record.hum
+			print(("[ZombieDebug]  type=%s walkSpeed=%.1f state=%s hasTarget=%s anchored=%s")
+				:format(
+					record.typeId,
+					h and h.WalkSpeed or -1,
+					h and tostring(h:GetState()) or "nil",
+					tostring(record.target ~= nil),
+					tostring(record.root and record.root.Anchored)
+				))
+			break -- one sample is enough to diagnose
 		end
 	end
 end
