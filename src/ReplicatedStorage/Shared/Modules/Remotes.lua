@@ -56,6 +56,7 @@ local DEFINITIONS: { [string]: string } = {
 	-- PlayerStateService
 	HealthChanged     = "RemoteEvent",     -- S->C: (health, maxHealth)
 	Interact          = "RemoteEvent",     -- C->S: generic interact intent
+	Sprint            = "RemoteEvent",     -- NEW (Phase 1): C->S: (wantSprint: boolean)
 
 	-- ProgressionService (between-run meta)
 	MatchSummary      = "RemoteEvent",     -- S->C: end-of-match stats + XP/unlocks

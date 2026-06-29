@@ -26,7 +26,7 @@ than last time.** First-person with a third-person toggle, built for drop-in co-
 
 ### Phase tracker
 - [x] **Phase 0 — Scaffold** ✅ (project file, folder tree, all Config modules, Remotes/Util/Types, bootstraps, in-memory DataService, SecurityService, MatchService state skeleton)
-- [ ] **Phase 1 — Core combat** (PlayerState, Input, Camera FP/TP, server-authoritative CombatService + raycast, viewmodel/recoil, ammo+reload)
+- [x] **Phase 1 — Core combat** ✅ (PlayerStateService, InputController, CameraController FP/TP, server-authoritative CombatService + raycast, WeaponViewController recoil/muzzle, ammo+reload, minimal HUD; added Sprint remote)
 - [ ] **Phase 2 — Zombies + rounds** (ZombieService spawn/AI/scaling/pooling/caps, MatchService round loop, chase/attack, death+ragdoll)
 - [ ] **Phase 3 — Points + buying** (PointsService, BuyService wall-buys/ammo/doors, HUD, BuyPrompt)
 - [ ] **Phase 4 — Combat juice** (blood/goo, headshot pops, hitmarkers, shake, hitstop)
