@@ -150,11 +150,25 @@ end
 
 -- Also accept weapon models placed in ReplicatedStorage > Assets (root), > Assets > Weapons, or
 -- > Assets > Viewmodels — any Model named after a weaponId. Referenced in place (cloned per attach).
-local function scanAssets()
-	local assets = ReplicatedStorage:FindFirstChild("Assets")
-	if not assets then
-		return
+-- Case-insensitive child lookup (map builders don't match capitalization).
+local function ciFind(parent: Instance?, name: string): Instance?
+	if not parent then
+		return nil
 	end
+	local exact = parent:FindFirstChild(name)
+	if exact then
+		return exact
+	end
+	local lname = name:lower()
+	for _, c in parent:GetChildren() do
+		if c.Name:lower() == lname then
+			return c
+		end
+	end
+	return nil
+end
+
+local function scanAssets()
 	local function consider(inst: Instance)
 		if not inst:IsA("Model") then
 			return
@@ -165,14 +179,20 @@ local function scanAssets()
 			print(("[WeaponModelService] using Assets model '%s' for %s"):format(inst.Name, id))
 		end
 	end
-	for _, c in assets:GetChildren() do
-		consider(c)
-	end
-	for _, subName in { "Weapons", "Viewmodels" } do
-		local sub = assets:FindFirstChild(subName)
-		if sub then
-			for _, c in sub:GetChildren() do
+	-- Look in an "Assets" folder (case-insensitive) in ReplicatedStorage OR ServerStorage.
+	for _, container in { ReplicatedStorage, ServerStorage } do
+		local assets = ciFind(container, "Assets")
+		if assets then
+			for _, c in assets:GetChildren() do
 				consider(c)
+			end
+			for _, subName in { "Weapons", "Viewmodels" } do
+				local sub = ciFind(assets, subName)
+				if sub then
+					for _, c in sub:GetChildren() do
+						consider(c)
+					end
+				end
 			end
 		end
 	end

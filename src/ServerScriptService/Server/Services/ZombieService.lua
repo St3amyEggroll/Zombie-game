@@ -152,6 +152,35 @@ local function buildPlaceholder(t): Model
 	return model
 end
 
+-- Case-INSENSITIVE child lookup (Roblox's FindFirstChild is case-sensitive; map builders aren't).
+local function ciFind(parent: Instance?, name: string): Instance?
+	if not parent then
+		return nil
+	end
+	local exact = parent:FindFirstChild(name)
+	if exact then
+		return exact
+	end
+	local lname = name:lower()
+	for _, c in parent:GetChildren() do
+		if c.Name:lower() == lname then
+			return c
+		end
+	end
+	return nil
+end
+
+-- Resolve an instance to a usable Model (the thing itself, or a Model nested one level inside it).
+local function asModel(inst: Instance?): Model?
+	if not inst then
+		return nil
+	end
+	if inst:IsA("Model") then
+		return inst
+	end
+	return inst:FindFirstChildWhichIsA("Model")
+end
+
 local function findAsset(typeId: string): Model?
 	-- 1) a tagged "ZombieTemplate" matching this type, else the default tagged template
 	if templates[typeId] then
@@ -160,24 +189,25 @@ local function findAsset(typeId: string): Model?
 	if defaultTemplate then
 		return defaultTemplate
 	end
-	-- 2) a model in ReplicatedStorage > Assets — any of these locations/names works:
-	--    Assets/Zombies/{typeId|Default}, or Assets/{typeId|Zombie|Default}
-	local assets = ReplicatedStorage:FindFirstChild("Assets")
-	if not assets then
-		return nil
-	end
-	local candidates = {}
-	local zf = assets:FindFirstChild("Zombies")
-	if zf then
-		table.insert(candidates, zf:FindFirstChild(typeId))
-		table.insert(candidates, zf:FindFirstChild("Default"))
-	end
-	table.insert(candidates, assets:FindFirstChild(typeId))
-	table.insert(candidates, assets:FindFirstChild("Zombie"))
-	table.insert(candidates, assets:FindFirstChild("Default"))
-	for _, m in candidates do
-		if m and m:IsA("Model") then
-			return m :: Model
+	-- 2) a model in an "Assets" folder (case-insensitive) in ReplicatedStorage OR ServerStorage. Any of:
+	--    Assets/Zombies/{typeId|Default}, or Assets/{typeId|Zombie|Default}.
+	for _, container in { ReplicatedStorage, ServerStorage } do
+		local assets = ciFind(container, "Assets")
+		if assets then
+			local zf = ciFind(assets, "Zombies")
+			local candidates = {
+				zf and ciFind(zf, typeId) or nil,
+				zf and ciFind(zf, "Default") or nil,
+				ciFind(assets, typeId),
+				ciFind(assets, "Zombie"),
+				ciFind(assets, "Default"),
+			}
+			for _, c in candidates do
+				local m = asModel(c)
+				if m then
+					return m
+				end
+			end
 		end
 	end
 	return nil
@@ -232,8 +262,18 @@ local function loadTaggedTemplates()
 	end
 end
 
+local loggedModel = false
 local function buildZombie(typeId: string, t): Model
 	local asset = findAsset(typeId)
+	if not loggedModel then
+		loggedModel = true
+		if asset then
+			print(("[ZombieService] using zombie model '%s'"):format(asset:GetFullName()))
+		else
+			warn("[ZombieService] no zombie model found — using the grey placeholder. Put your model at "
+				.. "ReplicatedStorage > Assets > Zombies > Default (any capitalization), or tag it 'ZombieTemplate'.")
+		end
+	end
 	local model = asset and asset:Clone() or buildPlaceholder(t)
 	prepModel(model)
 	return model
