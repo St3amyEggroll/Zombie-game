@@ -207,9 +207,37 @@ function ShopController.SetOpen(value: boolean)
 	end
 end
 
+-- Always-visible button to open the shop (so it's discoverable without knowing the B key).
+local function buildOpenButton()
+	local g = Instance.new("ScreenGui")
+	g.Name = "ShopButton"
+	g.ResetOnSpawn = false
+	g.IgnoreGuiInset = true
+	g.Parent = playerGui
+
+	local btn = Instance.new("TextButton")
+	btn.Name = "OpenShop"
+	btn.AnchorPoint = Vector2.new(0.5, 1)
+	btn.Position = UDim2.new(0.5, 0, 1, -12)
+	btn.Size = UDim2.fromOffset(180, 40)
+	btn.BackgroundColor3 = Color3.fromRGB(45, 120, 70)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextScaled = true
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Text = "SHOP (B)"
+	btn.Parent = g
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 8)
+	c.Parent = btn
+	btn.Activated:Connect(function()
+		ShopController.SetOpen(not open)
+	end)
+end
+
 -- ===== LIFECYCLE =====
 function ShopController.Start()
 	buildUI()
+	buildOpenButton()
 
 	Remotes.Get("ShopChanged").OnClientEvent:Connect(function(ownedList, ups, money)
 		owned = {}

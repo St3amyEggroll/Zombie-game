@@ -10,6 +10,9 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local WeaponConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("WeaponConfig"))
 
 local MatchService = require(script.Parent.MatchService)
 local CombatService = require(script.Parent.CombatService)
@@ -124,6 +127,32 @@ local function loadTaggedTemplates()
 	end
 end
 
+-- Also accept weapon models placed in ReplicatedStorage > Assets (root), > Assets > Weapons, or
+-- > Assets > Viewmodels — any Model named after a weaponId. Referenced in place (cloned per attach).
+local function scanAssets()
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	if not assets then
+		return
+	end
+	local function consider(inst: Instance)
+		if inst:IsA("Model") and WeaponConfig[inst.Name] and not templates[inst.Name] then
+			templates[inst.Name] = inst
+			print(("[WeaponModelService] using Assets model for '%s'"):format(inst.Name))
+		end
+	end
+	for _, c in assets:GetChildren() do
+		consider(c)
+	end
+	for _, subName in { "Weapons", "Viewmodels" } do
+		local sub = assets:FindFirstChild(subName)
+		if sub then
+			for _, c in sub:GetChildren() do
+				consider(c)
+			end
+		end
+	end
+end
+
 -- ===== LIFECYCLE =====
 function WeaponModelService.Start()
 	templatesFolder = Instance.new("Folder")
@@ -131,6 +160,7 @@ function WeaponModelService.Start()
 	templatesFolder.Parent = ServerStorage
 
 	loadTaggedTemplates()
+	scanAssets()
 	CollectionService:GetInstanceAddedSignal("WeaponModel"):Connect(registerTemplate)
 
 	-- Re-attach on equip changes and on (re)spawn.

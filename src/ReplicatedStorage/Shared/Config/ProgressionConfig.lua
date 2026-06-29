@@ -20,10 +20,9 @@ ProgressionConfig.MaxLevel    = 100
 ProgressionConfig.TokensPerLevel = 1  -- unlock tokens granted on each level-up
 
 -- ===== UNLOCK CATALOG ===== (token cost to permanently unlock for future runs)
--- pistol+smg and jug+revive start unlocked (see DataService TEMPLATE).
--- raygun is intentionally NOT here — it's box-only, earned in-match, never a starting weapon.
-ProgressionConfig.WeaponUnlocks = { shotgun = 2, rifle = 3, lmg = 5 }
-ProgressionConfig.PerkUnlocks   = { speed = 2, doubletap = 3, stamin = 2 }
+-- Weapons are bought with cash in the shop (ShopConfig); meta token-unlocks come in a later phase.
+ProgressionConfig.WeaponUnlocks = {}   -- (cash shop handles weapons now; meta unlocks come in a later phase)
+ProgressionConfig.PerkUnlocks   = {}
 
 -- ===== CURVE HELPERS (pure; tunables above drive them) =====
 

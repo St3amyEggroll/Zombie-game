@@ -171,11 +171,20 @@ local function findAsset(typeId: string): Model?
 end
 
 local function prepModel(model: Model)
-	if not model.PrimaryPart then
-		model.PrimaryPart = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+	-- A Humanoid only walks if it has a part named exactly "HumanoidRootPart" to use as its root.
+	-- If the owner's model doesn't have one, promote a suitable part so the rig can actually move.
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if not (root and root:IsA("BasePart")) then
+		root = model.PrimaryPart or model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso")
 			or model:FindFirstChildWhichIsA("BasePart")
+		if root and root:IsA("BasePart") then
+			root.Name = "HumanoidRootPart"
+		end
 	end
-	-- A walking Humanoid rig must be unanchored (in case the owner placed a static prop).
+	if root and root:IsA("BasePart") then
+		model.PrimaryPart = root
+	end
+	-- A walking rig must be unanchored (in case the owner placed a static/anchored prop).
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Anchored = false
