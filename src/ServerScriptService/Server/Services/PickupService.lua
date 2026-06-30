@@ -19,7 +19,9 @@ local PickupService = {}
 
 -- ===== TUNABLES =====
 local AMMO_FRACTION = 0.2    -- fraction of each gun's FULL reserve granted per pickup
-local AMMO_PER_WAVE = 3      -- pickups spawned each wave
+local AMMO_PER_WAVE = 2      -- pickups spawned each wave
+local SPAWN_DELAY_MIN = 4    -- earliest a pickup appears AFTER the wave starts (not right away)
+local SPAWN_DELAY_MAX = 22   -- latest it appears into the wave (if the wave's still going)
 local PICKUP_RADIUS = 6      -- studs a player must be within to grab it
 local SPAWN_MIN     = 18     -- min studs from a random player to drop a pickup
 local SPAWN_MAX     = 45     -- max studs
@@ -151,10 +153,17 @@ local function clearAll()
 	pickups = {}
 end
 
-local function spawnWave()
+-- Schedule this wave's pickups to appear at random times INTO the wave (not at the start). Each only
+-- spawns if we're still on the same wave when its timer fires (so a finished wave doesn't drop late ammo).
+local function spawnWave(round: number)
 	clearAll()
 	for _ = 1, AMMO_PER_WAVE do
-		spawnOne()
+		local delay = SPAWN_DELAY_MIN + math.random() * (SPAWN_DELAY_MAX - SPAWN_DELAY_MIN)
+		task.delay(delay, function()
+			if MatchService.GetRound() == round and MatchService.GetPhase() == "Playing" then
+				spawnOne()
+			end
+		end)
 	end
 end
 
@@ -199,7 +208,7 @@ function PickupService.Start()
 			local round = MatchService.GetRound()
 			if round > lastRound and MatchService.GetPhase() == "Playing" then
 				lastRound = round
-				spawnWave()
+				spawnWave(round)
 			elseif round < lastRound then
 				lastRound = round
 				clearAll()
