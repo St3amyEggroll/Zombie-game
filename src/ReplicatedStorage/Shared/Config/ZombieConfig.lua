@@ -12,6 +12,7 @@ export type ZombieType = {
 	minRound: number,
 	spawnWeight: number, -- relative; 0 = never random (boss)
 	tint: Color3,
+	canLeap: boolean?,   -- behavior flag: periodically pounces in an arc toward the player (Leaper)
 }
 
 -- ===== ZOMBIE TABLE =====
@@ -24,6 +25,9 @@ local ZombieConfig: { [string]: any } = {
 	speedy  = { id="speedy",  name="Speedy", healthMult=0.55, speedMult=2.1,  damage=12, pointsMult=1.4, isSpecial=false, minRound=3,  spawnWeight=45,  tint=Color3.fromRGB(220,200,70) },
 	-- Lead: a heavy mid-tier bullet-sponge — slowish, tanky, hits hard. The "lead-bellied" grunt.
 	lead    = { id="lead",    name="Lead",   healthMult=2.6,  speedMult=0.85, damage=35, pointsMult=1.9, isSpecial=false, minRound=5,  spawnWeight=22,  tint=Color3.fromRGB(120,125,135) },
+	-- Leaper: medium HP, springy — periodically POUNCES in an arc to close a big gap, so cover/distance
+	-- doesn't keep you safe. `canLeap` is read by ZombieService. (Model this guy!)
+	leaper  = { id="leaper",  name="Leaper", healthMult=0.8,  speedMult=1.15, damage=18, pointsMult=1.7, isSpecial=false, minRound=4,  spawnWeight=30,  tint=Color3.fromRGB(150,90,170), canLeap=true },
 	-- Tank: rare, huge HP, slow, devastating melee. A mini-boss that makes you reposition.
 	tank    = { id="tank",    name="Tank",   healthMult=7,    speedMult=0.5,  damage=55, pointsMult=3.5, isSpecial=true,  minRound=8,  spawnWeight=8,   tint=Color3.fromRGB(60,70,60) },
 	-- Boss: spawned EXACTLY ONCE every BossInterval waves (never random — spawnWeight 0). Enormous HP,

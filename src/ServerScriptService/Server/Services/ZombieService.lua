@@ -41,6 +41,12 @@ local ATTACK_RANGE     = 4.5    -- studs (HORIZONTAL) within which a zombie can 
 local ATTACK_VERTICAL  = 6      -- studs of height difference allowed for a hit (so a zombie far below/above
                                -- on a ramp/ledge can't tag you); paired with a line-of-sight check
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
+-- ----- Leaper pounce (only zombies whose type has canLeap=true) -----
+local LEAP_COOLDOWN    = 4.0    -- seconds between pounces
+local LEAP_MIN_DIST    = 14     -- pounce only from at least this far (closer = it just walks in)
+local LEAP_MAX_DIST    = 48     -- and no farther than this (out of range = keep approaching)
+local LEAP_UP_SPEED    = 50     -- vertical launch velocity (sets arc height + air time)
+local LEAP_MAX_HSPEED  = 95     -- cap on the horizontal launch speed (studs/sec)
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
 local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same quick flash as a hit, NOT permanent)
 local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles after death
@@ -1059,6 +1065,7 @@ local function spawnOne(round: number, forcedType: string?)
 		computing = false,
 		lastPath = 0,
 		lastAttack = 0,
+		nextLeap = 0,           -- Leaper pounce cooldown clock
 		nextJumpCheck = 0,
 		spawnTime = now,
 		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
@@ -1111,6 +1118,49 @@ local function sightBlocked(fromPos: Vector3, toPos: Vector3): boolean
 		return false
 	end
 	return Workspace:Raycast(fromPos, dir, worldOnlyParams()) ~= nil
+end
+
+-- Leaper pounce: a `canLeap` zombie periodically launches itself in a ballistic arc toward the player to
+-- close a big gap, so distance/cover doesn't keep you safe. Only from the GROUND, from a medium distance,
+-- with line of sight, and on cooldown. The horizontal speed is solved so it lands roughly ON the player
+-- (projectile math from the fixed launch height), capped so a long pounce isn't absurdly fast.
+local function tryLeap(record, now: number, targetRoot: BasePart, flatDist: number)
+	local t = record.type
+	if not (t and t.canLeap) then
+		return
+	end
+	if now < (record.nextLeap or 0) then
+		return
+	end
+	if flatDist < LEAP_MIN_DIST or flatDist > LEAP_MAX_DIST then
+		return
+	end
+	local hum = record.hum
+	local root = record.root
+	if not hum or not root then
+		return
+	end
+	-- Must be grounded (don't re-pounce mid-air) and able to see the target (don't pounce into a wall).
+	local st = hum:GetState()
+	if st == Enum.HumanoidStateType.Freefall or st == Enum.HumanoidStateType.Jumping then
+		return
+	end
+	if sightBlocked(root.Position, targetRoot.Position) then
+		return
+	end
+
+	record.nextLeap = now + LEAP_COOLDOWN
+	local to = targetRoot.Position - root.Position
+	local horiz = Vector3.new(to.X, 0, to.Z)
+	local dir = horiz.Magnitude > 0.01 and horiz.Unit or root.CFrame.LookVector
+	-- Time aloft for the fixed vertical launch, then the horizontal speed that covers `flatDist` in that time.
+	local g = math.max(1, Workspace.Gravity)
+	local airTime = 2 * LEAP_UP_SPEED / g
+	local hSpeed = math.min(LEAP_MAX_HSPEED, flatDist / airTime)
+	root.AssemblyLinearVelocity = dir * hSpeed + Vector3.new(0, LEAP_UP_SPEED, 0)
+	if record.attackTrack then
+		record.attackTrack:Play(0.05) -- reuse the attack/lunge anim as the pounce, if one is set
+	end
 end
 
 -- PLAN (staggered ~ZombieAITickRate): choose target + chase mode; pathfind only when needed.
@@ -1166,6 +1216,9 @@ local function think(record, now: number)
 		if record.attackTrack then
 			record.attackTrack:Play(0.1)
 		end
+	else
+		-- Not in melee range: a Leaper may pounce to close the gap (no-op for every other type).
+		tryLeap(record, now, targetRoot, flatDist)
 	end
 
 	-- Backstop: a zombie wedged for STUCK_TIMEOUT (or alive too long) force-kills itself so the round
