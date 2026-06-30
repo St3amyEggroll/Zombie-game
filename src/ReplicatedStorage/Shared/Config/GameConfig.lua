@@ -58,7 +58,8 @@ GameConfig.MinPlayersToStart  = 1      -- solo-playable
 GameConfig.GameOverHoldSeconds = 10    -- summary screen time before returning to lobby
 
 -- ===== AUTO-AIM SHOOTING =====
-GameConfig.ArcDegrees = 180   -- a shot auto-targets the CLOSEST zombie within this arc in front of your aim
+GameConfig.ArcDegrees = 100   -- a shot auto-targets the CLOSEST zombie within this arc in front of your aim
+                              -- (100 = a 100° cone, ±50° from where you face)
 GameConfig.ArcRange   = 60    -- studs the auto-aim reaches
 
 -- ===== RANGE FALLOFF ===== (damage drops with distance, so positioning matters)
