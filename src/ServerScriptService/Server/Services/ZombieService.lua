@@ -54,6 +54,9 @@ local OBSTACLE_AHEAD   = 3      -- studs ahead the zombie probes for a ledge/obs
 local STUCK_REPLAN     = 0.9    -- seconds of no progress before a direct-chaser switches to pathfinding
 local MAX_LIFETIME     = 30     -- backstop: a zombie alive this long is force-killed (anti soft-lock)
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
+local GRAVE_STAND_HEIGHT = 3   -- studs the zombie's root sits above a grave's base when fully risen
+local EMERGE_DEPTH     = 5      -- studs below ground a grave-spawned zombie starts (then rises out)
+local EMERGE_TIME      = 1.2    -- seconds a zombie takes to claw its way up out of a grave
 local HIT_KNOCKBACK    = 18     -- studs/sec shove away from the shooter on a non-lethal hit
 local HIT_FLASH_TIME   = 0.12   -- seconds a zombie flashes white when hit
 local FLASH_COLOR      = Color3.fromRGB(255, 255, 255)
@@ -69,6 +72,7 @@ local roundToken = 0                  -- bumped to cancel in-flight spawn loops 
 
 local pool: { [string]: { Model } } = {}  -- typeId -> reusable models
 local spawnPoints: { BasePart } = {}
+local graves: { Instance } = {}           -- models/parts tagged "Grave" — zombies rise out of these
 local zombieFolder: Folder
 local poolFolder: Folder
 
@@ -107,6 +111,39 @@ local function refreshSpawnPoints()
 		end
 	end
 	spawnPoints = list
+end
+
+-- Graves (any Model or Part tagged "Grave", e.g. your Grave1 / Grave2) double as spawn points: zombies
+-- claw their way up out of them. Refreshed whenever a grave is tagged/untagged.
+local function refreshGraves()
+	local list = {}
+	for _, inst in CollectionService:GetTagged("Grave") do
+		if inst:IsA("Model") or inst:IsA("BasePart") then
+			table.insert(list, inst)
+		end
+	end
+	graves = list
+end
+
+-- The standing CFrame for a zombie spawned at a grave: centered on the grave, root raised so the feet
+-- land at the grave's base (works for any grave size — uses the grave's bounding box).
+local function graveStandCFrame(grave: Instance): CFrame?
+	local center, size
+	if grave:IsA("Model") then
+		local ok, cf, sz = pcall(function()
+			return grave:GetBoundingBox()
+		end)
+		if not ok or not cf then
+			return nil
+		end
+		center, size = cf.Position, sz
+	elseif grave:IsA("BasePart") then
+		center, size = grave.Position, grave.Size
+	else
+		return nil
+	end
+	local baseY = center.Y - size.Y * 0.5
+	return CFrame.new(center.X, baseY + GRAVE_STAND_HEIGHT, center.Z)
 end
 
 -- ===== MODEL BUILD / POOL =====
@@ -765,17 +802,25 @@ local function loadZombieTracks(record)
 	end
 end
 
+-- Returns (standing CFrame, fromGrave). Graves take priority — if any are tagged, zombies emerge from
+-- them. Otherwise ZombieSpawn parts, otherwise a fallback ring around a living player.
 local warnedNoSpawns = false
-local function getSpawnCFrame(): CFrame?
+local function getSpawnCFrame(): (CFrame?, boolean)
+	if #graves > 0 then
+		local cf = graveStandCFrame(graves[math.random(#graves)])
+		if cf then
+			return cf, true
+		end
+	end
 	if #spawnPoints > 0 then
 		local sp = spawnPoints[math.random(#spawnPoints)]
-		return sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0)
+		return sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0), false
 	end
-	-- No ZombieSpawn parts tagged: fall back to ~35 studs from a random living player so the game works
-	-- with zero map setup. (Tag `ZombieSpawn` parts to place real spawn points.)
+	-- No graves or ZombieSpawn parts tagged: fall back to ~35 studs from a random living player so the game
+	-- works with zero map setup. (Tag a `Grave` model or `ZombieSpawn` parts to place real spawn points.)
 	if not warnedNoSpawns then
 		warnedNoSpawns = true
-		warn("[ZombieService] no parts tagged 'ZombieSpawn' — spawning zombies near players as a fallback.")
+		warn("[ZombieService] no 'Grave' or 'ZombieSpawn' tagged — spawning zombies near players as a fallback.")
 	end
 	local candidates = {}
 	for _, player in Players:GetPlayers() do
@@ -787,15 +832,49 @@ local function getSpawnCFrame(): CFrame?
 		end
 	end
 	if #candidates == 0 then
-		return nil
+		return nil, false
 	end
 	local root = candidates[math.random(#candidates)]
 	local angle = math.random() * 2 * math.pi
-	return CFrame.new(root.Position + Vector3.new(math.cos(angle) * 35, SPAWN_HEIGHT, math.sin(angle) * 35))
+	return CFrame.new(root.Position + Vector3.new(math.cos(angle) * 35, SPAWN_HEIGHT, math.sin(angle) * 35)), false
+end
+
+-- Grave emergence: start the zombie buried below the grave (anchored), then raise it to the surface over
+-- EMERGE_TIME. AI is suppressed (record.emerging) until it's fully out, then physics + chasing take over.
+local function startEmergence(record, finalCF: CFrame)
+	local model = record.model
+	record.emerging = true
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+		end
+	end
+	local base = finalCF + Vector3.new(0, -EMERGE_DEPTH, 0)
+	model:PivotTo(base)
+	task.spawn(function()
+		local elapsed = 0
+		while elapsed < EMERGE_TIME and model.Parent and not record.dead do
+			elapsed += task.wait()
+			local a = math.clamp(elapsed / EMERGE_TIME, 0, 1)
+			model:PivotTo(base + Vector3.new(0, EMERGE_DEPTH * a, 0))
+		end
+		if model.Parent and not record.dead then
+			model:PivotTo(finalCF)
+			for _, p in model:GetDescendants() do
+				if p:IsA("BasePart") then
+					p.Anchored = false
+				end
+			end
+			pcall(function()
+				record.root:SetNetworkOwner(nil)
+			end)
+		end
+		record.emerging = false
+	end)
 end
 
 local function spawnOne(round: number): boolean
-	local spawnCF = getSpawnCFrame()
+	local spawnCF, fromGrave = getSpawnCFrame()
 	if not spawnCF then
 		return false
 	end
@@ -849,6 +928,7 @@ local function spawnOne(round: number): boolean
 		spawnTime = now,
 		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
 		dead = false,
+		emerging = false,
 		diedConn = nil,
 		lastPos = root.Position,    -- for stuck detection
 		lastMoveTime = now,
@@ -861,6 +941,11 @@ local function spawnOne(round: number): boolean
 	active[model] = record
 	aliveCount += 1
 	loadZombieTracks(record)
+
+	-- Spawned from a grave? Rise up out of the ground before the AI kicks in.
+	if fromGrave then
+		startEmergence(record, spawnCF)
+	end
 
 	if t.isSpecial then
 		Remotes.Get("ZombieSpawned"):FireAllClients(typeId, root.Position)
@@ -1019,7 +1104,7 @@ local lastDebug = 0
 local function onHeartbeat()
 	local now = os.clock()
 	for _, record in active do
-		if not record.dead then
+		if not record.dead and not record.emerging then -- emerging zombies are still rising out of the grave
 			if now >= record.nextThink then
 				think(record, now) -- sparse planning
 			end
@@ -1148,9 +1233,13 @@ function ZombieService.Start()
 	CollectionService:GetInstanceAddedSignal("ZombieSpawn"):Connect(refreshSpawnPoints)
 	CollectionService:GetInstanceRemovedSignal("ZombieSpawn"):Connect(refreshSpawnPoints)
 
+	refreshGraves()
+	CollectionService:GetInstanceAddedSignal("Grave"):Connect(refreshGraves)
+	CollectionService:GetInstanceRemovedSignal("Grave"):Connect(refreshGraves)
+
 	RunService.Heartbeat:Connect(onHeartbeat)
 
-	print(("[ZombieService] started (%d spawn point(s) tagged)"):format(#spawnPoints))
+	print(("[ZombieService] started (%d ZombieSpawn, %d Grave tagged)"):format(#spawnPoints, #graves))
 end
 
 return ZombieService
