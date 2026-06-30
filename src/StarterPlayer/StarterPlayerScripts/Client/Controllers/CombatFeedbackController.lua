@@ -28,9 +28,10 @@ local localPlayer = Players.LocalPlayer
 local fxFolder -- holds client-only effect parts
 
 -- ===== EFFECT PARTS =====
-local function muzzleCFrame(): CFrame?
-	local char = localPlayer.Character
-	local held = char and char:FindFirstChild("HeldWeapon")
+-- The muzzle world CFrame of a given character's held weapon (a "Muzzle" attachment if present, else the
+-- front of the Handle).
+local function muzzleCFrameOf(character: Model?): CFrame?
+	local held = character and character:FindFirstChild("HeldWeapon")
 	if not held then
 		return nil
 	end
@@ -171,32 +172,24 @@ local function showHitmarker(killed: boolean, headshot: boolean)
 end
 
 -- ===== EVENT HOOKS =====
+-- Local shot: instant muzzle flash (the tracer is drawn from the authoritative ShotFired below, so it
+-- always goes to the exact zombie the server hit).
 local function onLocalFired(_weaponId: string)
-	local muzzleCF = muzzleCFrame()
-	local origin, direction = CameraController.GetAim()
-	if not origin or not direction then
-		return
-	end
-	local from = muzzleCF and muzzleCF.Position or origin
-	-- Predict the endpoint with a client raycast (server is authoritative for damage).
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { localPlayer.Character, fxFolder }
-	params.IgnoreWater = true
-	local result = Workspace:Raycast(origin, direction * 1000, params)
-	local to = result and result.Position or (origin + direction * 300)
-
+	local muzzleCF = muzzleCFrameOf(localPlayer.Character)
 	if muzzleCF then
 		muzzleFlash(muzzleCF)
 	end
-	drawTracer(from, to)
 end
 
+-- Every shot (incl. our own): draw the bullet tracer from the shooter's gun muzzle to where it landed.
 local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3)
-	if shooterUserId == localPlayer.UserId then
-		return -- our own shot is already drawn locally (predicted)
+	local shooter = Players:GetPlayerByUserId(shooterUserId)
+	local muzzleCF = muzzleCFrameOf(shooter and shooter.Character)
+	local from = muzzleCF and muzzleCF.Position or origin
+	if shooterUserId ~= localPlayer.UserId and muzzleCF then
+		muzzleFlash(muzzleCF) -- others' muzzle flash (the local player already flashed on fire)
 	end
-	drawTracer(origin, endpoint)
+	drawTracer(from, endpoint)
 end
 
 local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean)

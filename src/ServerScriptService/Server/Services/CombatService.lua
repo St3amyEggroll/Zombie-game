@@ -18,6 +18,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
+local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
 local PerkConfig = require(Config.PerkConfig)
 local ShopConfig = require(Config.ShopConfig)
@@ -34,8 +35,6 @@ local CombatService = {}
 local MAX_ORIGIN_DIST   = 6     -- studs the claimed shot origin may be from the player's HumanoidRootPart
                                 -- (legit client sends Head.Position, ~2 studs out; tight enough that a
                                 --  spoofed origin can't be relocated past cover to peek around walls)
-local ARC_DEGREES       = 180  -- a shot hits every zombie within this forward arc (centered on the aim dir)
-local ARC_RANGE         = 60   -- studs the arc reaches (raise for longer reach; weapon.range is ignored now)
 local FIRE_RATE_SLACK    = 0.85  -- allow shots up to 15% faster than nominal (latency/jitter); still gated
 local MAX_RANGE_HARD     = 1000  -- absolute raycast distance ceiling regardless of weapon.range
 
@@ -189,52 +188,48 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	fireAmmo(player, weaponId, ammo)
 	firedEvent:Fire(player, weaponId) -- drives the server-side gun recoil
 
-	-- 6) ARC HIT: damage every live zombie within ARC_RANGE that sits inside the forward arc (centered on
-	-- the aim direction). Walls block (line-of-sight), but zombies don't block each other.
+	-- 6) AUTO-AIM: hit the CLOSEST live zombie within ArcRange that sits in the forward arc (centered on the
+	-- aim direction) and is in line of sight. The bullet (tracer) then travels to that zombie.
 	local character = player.Character
 	local dir = direction.Unit
 	local damage = weapon.damage * ShopConfig.DamageMultFor(ps.upgrades and ps.upgrades[weaponId] or 0)
-	local dotThreshold = math.cos(math.rad(ARC_DEGREES * 0.5)) -- 180° -> 0 (forward hemisphere)
+	local arcRange = GameConfig.ArcRange
+	local dotThreshold = math.cos(math.rad(GameConfig.ArcDegrees * 0.5)) -- 180° -> 0 (forward hemisphere)
 
 	local losParams = RaycastParams.new()
 	losParams.FilterType = Enum.RaycastFilterType.Exclude
 	losParams.IgnoreWater = true
 	losParams.FilterDescendantsInstances = { character, ZombieService.GetFolder() }
 
-	local anyHit, anyKill = false, false
-	local nearestPos, nearestDist = origin + dir * ARC_RANGE, math.huge
+	local target, targetRoot, targetDist = nil, nil, math.huge
 	for _, record in ZombieService.GetActive() do
 		local root = record.root
-		local humanoid = record.hum
 		local toZombie = root.Position - origin
 		local dist = toZombie.Magnitude
-		if dist > 0.01 and dist <= ARC_RANGE and toZombie.Unit:Dot(dir) >= dotThreshold then
-			-- line-of-sight: a wall between the player and the zombie blocks the shot
-			local blocked = Workspace:Raycast(origin, toZombie, losParams)
-			if not blocked then
-				humanoid.Health = math.max(0, humanoid.Health - damage)
-				local killed = humanoid.Health <= 0
-				hitEvent:Fire(player, humanoid, false, weaponId, damage)
-				if killed then
-					killEvent:Fire(player, humanoid, false, weaponId)
-					anyKill = true
-				else
-					ZombieService.Hit(record, origin) -- knockback + white flash (server-side, all clients see it)
-				end
-				anyHit = true
-				if dist < nearestDist then
-					nearestDist, nearestPos = dist, root.Position
-				end
+		if dist > 0.01 and dist <= arcRange and dist < targetDist and toZombie.Unit:Dot(dir) >= dotThreshold then
+			if not Workspace:Raycast(origin, toZombie, losParams) then -- wall between us blocks the shot
+				target, targetRoot, targetDist = record, root, dist
 			end
 		end
 	end
 
-	-- One hitmarker/impact per shot (the per-zombie white flash already shows each individual hit).
-	if anyHit then
-		Remotes.Get("HitConfirmed"):FireClient(player, nearestPos, false, true, anyKill)
+	local endpoint = origin + dir * arcRange -- where the tracer lands (the target, or straight ahead on a miss)
+	if target then
+		local humanoid = target.hum
+		humanoid.Health = math.max(0, humanoid.Health - damage)
+		local killed = humanoid.Health <= 0
+		hitEvent:Fire(player, humanoid, false, weaponId, damage)
+		if killed then
+			killEvent:Fire(player, humanoid, false, weaponId)
+		else
+			ZombieService.Hit(target, origin) -- knockback + white flash
+		end
+		endpoint = targetRoot.Position
+		Remotes.Get("HitConfirmed"):FireClient(player, endpoint, false, true, killed)
 	end
-	-- Broadcast the shot so every client draws a tracer forward along the aim.
-	Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, origin + dir * ARC_RANGE)
+
+	-- Broadcast the shot so every client draws the bullet tracer from the gun to where it landed.
+	Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint)
 end
 
 -- ===== RELOAD =====

@@ -50,6 +50,10 @@ GameConfig.LobbyCountdown     = 5      -- seconds in lobby before a match auto-s
 GameConfig.MinPlayersToStart  = 1      -- solo-playable
 GameConfig.GameOverHoldSeconds = 10    -- summary screen time before returning to lobby
 
+-- ===== AUTO-AIM SHOOTING =====
+GameConfig.ArcDegrees = 180   -- a shot auto-targets the CLOSEST zombie within this arc in front of your aim
+GameConfig.ArcRange   = 60    -- studs the auto-aim reaches
+
 -- ===== RATE LIMITS (token bucket, max requests/sec per player) =====
 GameConfig.RateLimits = {
 	Fire = 20, Reload = 3, Buy = 6, Revive = 3, Interact = 8, Sprint = 10,
