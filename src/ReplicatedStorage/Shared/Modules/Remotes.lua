@@ -17,6 +17,7 @@ local DEFINITIONS: { [string]: string } = {
 	-- DataService (meta-progression)
 	DataReady         = "RemoteEvent",     -- S->C: your meta snapshot is loaded
 	GetData           = "RemoteFunction",  -- C->S: fetch meta snapshot for UI
+	ProgressChanged   = "RemoteEvent",     -- S->C: (xp, level, lobbyMoney) — live account progression updates
 
 	-- MatchService (lifecycle + round manager)
 	MatchStateChanged = "RemoteEvent",     -- S->C: (phase, round)
