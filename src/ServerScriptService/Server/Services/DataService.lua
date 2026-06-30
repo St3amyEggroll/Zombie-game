@@ -176,6 +176,13 @@ function DataService.Save(player: Player)
 	task.spawn(saveAsync, player)
 end
 
+-- BLOCKING save — runs in the caller's thread and returns when the save attempt finishes. Use right before
+-- teleporting a player to another place so the data they just banked is written before they leave this
+-- server (otherwise the destination place can load a stale profile).
+function DataService.SaveNow(player: Player)
+	saveAsync(player)
+end
+
 -- ----- XP / level -----
 -- Returns (newLevel, levelsGained).
 function DataService.AddXP(player: Player, amount: number): (number, number)

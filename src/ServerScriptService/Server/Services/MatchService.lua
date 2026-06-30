@@ -1,21 +1,22 @@
 --!nonstrict
--- MatchService.lua — match lifecycle + wave manager (Zombie Rush + LOBBY). **THE core service.**
+-- MatchService.lua — wave manager (Zombie Rush) + the GAME-place side of the two-place lobby. **THE core
+-- service.** Runs in the GAME place (and Studio); the lobby place never starts it (see init.server.lua).
 --
--- MENU LOBBY + shared co-op run. Players sit in the LOBBY (a full-screen menu — they have NO character)
--- until they press PLAY. PLAY drops them into the shared, endless wave run (drop-in co-op):
---   Playing (wave N) -> clear the wave -> short break -> wave N+1 ... forever.
--- The wave counter is SHARED by everyone currently in the run.
+-- TWO-PLACE FLOW (published game): a fresh joiner lands here (this is the start place) with NO character →
+-- the server teleports them to the LOBBY place. Press PLAY there → they teleport BACK here flagged to start
+-- a run, and drop into the shared, drop-in co-op endless run (wave N → clear → short break → N+1 …). On
+-- death the run is banked (best wave, lobby money, matches played via DataService — DataStores are shared
+-- across both places) and they're teleported back to the lobby with a run summary.
 --
--- Death ENDS your run (not forgiving): your results bank into your persistent profile (best wave, lobby
--- money, matches played via DataService) and you return to the lobby menu. Press PLAY for a fresh run.
--- The shared run keeps going while ANYONE is still alive in it; it idles back to Lobby only when the last
--- player dies or leaves.
+-- STUDIO / single place: TeleportService doesn't work in Studio, so we fall back to an IN-PLACE menu lobby
+-- (the same EnterLobby/RequestPlay remotes + LobbyController UI) so the whole loop stays testable solo.
 --
--- Two currencies (CLAUDE.md §6): in-wave CASH (ephemeral `ps.points`, reset every run, spent at the shop)
--- and LOBBY MONEY (persistent, banked at run-end, spent in the lobby) — DataService owns the persistent side.
--- Owns the ephemeral per-run state (cash, owned weapons, ammo, upgrades) keyed by userId.
+-- Two currencies (CLAUDE.md §6): in-wave CASH (ephemeral ps.points, resets every run, spent at the shop)
+-- and LOBBY MONEY (persistent, banked at run-end) — DataService owns the persistent side.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -25,6 +26,7 @@ local Modules = Shared:WaitForChild("Modules")
 local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
 local ZombieConfig = require(Config.ZombieConfig)
+local Places = require(Config.Places)
 local Remotes = require(Modules.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -37,6 +39,10 @@ local MatchService = {}
 -- ===== TUNABLES =====
 local LOBBY_MONEY_PER_WAVE = 25  -- persistent lobby money banked per wave reached on a run
 local LOBBY_MONEY_PER_KILL = 1   -- persistent lobby money banked per kill on a run
+local TELEPORT_RETRIES     = 4   -- attempts per teleport before giving up
+
+-- Teleports only work in a published, running game — never in Studio. In Studio we use the in-place menu.
+local LIVE = not RunService:IsStudio()
 
 -- ===== EPHEMERAL MATCH STATE =====
 local state = {
@@ -58,6 +64,20 @@ local function setPhase(phase: string)
 	print(("[MatchService] phase -> %s (wave %d)"):format(phase, state.round))
 end
 
+local function safeTeleport(placeId: number, player: Player, options: TeleportOptions?): boolean
+	for attempt = 1, TELEPORT_RETRIES do
+		local ok, err = pcall(function()
+			TeleportService:TeleportAsync(placeId, { player }, options)
+		end)
+		if ok then
+			return true
+		end
+		warn(("[MatchService] teleport failed for %s (attempt %d): %s"):format(player.Name, attempt, tostring(err)))
+		task.wait(attempt)
+	end
+	return false
+end
+
 local function makePlayerState(player: Player)
 	local pistol = WeaponConfig.pistol
 	-- TEST: own every weapon (GameConfig.DebugUnlockAllWeapons), pistol always in slot 1.
@@ -71,7 +91,7 @@ local function makePlayerState(player: Player)
 	end
 	return {
 		userId = player.UserId,
-		inMatch = false,                          -- false = sitting in the lobby menu; true = in the run
+		inMatch = false,                          -- false = lobby/menu; true = in the run
 		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run)
 		ownedWeapons = owned,
 		equippedWeapon = "pistol",
@@ -87,8 +107,8 @@ local function makePlayerState(player: Player)
 	}
 end
 
--- Reset a player's PER-RUN ephemeral state (called the moment they press PLAY). Owned weapons persist;
--- in-wave cash, upgrades (tiers), kills and ammo all reset so every run starts from the base weapon again.
+-- Reset a player's PER-RUN ephemeral state (the moment a run begins). Owned weapons persist; in-wave cash,
+-- upgrades (tiers), kills and ammo all reset so every run starts from the base weapon again.
 local function resetRunState(player: Player, ps)
 	ps.points = GameConfig.StartingPoints
 	ps.upgrades = {}
@@ -118,9 +138,9 @@ local function computeCount(round: number, playerCount: number): number
 end
 
 -- Forward declarations (mutual references between the lobby/run helpers below).
-local bankRun, enterLobby, spawnCharacter, runMatch, startMatchIfNeeded
+local bankRun, enterLobby, goToLobby, spawnCharacter, runMatch, startMatchIfNeeded, startRunFor
 
--- How many players are currently IN the run (vs sitting in the lobby menu).
+-- How many players are currently IN the run (vs sitting in the lobby/menu).
 local function inMatchCount(): number
 	local n = 0
 	for _, ps in state.players do
@@ -147,8 +167,7 @@ bankRun = function(player: Player, ps)
 	return { wave = wave, kills = ps.kills, money = money }
 end
 
--- Send a player back to the lobby menu (no character). `summary` is the just-finished run's results, or nil
--- on a plain join. The client shows the lobby UI on EnterLobby.
+-- Show the in-place lobby menu (Studio fallback). `summary` is the just-finished run's results, or nil.
 enterLobby = function(player: Player, summary)
 	local ps = state.players[player.UserId]
 	if ps then
@@ -157,8 +176,25 @@ enterLobby = function(player: Player, summary)
 	Remotes.Get("EnterLobby"):FireClient(player, summary)
 end
 
+-- End a run and send the player back to the lobby. Published: teleport to the lobby place (after a blocking
+-- save so the bank lands first), carrying the run summary. Studio: just show the in-place menu.
+goToLobby = function(player: Player, summary)
+	local ps = state.players[player.UserId]
+	if ps then
+		ps.inMatch = false
+	end
+	if LIVE then
+		DataService.SaveNow(player) -- make sure the bank is written before we leave this server
+		local options = Instance.new("TeleportOptions")
+		options:SetTeleportData({ summary = summary })
+		safeTeleport(Places.Lobby, player, options)
+	else
+		Remotes.Get("EnterLobby"):FireClient(player, summary)
+	end
+end
+
 -- Spawn a player into the arena and arm the death->lobby handoff. resetRunState already reset their cash/
--- upgrades/ammo; death ENDS the run (banks results, returns to the lobby) — there is no respawn-in-place.
+-- upgrades/ammo. Death ENDS the run (banks, returns to the lobby) — there is no respawn-in-place.
 spawnCharacter = function(player: Player)
 	player:LoadCharacter()
 	local char = player.Character or player.CharacterAdded:Wait()
@@ -175,11 +211,11 @@ spawnCharacter = function(player: Player)
 		hum.Died:Once(function()
 			local p = state.players[player.UserId]
 			if not p or not p.inMatch then
-				return -- already left the run (e.g. disconnected)
+				return -- already left the run (e.g. disconnected / teleporting)
 			end
 			p.isDead = true
 			local summary = bankRun(player, p)
-			enterLobby(player, summary)
+			goToLobby(player, summary)
 		end)
 	end
 end
@@ -221,7 +257,7 @@ runMatch = function()
 		setPhase("Playing")
 	end
 
-	-- Last player died / left: clear the field and idle back to Lobby until someone presses PLAY again.
+	-- Last player died / left: clear the field and idle back to Lobby until someone starts a run again.
 	ZombieService.ClearAll()
 	state.round = 0
 	state.zombiesAlive = 0
@@ -230,7 +266,7 @@ runMatch = function()
 	setPhase("Lobby")
 end
 
--- Kick off the shared run if it isn't already going (first player to press PLAY starts it).
+-- Kick off the shared run if it isn't already going (first player into the run starts it).
 startMatchIfNeeded = function()
 	if matchRunning or not anyInMatch() then
 		return
@@ -239,8 +275,8 @@ startMatchIfNeeded = function()
 	task.spawn(runMatch)
 end
 
--- ===== PLAY (lobby -> run) =====
-local function onRequestPlay(player: Player)
+-- Put a player into the run: reset their per-run state, spawn them, and start the run loop if needed.
+startRunFor = function(player: Player)
 	local ps = state.players[player.UserId]
 	if not ps then
 		ps = makePlayerState(player)
@@ -253,6 +289,32 @@ local function onRequestPlay(player: Player)
 	resetRunState(player, ps)
 	spawnCharacter(player)
 	startMatchIfNeeded()
+end
+
+-- Published game place: decide what to do with a player who is on this server. If they arrived from the
+-- lobby flagged to play, start their run; otherwise they joined the start place fresh → send them to the
+-- lobby. (Studio never calls this — it uses the in-place menu.)
+local function handleArrival(player: Player)
+	local startRun = false
+	local ok, joinData = pcall(function()
+		return player:GetJoinData()
+	end)
+	if ok and typeof(joinData) == "table" and typeof(joinData.TeleportData) == "table" then
+		startRun = joinData.TeleportData.startRun == true
+	end
+	if startRun then
+		startRunFor(player)
+	else
+		local options = Instance.new("TeleportOptions")
+		if not safeTeleport(Places.Lobby, player, options) then
+			startRunFor(player) -- teleport unavailable: don't strand them, just drop them into a run
+		end
+	end
+end
+
+-- Studio in-place menu: PLAY pressed.
+local function onRequestPlay(player: Player)
+	startRunFor(player)
 end
 
 -- ===== PUBLIC API =====
@@ -272,7 +334,7 @@ function MatchService.GetPlayerState(player: Player)
 	return state.players[player.UserId]
 end
 
--- Iterate only players currently IN the run (lobby players are skipped).
+-- Iterate only players currently IN the run (lobby/menu players are skipped).
 function MatchService.ForEachPlayer(fn: (Player, any) -> ())
 	for _, player in Players:GetPlayers() do
 		local ps = state.players[player.UserId]
@@ -300,29 +362,33 @@ end
 -- ===== LIFECYCLE =====
 function MatchService.Start()
 	ZombieService = require(script.Parent.ZombieService)
-	Players.CharacterAutoLoads = false -- players spawn only when they press PLAY
+	Players.CharacterAutoLoads = false -- characters spawn only when a run starts
 
 	local function onJoin(player: Player)
 		state.players[player.UserId] = makePlayerState(player)
 		Remotes.Get("MatchStateChanged"):FireClient(player, state.phase, state.round)
-		-- Land in the lobby menu (no character) until they press PLAY.
-		enterLobby(player, nil)
+		if LIVE then
+			handleArrival(player) -- published: route to lobby, or start a run if they came to play
+		else
+			enterLobby(player, nil) -- Studio: show the in-place menu
+		end
 	end
 
 	for _, player in Players:GetPlayers() do
-		onJoin(player)
+		task.spawn(onJoin, player)
 	end
 
-	Players.PlayerAdded:Connect(onJoin)
+	Players.PlayerAdded:Connect(function(player)
+		task.spawn(onJoin, player)
+	end)
 
 	Players.PlayerRemoving:Connect(function(player)
 		state.players[player.UserId] = nil
-		-- If that was the last player in the run, runMatch's anyInMatch() loop will wind it down.
 	end)
 
 	Remotes.Get("RequestPlay").OnServerEvent:Connect(onRequestPlay)
 
-	print("[MatchService] started (menu lobby + shared run)")
+	print(("[MatchService] started (%s)"):format(LIVE and "game place, teleport flow" or "studio, in-place menu"))
 end
 
 return MatchService

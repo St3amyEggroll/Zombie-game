@@ -17,13 +17,16 @@
 -- Restyle freely: build your own LobbyGui and this fallback steps aside.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Modules = Shared:WaitForChild("Modules")
+local Config = Shared:WaitForChild("Config")
 
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
+local Places = require(Config.Places)
 
 local LobbyController = {}
 
@@ -239,6 +242,13 @@ end
 
 -- ===== LIFECYCLE =====
 function LobbyController.Start()
+	-- Only active where a menu is shown: the lobby place, or Studio (in-place menu for testing). In the live
+	-- game place the server teleports instead of showing a menu, so stay dormant (IsOpen() stays false).
+	if not (Places.IsLobby or RunService:IsStudio()) then
+		print("[LobbyController] dormant (live game place — server teleports to the lobby)")
+		return
+	end
+
 	resolve()
 	hideLobby()
 
