@@ -32,7 +32,7 @@ local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local healthFrac = 1   -- current HP / max HP, from HealthChanged
 local flash = 0        -- transient hit flash, decays each frame
-local vignette         -- CanvasGroup
+local edgeFrames       -- { Frame, Frame } the two red edge-gradient frames
 local arrowGui         -- ScreenGui holding directional arrows
 
 -- ===== BUILD =====
@@ -40,6 +40,7 @@ local function edgeFrame(parent: Instance, rotation: number)
 	local f = Instance.new("Frame")
 	f.Size = UDim2.fromScale(1, 1)
 	f.BackgroundColor3 = Color3.fromRGB(190, 0, 0)
+	f.BackgroundTransparency = 1 -- start fully invisible; update() drives this
 	f.BorderSizePixel = 0
 	f.Parent = parent
 	local g = Instance.new("UIGradient")
@@ -51,6 +52,7 @@ local function edgeFrame(parent: Instance, rotation: number)
 		NumberSequenceKeypoint.new(1, 0.1),
 	})
 	g.Parent = f
+	return f
 end
 
 local function build()
@@ -61,13 +63,9 @@ local function build()
 	gui.DisplayOrder = -1 -- sit under the HUD
 	gui.Parent = playerGui
 
-	vignette = Instance.new("CanvasGroup")
-	vignette.Size = UDim2.fromScale(1, 1)
-	vignette.BackgroundTransparency = 1
-	vignette.GroupTransparency = 1 -- hidden until hurt
-	vignette.Parent = gui
-	edgeFrame(vignette, 90) -- top + bottom
-	edgeFrame(vignette, 0)  -- left + right
+	-- Two edge-gradient frames (top/bottom + left/right). We drive their BackgroundTransparency directly
+	-- each frame (no CanvasGroup) so that at full health they are 100% invisible — no faint red border.
+	edgeFrames = { edgeFrame(gui, 90), edgeFrame(gui, 0) }
 
 	arrowGui = Instance.new("ScreenGui")
 	arrowGui.Name = "HurtArrows"
@@ -78,7 +76,7 @@ end
 
 -- ===== HEARTBEAT VIGNETTE ===== (per-frame; RenderStepped passes dt)
 local function update(dt: number)
-	if not vignette then
+	if not edgeFrames then
 		return
 	end
 	flash = math.max(0, flash - FLASH_DECAY * dt)
@@ -94,8 +92,12 @@ local function update(dt: number)
 	local pulse = 0.5 + 0.5 * math.sin(os.clock() * (6 + intensity * 8))
 	local lowAlpha = intensity * MAX_VIGNETTE * (0.45 + 0.55 * pulse)
 
-	local alpha = math.max(lowAlpha, flash)
-	vignette.GroupTransparency = 1 - math.clamp(alpha, 0, 1)
+	-- Combine the steady low-HP glow with the transient hit flash; 0 = fully invisible.
+	local alpha = math.clamp(math.max(lowAlpha, flash), 0, 1)
+	local bt = 1 - alpha
+	for _, f in edgeFrames do
+		f.BackgroundTransparency = bt
+	end
 end
 
 -- ===== DIRECTIONAL HURT ARROW =====
