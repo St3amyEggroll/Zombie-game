@@ -10,6 +10,7 @@
 -- (Phase 3 expands this with the full points/round/team HUD via -- NEW: markers.)
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -27,6 +28,9 @@ local HUDController = {}
 
 -- ===== TUNABLES =====
 local SHOW_DEBUG_HUD = true   -- set false (or just delete the DebugHUD) once you build your own UI
+local LOW_AMMO_PCT   = 0.25   -- at/below this fraction of the mag, the ammo counter goes red + pulses
+local LOW_AMMO_COLOR = Color3.fromRGB(255, 60, 60)
+local LOW_AMMO_PULSE = 6      -- pulses per second when low
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -92,12 +96,35 @@ end
 
 -- ===== UPDATES =====
 -- Always reflect the EQUIPPED weapon (ammo events for other owned weapons shouldn't change the display).
+local ammoRatio = 1               -- equipped weapon's mag / magSize, for the low-ammo tell
 local function refreshAmmo()
 	local id = InputController.GetEquipped()
 	local a = InputController.GetAmmo(id)
 	local weapon = WeaponConfig[id]
 	local name = weapon and weapon.name or id
+	ammoRatio = (weapon and weapon.magSize > 0) and (a.mag / weapon.magSize) or 1
 	setText("AmmoLabel", string.format("%s   %d / %d", name, a.mag, a.reserve))
+end
+
+-- Low-ammo tell: when the mag is at/below LOW_AMMO_PCT, flash the ammo counter red; otherwise leave it
+-- at the label's own styled color. We remember each AmmoLabel's base color so restyles still work.
+local ammoBaseColor, ammoBaseLabel
+local function updateLowAmmo()
+	local label = findLabel("AmmoLabel")
+	if not label then
+		return
+	end
+	if label ~= ammoBaseLabel then
+		ammoBaseLabel = label
+		ammoBaseColor = label.TextColor3
+	end
+	if ammoRatio <= LOW_AMMO_PCT then
+		label.TextColor3 = LOW_AMMO_COLOR
+		label.TextTransparency = 0.55 * (0.5 + 0.5 * math.sin(os.clock() * LOW_AMMO_PULSE * math.pi * 2))
+	else
+		label.TextColor3 = ammoBaseColor or label.TextColor3
+		label.TextTransparency = 0
+	end
 end
 
 -- ===== LIFECYCLE =====
@@ -128,6 +155,8 @@ function HUDController.Start()
 	-- Seed initial text.
 	setText("PointsLabel", "$" .. Util.FormatNumber(GameConfig.StartingPoints))
 	setText("RoundLabel", "Wave 0")
+
+	RunService.RenderStepped:Connect(updateLowAmmo) -- drives the low-ammo red pulse
 
 	print("[HUDController] started" .. (SHOW_DEBUG_HUD and " (debug HUD on)" or ""))
 end
