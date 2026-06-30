@@ -46,6 +46,10 @@ local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie 
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
 local MAX_LIFETIME     = 30     -- backstop: a zombie alive this long is force-killed (anti soft-lock)
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
+local HIT_KNOCKBACK    = 18     -- studs/sec shove away from the shooter on a non-lethal hit
+local HIT_FLASH_TIME   = 0.12   -- seconds a zombie flashes white when hit
+local FLASH_COLOR      = Color3.fromRGB(255, 255, 255)
+local DEATH_COLOR      = Color3.fromRGB(170, 30, 30)
 local DEBUG            = false  -- set true to print a live zombie's state every 2s (diagnose "not moving")
 
 -- ===== STATE =====
@@ -228,10 +232,13 @@ local function prepModel(model: Model)
 	if root and root:IsA("BasePart") then
 		model.PrimaryPart = root
 	end
-	-- A walking rig must be unanchored (in case the owner placed a static/anchored prop).
+	-- A walking rig must be unanchored; also remember each part's base color for hit/death recolors.
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Anchored = false
+			if d:GetAttribute("ZBaseColor") == nil then
+				d:SetAttribute("ZBaseColor", d.Color)
+			end
 		end
 	end
 	local hum = model:FindFirstChildOfClass("Humanoid")
@@ -288,6 +295,39 @@ local function acquire(typeId: string, t): Model
 	return buildZombie(typeId, t)
 end
 
+-- ===== HIT / DEATH FEEDBACK =====
+local function recolor(model: Model, color: Color3)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") and p.Transparency < 1 then
+			p.Color = color
+		end
+	end
+end
+
+local function restoreColors(model: Model)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			local base = p:GetAttribute("ZBaseColor")
+			if typeof(base) == "Color3" then
+				p.Color = base
+			end
+		end
+	end
+end
+
+-- Flash a zombie white briefly on a non-lethal hit, then back to its base color.
+local function flashWhite(record)
+	if record.dead then
+		return
+	end
+	recolor(record.model, FLASH_COLOR)
+	task.delay(HIT_FLASH_TIME, function()
+		if not record.dead and record.model.Parent then
+			restoreColors(record.model)
+		end
+	end)
+end
+
 local function release(record)
 	local model = record.model
 	if record.diedConn then
@@ -313,6 +353,13 @@ local function release(record)
 
 	-- Free the cap slot only now (the corpse occupied a real Workspace instance until this moment).
 	aliveCount = math.max(0, aliveCount - 1)
+
+	-- Reset visuals/physics so the pooled model comes back clean (upright, base color, no velocity).
+	restoreColors(model)
+	if model.PrimaryPart then
+		model.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+		model.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+	end
 
 	model.Parent = poolFolder
 	local list = pool[record.typeId]
@@ -383,9 +430,20 @@ local function onZombieDied(record)
 	if record.walkTrack then
 		record.walkTrack:Stop()
 	end
+
+	-- Death feedback: turn red, then ragdoll. If a death animation is configured, play it; otherwise give
+	-- the rig a physics "pop" so it tumbles over (rigid topple — joints stay intact so it's still poolable).
+	recolor(record.model, DEATH_COLOR)
 	if record.deathTrack then
 		record.deathTrack:Play()
+	else
+		local root = record.root
+		if root and root.Parent then
+			root.AssemblyLinearVelocity = Vector3.new(math.random(-6, 6), 9, math.random(-6, 6))
+			root.AssemblyAngularVelocity = Vector3.new(math.random(-10, 10), math.random(-6, 6), math.random(-10, 10))
+		end
 	end
+
 	task.delay(DESPAWN_DELAY, function()
 		release(record)
 	end)
@@ -679,6 +737,38 @@ end
 
 function ZombieService.GetRemaining(): number
 	return remaining
+end
+
+-- The Workspace folder holding all live zombies (used to exclude them from line-of-sight checks).
+function ZombieService.GetFolder(): Folder
+	return zombieFolder
+end
+
+-- Snapshot of the live zombies (for CombatService's arc hit). Each entry: { record with .root/.hum/... }.
+function ZombieService.GetActive()
+	local list = {}
+	for _, record in active do
+		if not record.dead and record.root and record.root.Parent and record.hum and record.hum.Health > 0 then
+			table.insert(list, record)
+		end
+	end
+	return list
+end
+
+-- Hit feedback for a non-lethal hit: a little knockback away from the shooter + a white flash.
+function ZombieService.Hit(record, fromPos: Vector3)
+	if record.dead then
+		return
+	end
+	local root = record.root
+	if root and root.Parent then
+		local away = root.Position - fromPos
+		away = Vector3.new(away.X, 0, away.Z)
+		if away.Magnitude > 0.01 then
+			root.AssemblyLinearVelocity = away.Unit * HIT_KNOCKBACK + Vector3.new(0, 4, 0)
+		end
+	end
+	flashWhite(record)
 end
 
 -- Wipe everything (used on game over / reset). Cancels spawning and pools all live zombies.
