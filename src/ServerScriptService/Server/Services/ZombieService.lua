@@ -45,10 +45,13 @@ local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles after dea
 local SURFACE_HOLD     = 1.0    -- extra seconds the body lies still ON the surface before it starts sinking
 local SINK_TIME        = 3.2    -- seconds the corpse SLOWLY sinks into the ground (bigger = slower/eerier)
 local SINK_DEPTH       = 4      -- studs the corpse sinks before it's pooled
-local RAGDOLL_LIMB_ANGLE = 50   -- BallSocket cone limit (deg); too BIG = limbs splay/dislocate, too small = stiff
+local RAGDOLL_LIMB_ANGLE = 40   -- BallSocket cone limit (deg); too BIG = limbs splay/dislocate, too small = stiff
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
 local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
+local JUMP_CHECK_RATE  = 0.25   -- seconds between a zombie's "should I jump this obstacle?" probes
+local OBSTACLE_AHEAD   = 3      -- studs ahead the zombie probes for a ledge/obstacle to jump
+local STUCK_REPLAN     = 0.9    -- seconds of no progress before a direct-chaser switches to pathfinding
 local MAX_LIFETIME     = 30     -- backstop: a zombie alive this long is force-killed (anti soft-lock)
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
 local HIT_KNOCKBACK    = 18     -- studs/sec shove away from the shooter on a non-lethal hit
@@ -110,7 +113,9 @@ end
 -- Shared humanoid setup (no joint-snap on death, auto-jump small ledges, an Animator for poses).
 local function configureHumanoid(hum: Humanoid)
 	hum.BreakJointsOnDeath = false
-	hum.AutoJumpEnabled = true
+	hum.AutoJumpEnabled = true       -- auto-hop small ledges while walking
+	hum.UseJumpPower = true
+	hum.JumpPower = 55               -- a bit higher than default so it can climb onto stuff (~8 studs)
 	if not hum:FindFirstChildOfClass("Animator") then
 		Instance.new("Animator").Parent = hum
 	end
@@ -456,6 +461,19 @@ end
 -- Turn a rigged Humanoid model limp: convert EVERY joint holding the rig (Motor6D, Weld, Snap,
 -- ManualWeld, and WeldConstraint) into a floppy BallSocketConstraint, make the limbs collide with the
 -- world, and stop the Humanoid from standing. Returns true if it ragdolled (false if it has no joints).
+-- The point on `part`'s surface nearest `towardPos` — a good estimate of where a limb actually joins the
+-- body (the shoulder/hip/neck), so the ragdoll pivots there instead of dislocating.
+local function nearestSurfacePoint(part: BasePart, towardPos: Vector3): Vector3
+	local rel = part.CFrame:PointToObjectSpace(towardPos)
+	local half = part.Size * 0.5
+	rel = Vector3.new(
+		math.clamp(rel.X, -half.X, half.X),
+		math.clamp(rel.Y, -half.Y, half.Y),
+		math.clamp(rel.Z, -half.Z, half.Z)
+	)
+	return part.CFrame:PointToWorldSpace(rel)
+end
+
 local function makeRagdollJoint(part0: BasePart, part1: BasePart, c0: CFrame?, c1: CFrame?)
 	local a0 = Instance.new("Attachment")
 	a0.Name = "RagdollAtt"
@@ -466,8 +484,9 @@ local function makeRagdollJoint(part0: BasePart, part1: BasePart, c0: CFrame?, c
 		a0.CFrame = c0
 		a1.CFrame = c1
 	else
-		-- WeldConstraint (no C0/C1): pivot at the midpoint between the two parts.
-		local pivot = part0.Position:Lerp(part1.Position, 0.5)
+		-- WeldConstraint (no C0/C1): pivot where the limb meets the body (its surface point nearest the
+		-- other part), NOT the midpoint — the midpoint floats in space and makes the limb look dislocated.
+		local pivot = nearestSurfacePoint(part1, part0.Position)
 		a0.WorldPosition = pivot
 		a1.WorldPosition = pivot
 	end
@@ -776,11 +795,14 @@ local function spawnOne(round: number): boolean
 		type = t,
 		damage = t.damage,
 		target = nil,
+		targetRoot = nil,
+		mode = "idle",          -- "idle" | "direct" (live chase) | "path" (navigating obstacles)
 		waypoints = nil,
 		waypointIndex = 1,
 		computing = false,
 		lastPath = 0,
 		lastAttack = 0,
+		nextJumpCheck = 0,
 		spawnTime = now,
 		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
 		dead = false,
@@ -803,11 +825,38 @@ local function spawnOne(round: number): boolean
 	return true
 end
 
--- ===== AI HEARTBEAT (steering only; pathfinding is async) =====
-local function think(record, now: number)
-	if record.dead then
-		return
+-- ===== AI =====
+-- Two layers (CLAUDE.md §13): a sparse, staggered "plan" (think) decides WHO to chase and HOW (chase the
+-- live position directly when in sight, or pathfind around obstacles when blocked), and a per-frame
+-- "steer" actually drives the rig toward the live goal and hops obstacles. This is what makes it track in
+-- real time instead of following a point that only updates when the path recomputes.
+
+-- RaycastParams that ignore all zombies + player characters, so probes only hit world geometry.
+local function worldOnlyParams(): RaycastParams
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.IgnoreWater = true
+	local filter: { Instance } = { zombieFolder }
+	for _, pl in Players:GetPlayers() do
+		if pl.Character then
+			table.insert(filter, pl.Character)
+		end
 	end
+	params.FilterDescendantsInstances = filter
+	return params
+end
+
+-- Is there solid world geometry directly between two points?
+local function sightBlocked(fromPos: Vector3, toPos: Vector3): boolean
+	local dir = toPos - fromPos
+	if dir.Magnitude < 0.1 then
+		return false
+	end
+	return Workspace:Raycast(fromPos, dir, worldOnlyParams()) ~= nil
+end
+
+-- PLAN (staggered ~ZombieAITickRate): choose target + chase mode; pathfind only when needed.
+local function think(record, now: number)
 	local root = record.root
 	if not root or not root.Parent then
 		return
@@ -815,43 +864,34 @@ local function think(record, now: number)
 
 	local target, targetRoot = nearestAlivePlayer(root.Position)
 	record.target = target
+	record.targetRoot = targetRoot
 	if not targetRoot then
-		record.hum:Move(Vector3.zero) -- nobody alive to chase: idle in place
+		record.mode = "idle"
 		record.nextThink = now + GameConfig.ZombieAITickRate
 		return
 	end
 
-	-- Sparse path recompute (off the heartbeat). Retry quickly after a failed path, otherwise sparsely.
-	local recomputeInterval = record.pathFailed and PATH_RETRY or GameConfig.PathRecompute
-	if not record.computing and (now - record.lastPath) >= recomputeInterval then
-		record.lastPath = now
-		task.spawn(recomputePath, record, targetRoot.Position)
-	end
-
-	-- Steer toward the current waypoint, or straight at the target if we have no path.
-	local goal = targetRoot.Position
-	if record.waypoints and record.waypointIndex <= #record.waypoints then
-		local wp = record.waypoints[record.waypointIndex]
-		goal = wp.Position
-		local flat = Vector3.new(root.Position.X - goal.X, 0, root.Position.Z - goal.Z)
-		if flat.Magnitude < WAYPOINT_REACH then
-			if wp.Action == Enum.PathWaypointAction.Jump then
-				record.hum:ChangeState(Enum.HumanoidStateType.Jumping)
-			end
-			record.waypointIndex += 1
-		end
-	end
-
 	local dist = (root.Position - targetRoot.Position).Magnitude
-	-- Drive the walk with Humanoid:Move (a continuous direction; more reliable than MoveTo for chasing —
-	-- no 8s MoveTo timeout, and it keeps walking between AI ticks).
-	if dist <= ATTACK_RANGE then
-		record.hum:Move(Vector3.zero) -- in melee range: stop shoving the player around
-	else
-		local toGoal = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z)
-		if toGoal.Magnitude > 0.1 then
-			record.hum:Move(toGoal.Unit, false)
+	local blocked = sightBlocked(root.Position, targetRoot.Position)
+	local stuck = (now - record.lastMoveTime) > STUCK_REPLAN and dist > ATTACK_RANGE
+
+	if blocked or stuck then
+		-- Navigate AROUND geometry. Recompute toward the player's CURRENT position; retry fast after a
+		-- failure or while wedged, otherwise sparsely (perf).
+		record.mode = "path"
+		local interval = record.pathFailed and PATH_RETRY or GameConfig.PathRecompute
+		if stuck then
+			interval = math.min(interval, PATH_RETRY)
 		end
+		if not record.computing and (now - record.lastPath) >= interval then
+			record.lastPath = now
+			task.spawn(recomputePath, record, targetRoot.Position)
+		end
+	else
+		-- Clear line of sight: chase the live position directly (no stale waypoints).
+		record.mode = "direct"
+		record.waypoints = nil
+		record.waypointIndex = 1
 	end
 
 	-- Attack on contact.
@@ -863,26 +903,84 @@ local function think(record, now: number)
 		end
 	end
 
-	-- Stuck detection: moving OR meleeing a player both count as progress. A zombie that does neither
-	-- for STUCK_TIMEOUT (wedged on geometry / unreachable) force-kills itself so the round can clear.
-	if (root.Position - record.lastPos).Magnitude > STUCK_DIST or dist <= ATTACK_RANGE then
-		record.lastPos = root.Position
-		record.lastMoveTime = now
-	end
+	-- Backstop: a zombie wedged for STUCK_TIMEOUT (or alive too long) force-kills itself so the round
+	-- can't soft-lock on something unreachable.
 	if (now - record.lastMoveTime) > STUCK_TIMEOUT or (now - record.spawnTime) > MAX_LIFETIME then
-		record.hum.Health = 0 -- triggers Died -> onZombieDied -> aliveCount frees, round can clear
+		record.hum.Health = 0
 		return
 	end
 
 	record.nextThink = now + GameConfig.ZombieAITickRate
 end
 
+-- STEER (every frame): drive toward the live goal + hop obstacles. Cheap (no pathfinding here).
+local function steer(record, now: number)
+	local hum = record.hum
+	local root = record.root
+	if not hum or not root or not root.Parent then
+		return
+	end
+	local targetRoot = record.targetRoot
+	if record.mode == "idle" or not targetRoot or not targetRoot.Parent then
+		hum:Move(Vector3.zero)
+		return
+	end
+
+	local dist = (root.Position - targetRoot.Position).Magnitude
+
+	-- Goal = the player's LIVE position (direct) or the current path waypoint (path).
+	local goal = targetRoot.Position
+	if record.mode == "path" and record.waypoints and record.waypointIndex <= #record.waypoints then
+		local wp = record.waypoints[record.waypointIndex]
+		goal = wp.Position
+		local flat = Vector3.new(root.Position.X - goal.X, 0, root.Position.Z - goal.Z)
+		if flat.Magnitude < WAYPOINT_REACH then
+			if wp.Action == Enum.PathWaypointAction.Jump then
+				hum.Jump = true
+			end
+			record.waypointIndex += 1
+		end
+	end
+
+	if dist <= ATTACK_RANGE then
+		hum:Move(Vector3.zero) -- in melee range: stop shoving the player around
+	else
+		local toGoal = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z)
+		if toGoal.Magnitude > 0.1 then
+			local move = toGoal.Unit
+			hum:Move(move, false)
+
+			-- Jump up onto / over stuff: probe ahead. If something blocks at foot height but the path is
+			-- clear higher up, it's a ledge/step/obstacle we can hop.
+			if now >= (record.nextJumpCheck or 0) then
+				record.nextJumpCheck = now + JUMP_CHECK_RATE
+				local ahead = move * OBSTACLE_AHEAD
+				local params = worldOnlyParams()
+				local lowHit = Workspace:Raycast(root.Position - Vector3.new(0, 1.5, 0), ahead, params)
+				local highHit = Workspace:Raycast(root.Position + Vector3.new(0, 2, 0), ahead, params)
+				if lowHit and not highHit then
+					hum.Jump = true
+				end
+			end
+		end
+	end
+
+	-- Progress tracking for stuck detection (moving OR meleeing both count as progress).
+	if (root.Position - record.lastPos).Magnitude > STUCK_DIST or dist <= ATTACK_RANGE then
+		record.lastPos = root.Position
+		record.lastMoveTime = now
+	end
+end
+
 local lastDebug = 0
 local function onHeartbeat()
 	local now = os.clock()
 	for _, record in active do
-		if now >= record.nextThink then
-			think(record, now)
+		if not record.dead then
+			if now >= record.nextThink then
+				think(record, now) -- sparse planning
+			end
+			steer(record, now)     -- per-frame real-time steering
 		end
 	end
 
