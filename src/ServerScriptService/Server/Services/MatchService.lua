@@ -8,7 +8,6 @@
 -- Owns the ephemeral per-match state (cash, owned weapons, ammo, upgrades) keyed by userId.
 
 local Players = game:GetService("Players")
-local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -68,27 +67,12 @@ local function makePlayerState(player: Player)
 	}
 end
 
-local function getPlayerSpawns(): { BasePart }
-	local list = {}
-	for _, inst in CollectionService:GetTagged("PlayerSpawn") do
-		if inst:IsA("BasePart") then
-			table.insert(list, inst)
-		end
-	end
-	return list
-end
-
--- (Re)spawn a player at a PlayerSpawn and arm the respawn-on-death loop. Cash/weapons/upgrades persist.
+-- (Re)spawn a player and arm the respawn-on-death loop. Cash/weapons/upgrades persist. (No maps yet, so
+-- players spawn at the default location — ask to re-add tagged PlayerSpawn points when you build maps.)
 local function spawnCharacter(player: Player)
 	player:LoadCharacter()
 	local char = player.Character or player.CharacterAdded:Wait()
 	char:WaitForChild("HumanoidRootPart", 5)
-
-	local spawns = getPlayerSpawns()
-	if #spawns > 0 and char.PrimaryPart then
-		local sp = spawns[math.random(#spawns)]
-		char:PivotTo(sp.CFrame * CFrame.new(0, 4, 0))
-	end
 
 	local ps = state.players[player.UserId]
 	if ps then

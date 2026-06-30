@@ -77,7 +77,6 @@ local roundToken = 0                  -- bumped to cancel in-flight spawn loops 
 local bossRecord: any = nil           -- the one live boss, if any (drives the boss health bar)
 
 local pool: { [string]: { Model } } = {}  -- typeId -> reusable models
-local spawnPoints: { BasePart } = {}
 local graveTemplates: { Model } = {}      -- Grave models from Assets/Graves, cloned above each spawn
 local zombieFolder: Folder
 local poolFolder: Folder
@@ -109,16 +108,6 @@ local function scaledSpeed(round: number, t): number
 	return math.min(GameConfig.ZombieMaxSpeed, s)
 end
 
--- ===== SPAWN POINTS =====
-local function refreshSpawnPoints()
-	local list = {}
-	for _, inst in CollectionService:GetTagged("ZombieSpawn") do
-		if inst:IsA("BasePart") then
-			table.insert(list, inst)
-		end
-	end
-	spawnPoints = list
-end
 
 -- ===== MODEL BUILD / POOL =====
 -- Shared humanoid setup (no joint-snap on death, auto-jump small ledges, an Animator for poses).
@@ -809,25 +798,9 @@ local function tooCloseToActiveGrave(pos: Vector3): boolean
 	return false
 end
 
-local warnedNoSpawns = false
+-- Spawn ~35 studs from a random living player. (No maps yet, so no ZombieSpawn points — when you build
+-- maps, ask to re-add tagged spawn points.) Keeps clear of active graves so zombies don't stack.
 local function getSpawnCFrame(): CFrame?
-	if #spawnPoints > 0 then
-		-- Try several random spawn points; take the first that isn't crowded by a fresh grave.
-		for _ = 1, 12 do
-			local sp = spawnPoints[math.random(#spawnPoints)]
-			local cf = sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0)
-			if not tooCloseToActiveGrave(cf.Position) then
-				return cf
-			end
-		end
-		return nil -- everything's occupied right now; skip this spawn and the loop retries next interval
-	end
-	-- No ZombieSpawn parts tagged: fall back to ~35 studs from a random living player so the game works
-	-- with zero map setup. (Tag `ZombieSpawn` parts to place real spawn points.)
-	if not warnedNoSpawns then
-		warnedNoSpawns = true
-		warn("[ZombieService] no parts tagged 'ZombieSpawn' — spawning zombies near players as a fallback.")
-	end
 	local candidates = {}
 	for _, player in Players:GetPlayers() do
 		local char = player.Character
@@ -1204,7 +1177,7 @@ local function onHeartbeat()
 
 	if DEBUG and (now - lastDebug) > 2 then
 		lastDebug = now
-		print(("[ZombieDebug] alive=%d remaining=%d spawnPoints=%d"):format(aliveCount, remaining, #spawnPoints))
+		print(("[ZombieDebug] alive=%d remaining=%d"):format(aliveCount, remaining))
 		for _, record in active do
 			local h = record.hum
 			print(("[ZombieDebug]  type=%s walkSpeed=%.1f state=%s hasTarget=%s anchored=%s")
@@ -1349,15 +1322,11 @@ function ZombieService.Start()
 	loadTaggedTemplates()
 	CollectionService:GetInstanceAddedSignal("ZombieTemplate"):Connect(registerTemplate)
 
-	refreshSpawnPoints()
-	CollectionService:GetInstanceAddedSignal("ZombieSpawn"):Connect(refreshSpawnPoints)
-	CollectionService:GetInstanceRemovedSignal("ZombieSpawn"):Connect(refreshSpawnPoints)
-
 	loadGraveTemplates()
 
 	RunService.Heartbeat:Connect(onHeartbeat)
 
-	print(("[ZombieService] started (%d ZombieSpawn, %d grave model(s) in Assets/Graves)"):format(#spawnPoints, #graveTemplates))
+	print(("[ZombieService] started (%d grave model(s) in Assets/Graves)"):format(#graveTemplates))
 end
 
 return ZombieService

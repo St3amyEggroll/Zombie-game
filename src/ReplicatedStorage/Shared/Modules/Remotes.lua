@@ -42,6 +42,10 @@ local DEFINITIONS: { [string]: string } = {
 	PointsChanged     = "RemoteEvent",     -- S->C: (points)
 	KillStreak        = "RemoteEvent",     -- S->C: (streak, multiplier) — chain-kill flair + cash bonus
 
+	-- TrapService (buyable map hazards)
+	TrapActivated     = "RemoteEvent",     -- S->C: (trapPart, trapType, duration) — turn trap VFX on
+	TrapDeactivated   = "RemoteEvent",     -- S->C: (trapPart) — turn trap VFX off
+
 	-- ShopService (Zombie Rush menu shop — buy + upgrade weapons for cash)
 	BuyWeapon         = "RemoteEvent",     -- C->S: (weaponId) buy a weapon
 	UpgradeWeapon     = "RemoteEvent",     -- C->S: (weaponId) upgrade a weapon
