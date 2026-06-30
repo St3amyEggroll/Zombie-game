@@ -208,10 +208,29 @@ local function attach(player: Player)
 		end
 	end
 
-	-- Weld the handle to the hand with the grip offset. A "Grip" CFrame attribute (set in Studio) wins;
-	-- otherwise use the per-weapon GRIPS table at the top of this file.
-	local grip = template:GetAttribute("Grip")
-	local c0 = (typeof(grip) == "CFrame") and grip or gripCFrame(ps.equippedWeapon)
+	-- Decide how the gun sits in the hand. Priority:
+	--   1) BEST + EASIEST: an Attachment named "Grip" in the model — the gun snaps so that attachment lands
+	--      in the hand. Just drag/rotate that attachment in Studio until the gun looks right (its gizmo
+	--      shows orientation). No numbers, no guessing.
+	--   2) a "Grip" CFrame attribute on the model.
+	--   3) the per-weapon GRIPS number table at the top of this file.
+	local c0
+	local gripAtt
+	for _, d in model:GetDescendants() do
+		if d:IsA("Attachment") and (d.Name == "Grip" or d.Name == "GripAttachment") then
+			gripAtt = d
+			break
+		end
+	end
+	if gripAtt then
+		-- Place the handle so the Grip attachment coincides with the hand: handle = hand * C0, and we want
+		-- the attachment (at handle*rel) to equal the hand, so C0 = rel:Inverse().
+		local rel = handle.CFrame:ToObjectSpace(gripAtt.WorldCFrame)
+		c0 = rel:Inverse()
+	else
+		local grip = template:GetAttribute("Grip")
+		c0 = (typeof(grip) == "CFrame") and grip or gripCFrame(ps.equippedWeapon)
+	end
 	local weld = Instance.new("Weld")
 	weld.Part0 = hand
 	weld.Part1 = handle
