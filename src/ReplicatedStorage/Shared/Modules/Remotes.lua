@@ -28,6 +28,7 @@ local DEFINITIONS: { [string]: string } = {
 	BossSpawned       = "RemoteEvent",     -- S->C: (name, maxHealth) — boss entrance + show health bar
 	BossHealth        = "RemoteEvent",     -- S->C: (health, maxHealth) — update the boss bar
 	BossDefeated      = "RemoteEvent",     -- S->C: hide the bar + "boss defeated" banner
+	BulletTime        = "RemoteEvent",     -- S->C: (position) — last kill of a wave, play slow-mo punch-in
 
 	-- CombatService (THE exploit surface — server validates everything)
 	FireWeapon        = "RemoteEvent",     -- C->S: intent (origin, direction, weaponId)

@@ -688,6 +688,12 @@ local function onZombieDied(record)
 
 	Remotes.Get("ZombieDied"):FireAllClients(record.typeId, record.root.Position)
 
+	-- Last kill of the wave? (this one is still counted in aliveCount until release, so <=1 means it's the
+	-- final living zombie and nothing more is owed). Trigger the slow-mo punch-in.
+	if remaining <= 0 and aliveCount <= 1 then
+		Remotes.Get("BulletTime"):FireAllClients(record.root.Position)
+	end
+
 	local hum = record.model:FindFirstChildOfClass("Humanoid")
 	if hum then
 		hum.WalkSpeed = 0
