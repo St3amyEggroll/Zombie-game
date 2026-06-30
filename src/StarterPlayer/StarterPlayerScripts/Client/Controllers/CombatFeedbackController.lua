@@ -86,39 +86,25 @@ local function updateShake(dt: number)
 end
 
 -- ===== EFFECT PARTS =====
--- The muzzle world CFrame of a given character's held weapon (a "Muzzle" attachment if present, else the
--- front of the Handle).
-local function muzzleCFrameOf(character: Model?): CFrame?
+-- Where the bullet + muzzle flash come from. EXACT BARREL: add an Attachment named "Muzzle" to the gun
+-- model, positioned at the tip of the barrel — both the tracer and the flash spawn there. Without one we
+-- fall back to the gun's Handle (its center, in-hand) — NOT a forward projection, which on a big or
+-- rotated gun threw the origin way out in front ("starts really far away"). Last resort: the right hand.
+local function gunMuzzleCF(character: Model?): CFrame?
 	local held = character and character:FindFirstChild("HeldWeapon")
-	if not held then
-		return nil
+	if held then
+		local muzzle = held:FindFirstChild("Muzzle", true)
+		if muzzle and muzzle:IsA("Attachment") then
+			return muzzle.WorldCFrame
+		end
+		local handle = held:FindFirstChild("Handle") or held.PrimaryPart
+		if handle and handle:IsA("BasePart") then
+			return handle.CFrame
+		end
 	end
-	local muzzle = held:FindFirstChild("Muzzle", true)
-	if muzzle and muzzle:IsA("Attachment") then
-		return muzzle.WorldCFrame
-	end
-	local handle = held:FindFirstChild("Handle") or held.PrimaryPart
-	if handle and handle:IsA("BasePart") then
-		return handle.CFrame * CFrame.new(0, 0, -handle.Size.Z * 0.5)
-	end
-	return nil
-end
-
--- Where the bullet STARTS — kept close to the player (the gun grip / Handle in-hand), NOT the projected
--- barrel tip, so tracers read as coming from you rather than spawning out in front. A "TracerStart"
--- attachment on the weapon overrides this if you want a precise spot.
-local function tracerStartOf(character: Model?): Vector3?
-	local held = character and character:FindFirstChild("HeldWeapon")
-	if not held then
-		return nil
-	end
-	local custom = held:FindFirstChild("TracerStart", true)
-	if custom and custom:IsA("Attachment") then
-		return custom.WorldPosition
-	end
-	local handle = held:FindFirstChild("Handle") or held.PrimaryPart
-	if handle and handle:IsA("BasePart") then
-		return handle.Position
+	local hand = character and (character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm"))
+	if hand and hand:IsA("BasePart") then
+		return hand.CFrame
 	end
 	return nil
 end
@@ -177,14 +163,6 @@ local function drawTracer(from: Vector3, to: Vector3, weaponId: string?)
 	trail.LightEmission = 1
 	trail.FaceCamera = true
 	trail.Parent = round
-
-	if cfg.Glow and cfg.Glow > 0 then
-		local light = Instance.new("PointLight")
-		light.Color = cfg.Color
-		light.Brightness = cfg.Glow
-		light.Range = 8
-		light.Parent = round
-	end
 
 	local travel = math.clamp(dist / math.max(cfg.Speed, 1), 0.02, 0.6)
 	local goal = TweenService:Create(round, TweenInfo.new(travel, Enum.EasingStyle.Linear), { CFrame = CFrame.new(to) })
@@ -301,7 +279,7 @@ end
 -- always goes to the exact zombie the server hit).
 local function onLocalFired(weaponId: string)
 	addShake(weaponId) -- screen shake + camera kick, scaled per weapon
-	local muzzleCF = muzzleCFrameOf(localPlayer.Character)
+	local muzzleCF = gunMuzzleCF(localPlayer.Character)
 	if muzzleCF then
 		muzzleFlash(muzzleCF)
 	end
@@ -311,9 +289,9 @@ end
 local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3, weaponId: string?)
 	local shooter = Players:GetPlayerByUserId(shooterUserId)
 	local character = shooter and shooter.Character
-	local muzzleCF = muzzleCFrameOf(character)
-	-- Tracer starts at the gun grip (close to the player); muzzle flash still pops at the barrel.
-	local from = tracerStartOf(character) or origin
+	local muzzleCF = gunMuzzleCF(character)
+	-- Tracer + flash both start at the gun barrel (the "Muzzle" attachment, or the gun in-hand).
+	local from = muzzleCF and muzzleCF.Position or origin
 	if shooterUserId ~= localPlayer.UserId and muzzleCF then
 		muzzleFlash(muzzleCF) -- others' muzzle flash (the local player already flashed on fire)
 	end
