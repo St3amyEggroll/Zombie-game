@@ -1060,6 +1060,7 @@ local function spawnOne(round: number, forcedType: string?)
 		lastPath = 0,
 		lastAttack = 0,
 		nextLeap = 0,           -- Leaper pounce cooldown clock
+		leapUntil = 0,          -- while os.clock() < this, the Leaper is mid-pounce (don't drive it)
 		nextJumpCheck = 0,
 		spawnTime = now,
 		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
@@ -1151,6 +1152,15 @@ local function tryLeap(record, now: number, targetRoot: BasePart, flatDist: numb
 	local g = math.max(1, Workspace.Gravity)
 	local airTime = 2 * LEAP_UP_SPEED / g
 	local hSpeed = math.min(LEAP_MAX_HSPEED, flatDist / airTime)
+
+	-- Mark the pounce window so steer() stops driving it: while grounded the Humanoid's walk controller damps
+	-- horizontal velocity back to WalkSpeed (which made it "just jump straight up"). Put it in the Jumping
+	-- state and leave it physics-only for the flight so the ballistic arc actually carries it AT the player.
+	record.leapUntil = now + airTime + 0.15
+	pcall(function()
+		hum:ChangeState(Enum.HumanoidStateType.Jumping)
+	end)
+	hum:Move(Vector3.zero) -- clear any walk MoveDirection so it isn't fought this step
 	root.AssemblyLinearVelocity = dir * hSpeed + Vector3.new(0, LEAP_UP_SPEED, 0)
 	if record.attackTrack then
 		record.attackTrack:Play(0.05) -- reuse the attack/lunge anim as the pounce, if one is set
@@ -1235,6 +1245,12 @@ local function steer(record, now: number)
 	local targetRoot = record.targetRoot
 	if record.mode == "idle" or not targetRoot or not targetRoot.Parent then
 		hum:Move(Vector3.zero)
+		return
+	end
+
+	-- Mid-pounce (Leaper): let the ballistic arc carry it; applying walk force here would kill the horizontal
+	-- speed and it'd just drop straight down. Resume normal steering once it lands.
+	if now < (record.leapUntil or 0) then
 		return
 	end
 
