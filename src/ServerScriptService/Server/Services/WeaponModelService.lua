@@ -23,8 +23,25 @@ local CombatService = require(script.Parent.CombatService)
 local WeaponModelService = {}
 
 -- ===== TUNABLES =====
--- Default grip offset (Handle relative to the hand). Tune per-model via a "Grip" CFrame attribute instead.
-local DEFAULT_GRIP = CFrame.new(0, -0.1, -0.6) * CFrame.Angles(math.rad(-90), 0, 0)
+-- HOW EACH GUN SITS IN THE HAND. This is the thing to edit if a weapon looks wrong.
+--   pos = { x, y, z } in studs — moves the gun: +x right, +y up, -z forward (away from you)
+--   rot = { x, y, z } in degrees — spins the gun: x = pitch (tilt up/down), y = yaw (turn left/right),
+--                                   z = roll (bank sideways)
+-- Each weaponId can have its own entry; anything missing falls back to `default`. (A "Grip" CFrame
+-- attribute set on the model in Studio still wins over this, for fine manual tuning.)
+local GRIPS = {
+	default = { pos = { 0, -0.1, -0.6 }, rot = { -90, 0, 0 } },
+	pistol  = { pos = { 0, -0.1, -0.6 }, rot = { -90, 0, 0 } },
+	ak47    = { pos = { 0, -0.3, -1.2 }, rot = { -90, 0, 0 } },
+	minigun = { pos = { 0, -0.5, -1.6 }, rot = { -90, 0, 0 } },
+}
+
+local function gripCFrame(weaponId: string): CFrame
+	local g = GRIPS[weaponId] or GRIPS.default
+	return CFrame.new(g.pos[1], g.pos[2], g.pos[3])
+		* CFrame.Angles(math.rad(g.rot[1]), math.rad(g.rot[2]), math.rad(g.rot[3]))
+end
+
 local HELD_NAME = "HeldWeapon"
 
 local templates: { [string]: Model } = {}  -- weaponId -> Model
@@ -191,9 +208,10 @@ local function attach(player: Player)
 		end
 	end
 
-	-- Weld the handle to the hand with the grip offset.
+	-- Weld the handle to the hand with the grip offset. A "Grip" CFrame attribute (set in Studio) wins;
+	-- otherwise use the per-weapon GRIPS table at the top of this file.
 	local grip = template:GetAttribute("Grip")
-	local c0 = (typeof(grip) == "CFrame") and grip or DEFAULT_GRIP
+	local c0 = (typeof(grip) == "CFrame") and grip or gripCFrame(ps.equippedWeapon)
 	local weld = Instance.new("Weld")
 	weld.Part0 = hand
 	weld.Part1 = handle
