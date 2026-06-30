@@ -23,8 +23,6 @@ local DEFINITIONS: { [string]: string } = {
 	RoundChanged      = "RemoteEvent",     -- S->C: (round)
 
 	-- ZombieService
-	ZombieSpawned     = "RemoteEvent",     -- S->C: special announce / spawn VFX
-	ZombieDied        = "RemoteEvent",     -- S->C: kill juice
 	BossSpawned       = "RemoteEvent",     -- S->C: (name, maxHealth) — boss entrance + show health bar
 	BossHealth        = "RemoteEvent",     -- S->C: (health, maxHealth) — update the boss bar
 	BossDefeated      = "RemoteEvent",     -- S->C: hide the bar + "boss defeated" banner

@@ -8,10 +8,11 @@ local GameConfig = {}
 GameConfig.BaseZombiesPerRound = 6
 GameConfig.PlayerCountScale    = 0.5   -- +50% zombies per extra player
 GameConfig.RoundZombieGrowth   = 1.15  -- zombie COUNT ×= this per round
-GameConfig.RoundBreakSeconds   = 8     -- prep time between rounds
+GameConfig.RoundBreakSeconds   = 4     -- prep time between rounds
 
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
-GameConfig.MaxAliveZombies   = 24      -- HARD cap on simultaneous zombies
+GameConfig.MaxAliveZombies   = 75      -- HARD cap on simultaneous zombies (owed extras wait for a kill,
+                                       -- then spawn in — they don't despawn to make room)
 GameConfig.ZombieAITickRate  = 0.2     -- seconds between AI re-targets (staggered across zombies)
 GameConfig.PathRecompute     = 1.5     -- seconds between a zombie's path recomputes
 

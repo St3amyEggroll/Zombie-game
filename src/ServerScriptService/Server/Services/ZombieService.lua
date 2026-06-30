@@ -52,7 +52,8 @@ local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path
 local JUMP_CHECK_RATE  = 0.25   -- seconds between a zombie's "should I jump this obstacle?" probes
 local OBSTACLE_AHEAD   = 3      -- studs ahead the zombie probes for a ledge/obstacle to jump
 local STUCK_REPLAN     = 0.9    -- seconds of no progress before a direct-chaser switches to pathfinding
-local MAX_LIFETIME     = 30     -- backstop: a zombie alive this long is force-killed (anti soft-lock)
+local MAX_LIFETIME     = 120    -- backstop: a zombie alive this long is force-killed (anti soft-lock).
+                               -- High so big hordes don't get culled mid-chase; STUCK_TIMEOUT handles real wedges.
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
 local GRAVE_STAND_HEIGHT = 3.5 -- studs the zombie's root sits above the ground when fully risen (feet land
                                -- just above ground so it settles cleanly instead of toppling)
@@ -686,8 +687,6 @@ local function onZombieDied(record)
 	-- aliveCount is freed in release() (after the corpse linger), so corpses still count against the
 	-- MaxAliveZombies cap until they're actually pooled — keeping true simultaneous bodies under the cap.
 
-	Remotes.Get("ZombieDied"):FireAllClients(record.typeId, record.root.Position)
-
 	-- Last kill of the wave? (this one is still counted in aliveCount until release, so <=1 means it's the
 	-- final living zombie and nothing more is owed). Trigger the slow-mo punch-in.
 	if remaining <= 0 and aliveCount <= 1 then
@@ -1026,9 +1025,6 @@ local function spawnOne(round: number, forcedType: string?)
 	-- Rise up out of the ground (under a grave headstone) before the AI kicks in.
 	startEmergence(record, spawnCF)
 
-	if t.isSpecial then
-		Remotes.Get("ZombieSpawned"):FireAllClients(typeId, root.Position)
-	end
 	return record
 end
 
