@@ -53,7 +53,8 @@ AnimationConfig.Weapons = {
 	ak47   = { Hold = "", Reload = "" },
 }
 
--- Played on each ZOMBIE rig. Walk loops while chasing; Attack on a hit; Death on death.
+-- Played on each ZOMBIE rig, SERVER-SIDE. Walk loops while chasing (defaults to the engine's walk
+-- animation for the rig if left blank, so zombies animate out of the box); Attack on a hit; Death on death.
 -- A type-specific entry (e.g. ["walker"]) overrides Default.
 AnimationConfig.Zombies = {
 	Default = { Walk = "", Attack = "", Death = "" },

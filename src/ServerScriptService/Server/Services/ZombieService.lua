@@ -399,7 +399,15 @@ local function pickType(round: number): string?
 	end)
 end
 
--- ===== ZOMBIE ANIMATIONS (ID-gated via AnimationConfig.Zombies) =====
+-- ===== ZOMBIE ANIMATIONS (server-managed; played on the rig's Animator on the server, so every client
+-- sees the same thing and it can't be tampered with client-side) =====
+-- Walk defaults to Roblox's built-in walk animation for the rig type (public, loads server-side) so zombies
+-- animate out of the box; attack/death are optional and come from AnimationConfig.Zombies.
+local DEFAULT_WALK = {
+	[Enum.HumanoidRigType.R15] = "rbxassetid://507777826", -- Roblox default R15 walk
+	[Enum.HumanoidRigType.R6] = "rbxassetid://180426354",  -- Roblox default R6 walk
+}
+
 local zAnimCache: { [string]: Animation } = {}
 local function zGetAnim(id: string): Animation
 	local a = zAnimCache[id]
@@ -417,11 +425,9 @@ local function loadZombieTracks(record)
 	if not animator then
 		return
 	end
-	local cfg = AnimationConfig.Zombies[record.typeId] or AnimationConfig.Zombies.Default
-	if not cfg then
-		return
-	end
-	local walk = AnimationConfig.Resolve(cfg.Walk)
+	local cfg = AnimationConfig.Zombies[record.typeId] or AnimationConfig.Zombies.Default or {}
+	-- Walk: use the configured id, else fall back to the engine's default walk for this rig type.
+	local walk = AnimationConfig.Resolve(cfg.Walk) or DEFAULT_WALK[record.hum.RigType]
 	if walk then
 		record.walkTrack = animator:LoadAnimation(zGetAnim(walk))
 		record.walkTrack.Looped = true
