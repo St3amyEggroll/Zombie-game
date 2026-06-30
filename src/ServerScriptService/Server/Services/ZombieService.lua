@@ -458,39 +458,20 @@ local function recomputePath(record, targetPos: Vector3)
 end
 
 -- ===== RAGDOLL =====
--- Turn a rigged Humanoid model limp: convert EVERY joint holding the rig (Motor6D, Weld, Snap,
--- ManualWeld, and WeldConstraint) into a floppy BallSocketConstraint, make the limbs collide with the
--- world, and stop the Humanoid from standing. Returns true if it ragdolled (false if it has no joints).
--- The point on `part`'s surface nearest `towardPos` — a good estimate of where a limb actually joins the
--- body (the shoulder/hip/neck), so the ragdoll pivots there instead of dislocating.
-local function nearestSurfacePoint(part: BasePart, towardPos: Vector3): Vector3
-	local rel = part.CFrame:PointToObjectSpace(towardPos)
-	local half = part.Size * 0.5
-	rel = Vector3.new(
-		math.clamp(rel.X, -half.X, half.X),
-		math.clamp(rel.Y, -half.Y, half.Y),
-		math.clamp(rel.Z, -half.Z, half.Z)
-	)
-	return part.CFrame:PointToWorldSpace(rel)
-end
+-- Make a rigged Humanoid model go limp by turning the joints that hold it together into floppy
+-- BallSocketConstraints. R6 rigs (Head/Torso/Arms/Legs as separate parts) use the KNOWN R6 joint
+-- positions — that's the only way to pin the shoulder/hip at the right spot so arms don't dislocate.
+-- Anything else falls back to a generic pass over its actual joints.
 
-local function makeRagdollJoint(part0: BasePart, part1: BasePart, c0: CFrame?, c1: CFrame?)
+-- Create a ball-socket between two parts, with each side's attachment at the given LOCAL CFrame.
+local function attachBall(part0: BasePart, part1: BasePart, cf0: CFrame, cf1: CFrame)
 	local a0 = Instance.new("Attachment")
 	a0.Name = "RagdollAtt"
+	a0.CFrame = cf0
+	a0.Parent = part0
 	local a1 = Instance.new("Attachment")
 	a1.Name = "RagdollAtt"
-	if c0 and c1 then
-		-- Motor6D/Weld: the joint's C0/C1 give the exact pivot.
-		a0.CFrame = c0
-		a1.CFrame = c1
-	else
-		-- WeldConstraint (no C0/C1): pivot where the limb meets the body (its surface point nearest the
-		-- other part), NOT the midpoint — the midpoint floats in space and makes the limb look dislocated.
-		local pivot = nearestSurfacePoint(part1, part0.Position)
-		a0.WorldPosition = pivot
-		a1.WorldPosition = pivot
-	end
-	a0.Parent = part0
+	a1.CFrame = cf1
 	a1.Parent = part1
 
 	local bsc = Instance.new("BallSocketConstraint")
@@ -505,29 +486,92 @@ local function makeRagdollJoint(part0: BasePart, part1: BasePart, c0: CFrame?, c
 	bsc.Parent = part1
 end
 
-local function setRagdoll(record): boolean
-	local model = record.model
-	-- Catch EVERY joint type holding the rig together: Motor6D/Weld/Snap/ManualWeld (JointInstance, have
-	-- C0/C1) AND WeldConstraint (no C0/C1). Whichever holds the arms, it gets turned into a floppy joint.
-	local jointInstances, weldConstraints = {}, {}
-	for _, m in model:GetDescendants() do
-		if m:IsA("JointInstance") and m.Part0 and m.Part1 then
-			table.insert(jointInstances, m)
-		elseif m:IsA("WeldConstraint") and m.Part0 and m.Part1 then
-			table.insert(weldConstraints, m)
+-- Disable whatever rigid joint(s) currently connect parts a and b (Motor6D/Weld/Snap/WeldConstraint).
+local function disableJointsBetween(model: Model, a: BasePart, b: BasePart)
+	for _, d in model:GetDescendants() do
+		if d:IsA("JointInstance") or d:IsA("WeldConstraint") then
+			local p0, p1 = d.Part0, d.Part1
+			if (p0 == a and p1 == b) or (p0 == b and p1 == a) then
+				d.Enabled = false
+			end
 		end
 	end
-	if #jointInstances == 0 and #weldConstraints == 0 then
-		return false -- nothing rigid to ragdoll
-	end
+end
 
-	for _, m in jointInstances do
-		makeRagdollJoint(m.Part0, m.Part1, m.C0, m.C1)
-		m.Enabled = false -- driven by the ball-socket now, so the limb goes limp
+-- The standard R6 joint locations: { limb name, attachment on Torso, attachment on the limb }. These put
+-- each ball-socket exactly at the shoulder / hip / neck so limbs hang naturally instead of dislocating.
+local R6_JOINTS = {
+	{ limb = "Head",      c0 = CFrame.new(0, 1, 0),    c1 = CFrame.new(0, -0.5, 0) },
+	{ limb = "Right Arm", c0 = CFrame.new(1, 0.5, 0),  c1 = CFrame.new(-0.5, 0.5, 0) },
+	{ limb = "Left Arm",  c0 = CFrame.new(-1, 0.5, 0), c1 = CFrame.new(0.5, 0.5, 0) },
+	{ limb = "Right Leg", c0 = CFrame.new(1, -1, 0),   c1 = CFrame.new(0.5, 1, 0) },
+	{ limb = "Left Leg",  c0 = CFrame.new(-1, -1, 0),  c1 = CFrame.new(-0.5, 1, 0) },
+}
+
+local function setupR6Ragdoll(model: Model): boolean
+	local torso = model:FindFirstChild("Torso")
+	if not (torso and torso:IsA("BasePart")) then
+		return false
 	end
-	for _, m in weldConstraints do
-		makeRagdollJoint(m.Part0, m.Part1, nil, nil)
+	local made = false
+	for _, j in R6_JOINTS do
+		local limb = model:FindFirstChild(j.limb)
+		if limb and limb:IsA("BasePart") then
+			disableJointsBetween(model, torso, limb) -- unlock the rigid arm/leg/head connection
+			attachBall(torso, limb, j.c0, j.c1)      -- hang it from the proper R6 joint
+			made = true
+		end
+	end
+	return made
+end
+
+-- Fallback for R15 / custom rigs: ragdoll every actual joint (C0/C1 from JointInstances; for a
+-- WeldConstraint, pivot where the limb's surface is nearest the other part).
+local function setupGenericRagdoll(model: Model): boolean
+	local jis, wcs = {}, {}
+	for _, m in model:GetDescendants() do
+		if m:IsA("JointInstance") and m.Part0 and m.Part1 then
+			table.insert(jis, m)
+		elseif m:IsA("WeldConstraint") and m.Part0 and m.Part1 then
+			table.insert(wcs, m)
+		end
+	end
+	if #jis == 0 and #wcs == 0 then
+		return false
+	end
+	for _, m in jis do
+		attachBall(m.Part0, m.Part1, m.C0, m.C1)
 		m.Enabled = false
+	end
+	for _, m in wcs do
+		local part0, part1 = m.Part0, m.Part1
+		local rel = part1.CFrame:PointToObjectSpace(part0.Position)
+		local half = part1.Size * 0.5
+		rel = Vector3.new(
+			math.clamp(rel.X, -half.X, half.X),
+			math.clamp(rel.Y, -half.Y, half.Y),
+			math.clamp(rel.Z, -half.Z, half.Z)
+		)
+		local pivotWorld = part1.CFrame:PointToWorldSpace(rel)
+		attachBall(part0, part1, part0.CFrame:ToObjectSpace(CFrame.new(pivotWorld)), part1.CFrame:ToObjectSpace(CFrame.new(pivotWorld)))
+		m.Enabled = false
+	end
+	return true
+end
+
+local function setRagdoll(record): boolean
+	local model = record.model
+	local hum = model:FindFirstChildOfClass("Humanoid")
+
+	local made = false
+	if hum and hum.RigType == Enum.HumanoidRigType.R6 then
+		made = setupR6Ragdoll(model)
+	end
+	if not made then
+		made = setupGenericRagdoll(model)
+	end
+	if not made then
+		return false -- nothing rigid to ragdoll (e.g. the welded grey placeholder)
 	end
 
 	-- Limbs collide with the world so the body piles on the floor; the root stops propping it upright.
@@ -544,7 +588,6 @@ local function setRagdoll(record): boolean
 		end
 	end
 
-	local hum = model:FindFirstChildOfClass("Humanoid")
 	if hum then
 		hum.PlatformStand = true
 		hum:ChangeState(Enum.HumanoidStateType.Physics)
