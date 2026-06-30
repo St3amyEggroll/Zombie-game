@@ -12,11 +12,12 @@ local CameraController = {}
 local MAX_AIM_DIST = 1000 -- how far the aim ray reaches to find a target point
 
 local localPlayer = Players.LocalPlayer
+local mouse = localPlayer:GetMouse()
 
--- Plain stock third-person camera.
+-- Third-person camera. Min-zoom is kept back so you can't scroll into first person.
 local function applyThirdPerson()
 	localPlayer.CameraMode = Enum.CameraMode.Classic
-	localPlayer.CameraMinZoomDistance = 0.5
+	localPlayer.CameraMinZoomDistance = 7   -- > ~1 so the camera never enters first person
 	localPlayer.CameraMaxZoomDistance = 128
 	local character = localPlayer.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -26,10 +27,11 @@ local function applyThirdPerson()
 end
 
 -- Returns (origin: Vector3, direction: Vector3) or nil if the character isn't ready.
+-- Aims THROUGH THE MOUSE CURSOR (so it works in third person, where the mouse is free) rather than the
+-- screen center. origin is on the player (passes the server's origin check); direction points at the cursor.
 function CameraController.GetAim(): (Vector3?, Vector3?)
-	local camera = Workspace.CurrentCamera
 	local character = localPlayer.Character
-	if not camera or not character then
+	if not character then
 		return nil, nil
 	end
 	local originPart = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
@@ -37,21 +39,20 @@ function CameraController.GetAim(): (Vector3?, Vector3?)
 		return nil, nil
 	end
 
-	local vp = camera.ViewportSize
-	local screenRay = camera:ViewportPointToRay(vp.X * 0.5, vp.Y * 0.5)
+	local unitRay = mouse.UnitRay -- ray from the camera through the cursor (handles the GUI inset)
 
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { character }
 	params.IgnoreWater = true
 
-	local hit = Workspace:Raycast(screenRay.Origin, screenRay.Direction * MAX_AIM_DIST, params)
-	local aimPoint = hit and hit.Position or (screenRay.Origin + screenRay.Direction * MAX_AIM_DIST)
+	local hit = Workspace:Raycast(unitRay.Origin, unitRay.Direction * MAX_AIM_DIST, params)
+	local aimPoint = hit and hit.Position or (unitRay.Origin + unitRay.Direction * MAX_AIM_DIST)
 
 	local origin = originPart.Position
 	local direction = aimPoint - origin
 	if direction.Magnitude < 0.001 then
-		direction = screenRay.Direction
+		direction = unitRay.Direction
 	end
 	return origin, direction.Unit
 end
