@@ -958,7 +958,7 @@ local function spawnOne(round: number): boolean
 	if not spawnCF then
 		return false
 	end
-	local typeId = pickType(round) or "walker"
+	local typeId = pickType(round) or "default"
 	local t = ZOMBIE_TYPES[typeId]
 	if not t then
 		return false

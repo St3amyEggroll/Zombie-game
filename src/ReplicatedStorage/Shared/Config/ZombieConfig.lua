@@ -1,6 +1,6 @@
 --!strict
 -- ZombieConfig.lua — archetypes. "isSpecial" = announce + unique VFX on spawn.
--- Bosses have spawnWeight 0 and are spawned on an interval by MatchService.
+-- Enemies in the game: default, speedy, lead, tank, boss. Add an enemy = add a table entry (no logic edits).
 
 export type ZombieType = {
 	id: string, name: string,
@@ -16,25 +16,22 @@ export type ZombieType = {
 
 -- ===== ZOMBIE TABLE =====
 -- The `id` must match your model's name under Assets > Zombies > <id> (else the default model is used).
+-- The only enemies in the game: default, speedy, lead, tank, boss.
 local ZombieConfig: { [string]: any } = {
-	walker = { id="walker", name="Walker", healthMult=1,   speedMult=1,   damage=20, pointsMult=1,   isSpecial=false, minRound=1,  spawnWeight=100, tint=Color3.fromRGB(90,110,80) },
-
-	-- ===== NEW ENEMIES (owner-built models: speedy / lead / tank) =====
+	-- Default: the basic grunt. Uses your Assets > Zombies > default model.
+	default = { id="default", name="Zombie", healthMult=1,    speedMult=1,    damage=20, pointsMult=1,   isSpecial=false, minRound=1,  spawnWeight=100, tint=Color3.fromRGB(90,110,80) },
 	-- Speedy: fragile but FAST — rushes you, low HP, low damage. Forces you to keep moving.
-	speedy = { id="speedy", name="Speedy", healthMult=0.55, speedMult=2.1, damage=12, pointsMult=1.4, isSpecial=false, minRound=3,  spawnWeight=45, tint=Color3.fromRGB(220,200,70) },
+	speedy  = { id="speedy",  name="Speedy", healthMult=0.55, speedMult=2.1,  damage=12, pointsMult=1.4, isSpecial=false, minRound=3,  spawnWeight=45,  tint=Color3.fromRGB(220,200,70) },
 	-- Lead: a heavy mid-tier bullet-sponge — slowish, tanky, hits hard. The "lead-bellied" grunt.
-	lead   = { id="lead",   name="Lead",   healthMult=2.6,  speedMult=0.85, damage=35, pointsMult=1.9, isSpecial=false, minRound=5,  spawnWeight=22, tint=Color3.fromRGB(120,125,135) },
+	lead    = { id="lead",    name="Lead",   healthMult=2.6,  speedMult=0.85, damage=35, pointsMult=1.9, isSpecial=false, minRound=5,  spawnWeight=22,  tint=Color3.fromRGB(120,125,135) },
 	-- Tank: rare, huge HP, slow, devastating melee. A mini-boss that makes you reposition.
-	tank   = { id="tank",   name="Tank",   healthMult=7,    speedMult=0.5,  damage=55, pointsMult=3.5, isSpecial=true,  minRound=8,  spawnWeight=8,  tint=Color3.fromRGB(60,70,60) },
-
-	-- elite "mutated" variant — rare + dangerous (rarity-tier callback)
-	mutant = { id="mutant", name="Mutant", healthMult=6,   speedMult=1.2, damage=50, pointsMult=4,   isSpecial=true,  minRound=10, spawnWeight=5,   tint=Color3.fromRGB(150,60,200) },
-	-- boss: spawned by MatchService on interval, never random
-	abomination = { id="abomination", name="Abomination", healthMult=30, speedMult=0.8, damage=80, pointsMult=10, isSpecial=true, minRound=10, spawnWeight=0, tint=Color3.fromRGB(20,20,20) },
+	tank    = { id="tank",    name="Tank",   healthMult=7,    speedMult=0.5,  damage=55, pointsMult=3.5, isSpecial=true,  minRound=8,  spawnWeight=8,   tint=Color3.fromRGB(60,70,60) },
+	-- Boss: rare, appears at high waves. Enormous HP, hits like a truck, big payout.
+	boss    = { id="boss",    name="Boss",   healthMult=25,   speedMult=0.7,  damage=75, pointsMult=10,  isSpecial=true,  minRound=10, spawnWeight=3,   tint=Color3.fromRGB(40,10,50) },
 }
 
 -- ===== BOSS RULES =====
-ZombieConfig.BossInterval = 10   -- a boss every N rounds
-ZombieConfig.BossId       = "abomination"
+ZombieConfig.BossInterval = 10   -- (reserved) a boss every N rounds, if interval-spawning is added later
+ZombieConfig.BossId       = "boss"
 
 return ZombieConfig
