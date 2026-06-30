@@ -19,7 +19,8 @@ local PickupService = {}
 
 -- ===== TUNABLES =====
 local AMMO_FRACTION = 0.2    -- fraction of each gun's FULL reserve granted per pickup
-local AMMO_PER_WAVE = 2      -- pickups spawned each wave
+local WAVE_DOUBLE   = 10     -- past this wave, spawn 2 pickups per wave instead of 1
+local MAX_PICKUPS   = 10     -- uncollected pickups pile up to this many; then the oldest despawns
 local SPAWN_DELAY_MIN = 4    -- earliest a pickup appears AFTER the wave starts (not right away)
 local SPAWN_DELAY_MAX = 22   -- latest it appears into the wave (if the wave's still going)
 local PICKUP_RADIUS = 6      -- studs a player must be within to grab it
@@ -30,7 +31,8 @@ local SPIN_SPEED    = 1.5    -- radians/sec it spins
 
 local ammoTemplates: { Model } = {}
 local pickupFolder: Folder
-local pickups: { [Model]: any } = {} -- model -> { spin }
+local pickups: { [Model]: any } = {} -- model -> { spin, order }
+local spawnCounter = 0               -- ever-increasing, for FIFO "oldest" despawn
 
 -- ===== ASSET LOOKUP =====
 local function ciFind(parent: Instance?, name: string): Instance?
@@ -99,7 +101,8 @@ local function findGround(x: number, z: number, fallbackY: number): number
 		end
 	end
 	params.FilterDescendantsInstances = filter
-	local hit = Workspace:Raycast(Vector3.new(x, fallbackY + 8, z), Vector3.new(0, -120, 0), params)
+	-- Cast from well ABOVE so the pickup lands on the topmost surface (on top of platforms/props), like graves.
+	local hit = Workspace:Raycast(Vector3.new(x, fallbackY + 50, z), Vector3.new(0, -250, 0), params)
 	return hit and hit.Position.Y or fallbackY
 end
 
@@ -143,7 +146,26 @@ local function spawnOne()
 	local baseY = cf.Position.Y - size.Y * 0.5
 	model:PivotTo(model:GetPivot() + Vector3.new(x - cf.Position.X, (groundY + FLOAT_HEIGHT) - baseY, z - cf.Position.Z))
 	model.Parent = pickupFolder
-	pickups[model] = { spin = 0 }
+	spawnCounter += 1
+	pickups[model] = { spin = 0, order = spawnCounter }
+
+	-- Pile up to MAX_PICKUPS; once over, despawn the OLDEST (smallest order).
+	local count = 0
+	for _ in pickups do
+		count += 1
+	end
+	if count > MAX_PICKUPS then
+		local oldest, oldestOrder = nil, math.huge
+		for m, d in pickups do
+			if d.order < oldestOrder then
+				oldest, oldestOrder = m, d.order
+			end
+		end
+		if oldest then
+			oldest:Destroy()
+			pickups[oldest] = nil
+		end
+	end
 end
 
 local function clearAll()
@@ -153,11 +175,12 @@ local function clearAll()
 	pickups = {}
 end
 
--- Schedule this wave's pickups to appear at random times INTO the wave (not at the start). Each only
+-- Schedule this wave's pickups to appear at random times INTO the wave (not at the start). Pickups are NOT
+-- cleared between waves — they accumulate (up to MAX_PICKUPS). 1 per wave, or 2 past WAVE_DOUBLE. Each only
 -- spawns if we're still on the same wave when its timer fires (so a finished wave doesn't drop late ammo).
 local function spawnWave(round: number)
-	clearAll()
-	for _ = 1, AMMO_PER_WAVE do
+	local count = (round > WAVE_DOUBLE) and 2 or 1
+	for _ = 1, count do
 		local delay = SPAWN_DELAY_MIN + math.random() * (SPAWN_DELAY_MAX - SPAWN_DELAY_MIN)
 		task.delay(delay, function()
 			if MatchService.GetRound() == round and MatchService.GetPhase() == "Playing" then
