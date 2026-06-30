@@ -23,7 +23,9 @@ local WAVE_DOUBLE   = 10     -- past this wave, spawn 2 pickups per wave instead
 local MAX_PICKUPS   = 10     -- uncollected pickups pile up to this many; then the oldest despawns
 local SPAWN_DELAY_MIN = 4    -- earliest a pickup appears AFTER the wave starts (not right away)
 local SPAWN_DELAY_MAX = 22   -- latest it appears into the wave (if the wave's still going)
-local PICKUP_RADIUS = 6      -- studs a player must be within to grab it
+local PICKUP_RADIUS = 4      -- studs from a player at which the pickup is grabbed (no touch needed)
+local MAGNET_RADIUS = 16     -- "decently close": within this, the pickup flies toward the nearest player
+local MAGNET_SPEED  = 45     -- studs/sec the pickup is sucked in
 local SPAWN_MIN     = 18     -- min studs from a random player to drop a pickup
 local SPAWN_MAX     = 45     -- max studs
 local FLOAT_HEIGHT  = 2.5    -- studs above the ground the pickup hovers (the centre of the bob)
@@ -193,28 +195,47 @@ local function spawnWave(round: number)
 	end
 end
 
--- ===== HEARTBEAT: spin + proximity pickup =====
+-- ===== HEARTBEAT: spin + bob + magnet pickup =====
 local function onHeartbeat(dt: number)
 	for model, data in pickups do
 		if not model.Parent then
 			pickups[model] = nil
 		else
-			data.spin += dt * SPIN_SPEED
-			data.t += dt
-			local base = data.base
-			local y = base.Y + math.sin(data.t * BOB_SPEED) * BOB_HEIGHT
-			model:PivotTo(CFrame.new(base.X, y, base.Z) * CFrame.Angles(0, data.spin, 0))
+			-- Nearest living player within MAGNET range.
+			local nearestPlayer, nearestRoot, nearestDist = nil, nil, MAGNET_RADIUS
 			for _, pl in Players:GetPlayers() do
 				local char = pl.Character
 				local r = char and char:FindFirstChild("HumanoidRootPart")
 				local h = char and char:FindFirstChildOfClass("Humanoid")
-				if r and h and h.Health > 0 and (r.Position - base).Magnitude <= PICKUP_RADIUS then
-					CombatService.GiveAmmoFraction(pl, AMMO_FRACTION)
-					Remotes.Get("AmmoPickup"):FireClient(pl, AMMO_FRACTION)
-					model:Destroy()
-					pickups[model] = nil
-					break
+				if r and h and h.Health > 0 then
+					local d = (r.Position - data.base).Magnitude
+					if d <= nearestDist then
+						nearestPlayer, nearestRoot, nearestDist = pl, r, d
+					end
 				end
+			end
+
+			if nearestRoot and nearestDist <= PICKUP_RADIUS then
+				-- Close enough — grab it (no touch needed).
+				CombatService.GiveAmmoFraction(nearestPlayer, AMMO_FRACTION)
+				Remotes.Get("AmmoPickup"):FireClient(nearestPlayer, AMMO_FRACTION)
+				model:Destroy()
+				pickups[model] = nil
+			else
+				-- Magnet: once decently close, fly toward the player.
+				if nearestRoot then
+					local to = nearestRoot.Position - data.base
+					local mag = to.Magnitude
+					if mag > 0.01 then
+						data.base += to.Unit * math.min(MAGNET_SPEED * dt, mag)
+					end
+				end
+				-- Spin + bob around the (possibly moving) base.
+				data.spin += dt * SPIN_SPEED
+				data.t += dt
+				local base = data.base
+				local y = base.Y + math.sin(data.t * BOB_SPEED) * BOB_HEIGHT
+				model:PivotTo(CFrame.new(base.X, y, base.Z) * CFrame.Angles(0, data.spin, 0))
 			end
 		end
 	end
