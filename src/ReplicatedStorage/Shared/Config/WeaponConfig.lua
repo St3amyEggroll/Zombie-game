@@ -30,6 +30,8 @@ local WeaponConfig: { [string]: Weapon } = {
 		fireRate=5, magSize=8,  reserveAmmo=80,  reloadSeconds=1.4, range=200, pellets=1, spread=1, auto=false, wallBuyCost=0,    ammoCost=250,  ppDamageMult=3 },
 	ak47   = { id="ak47",   name="AK-47", damage=40, headshotMult=2,
 		fireRate=9, magSize=30, reserveAmmo=270, reloadSeconds=2.4, range=300, pellets=1, spread=2, auto=true,  wallBuyCost=3000, ammoCost=1000, ppDamageMult=3 },
+	minigun = { id="minigun", name="Minigun", damage=16, headshotMult=1.5,
+		fireRate=18, magSize=200, reserveAmmo=600, reloadSeconds=5, range=300, pellets=1, spread=5, auto=true, wallBuyCost=8000, ammoCost=2500, ppDamageMult=3 },
 }
 
 return WeaponConfig
