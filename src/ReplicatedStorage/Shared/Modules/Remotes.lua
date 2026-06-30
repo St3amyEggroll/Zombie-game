@@ -22,6 +22,8 @@ local DEFINITIONS: { [string]: string } = {
 	-- MatchService (lifecycle + round manager)
 	MatchStateChanged = "RemoteEvent",     -- S->C: (phase, round)
 	RoundChanged      = "RemoteEvent",     -- S->C: (round)
+	RequestPlay       = "RemoteEvent",     -- C->S: pressed PLAY in the lobby -> enter the match
+	EnterLobby        = "RemoteEvent",     -- S->C: (summary?) -> show the lobby menu (on join + on death)
 
 	-- ZombieService
 	BossSpawned       = "RemoteEvent",     -- S->C: (name, maxHealth) — boss entrance + show health bar

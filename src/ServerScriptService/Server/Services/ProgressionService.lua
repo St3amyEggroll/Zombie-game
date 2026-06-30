@@ -49,11 +49,12 @@ function ProgressionService.Start()
 			local round = MatchService.GetRound()
 			if round > lastRound and MatchService.GetPhase() == "Playing" then
 				lastRound = round
-				for _, player in Players:GetPlayers() do
+				-- Only reward players actually IN the run (lobby players are skipped).
+				MatchService.ForEachPlayer(function(player)
 					DataService.AddXP(player, ProgressionConfig.XPPerRound)
 					DataService.UpdateBestWave(player, round)
 					push(player)
-				end
+				end)
 			elseif round < lastRound then
 				lastRound = round -- match ended / reset
 			end
