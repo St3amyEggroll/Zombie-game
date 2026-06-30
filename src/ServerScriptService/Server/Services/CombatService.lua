@@ -211,36 +211,64 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	losParams.IgnoreWater = true
 	losParams.FilterDescendantsInstances = { character, ZombieService.GetFolder() }
 
-	local target, targetRoot, targetDist = nil, nil, math.huge
+	-- Shotguns fire `pellets` per shot; everything else fires 1. The effective reach is the shorter of the
+	-- global arc range and the weapon's own range (so a shotgun is genuinely short-range).
+	local effRange = math.min(arcRange, weapon.range or arcRange)
+	local pellets = math.max(1, weapon.pellets or 1)
+
+	-- Collect in-arc, in-range zombies, nearest first.
+	local cands = {}
 	for _, record in ZombieService.GetActive() do
 		local root = record.root
 		local toZombie = root.Position - origin
 		local dist = toZombie.Magnitude
-		if dist > 0.01 and dist <= arcRange and dist < targetDist and toZombie.Unit:Dot(dir) >= dotThreshold then
-			if not Workspace:Raycast(origin, toZombie, losParams) then -- wall between us blocks the shot
-				target, targetRoot, targetDist = record, root, dist
+		if dist > 0.01 and dist <= effRange and toZombie.Unit:Dot(dir) >= dotThreshold then
+			table.insert(cands, { record = record, root = root, dist = dist })
+		end
+	end
+	table.sort(cands, function(a, b)
+		return a.dist < b.dist
+	end)
+
+	-- Take up to `pellets` distinct VISIBLE targets (line of sight checked), nearest first.
+	local targets = {}
+	for _, c in cands do
+		if #targets >= pellets then
+			break
+		end
+		if not Workspace:Raycast(origin, c.root.Position - origin, losParams) then
+			table.insert(targets, c)
+		end
+	end
+
+	local endpoint = origin + dir * effRange -- where the tracer lands on a miss (straight ahead)
+	if #targets > 0 then
+		-- Distribute pellets round-robin across the targets (nearest get the extras): all pellets dump into
+		-- one zombie up close, but spread across a crowd. For a 1-pellet gun this is just "hit the closest".
+		local pelletsOn = {}
+		for i = 1, pellets do
+			local idx = ((i - 1) % #targets) + 1
+			pelletsOn[idx] = (pelletsOn[idx] or 0) + 1
+		end
+		for idx, count in pelletsOn do
+			local c = targets[idx]
+			local humanoid = c.record.hum
+			local damage = baseDamage * falloffMult(c.dist) * count
+			humanoid.Health = math.max(0, humanoid.Health - damage)
+			local killed = humanoid.Health <= 0
+			hitEvent:Fire(player, humanoid, false, weaponId, damage)
+			if killed then
+				killEvent:Fire(player, humanoid, false, weaponId)
+			else
+				ZombieService.Hit(c.record, origin) -- knockback + white flash
 			end
+			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5))
+			-- A tracer to each zombie hit (a shotgun visibly sprays).
+			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, c.root.Position)
 		end
+	else
+		Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint) -- miss: one tracer straight ahead
 	end
-
-	local endpoint = origin + dir * arcRange -- where the tracer lands (the target, or straight ahead on a miss)
-	if target then
-		local humanoid = target.hum
-		local damage = baseDamage * falloffMult(targetDist) -- positioning matters: less damage at range
-		humanoid.Health = math.max(0, humanoid.Health - damage)
-		local killed = humanoid.Health <= 0
-		hitEvent:Fire(player, humanoid, false, weaponId, damage)
-		if killed then
-			killEvent:Fire(player, humanoid, false, weaponId)
-		else
-			ZombieService.Hit(target, origin) -- knockback + white flash
-		end
-		endpoint = targetRoot.Position
-		Remotes.Get("HitConfirmed"):FireClient(player, endpoint, false, true, killed, math.floor(damage + 0.5))
-	end
-
-	-- Broadcast the shot so every client draws the bullet tracer from the gun to where it landed.
-	Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint)
 end
 
 -- ===== RELOAD =====

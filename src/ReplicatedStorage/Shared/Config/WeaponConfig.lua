@@ -29,6 +29,8 @@ export type Weapon = {
 local WeaponConfig: { [string]: Weapon } = {
 	pistol = { id="pistol", name="M1911", damage=30, headshotMult=2,
 		fireRate=5, magSize=8,  reserveAmmo=80,  reloadSeconds=1.4, range=200, pellets=1, spread=1, auto=false, wallBuyCost=0,    ammoCost=250,  ppDamageMult=3 },
+	shotgun = { id="shotgun", name="Pump Shotgun", damage=14, headshotMult=2,
+		fireRate=1.2, magSize=6, reserveAmmo=48, reloadSeconds=3, range=40, pellets=8, spread=12, auto=false, wallBuyCost=2000, ammoCost=750, ppDamageMult=3 },
 	ak47   = { id="ak47",   name="AK-47", damage=40, headshotMult=2,
 		fireRate=9, magSize=30, reserveAmmo=270, reloadSeconds=2.4, range=300, pellets=1, spread=2, auto=true,  wallBuyCost=3000, ammoCost=1000, ppDamageMult=3 },
 	minigun = { id="minigun", name="Minigun", damage=16, headshotMult=1.5,

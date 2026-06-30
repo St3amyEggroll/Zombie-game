@@ -7,12 +7,13 @@ local ShopConfig = {}
 -- ===== BUYABLE WEAPONS ===== (weaponId -> cash price). The pistol is your free starter, so it's not listed.
 -- Only weapons with a model belong here. Add more as you build their models.
 ShopConfig.Weapons = {
+	shotgun = 2000,
 	ak47    = 3000,
 	minigun = 8000,
 }
 
 -- Display order in the menu.
-ShopConfig.Order = { "ak47", "minigun" }
+ShopConfig.Order = { "shotgun", "ak47", "minigun" }
 
 -- ===== UPGRADES ===== each owned weapon can be upgraded up to MaxUpgradeLevel times.
 ShopConfig.MaxUpgradeLevel       = 5
