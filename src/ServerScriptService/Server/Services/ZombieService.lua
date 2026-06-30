@@ -862,8 +862,10 @@ local function loadGraveTemplates()
 	hugeGraveTemplates = huge
 end
 
--- Find the ground Y under a point (ignores zombies, players, and grave props so it hits real terrain).
-local function findGroundY(x: number, z: number, fallbackY: number): number
+-- Find the ground under a point: returns (groundY, surfaceNormal). Ignores zombies, players, and grave
+-- props so it hits the real terrain/ramps. The normal points straight up over flat ground and tilts with
+-- the slope on a ramp — graves use it to lie flush against (and rise out of) the ramp surface.
+local function findGround(x: number, z: number, fallbackY: number): (number, Vector3)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.IgnoreWater = true
@@ -875,13 +877,27 @@ local function findGroundY(x: number, z: number, fallbackY: number): number
 	end
 	params.FilterDescendantsInstances = filter
 	local hit = Workspace:Raycast(Vector3.new(x, fallbackY + 8, z), Vector3.new(0, -80, 0), params)
-	return hit and hit.Position.Y or fallbackY
+	if hit then
+		return hit.Position.Y, hit.Normal
+	end
+	return fallbackY, Vector3.yAxis
+end
+
+-- Build a rotation whose UP axis is `normal` (so a model lies flush on a ramp), with a random `yaw` spin
+-- around that normal. Falls back to straight-up over degenerate normals.
+local function orientationFromNormal(normal: Vector3, yaw: number): CFrame
+	local up = (normal.Magnitude > 1e-4) and normal.Unit or Vector3.yAxis
+	-- A reference axis that's never parallel to `up`, so the cross products stay well-defined.
+	local ref = (math.abs(up.Y) > 0.99) and Vector3.xAxis or Vector3.yAxis
+	local right = up:Cross(ref)
+	right = (right.Magnitude > 1e-4) and right.Unit or Vector3.xAxis
+	return CFrame.fromMatrix(Vector3.zero, right, up) * CFrame.Angles(0, yaw, 0)
 end
 
 -- Rise a random grave headstone UP out of the ground at (x, z), hold it while the zombie emerges, then
 -- sink it away. `tier` = "huge" (boss) | "big" (tank) | nil (regular); falls back to regular if that tier
 -- has no models. Props are non-colliding + non-queryable so they never block movement/shots/ground checks.
-local function placeGrave(x: number, groundY: number, z: number, tier: string?)
+local function placeGrave(x: number, groundY: number, z: number, normal: Vector3, tier: string?)
 	local list = graveTemplates
 	if tier == "huge" and #hugeGraveTemplates > 0 then
 		list = hugeGraveTemplates
@@ -899,35 +915,44 @@ local function placeGrave(x: number, groundY: number, z: number, tier: string?)
 			p.CanQuery = false
 		end
 	end
-	-- Random yaw so every headstone faces a different way (do this BEFORE measuring).
-	grave:PivotTo(grave:GetPivot() * CFrame.Angles(0, math.random() * 2 * math.pi, 0))
+
+	-- Orient the headstone so its UP axis follows the ground's surface normal (diagonal on a ramp, upright
+	-- on flat ground), with a random yaw so every stone faces a different way. Do this BEFORE measuring.
+	local up = (normal.Magnitude > 1e-4) and normal.Unit or Vector3.yAxis
+	local orient = orientationFromNormal(normal, math.random() * 2 * math.pi)
+	grave:PivotTo(orient + grave:GetPivot().Position)
+
+	-- Measure along the (now tilted) grave's own axes — size.Y is its height along the normal.
 	local cf, size = grave:GetBoundingBox()
-	local riseDepth = size.Y + 1 -- fully bury it underground so the whole stone can rise out
-	local currentBaseY = cf.Position.Y - size.Y * 0.5
-	-- Start BURIED: base at (groundY - riseDepth).
-	grave:PivotTo(grave:GetPivot() + Vector3.new(x - cf.Position.X, (groundY - riseDepth) - currentBaseY, z - cf.Position.Z))
+	local riseDepth = size.Y + 1 -- fully bury it under the surface so the whole stone can rise out
+	-- Fully-risen pose: the stone's bottom face sits on the ground point, so its centre is half its height
+	-- UP the normal. Buried pose: that centre pushed riseDepth DOWN the normal.
+	local groundPos = Vector3.new(x, groundY, z)
+	local risenCenter = groundPos + up * (size.Y * 0.5)
+	local buriedCenter = risenCenter - up * riseDepth
+	grave:PivotTo(grave:GetPivot() + (buriedCenter - cf.Position))
 	grave.Parent = graveFolder
 	local buriedCF = grave:GetPivot()
 
 	task.spawn(function()
-		-- 1) the headstone rises up out of the ground FIRST.
+		-- 1) the headstone rises up out of the ground FIRST — ALONG the surface normal.
 		local elapsed = 0
 		while elapsed < GRAVE_RISE_TIME and grave.Parent do
 			elapsed += task.wait()
-			grave:PivotTo(buriedCF + Vector3.new(0, riseDepth * math.clamp(elapsed / GRAVE_RISE_TIME, 0, 1), 0))
+			grave:PivotTo(buriedCF + up * (riseDepth * math.clamp(elapsed / GRAVE_RISE_TIME, 0, 1)))
 		end
 		if not grave.Parent then
 			return
 		end
-		grave:PivotTo(buriedCF + Vector3.new(0, riseDepth, 0)) -- fully up, on the surface
+		grave:PivotTo(buriedCF + up * riseDepth) -- fully up, flush with the surface
 		-- 2) hold while the zombie climbs out + lingers.
 		task.wait(EMERGE_TIME + GRAVE_LINGER)
-		-- 3) sink the stone back into the ground and despawn.
+		-- 3) sink the stone back along the normal and despawn.
 		local sinkStart = grave:GetPivot()
 		elapsed = 0
 		while elapsed < GRAVE_SINK_TIME and grave.Parent do
 			elapsed += task.wait()
-			grave:PivotTo(sinkStart + Vector3.new(0, -riseDepth * math.clamp(elapsed / GRAVE_SINK_TIME, 0, 1), 0))
+			grave:PivotTo(sinkStart - up * (riseDepth * math.clamp(elapsed / GRAVE_SINK_TIME, 0, 1)))
 		end
 		grave:Destroy()
 	end)
@@ -940,10 +965,11 @@ local function startEmergence(record, spawnCF: CFrame)
 	local hum = record.hum
 	local root = record.root
 	local pos = spawnCF.Position
-	local groundY = findGroundY(pos.X, pos.Z, pos.Y)
+	local groundY, groundNormal = findGround(pos.X, pos.Z, pos.Y)
+	-- The zombie itself still stands upright (the Humanoid balances it); only the grave follows the slope.
 	local finalCF = CFrame.new(pos.X, groundY + GRAVE_STAND_HEIGHT, pos.Z)
 
-	placeGrave(pos.X, groundY, pos.Z, GRAVE_TIER[record.typeId])
+	placeGrave(pos.X, groundY, pos.Z, groundNormal, GRAVE_TIER[record.typeId])
 
 	record.emerging = true
 	-- Anchor ONLY the root and limp the Humanoid during the rise. The rig's joints keep the limbs glued to
