@@ -18,6 +18,7 @@ local DamageNumberController = {}
 -- ===== TUNABLES =====
 local RISE       = 4      -- studs the number floats upward over its life
 local LIFE       = 0.7    -- seconds before it fades out
+local MAX_TILT   = 35     -- degrees: each number pops out at a random tilt within +/- this
 local HIT_COLOR  = Color3.fromRGB(255, 255, 255)
 local HEAD_COLOR = Color3.fromRGB(255, 221, 90)
 local KILL_COLOR = Color3.fromRGB(255, 70, 70)
@@ -44,6 +45,7 @@ local function spawnNumber(pos: Vector3, text: string, color: Color3, scale: num
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
+	label.Rotation = math.random(-MAX_TILT, MAX_TILT) -- random tilt so each number pops out cocked
 	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
 	label.TextColor3 = color
