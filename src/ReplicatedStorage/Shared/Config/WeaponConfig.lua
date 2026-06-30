@@ -19,6 +19,7 @@ export type Weapon = {
 	wonder: boolean?,      -- true = "wonder weapon": jackpot pull + special VFX
 	splashRadius: number?, -- >0 = AoE damage radius in studs (read by CombatService later)
 	ppName: string?,       -- Pack-a-Punch display name override
+	spinUp: number?,       -- >0 = seconds of holding to ramp fire rate from slow -> full (minigun feel)
 }
 
 -- ===== WEAPON TABLE =====
@@ -31,7 +32,7 @@ local WeaponConfig: { [string]: Weapon } = {
 	ak47   = { id="ak47",   name="AK-47", damage=40, headshotMult=2,
 		fireRate=9, magSize=30, reserveAmmo=270, reloadSeconds=2.4, range=300, pellets=1, spread=2, auto=true,  wallBuyCost=3000, ammoCost=1000, ppDamageMult=3 },
 	minigun = { id="minigun", name="Minigun", damage=16, headshotMult=1.5,
-		fireRate=18, magSize=200, reserveAmmo=600, reloadSeconds=5, range=300, pellets=1, spread=5, auto=true, wallBuyCost=8000, ammoCost=2500, ppDamageMult=3 },
+		fireRate=18, magSize=200, reserveAmmo=600, reloadSeconds=5, range=300, pellets=1, spread=5, auto=true, wallBuyCost=8000, ammoCost=2500, ppDamageMult=3, spinUp=1.0 },
 }
 
 return WeaponConfig

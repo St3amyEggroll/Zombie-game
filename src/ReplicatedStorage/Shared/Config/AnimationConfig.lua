@@ -46,6 +46,23 @@ AnimationConfig.Hitmarker = {
 	Life = 0.18,
 }
 
+-- Screen shake + camera kick on fire (applied via the local player's Humanoid.CameraOffset).
+-- Uses a "trauma" model: each shot adds trauma; shake = trauma² so it falls off smoothly. A sharp single
+-- shot (pistol) spikes then settles = a pop; rapid fire (minigun) keeps trauma topped up = a rumble.
+AnimationConfig.Shake = {
+	Enabled = true,
+	Decay = 7,          -- trauma lost per second (higher = settles faster)
+	MaxOffset = 0.9,    -- studs of random camera shake at full trauma
+	KickRecover = 14,   -- how fast the per-shot upward kick settles (higher = snappier)
+	Default = { Trauma = 0.28, Kick = 0.12 }, -- used for any weapon not in PerWeapon below
+	-- Per weapon: Trauma added per shot (pop vs rumble) and Kick = upward camera nudge (studs) per shot.
+	PerWeapon = {
+		pistol  = { Trauma = 0.40, Kick = 0.18 }, -- sharp pop
+		ak47    = { Trauma = 0.22, Kick = 0.10 },
+		minigun = { Trauma = 0.10, Kick = 0.04 }, -- small per shot; fast fire = sustained rumble
+	},
+}
+
 -- ===== ANIMATION IDS ===== (paste the rbxassetid number; "" = none)
 -- Played on the CHARACTER. "Hold" makes the character pose with the gun; "Reload" plays on R.
 AnimationConfig.Weapons = {

@@ -115,6 +115,16 @@ local function isPlayerHumanoid(humanoid: Humanoid): boolean
 	return model ~= nil and Players:GetPlayerFromCharacter(model) ~= nil
 end
 
+-- Range-falloff damage multiplier: 1.0 within FalloffStart, lerping down to FalloffMinMult at FalloffEnd.
+local function falloffMult(dist: number): number
+	local s, e = GameConfig.FalloffStart, GameConfig.FalloffEnd
+	if dist <= s or e <= s then
+		return 1
+	end
+	local t = math.clamp((dist - s) / (e - s), 0, 1)
+	return 1 + (GameConfig.FalloffMinMult - 1) * t
+end
+
 -- Spread the aim direction inside a cone of `spreadDeg` degrees (server owns the randomness).
 local function applySpread(direction: Vector3, spreadDeg: number): Vector3
 	if spreadDeg <= 0 then
@@ -192,7 +202,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- aim direction) and is in line of sight. The bullet (tracer) then travels to that zombie.
 	local character = player.Character
 	local dir = direction.Unit
-	local damage = weapon.damage * ShopConfig.DamageMultFor(ps.upgrades and ps.upgrades[weaponId] or 0)
+	local baseDamage = weapon.damage * ShopConfig.DamageMultFor(ps.upgrades and ps.upgrades[weaponId] or 0)
 	local arcRange = GameConfig.ArcRange
 	local dotThreshold = math.cos(math.rad(GameConfig.ArcDegrees * 0.5)) -- 180° -> 0 (forward hemisphere)
 
@@ -216,6 +226,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	local endpoint = origin + dir * arcRange -- where the tracer lands (the target, or straight ahead on a miss)
 	if target then
 		local humanoid = target.hum
+		local damage = baseDamage * falloffMult(targetDist) -- positioning matters: less damage at range
 		humanoid.Health = math.max(0, humanoid.Health - damage)
 		local killed = humanoid.Health <= 0
 		hitEvent:Fire(player, humanoid, false, weaponId, damage)

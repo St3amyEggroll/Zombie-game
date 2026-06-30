@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -26,6 +27,36 @@ local CombatFeedbackController = {}
 
 local localPlayer = Players.LocalPlayer
 local fxFolder -- holds client-only effect parts
+
+-- ===== SCREEN SHAKE / KICK (trauma model; applied via Humanoid.CameraOffset each frame) =====
+local trauma = 0      -- 0..1, decays over time; shake magnitude = trauma²
+local kickUp = 0      -- transient upward camera nudge from the last shot(s), recovers each frame
+
+local function addShake(weaponId: string)
+	local cfg = AnimationConfig.Shake
+	if not cfg.Enabled then
+		return
+	end
+	local w = cfg.PerWeapon[weaponId] or cfg.Default
+	trauma = math.min(1, trauma + w.Trauma)
+	kickUp = math.min(cfg.MaxOffset, kickUp + w.Kick)
+end
+
+local function updateShake(dt: number)
+	local cfg = AnimationConfig.Shake
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not cfg.Enabled or not humanoid then
+		return
+	end
+	trauma = math.max(0, trauma - cfg.Decay * dt)
+	kickUp = math.max(0, kickUp - kickUp * math.clamp(cfg.KickRecover * dt, 0, 1))
+	local shake = trauma * trauma
+	local mag = shake * cfg.MaxOffset
+	local offX = (math.random() * 2 - 1) * mag
+	local offY = (math.random() * 2 - 1) * mag + kickUp
+	humanoid.CameraOffset = Vector3.new(offX, offY, 0)
+end
 
 -- ===== EFFECT PARTS =====
 -- The muzzle world CFrame of a given character's held weapon (a "Muzzle" attachment if present, else the
@@ -174,7 +205,8 @@ end
 -- ===== EVENT HOOKS =====
 -- Local shot: instant muzzle flash (the tracer is drawn from the authoritative ShotFired below, so it
 -- always goes to the exact zombie the server hit).
-local function onLocalFired(_weaponId: string)
+local function onLocalFired(weaponId: string)
+	addShake(weaponId) -- screen shake + camera kick, scaled per weapon
 	local muzzleCF = muzzleCFrameOf(localPlayer.Character)
 	if muzzleCF then
 		muzzleFlash(muzzleCF)
@@ -210,6 +242,8 @@ function CombatFeedbackController.Start()
 	InputController.Fired:Connect(onLocalFired)
 	Remotes.Get("ShotFired").OnClientEvent:Connect(onShotFired)
 	Remotes.Get("HitConfirmed").OnClientEvent:Connect(onHitConfirmed)
+
+	RunService.RenderStepped:Connect(updateShake) -- decays trauma + applies the camera shake/kick each frame
 
 	print("[CombatFeedbackController] started")
 end

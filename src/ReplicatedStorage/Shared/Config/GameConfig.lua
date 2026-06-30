@@ -54,6 +54,12 @@ GameConfig.GameOverHoldSeconds = 10    -- summary screen time before returning t
 GameConfig.ArcDegrees = 180   -- a shot auto-targets the CLOSEST zombie within this arc in front of your aim
 GameConfig.ArcRange   = 60    -- studs the auto-aim reaches
 
+-- ===== RANGE FALLOFF ===== (damage drops with distance, so positioning matters)
+-- Full damage out to FalloffStart, then linearly down to FalloffMinMult× at FalloffEnd and beyond.
+GameConfig.FalloffStart   = 25   -- studs: closer than this = full damage
+GameConfig.FalloffEnd     = 60   -- studs: at/after this = minimum damage (keep <= ArcRange)
+GameConfig.FalloffMinMult = 0.45 -- damage multiplier at/after FalloffEnd
+
 -- ===== RATE LIMITS (token bucket, max requests/sec per player) =====
 GameConfig.RateLimits = {
 	Fire = 20, Reload = 3, Buy = 6, Revive = 3, Interact = 8, Sprint = 10,

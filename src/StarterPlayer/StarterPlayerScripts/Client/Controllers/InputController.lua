@@ -35,6 +35,9 @@ local NUMBER_KEYS = {
 	[Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
 }
 
+-- Spin-up weapons (minigun) start at this fraction of full fire rate and ramp up over weapon.spinUp seconds.
+local SPIN_START_FRAC = 0.3
+
 local localPlayer = Players.LocalPlayer
 
 -- ===== STATE =====
@@ -42,6 +45,7 @@ local equipped = "pistol"
 local ownedWeapons: { string } = { "pistol" }
 local ammoMirror: { [string]: { mag: number, reserve: number } } = {}
 local firing = false
+local fireStart = 0 -- os.clock() when the current trigger-hold began (drives minigun spin-up)
 
 -- ===== SIGNALS =====
 local firedEvent = Instance.new("BindableEvent")
@@ -91,6 +95,19 @@ local function fireOnce()
 	firedEvent:Fire(equipped)
 end
 
+-- Seconds to wait before the next shot. Spin-up weapons ramp from SPIN_START_FRAC× the fire rate up to
+-- full over weapon.spinUp seconds of continuous holding; releasing resets the ramp (so it spins down).
+local function shotInterval(weapon): number
+	if weapon.spinUp and weapon.spinUp > 0 then
+		local held = os.clock() - fireStart
+		local t = math.clamp(held / weapon.spinUp, 0, 1)
+		local startRate = weapon.fireRate * SPIN_START_FRAC
+		local rate = startRate + (weapon.fireRate - startRate) * t
+		return 1 / rate
+	end
+	return 1 / weapon.fireRate
+end
+
 local function fireLoop()
 	while firing do
 		local weapon = WeaponConfig[equipped]
@@ -100,7 +117,7 @@ local function fireLoop()
 		local mirror = getMirror(equipped)
 		if mirror.mag > 0 then
 			fireOnce()
-			task.wait(1 / weapon.fireRate)
+			task.wait(shotInterval(weapon))
 			if not weapon.auto then
 				break -- semi-auto: one shot per press
 			end
@@ -120,6 +137,7 @@ local function startFiring()
 		return
 	end
 	firing = true
+	fireStart = os.clock() -- begin the spin-up ramp from this moment
 	task.spawn(fireLoop)
 end
 
