@@ -41,10 +41,11 @@ local ATTACK_RANGE     = 4.5    -- studs within which a zombie can hit a player
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
 local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same quick flash as a hit, NOT permanent)
-local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles before it begins to sink
+local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles after death
+local SURFACE_HOLD     = 1.0    -- extra seconds the body lies still ON the surface before it starts sinking
 local SINK_TIME        = 3.2    -- seconds the corpse SLOWLY sinks into the ground (bigger = slower/eerier)
 local SINK_DEPTH       = 4      -- studs the corpse sinks before it's pooled
-local RAGDOLL_LIMB_ANGLE = 35   -- BallSocket cone limit (deg) for floppy limbs; smaller = stiffer joints
+local RAGDOLL_LIMB_ANGLE = 120  -- BallSocket cone limit (deg); BIG = floppy limbs, small = stiff joints
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
 local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
@@ -450,17 +451,18 @@ end
 -- from trying to stand. Returns true if it actually ragdolled (false for the weld-only placeholder rig).
 local function setRagdoll(record): boolean
 	local model = record.model
-	local motors = {}
+	local joints = {}
 	for _, m in model:GetDescendants() do
-		if m:IsA("Motor6D") and m.Part0 and m.Part1 then
-			table.insert(motors, m)
+		-- Motor6D (standard rigs) AND Weld (some hand-built rigs use welds for arms) both carry C0/C1.
+		if (m:IsA("Motor6D") or m:IsA("Weld")) and m.Part0 and m.Part1 then
+			table.insert(joints, m)
 		end
 	end
-	if #motors == 0 then
-		return false -- no real joints to ragdoll (e.g. the grey placeholder)
+	if #joints == 0 then
+		return false -- no real joints to ragdoll (e.g. the WeldConstraint-only grey placeholder)
 	end
 
-	for _, m in motors do
+	for _, m in joints do
 		local a0 = Instance.new("Attachment")
 		a0.Name = "RagdollAtt"
 		a0.CFrame = m.C0
@@ -502,6 +504,11 @@ local function setRagdoll(record): boolean
 		hum.PlatformStand = true
 		hum:ChangeState(Enum.HumanoidStateType.Physics)
 	end
+
+	-- A small nudge so the limp body actually starts to collapse instead of standing perfectly still.
+	if record.root and record.root.Parent then
+		record.root.AssemblyLinearVelocity = Vector3.new(math.random(-3, 3), 2, math.random(-3, 3))
+	end
 	return true
 end
 
@@ -509,7 +516,7 @@ end
 -- restore collisions. (Assigned to the forward-declared local so release() above can call it.)
 clearRagdoll = function(model)
 	for _, d in model:GetDescendants() do
-		if d:IsA("Motor6D") then
+		if d:IsA("Motor6D") or d:IsA("Weld") then
 			d.Enabled = true
 		elseif d.Name == "RagdollBSC" and d:IsA("BallSocketConstraint") then
 			d:Destroy()
@@ -545,6 +552,12 @@ local function sinkAndRelease(record)
 			p.Anchored = true
 			frozen[p] = p.CFrame
 		end
+	end
+	-- Let the body lie on the surface a beat before it begins to sink.
+	task.wait(SURFACE_HOLD)
+	if not model.Parent then
+		release(record)
+		return
 	end
 	-- Slide each frozen part straight down in world space over SINK_TIME.
 	local elapsed = 0
