@@ -12,7 +12,6 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
-local PerkConfig = require(Config.PerkConfig)
 local Remotes = require(Modules.Remotes)
 
 local MatchService = require(script.Parent.MatchService)
@@ -48,34 +47,13 @@ local function getRuntime(player: Player)
 	return r
 end
 
--- Base walk speed including any movement perks (Stamin-Up). Reads match perks; safe if none.
-local function computeMoveSpeed(player: Player): number
-	local speed = GameConfig.PlayerWalkSpeed
-	local ps = MatchService.GetPlayerState(player)
-	if ps then
-		for _, perkId in ps.perks do
-			local perk = PerkConfig[perkId]
-			if perk and perk.moveSpeedMult then
-				speed *= perk.moveSpeedMult
-			end
-		end
-	end
-	return speed
+-- Base walk speed / max health. (Hooks for future buffs — currently just the GameConfig values.)
+local function computeMoveSpeed(_player: Player): number
+	return GameConfig.PlayerWalkSpeed
 end
 
--- Max health including Juggernog. Reads match perks; falls back to GameConfig.
-local function computeMaxHealth(player: Player): number
-	local maxHealth = GameConfig.PlayerMaxHealth
-	local ps = MatchService.GetPlayerState(player)
-	if ps then
-		for _, perkId in ps.perks do
-			local perk = PerkConfig[perkId]
-			if perk and perk.healthBonus then
-				maxHealth += perk.healthBonus
-			end
-		end
-	end
-	return maxHealth
+local function computeMaxHealth(_player: Player): number
+	return GameConfig.PlayerMaxHealth
 end
 
 local function fireHealth(player: Player, humanoid: Humanoid)

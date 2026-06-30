@@ -58,8 +58,6 @@ local function makePlayerState(player: Player)
 		equippedWeapon = "pistol",
 		ammo = { pistol = { mag = pistol.magSize, reserve = pistol.reserveAmmo } },
 		upgrades = {},                            -- [weaponId] = upgrade level (shop)
-		perks = {},                               -- (unused now; kept for the effect plumbing)
-		packAPunched = {},                        -- (unused now)
 		isDown = false,
 		isDead = false,
 		health = GameConfig.PlayerMaxHealth,

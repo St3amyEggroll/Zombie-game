@@ -20,7 +20,6 @@ local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
-local PerkConfig = require(Config.PerkConfig)
 local ShopConfig = require(Config.ShopConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
@@ -64,26 +63,6 @@ local function getCombat(player: Player)
 end
 
 -- ===== HELPERS =====
-local function hasPerk(ps, perkId: string): boolean
-	return Util.Contains(ps.perks, perkId)
-end
-
-local function effectiveFireRate(ps, weapon): number
-	local rate = weapon.fireRate
-	if hasPerk(ps, "doubletap") then
-		rate *= PerkConfig.doubletap.fireRateMult
-	end
-	return rate
-end
-
-local function effectiveReload(ps, weapon): number
-	local secs = weapon.reloadSeconds
-	if hasPerk(ps, "speed") then
-		secs *= PerkConfig.speed.reloadMult
-	end
-	return secs
-end
-
 local function ensureAmmo(ps, weaponId: string, weapon)
 	local a = ps.ammo[weaponId]
 	if not a then
@@ -181,7 +160,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 
 	-- 5a) fire-rate gate
 	local now = os.clock()
-	local minInterval = (1 / effectiveFireRate(ps, weapon)) * FIRE_RATE_SLACK
+	local minInterval = (1 / weapon.fireRate) * FIRE_RATE_SLACK
 	local last = c.lastShot[weaponId] or 0
 	if now - last < minInterval then
 		return
@@ -305,7 +284,7 @@ local function onReload(player: Player, weaponId: any)
 	end
 
 	c.reloading[weaponId] = true
-	local duration = effectiveReload(ps, weapon)
+	local duration = weapon.reloadSeconds
 	reloadEvent:Fire(player, weaponId, duration) -- drives the reload animation
 
 	task.delay(duration, function()
