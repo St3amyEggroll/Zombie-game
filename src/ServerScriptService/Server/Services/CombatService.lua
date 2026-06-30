@@ -247,10 +247,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			end
 			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5))
 			-- A tracer to each zombie hit (a shotgun visibly sprays).
-			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, c.root.Position)
+			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, c.root.Position, weaponId)
 		end
 	else
-		Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint) -- miss: one tracer straight ahead
+		Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint, weaponId) -- miss: one tracer straight ahead
 	end
 end
 

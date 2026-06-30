@@ -23,11 +23,17 @@ GameConfig.ZombieBaseSpeed     = 8
 GameConfig.ZombieSpeedPerRound = 0.15
 GameConfig.ZombieMaxSpeed      = 22
 
--- ===== POINTS (CoD-Zombies style) =====
+-- ===== POINTS (CoD-Zombies style) — the IN-WAVE cash you spend at the shop (resets every run) =====
 GameConfig.PointsPerHit       = 10
 GameConfig.PointsPerKill      = 60
 GameConfig.PointsHeadshotKill = 100    -- replaces PointsPerKill on a headshot kill
 GameConfig.StartingPoints     = 500
+
+-- ===== LOBBY MONEY (the PERSISTENT currency — "Coins" — earned during a run, spent in the lobby) =====
+-- Earned live as you play (so it ticks up on the HUD) and saved to your profile; the lobby menu shows the
+-- total. This is separate from the in-wave cash above.
+GameConfig.LobbyMoneyPerKill = 1
+GameConfig.LobbyMoneyPerWave = 25
 
 -- ===== HEALTH =====
 GameConfig.PlayerMaxHealth  = 100

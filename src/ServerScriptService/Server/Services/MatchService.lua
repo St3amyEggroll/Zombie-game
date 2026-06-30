@@ -37,10 +37,9 @@ local ZombieService
 local MatchService = {}
 
 -- ===== TUNABLES =====
-local LOBBY_MONEY_PER_WAVE = 25  -- persistent lobby money banked per wave reached on a run
-local LOBBY_MONEY_PER_KILL = 1   -- persistent lobby money banked per kill on a run
 local TELEPORT_RETRIES     = 4   -- attempts per teleport before giving up
 local STUDIO_RESTART_DELAY = 3   -- Studio only: seconds after death before a fresh run auto-starts
+-- (Lobby "Coins" are earned LIVE in ProgressionService — GameConfig.LobbyMoneyPerKill/PerWave — not here.)
 
 -- Teleports only work in a published, running game — never in Studio. Published: route through the lobby
 -- place. Studio: skip teleports and just run the game in-place so it's testable solo.
@@ -106,6 +105,7 @@ local function makePlayerState(player: Player)
 		kills = 0,
 		specialKills = 0,
 		revives = 0,
+		lobbyEarned = 0,                          -- persistent "Coins" earned THIS run (for the end screen)
 	}
 end
 
@@ -117,6 +117,7 @@ local function resetRunState(player: Player, ps)
 	ps.kills = 0
 	ps.specialKills = 0
 	ps.revives = 0
+	ps.lobbyEarned = 0
 	ps.isDead = false
 	ps.isDown = false
 	ps.health = GameConfig.PlayerMaxHealth
@@ -161,12 +162,12 @@ end
 -- count. Returns a small summary table for the lobby's end-of-run screen.
 bankRun = function(player: Player, ps)
 	local wave = state.round
-	local money = wave * LOBBY_MONEY_PER_WAVE + ps.kills * LOBBY_MONEY_PER_KILL
+	-- Coins were already granted live (ProgressionService); here we just record best wave + match count and
+	-- report what this run earned. Save makes sure it all persists.
 	DataService.UpdateBestWave(player, wave)
-	DataService.AddMoney(player, money)
 	DataService.IncrementStat(player, "matchesPlayed", 1)
 	DataService.Save(player)
-	return { wave = wave, kills = ps.kills, money = money }
+	return { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0 }
 end
 
 -- Send a player back to the lobby PLACE (published only): blocking-save so the bank lands first, then

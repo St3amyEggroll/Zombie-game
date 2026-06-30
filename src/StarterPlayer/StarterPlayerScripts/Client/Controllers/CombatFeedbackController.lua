@@ -104,28 +104,76 @@ local function muzzleCFrameOf(character: Model?): CFrame?
 	return nil
 end
 
-local function drawTracer(from: Vector3, to: Vector3)
-	local cfg = AnimationConfig.Tracer
-	if not cfg.Enabled then
+local function tracerCfgFor(weaponId: string?)
+	local t = AnimationConfig.Tracer
+	return (weaponId and t.PerWeapon[weaponId]) or t.Default
+end
+
+-- A glowing round flies from `from` to `to` over dist/Speed seconds, dragging a tapered, fading Trail and a
+-- little light. The travel is a CFrame tween (engine-driven, cheap even at minigun rates).
+local function drawTracer(from: Vector3, to: Vector3, weaponId: string?)
+	if not AnimationConfig.Tracer.Enabled then
 		return
 	end
-	local dist = (to - from).Magnitude
+	local cfg = tracerCfgFor(weaponId)
+	local delta = to - from
+	local dist = delta.Magnitude
 	if dist < 1 or dist ~= dist then
 		return
 	end
-	local part = Instance.new("Part")
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.CastShadow = false
-	part.Material = Enum.Material.Neon
-	part.Color = cfg.Color
-	part.Size = Vector3.new(cfg.Width, cfg.Width, dist)
-	part.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -dist * 0.5)
-	part.Parent = fxFolder
-	TweenService:Create(part, TweenInfo.new(cfg.Life), { Transparency = 1 }):Play()
-	Debris:AddItem(part, cfg.Life)
+
+	local round = Instance.new("Part")
+	round.Anchored = true
+	round.CanCollide = false
+	round.CanQuery = false
+	round.CanTouch = false
+	round.CastShadow = false
+	round.Material = Enum.Material.Neon
+	round.Color = cfg.Color
+	round.Shape = Enum.PartType.Ball
+	round.Size = Vector3.new(cfg.Width * 1.6, cfg.Width * 1.6, cfg.Width * 1.6)
+	round.CFrame = CFrame.new(from)
+	round.Parent = fxFolder
+
+	-- Trail = the glowing streak behind the round.
+	local a0 = Instance.new("Attachment")
+	a0.Position = Vector3.new(0, 0, cfg.Length * 0.5)
+	a0.Parent = round
+	local a1 = Instance.new("Attachment")
+	a1.Position = Vector3.new(0, 0, -cfg.Length * 0.5)
+	a1.Parent = round
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = a0
+	trail.Attachment1 = a1
+	trail.Color = ColorSequence.new(cfg.Color)
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.WidthScale = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, cfg.Width * 6),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	trail.Lifetime = cfg.Life
+	trail.LightEmission = 1
+	trail.FaceCamera = true
+	trail.Parent = round
+
+	if cfg.Glow and cfg.Glow > 0 then
+		local light = Instance.new("PointLight")
+		light.Color = cfg.Color
+		light.Brightness = cfg.Glow
+		light.Range = 8
+		light.Parent = round
+	end
+
+	local travel = math.clamp(dist / math.max(cfg.Speed, 1), 0.02, 0.6)
+	local goal = TweenService:Create(round, TweenInfo.new(travel, Enum.EasingStyle.Linear), { CFrame = CFrame.new(to) })
+	goal:Play()
+	goal.Completed:Connect(function()
+		round.Transparency = 1 -- hide the round; the Trail keeps fading for its Lifetime
+	end)
+	Debris:AddItem(round, travel + cfg.Life + 0.1)
 end
 
 local function muzzleFlash(cf: CFrame)
@@ -241,14 +289,14 @@ local function onLocalFired(weaponId: string)
 end
 
 -- Every shot (incl. our own): draw the bullet tracer from the shooter's gun muzzle to where it landed.
-local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3)
+local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3, weaponId: string?)
 	local shooter = Players:GetPlayerByUserId(shooterUserId)
 	local muzzleCF = muzzleCFrameOf(shooter and shooter.Character)
 	local from = muzzleCF and muzzleCF.Position or origin
 	if shooterUserId ~= localPlayer.UserId and muzzleCF then
 		muzzleFlash(muzzleCF) -- others' muzzle flash (the local player already flashed on fire)
 	end
-	drawTracer(from, endpoint)
+	drawTracer(from, endpoint, weaponId)
 end
 
 local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean)

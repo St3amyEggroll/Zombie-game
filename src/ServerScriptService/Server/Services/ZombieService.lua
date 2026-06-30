@@ -37,7 +37,9 @@ local ZombieService = {}
 
 -- ===== TUNABLES (most live in GameConfig; these are local feel knobs) =====
 local SPAWN_INTERVAL   = 0.6    -- seconds between spawns while a round still owes zombies
-local ATTACK_RANGE     = 4.5    -- studs within which a zombie can hit a player
+local ATTACK_RANGE     = 4.5    -- studs (HORIZONTAL) within which a zombie can hit a player
+local ATTACK_VERTICAL  = 6      -- studs of height difference allowed for a hit (so a zombie far below/above
+                               -- on a ramp/ledge can't tag you); paired with a line-of-sight check
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
 local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same quick flash as a hit, NOT permanent)
@@ -1150,8 +1152,15 @@ local function think(record, now: number)
 		record.waypointIndex = 1
 	end
 
-	-- Attack on contact.
-	if dist <= ATTACK_RANGE and (now - record.lastAttack) >= ATTACK_COOLDOWN then
+	-- Attack on contact — only when the zombie is genuinely NEXT TO you: within melee range HORIZONTALLY,
+	-- at roughly the same height (no tagging across a ramp/ledge), and with a clear line to you (no hitting
+	-- through walls). This is the fix for "enemies hit me from far away".
+	local toPlayer = targetRoot.Position - root.Position
+	local flatDist = Vector3.new(toPlayer.X, 0, toPlayer.Z).Magnitude
+	local heightGap = math.abs(toPlayer.Y)
+	if flatDist <= ATTACK_RANGE and heightGap <= ATTACK_VERTICAL
+		and (now - record.lastAttack) >= ATTACK_COOLDOWN
+		and not sightBlocked(root.Position, targetRoot.Position) then
 		record.lastAttack = now
 		PlayerStateService.Damage(target, record.damage, "zombie", root.Position)
 		if record.attackTrack then

@@ -92,6 +92,7 @@ local function buildDebugHud()
 	makeLabel("AmmoLabel", -50, true)
 	makeLabel("RoundLabel", -90, true)
 	makeLabel("PointsLabel", -50, false)
+	makeLabel("LobbyMoneyLabel", -130, false) -- persistent "Coins" (above the in-wave cash)
 end
 
 -- ===== UPDATES =====
@@ -152,8 +153,19 @@ function HUDController.Start()
 		setText("PointsLabel", "$" .. Util.FormatNumber(points))
 	end)
 
+	-- Persistent "Coins" (lobby money): seed the total from the profile snapshot, then tick up live.
+	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
+		if typeof(data) == "table" and data.lobbyMoney then
+			setText("LobbyMoneyLabel", "Coins  " .. Util.FormatNumber(data.lobbyMoney))
+		end
+	end)
+	Remotes.Get("LobbyMoneyChanged").OnClientEvent:Connect(function(total)
+		setText("LobbyMoneyLabel", "Coins  " .. Util.FormatNumber(total))
+	end)
+
 	-- Seed initial text.
 	setText("PointsLabel", "$" .. Util.FormatNumber(GameConfig.StartingPoints))
+	setText("LobbyMoneyLabel", "Coins  0")
 	setText("RoundLabel", "Wave 0")
 
 	RunService.RenderStepped:Connect(updateLowAmmo) -- drives the low-ammo red pulse

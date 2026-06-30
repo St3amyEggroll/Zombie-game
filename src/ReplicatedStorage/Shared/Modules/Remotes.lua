@@ -18,6 +18,7 @@ local DEFINITIONS: { [string]: string } = {
 	DataReady         = "RemoteEvent",     -- S->C: your meta snapshot is loaded
 	GetData           = "RemoteFunction",  -- C->S: fetch meta snapshot for UI
 	ProgressChanged   = "RemoteEvent",     -- S->C: (xp, level, lobbyMoney) — live account progression updates
+	LobbyMoneyChanged = "RemoteEvent",     -- S->C: (total) — persistent "Coins" total ticked up live in-game
 
 	-- MatchService (lifecycle + round manager)
 	MatchStateChanged = "RemoteEvent",     -- S->C: (phase, round)
