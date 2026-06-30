@@ -254,8 +254,8 @@ local function loadTaggedTemplates()
 	end
 end
 
--- Also accept weapon models placed in ReplicatedStorage > Assets (root), > Assets > Weapons, or
--- > Assets > Viewmodels — any Model named after a weaponId. Referenced in place (cloned per attach).
+-- Also accept weapon models placed in ReplicatedStorage > Assets (root), > Assets > Weapons,
+-- > Assets > Guns, or > Assets > Viewmodels — any Model named after a weaponId. Cloned per attach.
 -- Case-insensitive child lookup (map builders don't match capitalization).
 local function ciFind(parent: Instance?, name: string): Instance?
 	if not parent then
@@ -292,7 +292,7 @@ local function scanAssets()
 			for _, c in assets:GetChildren() do
 				consider(c)
 			end
-			for _, subName in { "Weapons", "Viewmodels" } do
+			for _, subName in { "Weapons", "Guns", "Viewmodels" } do
 				local sub = ciFind(assets, subName)
 				if sub then
 					for _, c in sub:GetChildren() do
