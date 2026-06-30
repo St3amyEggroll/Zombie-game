@@ -26,12 +26,13 @@ local ZombieConfig: { [string]: any } = {
 	lead    = { id="lead",    name="Lead",   healthMult=2.6,  speedMult=0.85, damage=35, pointsMult=1.9, isSpecial=false, minRound=5,  spawnWeight=22,  tint=Color3.fromRGB(120,125,135) },
 	-- Tank: rare, huge HP, slow, devastating melee. A mini-boss that makes you reposition.
 	tank    = { id="tank",    name="Tank",   healthMult=7,    speedMult=0.5,  damage=55, pointsMult=3.5, isSpecial=true,  minRound=8,  spawnWeight=8,   tint=Color3.fromRGB(60,70,60) },
-	-- Boss: rare, appears at high waves. Enormous HP, hits like a truck, big payout.
-	boss    = { id="boss",    name="Boss",   healthMult=25,   speedMult=0.7,  damage=75, pointsMult=10,  isSpecial=true,  minRound=10, spawnWeight=3,   tint=Color3.fromRGB(40,10,50) },
+	-- Boss: spawned EXACTLY ONCE every BossInterval waves (never random — spawnWeight 0). Enormous HP,
+	-- hits like a truck, big payout, gets a health bar + entrance.
+	boss    = { id="boss",    name="Boss",   healthMult=25,   speedMult=0.7,  damage=75, pointsMult=10,  isSpecial=true,  minRound=10, spawnWeight=0,   tint=Color3.fromRGB(40,10,50) },
 }
 
 -- ===== BOSS RULES =====
-ZombieConfig.BossInterval = 10   -- (reserved) a boss every N rounds, if interval-spawning is added later
+ZombieConfig.BossInterval = 10   -- one boss every N waves (10, 20, 30, ...)
 ZombieConfig.BossId       = "boss"
 
 return ZombieConfig

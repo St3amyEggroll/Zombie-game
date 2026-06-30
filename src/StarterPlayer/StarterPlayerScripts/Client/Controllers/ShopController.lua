@@ -211,7 +211,11 @@ function ShopController.SetOpen(value: boolean)
 	end
 end
 
--- Always-visible button to open the shop (so it's discoverable without knowing the B key).
+-- Paste your uploaded shop-cart image's asset id here (e.g. "rbxassetid://123456789"). Leave "" to show a
+-- plain SHOP button until you've uploaded it (Asset Manager → Images → import the cart PNG → copy its id).
+local SHOP_ICON = ""
+
+-- Always-visible button to open the shop (so it's discoverable without knowing the B key). Right side.
 local function buildOpenButton()
 	local g = Instance.new("ScreenGui")
 	g.Name = "ShopButton"
@@ -219,20 +223,38 @@ local function buildOpenButton()
 	g.IgnoreGuiInset = true
 	g.Parent = playerGui
 
-	local btn = Instance.new("TextButton")
+	local btn = Instance.new("ImageButton")
 	btn.Name = "OpenShop"
-	btn.AnchorPoint = Vector2.new(0.5, 1)
-	btn.Position = UDim2.new(0.5, 0, 1, -12)
-	btn.Size = UDim2.fromOffset(180, 40)
-	btn.BackgroundColor3 = Color3.fromRGB(45, 120, 70)
-	btn.Font = Enum.Font.GothamBold
-	btn.TextScaled = true
-	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btn.Text = "SHOP (B)"
+	btn.AnchorPoint = Vector2.new(1, 0.5)
+	btn.Position = UDim2.new(1, -16, 0.5, 0) -- right side, vertically centered
+	btn.Size = UDim2.fromOffset(78, 78)
+	btn.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+	btn.BackgroundTransparency = 0.1
+	btn.Image = SHOP_ICON
+	btn.ScaleType = Enum.ScaleType.Fit
 	btn.Parent = g
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 8)
+	c.CornerRadius = UDim.new(0, 12)
 	c.Parent = btn
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0, 8)
+	pad.PaddingBottom = UDim.new(0, 8)
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	pad.Parent = btn
+
+	-- Fallback label until an icon is set (and a tiny hint either way).
+	if SHOP_ICON == "" then
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.fromScale(1, 1)
+		lbl.BackgroundTransparency = 1
+		lbl.Font = Enum.Font.GothamBold
+		lbl.TextScaled = true
+		lbl.TextColor3 = Color3.fromRGB(40, 40, 40)
+		lbl.Text = "SHOP"
+		lbl.Parent = btn
+	end
+
 	btn.Activated:Connect(function()
 		ShopController.SetOpen(not open)
 	end)

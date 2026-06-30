@@ -74,6 +74,7 @@ local aliveCount = 0
 local remaining = 0                   -- zombies still owed this round
 local currentRound = 0
 local roundToken = 0                  -- bumped to cancel in-flight spawn loops / rounds
+local bossRecord: any = nil           -- the one live boss, if any (drives the boss health bar)
 
 local pool: { [string]: { Model } } = {}  -- typeId -> reusable models
 local spawnPoints: { BasePart } = {}
@@ -681,6 +682,16 @@ local function onZombieDied(record)
 	end
 	record.dead = true
 	active[record.model] = nil
+
+	-- Boss bookkeeping: if this was the boss, tell clients to drop the health bar + show the defeat banner.
+	if record == bossRecord then
+		bossRecord = nil
+		if record.bossHealthConn then
+			record.bossHealthConn:Disconnect()
+			record.bossHealthConn = nil
+		end
+		Remotes.Get("BossDefeated"):FireAllClients()
+	end
 	-- aliveCount is freed in release() (after the corpse linger), so corpses still count against the
 	-- MaxAliveZombies cap until they're actually pooled — keeping true simultaneous bodies under the cap.
 
@@ -953,22 +964,23 @@ local function startEmergence(record, spawnCF: CFrame)
 	end)
 end
 
-local function spawnOne(round: number): boolean
+-- Spawn one zombie. `forcedType` overrides the random pick (used by the boss). Returns the record (or nil).
+local function spawnOne(round: number, forcedType: string?)
 	local spawnCF = getSpawnCFrame()
 	if not spawnCF then
-		return false
+		return nil
 	end
-	local typeId = pickType(round) or "default"
+	local typeId = forcedType or pickType(round) or "default"
 	local t = ZOMBIE_TYPES[typeId]
 	if not t then
-		return false
+		return nil
 	end
 
 	local model = acquire(typeId, t)
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	local root = model.PrimaryPart
 	if not hum or not root then
-		return false
+		return nil
 	end
 
 	local hp = scaledHealth(round, t)
@@ -1028,7 +1040,7 @@ local function spawnOne(round: number): boolean
 	if t.isSpecial then
 		Remotes.Get("ZombieSpawned"):FireAllClients(typeId, root.Position)
 	end
-	return true
+	return record
 end
 
 -- ===== AI =====
@@ -1229,6 +1241,31 @@ function ZombieService.BeginRound(round: number, count: number)
 	end)
 end
 
+-- Spawn exactly ONE boss for this wave: broadcasts an entrance, then streams its health to the boss bar
+-- until it dies. The boss counts toward aliveCount, so the wave won't clear until it's dead.
+function ZombieService.SpawnBoss(round: number)
+	task.spawn(function()
+		local record
+		for _ = 1, 30 do -- retry in case every spawn point is briefly crowded by a fresh grave
+			record = spawnOne(round, ZombieConfig.BossId)
+			if record then
+				break
+			end
+			task.wait(0.3)
+		end
+		if not record then
+			return
+		end
+		bossRecord = record
+		record.isBoss = true
+		local hum = record.hum
+		Remotes.Get("BossSpawned"):FireAllClients(record.type.name, hum.MaxHealth)
+		record.bossHealthConn = hum.HealthChanged:Connect(function(h)
+			Remotes.Get("BossHealth"):FireAllClients(h, hum.MaxHealth)
+		end)
+	end)
+end
+
 -- True once every owed zombie has spawned and the world is clear of living zombies.
 function ZombieService.IsRoundCleared(): boolean
 	return remaining <= 0 and aliveCount <= 0
@@ -1278,6 +1315,7 @@ end
 function ZombieService.ClearAll()
 	roundToken += 1
 	remaining = 0
+	bossRecord = nil
 	for model, record in active do
 		record.dead = true
 		if record.diedConn then

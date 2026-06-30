@@ -17,6 +17,7 @@ local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
+local ZombieConfig = require(Config.ZombieConfig)
 local Remotes = require(Modules.Remotes)
 
 -- Required lazily in Start() to break the cycle (Match -> Zombie -> PlayerState -> Match).
@@ -144,6 +145,12 @@ local function runMatch()
 		local count = computeCount(state.round, #Players:GetPlayers())
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
+
+		-- Every BossInterval waves (10, 20, ...): one boss joins the wave. It counts toward the clear, so
+		-- the wave can't end until the boss is dead.
+		if state.round % ZombieConfig.BossInterval == 0 then
+			ZombieService.SpawnBoss(state.round)
+		end
 
 		while not ZombieService.IsRoundCleared() do
 			if noPlayers() then
