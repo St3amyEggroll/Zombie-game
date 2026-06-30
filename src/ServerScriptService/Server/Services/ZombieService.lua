@@ -19,6 +19,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local PathfindingService = game:GetService("PathfindingService")
+local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -46,6 +47,7 @@ local SURFACE_HOLD     = 1.0    -- extra seconds the body lies still ON the surf
 local SINK_TIME        = 3.2    -- seconds the corpse SLOWLY sinks into the ground (bigger = slower/eerier)
 local SINK_DEPTH       = 4      -- studs the corpse sinks before it's pooled
 local RAGDOLL_LIMB_ANGLE = 120  -- BallSocket cone limit (deg); BIG = floppy limbs, small = stiff joints
+local RAGDOLL_GROUP      = "ZombieRagdoll" -- collision group: corpse parts hit the floor but NOT each other
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
 local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
@@ -485,14 +487,19 @@ local function setRagdoll(record): boolean
 		m.Enabled = false -- the joint is now driven by the constraint, so the limb goes limp
 	end
 
-	-- Limbs collide so the body piles on the floor; the root stops propping it upright. Remember each
-	-- part's original CanCollide so reuse restores it. Server simulates the loose parts (perf + authority).
+	-- Make parts collide with the FLOOR but pass THROUGH each other (collision group), so the arms can swing
+	-- past the torso instead of jamming against it — that jam is what made the arms look stuck. Remember
+	-- each part's original CanCollide + CollisionGroup so reuse restores them. Server simulates the parts.
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			if p:GetAttribute("ZBaseCC") == nil then
 				p:SetAttribute("ZBaseCC", p.CanCollide)
 			end
-			p.CanCollide = (p ~= record.root)
+			if p:GetAttribute("ZBaseCG") == nil then
+				p:SetAttribute("ZBaseCG", p.CollisionGroup)
+			end
+			p.CanCollide = true
+			p.CollisionGroup = RAGDOLL_GROUP
 			pcall(function()
 				p:SetNetworkOwner(nil)
 			end)
@@ -529,6 +536,10 @@ clearRagdoll = function(model)
 			local cc = p:GetAttribute("ZBaseCC")
 			if cc ~= nil then
 				p.CanCollide = cc
+			end
+			local cg = p:GetAttribute("ZBaseCG")
+			if typeof(cg) == "string" then
+				p.CollisionGroup = cg
 			end
 		end
 	end
@@ -959,6 +970,12 @@ end
 
 -- ===== LIFECYCLE =====
 function ZombieService.Start()
+	-- Ragdoll collision group: corpse parts collide with the world (floor) but NOT with each other.
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup(RAGDOLL_GROUP)
+		PhysicsService:CollisionGroupSetCollidable(RAGDOLL_GROUP, RAGDOLL_GROUP, false)
+	end)
+
 	zombieFolder = Instance.new("Folder")
 	zombieFolder.Name = "Zombies"
 	zombieFolder.Parent = Workspace
