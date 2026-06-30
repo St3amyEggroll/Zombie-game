@@ -19,7 +19,6 @@ local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local PathfindingService = game:GetService("PathfindingService")
-local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -47,7 +46,6 @@ local SURFACE_HOLD     = 1.0    -- extra seconds the body lies still ON the surf
 local SINK_TIME        = 3.2    -- seconds the corpse SLOWLY sinks into the ground (bigger = slower/eerier)
 local SINK_DEPTH       = 4      -- studs the corpse sinks before it's pooled
 local RAGDOLL_LIMB_ANGLE = 120  -- BallSocket cone limit (deg); BIG = floppy limbs, small = stiff joints
-local RAGDOLL_GROUP      = "ZombieRagdoll" -- collision group: corpse parts hit the floor but NOT each other
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
 local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
@@ -396,6 +394,13 @@ local function release(record)
 		rootPart.AssemblyLinearVelocity = Vector3.zero
 		rootPart.AssemblyAngularVelocity = Vector3.zero
 	end
+	-- Now that the rig is back in its standing pose, re-enable any WeldConstraints we disabled (they
+	-- freeze the current relative transform, so they must be turned on AFTER the parts are repositioned).
+	for _, d in model:GetDescendants() do
+		if d:IsA("WeldConstraint") then
+			d.Enabled = true
+		end
+	end
 
 	model.Parent = poolFolder
 	local list = pool[record.typeId]
@@ -448,58 +453,72 @@ local function recomputePath(record, targetPos: Vector3)
 end
 
 -- ===== RAGDOLL =====
--- Turn a rigged Humanoid model limp: convert each Motor6D joint into a BallSocketConstraint (so limbs
--- flop and aren't solid against each other), make the limbs collide with the world, and stop the Humanoid
--- from trying to stand. Returns true if it actually ragdolled (false for the weld-only placeholder rig).
+-- Turn a rigged Humanoid model limp: convert EVERY joint holding the rig (Motor6D, Weld, Snap,
+-- ManualWeld, and WeldConstraint) into a floppy BallSocketConstraint, make the limbs collide with the
+-- world, and stop the Humanoid from standing. Returns true if it ragdolled (false if it has no joints).
+local function makeRagdollJoint(part0: BasePart, part1: BasePart, c0: CFrame?, c1: CFrame?)
+	local a0 = Instance.new("Attachment")
+	a0.Name = "RagdollAtt"
+	local a1 = Instance.new("Attachment")
+	a1.Name = "RagdollAtt"
+	if c0 and c1 then
+		-- Motor6D/Weld: the joint's C0/C1 give the exact pivot.
+		a0.CFrame = c0
+		a1.CFrame = c1
+	else
+		-- WeldConstraint (no C0/C1): pivot at the midpoint between the two parts.
+		local pivot = part0.Position:Lerp(part1.Position, 0.5)
+		a0.WorldPosition = pivot
+		a1.WorldPosition = pivot
+	end
+	a0.Parent = part0
+	a1.Parent = part1
+
+	local bsc = Instance.new("BallSocketConstraint")
+	bsc.Name = "RagdollBSC"
+	bsc.Attachment0 = a0
+	bsc.Attachment1 = a1
+	bsc.LimitsEnabled = true
+	bsc.UpperAngle = RAGDOLL_LIMB_ANGLE
+	bsc.TwistLimitsEnabled = true
+	bsc.TwistLowerAngle = -RAGDOLL_LIMB_ANGLE
+	bsc.TwistUpperAngle = RAGDOLL_LIMB_ANGLE
+	bsc.Parent = part1
+end
+
 local function setRagdoll(record): boolean
 	local model = record.model
-	local joints = {}
+	-- Catch EVERY joint type holding the rig together: Motor6D/Weld/Snap/ManualWeld (JointInstance, have
+	-- C0/C1) AND WeldConstraint (no C0/C1). Whichever holds the arms, it gets turned into a floppy joint.
+	local jointInstances, weldConstraints = {}, {}
 	for _, m in model:GetDescendants() do
-		-- Motor6D (standard rigs) AND Weld (some hand-built rigs use welds for arms) both carry C0/C1.
-		if (m:IsA("Motor6D") or m:IsA("Weld")) and m.Part0 and m.Part1 then
-			table.insert(joints, m)
+		if m:IsA("JointInstance") and m.Part0 and m.Part1 then
+			table.insert(jointInstances, m)
+		elseif m:IsA("WeldConstraint") and m.Part0 and m.Part1 then
+			table.insert(weldConstraints, m)
 		end
 	end
-	if #joints == 0 then
-		return false -- no real joints to ragdoll (e.g. the WeldConstraint-only grey placeholder)
+	if #jointInstances == 0 and #weldConstraints == 0 then
+		return false -- nothing rigid to ragdoll
 	end
 
-	for _, m in joints do
-		local a0 = Instance.new("Attachment")
-		a0.Name = "RagdollAtt"
-		a0.CFrame = m.C0
-		a0.Parent = m.Part0
-		local a1 = Instance.new("Attachment")
-		a1.Name = "RagdollAtt"
-		a1.CFrame = m.C1
-		a1.Parent = m.Part1
-
-		local bsc = Instance.new("BallSocketConstraint")
-		bsc.Name = "RagdollBSC"
-		bsc.Attachment0 = a0
-		bsc.Attachment1 = a1
-		bsc.LimitsEnabled = true
-		bsc.UpperAngle = RAGDOLL_LIMB_ANGLE
-		bsc.TwistLimitsEnabled = true
-		bsc.TwistLowerAngle = -RAGDOLL_LIMB_ANGLE
-		bsc.TwistUpperAngle = RAGDOLL_LIMB_ANGLE
-		bsc.Parent = m.Part1
-		m.Enabled = false -- the joint is now driven by the constraint, so the limb goes limp
+	for _, m in jointInstances do
+		makeRagdollJoint(m.Part0, m.Part1, m.C0, m.C1)
+		m.Enabled = false -- driven by the ball-socket now, so the limb goes limp
+	end
+	for _, m in weldConstraints do
+		makeRagdollJoint(m.Part0, m.Part1, nil, nil)
+		m.Enabled = false
 	end
 
-	-- Make parts collide with the FLOOR but pass THROUGH each other (collision group), so the arms can swing
-	-- past the torso instead of jamming against it — that jam is what made the arms look stuck. Remember
-	-- each part's original CanCollide + CollisionGroup so reuse restores them. Server simulates the parts.
+	-- Limbs collide with the world so the body piles on the floor; the root stops propping it upright.
+	-- Remember each part's original CanCollide so reuse restores it. Server simulates the loose parts.
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			if p:GetAttribute("ZBaseCC") == nil then
 				p:SetAttribute("ZBaseCC", p.CanCollide)
 			end
-			if p:GetAttribute("ZBaseCG") == nil then
-				p:SetAttribute("ZBaseCG", p.CollisionGroup)
-			end
-			p.CanCollide = true
-			p.CollisionGroup = RAGDOLL_GROUP
+			p.CanCollide = (p ~= record.root)
 			pcall(function()
 				p:SetNetworkOwner(nil)
 			end)
@@ -523,7 +542,10 @@ end
 -- restore collisions. (Assigned to the forward-declared local so release() above can call it.)
 clearRagdoll = function(model)
 	for _, d in model:GetDescendants() do
-		if d:IsA("Motor6D") or d:IsA("Weld") then
+		-- Re-enable C0/C1 joints (Motor6D/Weld/Snap) — they re-assert their fixed pose immediately.
+		-- WeldConstraints are intentionally left for release() to re-enable AFTER the rig is snapped back
+		-- to its standing pose (a WeldConstraint freezes the CURRENT offset, so timing matters).
+		if d:IsA("JointInstance") then
 			d.Enabled = true
 		elseif d.Name == "RagdollBSC" and d:IsA("BallSocketConstraint") then
 			d:Destroy()
@@ -536,10 +558,6 @@ clearRagdoll = function(model)
 			local cc = p:GetAttribute("ZBaseCC")
 			if cc ~= nil then
 				p.CanCollide = cc
-			end
-			local cg = p:GetAttribute("ZBaseCG")
-			if typeof(cg) == "string" then
-				p.CollisionGroup = cg
 			end
 		end
 	end
@@ -970,12 +988,6 @@ end
 
 -- ===== LIFECYCLE =====
 function ZombieService.Start()
-	-- Ragdoll collision group: corpse parts collide with the world (floor) but NOT with each other.
-	pcall(function()
-		PhysicsService:RegisterCollisionGroup(RAGDOLL_GROUP)
-		PhysicsService:CollisionGroupSetCollidable(RAGDOLL_GROUP, RAGDOLL_GROUP, false)
-	end)
-
 	zombieFolder = Instance.new("Folder")
 	zombieFolder.Name = "Zombies"
 	zombieFolder.Parent = Workspace
