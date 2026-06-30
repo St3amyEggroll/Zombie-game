@@ -50,10 +50,19 @@ end
 
 local function makePlayerState(player: Player)
 	local pistol = WeaponConfig.pistol
+	-- TEST: own every weapon (GameConfig.DebugUnlockAllWeapons), pistol always in slot 1.
+	local owned = { "pistol" }
+	if GameConfig.DebugUnlockAllWeapons then
+		for id in WeaponConfig do
+			if id ~= "pistol" then
+				table.insert(owned, id)
+			end
+		end
+	end
 	return {
 		userId = player.UserId,
 		points = GameConfig.StartingPoints,      -- "cash"
-		ownedWeapons = { "pistol" },
+		ownedWeapons = owned,
 		equippedWeapon = "pistol",
 		ammo = { pistol = { mag = pistol.magSize, reserve = pistol.reserveAmmo } },
 		upgrades = {},                            -- [weaponId] = upgrade level (shop)
@@ -118,7 +127,8 @@ local function runMatch()
 		task.wait(1)
 	end
 
-	state.round = 1
+	-- TEST: jump straight to GameConfig.DebugStartWave (0 = normal start at wave 1).
+	state.round = (GameConfig.DebugStartWave and GameConfig.DebugStartWave > 0) and GameConfig.DebugStartWave or 1
 	state.startedAt = os.clock()
 	setPhase("Playing")
 	Remotes.Get("RoundChanged"):FireAllClients(state.round)

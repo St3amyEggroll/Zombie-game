@@ -52,6 +52,10 @@ GameConfig.SprintStaminaMax  = 100
 GameConfig.SprintDrainPerSec = 25
 GameConfig.SprintRegenPerSec = 15
 
+-- ===== TESTING / DEBUG ===== (turn these OFF for the real game)
+GameConfig.DebugUnlockAllWeapons = true   -- every player starts owning every weapon
+GameConfig.DebugStartWave        = 10     -- start the match at this wave (0 = normal, start at wave 1)
+
 -- ===== MATCH FLOW =====
 GameConfig.LobbyCountdown     = 5      -- seconds in lobby before a match auto-starts
 GameConfig.MinPlayersToStart  = 1      -- solo-playable
