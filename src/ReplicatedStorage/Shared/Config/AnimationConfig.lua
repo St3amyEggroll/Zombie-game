@@ -47,19 +47,19 @@ AnimationConfig.Hitmarker = {
 }
 
 -- Screen shake + camera kick on fire (applied via the local player's Humanoid.CameraOffset).
--- Uses a "trauma" model: each shot adds trauma; shake = trauma² so it falls off smoothly. A sharp single
--- shot (pistol) spikes then settles = a pop; rapid fire (minigun) keeps trauma topped up = a rumble.
+-- Each shot (re)starts a Perlin-noise shake (math.noise = smooth, not jittery) that decays over its
+-- Duration. A semi-auto shot (pistol) fires one strong, short shake = a pop; rapid fire (minigun) keeps
+-- restarting a softer, longer shake = a sustained rumble. Kick = an upward camera nudge that recovers.
 AnimationConfig.Shake = {
 	Enabled = true,
-	Decay = 7,          -- trauma lost per second (higher = settles faster)
-	MaxOffset = 0.9,    -- studs of random camera shake at full trauma
 	KickRecover = 14,   -- how fast the per-shot upward kick settles (higher = snappier)
-	Default = { Trauma = 0.28, Kick = 0.12 }, -- used for any weapon not in PerWeapon below
-	-- Per weapon: Trauma added per shot (pop vs rumble) and Kick = upward camera nudge (studs) per shot.
+	-- Per weapon: Magnitude (studs of shake), Duration (s the shake decays over), Frequency (Hz of the
+	-- noise wobble), Kick (upward camera nudge in studs per shot). Default covers any weapon not listed.
+	Default = { Magnitude = 0.5,  Duration = 0.20, Frequency = 20, Kick = 0.12 },
 	PerWeapon = {
-		pistol  = { Trauma = 0.40, Kick = 0.18 }, -- sharp pop
-		ak47    = { Trauma = 0.22, Kick = 0.10 },
-		minigun = { Trauma = 0.10, Kick = 0.04 }, -- small per shot; fast fire = sustained rumble
+		pistol  = { Magnitude = 0.75, Duration = 0.18, Frequency = 22, Kick = 0.18 }, -- sharp pop
+		ak47    = { Magnitude = 0.45, Duration = 0.16, Frequency = 26, Kick = 0.10 },
+		minigun = { Magnitude = 0.35, Duration = 0.22, Frequency = 32, Kick = 0.04 }, -- soft + sustained rumble
 	},
 }
 

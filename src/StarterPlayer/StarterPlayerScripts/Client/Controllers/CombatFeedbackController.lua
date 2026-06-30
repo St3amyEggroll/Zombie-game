@@ -28,9 +28,18 @@ local CombatFeedbackController = {}
 local localPlayer = Players.LocalPlayer
 local fxFolder -- holds client-only effect parts
 
--- ===== SCREEN SHAKE / KICK (trauma model; applied via Humanoid.CameraOffset each frame) =====
-local trauma = 0      -- 0..1, decays over time; shake magnitude = trauma²
-local kickUp = 0      -- transient upward camera nudge from the last shot(s), recovers each frame
+-- ===== SCREEN SHAKE / KICK (Perlin-noise shake; applied via Humanoid.CameraOffset each frame) =====
+-- We track the exact offset we last applied and subtract it before applying the new one, so this shake
+-- only ever adds/removes ITS OWN contribution to CameraOffset (anything else writing CameraOffset is left
+-- intact). A fresh shot restarts the shake; rapid fire keeps it alive = a rumble.
+local shakeElapsed = math.huge -- >= duration means "no active shake"
+local shakeDuration = 0
+local shakeMagnitude = 0
+local shakeFrequency = 20
+local shakeSeed = 0            -- varies the noise sample per shot so repeats don't look identical
+local kickUp = 0              -- transient upward camera nudge, recovers each frame
+local lastOffset = Vector3.zero
+local lastHumanoid: Humanoid? = nil
 
 local function addShake(weaponId: string)
 	local cfg = AnimationConfig.Shake
@@ -38,24 +47,42 @@ local function addShake(weaponId: string)
 		return
 	end
 	local w = cfg.PerWeapon[weaponId] or cfg.Default
-	trauma = math.min(1, trauma + w.Trauma)
-	kickUp = math.min(cfg.MaxOffset, kickUp + w.Kick)
+	shakeElapsed = 0
+	shakeDuration = math.max(w.Duration, 0)
+	shakeMagnitude = math.max(w.Magnitude, 0)
+	shakeFrequency = math.max(w.Frequency, 1)
+	shakeSeed = (shakeSeed + 7.13) % 1000 -- walk the noise field so each shot samples a new spot
+	kickUp = math.min(2, kickUp + w.Kick)
 end
 
 local function updateShake(dt: number)
 	local cfg = AnimationConfig.Shake
 	local character = localPlayer.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid ~= lastHumanoid then
+		lastOffset = Vector3.zero -- respawned: our old offset belongs to a gone humanoid; start clean
+		lastHumanoid = humanoid
+	end
 	if not cfg.Enabled or not humanoid then
 		return
 	end
-	trauma = math.max(0, trauma - cfg.Decay * dt)
+
+	local offset = Vector3.zero
+	shakeElapsed += dt
+	if shakeDuration > 0 and shakeElapsed < shakeDuration then
+		local strength = shakeMagnitude * (1 - shakeElapsed / shakeDuration)
+		local t = shakeElapsed * shakeFrequency
+		offset = Vector3.new(
+			math.noise(t, 0, shakeSeed),
+			math.noise(0, t, shakeSeed),
+			0
+		) * strength
+	end
+
 	kickUp = math.max(0, kickUp - kickUp * math.clamp(cfg.KickRecover * dt, 0, 1))
-	local shake = trauma * trauma
-	local mag = shake * cfg.MaxOffset
-	local offX = (math.random() * 2 - 1) * mag
-	local offY = (math.random() * 2 - 1) * mag + kickUp
-	humanoid.CameraOffset = Vector3.new(offX, offY, 0)
+	local total = offset + Vector3.new(0, kickUp, 0)
+	humanoid.CameraOffset = humanoid.CameraOffset - lastOffset + total
+	lastOffset = total
 end
 
 -- ===== EFFECT PARTS =====
