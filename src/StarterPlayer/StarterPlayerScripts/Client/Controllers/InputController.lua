@@ -45,13 +45,17 @@ local equipped = "pistol"
 local ownedWeapons: { string } = { "pistol" }
 local ammoMirror: { [string]: { mag: number, reserve: number } } = {}
 local firing = false
-local fireStart = 0 -- os.clock() when the current trigger-hold began (drives minigun spin-up)
+local fireStart = 0       -- os.clock() when the current trigger-hold began (drives minigun spin-up)
+local lastFireClock = 0   -- os.clock() of the last predicted shot (client-side fire-rate gate)
+local reloadingUntil = 0  -- os.clock() the current reload ends; can't fire before then
 
 -- ===== SIGNALS =====
 local firedEvent = Instance.new("BindableEvent")
 local ammoEvent = Instance.new("BindableEvent")
+local reloadEvent = Instance.new("BindableEvent")
 InputController.Fired = firedEvent.Event
 InputController.AmmoUpdated = ammoEvent.Event
+InputController.ReloadStarted = reloadEvent.Event -- (weaponId, duration) -> drives the reload ring
 
 -- ===== HELPERS =====
 local function getMirror(weaponId: string)
@@ -78,6 +82,16 @@ local function fireOnce()
 	if not weapon then
 		return
 	end
+	local now = os.clock()
+	-- Can't fire while reloading, and can't fire faster than the weapon's fire rate (stops rapid-clicking a
+	-- semi-auto like the shotgun from predicting extra shots the server then rejects). 0.9 keeps the client
+	-- a touch stricter than the server's fire-rate slack, so a predicted shot is never bounced.
+	if now < reloadingUntil then
+		return
+	end
+	if now - lastFireClock < (1 / weapon.fireRate) * 0.9 then
+		return
+	end
 	local origin, direction = CameraController.GetAim()
 	if not origin or not direction then
 		return
@@ -87,12 +101,32 @@ local function fireOnce()
 		return
 	end
 
+	lastFireClock = now
 	Remotes.Get("FireWeapon"):FireServer(equipped, origin, direction)
 
 	-- Local prediction so the gun feels instant; the server's AmmoChanged is the real count.
 	mirror.mag -= 1
 	ammoEvent:Fire(equipped, mirror.mag, mirror.reserve)
 	firedEvent:Fire(equipped)
+end
+
+-- Start a reload IF there's something to reload. Mirrors the server's conditions so the client ring/block
+-- only show when the server will actually reload. Blocks firing for weapon.reloadSeconds.
+local function tryReload()
+	local weapon = WeaponConfig[equipped]
+	if not weapon then
+		return
+	end
+	if os.clock() < reloadingUntil then
+		return -- already reloading
+	end
+	local mirror = getMirror(equipped)
+	if mirror.mag >= weapon.magSize or mirror.reserve <= 0 then
+		return -- mag full or no reserve: nothing to do
+	end
+	reloadingUntil = os.clock() + weapon.reloadSeconds
+	Remotes.Get("Reload"):FireServer(equipped)
+	reloadEvent:Fire(equipped, weapon.reloadSeconds)
 end
 
 -- Seconds to wait before the next shot. Spin-up weapons ramp from SPIN_START_FRAC× the fire rate up to
@@ -152,6 +186,7 @@ local function equip(weaponId: string)
 	end
 	equipped = weaponId
 	stopFiring()
+	reloadingUntil = 0 -- switching weapons cancels the reload gate
 	Remotes.Get("EquipWeapon"):FireServer(weaponId) -- server validates ownership + sends authoritative ammo
 	local m = getMirror(weaponId)
 	ammoEvent:Fire(weaponId, m.mag, m.reserve) -- refresh the HUD to the newly held weapon
@@ -174,7 +209,7 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 		startFiring()
 	elseif input.UserInputType == Enum.UserInputType.Keyboard then
 		if input.KeyCode == KEY_RELOAD then
-			Remotes.Get("Reload"):FireServer(equipped)
+			tryReload()
 		elseif input.KeyCode == KEY_SPRINT then
 			Remotes.Get("Sprint"):FireServer(true)
 		elseif input.KeyCode == KEY_INTERACT then
@@ -218,7 +253,10 @@ function InputController.Start()
 	UserInputService.InputEnded:Connect(onInputEnded)
 
 	-- Stop firing if the character dies or we lose focus.
-	localPlayer.CharacterAdded:Connect(stopFiring)
+	localPlayer.CharacterAdded:Connect(function()
+		stopFiring()
+		reloadingUntil = 0 -- a fresh life isn't mid-reload
+	end)
 	UserInputService.WindowFocusReleased:Connect(stopFiring)
 
 	print("[InputController] started")

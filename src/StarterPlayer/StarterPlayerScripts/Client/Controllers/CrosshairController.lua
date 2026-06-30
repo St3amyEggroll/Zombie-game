@@ -24,12 +24,17 @@ local FIRE_DECAY  = 26    -- how fast the fire spread settles back (px/sec)
 local SMOOTH      = 18    -- how snappy the gap eases toward its target (higher = snappier)
 local REF_SPEED   = 16    -- move speed treated as "full spread" (base walk speed)
 local SHOW_DOT    = true  -- draw a small center dot
+local RING_RADIUS = 22    -- reload ring radius (px)
+local RING_COLOR  = Color3.fromRGB(255, 235, 150)
 
 local localPlayer = Players.LocalPlayer
 local holder
 local lines = {}
 local fireSpread = 0
 local gap = BASE_GAP
+local reloadRing, reloadHand
+local reloadEnd = 0
+local reloadDuration = 1
 
 local function newLine(name: string, w: number, h: number)
 	local f = Instance.new("Frame")
@@ -66,6 +71,34 @@ local function build()
 		local dot = newLine("Dot", THICKNESS, THICKNESS)
 		dot.Position = UDim2.fromOffset(0, 0)
 	end
+
+	-- Reload ring: a circular outline + a sweeping "hand" that goes once around while you reload.
+	reloadRing = Instance.new("Frame")
+	reloadRing.Name = "ReloadRing"
+	reloadRing.AnchorPoint = Vector2.new(0.5, 0.5)
+	reloadRing.Position = UDim2.fromOffset(0, 0)
+	reloadRing.Size = UDim2.fromOffset(RING_RADIUS * 2, RING_RADIUS * 2)
+	reloadRing.BackgroundTransparency = 1
+	reloadRing.Visible = false
+	reloadRing.Parent = holder
+	local rc = Instance.new("UICorner")
+	rc.CornerRadius = UDim.new(1, 0)
+	rc.Parent = reloadRing
+	local rs = Instance.new("UIStroke")
+	rs.Color = RING_COLOR
+	rs.Thickness = 2
+	rs.Transparency = 0.4
+	rs.Parent = reloadRing
+
+	reloadHand = Instance.new("Frame")
+	reloadHand.Name = "ReloadHand"
+	reloadHand.AnchorPoint = Vector2.new(0.5, 1) -- pivot at the cursor; extends up by RING_RADIUS
+	reloadHand.Position = UDim2.fromOffset(0, 0)
+	reloadHand.Size = UDim2.fromOffset(THICKNESS, RING_RADIUS)
+	reloadHand.BackgroundColor3 = RING_COLOR
+	reloadHand.BorderSizePixel = 0
+	reloadHand.Visible = false
+	reloadHand.Parent = holder
 end
 
 local function update(dt: number)
@@ -104,12 +137,28 @@ local function update(dt: number)
 	lines.bottom.Position = UDim2.fromOffset(0, off)
 	lines.left.Position = UDim2.fromOffset(-off, 0)
 	lines.right.Position = UDim2.fromOffset(off, 0)
+
+	-- Reload ring sweep.
+	local now = os.clock()
+	if now < reloadEnd and reloadDuration > 0 then
+		reloadRing.Visible = true
+		reloadHand.Visible = true
+		local progress = math.clamp(1 - (reloadEnd - now) / reloadDuration, 0, 1)
+		reloadHand.Rotation = 360 * progress
+	elseif reloadRing.Visible then
+		reloadRing.Visible = false
+		reloadHand.Visible = false
+	end
 end
 
 function CrosshairController.Start()
 	build()
 	InputController.Fired:Connect(function()
 		fireSpread = math.min(MAX_GAP, fireSpread + FIRE_KICK)
+	end)
+	InputController.ReloadStarted:Connect(function(_weaponId, duration)
+		reloadDuration = duration or 1
+		reloadEnd = os.clock() + reloadDuration
 	end)
 	RunService.RenderStepped:Connect(update)
 	print("[CrosshairController] started")

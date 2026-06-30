@@ -353,6 +353,24 @@ function CombatService.RefillAmmo(player: Player, weaponId: string): boolean
 	return true
 end
 
+-- Add `frac` of each owned weapon's FULL reserve back to its reserve (capped). Used by ammo pickups.
+function CombatService.GiveAmmoFraction(player: Player, frac: number): boolean
+	local ps = MatchService.GetPlayerState(player)
+	if not ps then
+		return false
+	end
+	for _, weaponId in ps.ownedWeapons do
+		local weapon = WeaponConfig[weaponId]
+		if weapon then
+			local a = ensureAmmo(ps, weaponId, weapon)
+			local add = math.ceil(weapon.reserveAmmo * frac)
+			a.reserve = math.min(weapon.reserveAmmo, a.reserve + add)
+			fireAmmo(player, weaponId, a)
+		end
+	end
+	return true
+end
+
 -- Client requests to equip an owned weapon.
 local function onEquip(player: Player, weaponId: any)
 	if not SecurityService.Allow(player, "Interact") then
