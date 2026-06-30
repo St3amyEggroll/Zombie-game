@@ -62,6 +62,7 @@ local EMERGE_TIME      = 1.6    -- seconds a zombie takes to claw its way up out
                                -- still FASTER than the death sink SINK_TIME so it reads as "rising out")
 local GRAVE_LINGER     = 4      -- seconds the grave headstone stays after the zombie is out
 local GRAVE_SINK_TIME  = 1.5    -- seconds the grave then takes to sink away and despawn
+local BIG_GRAVE_TYPES  = { tank = true, boss = true } -- these enemies rise from a "Big" grave instead
 local HIT_KNOCKBACK    = 18     -- studs/sec shove away from the shooter on a non-lethal hit
 local HIT_FLASH_TIME   = 0.12   -- seconds a zombie flashes white when hit
 local FLASH_COLOR      = Color3.fromRGB(255, 255, 255)
@@ -77,7 +78,8 @@ local roundToken = 0                  -- bumped to cancel in-flight spawn loops 
 local bossRecord: any = nil           -- the one live boss, if any (drives the boss health bar)
 
 local pool: { [string]: { Model } } = {}  -- typeId -> reusable models
-local graveTemplates: { Model } = {}      -- Grave models from Assets/Graves, cloned above each spawn
+local graveTemplates: { Model } = {}      -- regular Grave models from Assets/Graves (normal enemies)
+local bigGraveTemplates: { Model } = {}   -- "Big*" graves (e.g. BigGrave1/2) for tank + boss
 local zombieFolder: Folder
 local poolFolder: Folder
 local graveFolder: Folder
@@ -827,7 +829,7 @@ end
 -- ===== GRAVES (props cloned above each spawn; the zombie rises out from under them) =====
 -- Grave models live in Assets > Graves (Grave1, Grave2, ...). Loaded once; a random one is cloned per spawn.
 local function loadGraveTemplates()
-	local list = {}
+	local regular, big = {}, {}
 	for _, container in { ReplicatedStorage, ServerStorage } do
 		local assets = ciFind(container, "Assets")
 		local gf = assets and ciFind(assets, "Graves")
@@ -835,12 +837,18 @@ local function loadGraveTemplates()
 			for _, c in gf:GetChildren() do
 				local m = asModel(c)
 				if m then
-					table.insert(list, m)
+					-- Models named "Big..." (BigGrave1, BigGrave2) are the big graves for tank/boss.
+					if m.Name:lower():match("^big") then
+						table.insert(big, m)
+					else
+						table.insert(regular, m)
+					end
 				end
 			end
 		end
 	end
-	graveTemplates = list
+	graveTemplates = regular
+	bigGraveTemplates = big
 end
 
 -- Find the ground Y under a point (ignores zombies, players, and grave props so it hits real terrain).
@@ -861,11 +869,13 @@ end
 
 -- Drop a random grave headstone at (x, z) sitting on the ground, then sink it away after a while.
 -- Props are non-colliding and non-queryable so they never block movement, shots, or ground checks.
-local function placeGrave(x: number, groundY: number, z: number)
-	if #graveTemplates == 0 then
+local function placeGrave(x: number, groundY: number, z: number, big: boolean)
+	-- tank/boss rise from a Big grave; fall back to a regular grave if no Big ones exist.
+	local list = (big and #bigGraveTemplates > 0) and bigGraveTemplates or graveTemplates
+	if #list == 0 then
 		return
 	end
-	local grave = graveTemplates[math.random(#graveTemplates)]:Clone()
+	local grave = list[math.random(#list)]:Clone()
 	for _, p in grave:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = true
@@ -902,7 +912,7 @@ local function startEmergence(record, spawnCF: CFrame)
 	local groundY = findGroundY(pos.X, pos.Z, pos.Y)
 	local finalCF = CFrame.new(pos.X, groundY + GRAVE_STAND_HEIGHT, pos.Z)
 
-	placeGrave(pos.X, groundY, pos.Z)
+	placeGrave(pos.X, groundY, pos.Z, BIG_GRAVE_TYPES[record.typeId] == true)
 
 	record.emerging = true
 	-- Anchor ONLY the root and limp the Humanoid during the rise. The rig's joints keep the limbs glued to
