@@ -63,7 +63,9 @@ local EMERGE_TIME      = 1.6    -- seconds a zombie takes to claw its way up out
                                -- still FASTER than the death sink SINK_TIME so it reads as "rising out")
 local GRAVE_LINGER     = 4      -- seconds the grave headstone stays after the zombie is out
 local GRAVE_SINK_TIME  = 1.5    -- seconds the grave then takes to sink away and despawn
-local BIG_GRAVE_TYPES  = { tank = true, boss = true } -- these enemies rise from a "Big" grave instead
+local GRAVE_RISE_TIME  = 0.8    -- seconds the headstone takes to rise OUT of the ground (before the zombie)
+-- Which grave tier each enemy rises from: boss -> a "Huge*" grave, tank -> a "Big*" grave, others -> regular.
+local GRAVE_TIER       = { boss = "huge", tank = "big" }
 local HIT_KNOCKBACK    = 18     -- studs/sec shove away from the shooter on a non-lethal hit
 local HIT_FLASH_TIME   = 0.12   -- seconds a zombie flashes white when hit
 local FLASH_COLOR      = Color3.fromRGB(255, 255, 255)
@@ -80,7 +82,8 @@ local bossRecord: any = nil           -- the one live boss, if any (drives the b
 
 local pool: { [string]: { Model } } = {}  -- typeId -> reusable models
 local graveTemplates: { Model } = {}      -- regular Grave models from Assets/Graves (normal enemies)
-local bigGraveTemplates: { Model } = {}   -- "Big*" graves (e.g. BigGrave1/2) for tank + boss
+local bigGraveTemplates: { Model } = {}   -- "Big*" graves (e.g. BigGrave1/2) for tanks
+local hugeGraveTemplates: { Model } = {}  -- "Huge*" graves (e.g. HugeGrave1/2) for the boss
 local zombieFolder: Folder
 local poolFolder: Folder
 local graveFolder: Folder
@@ -834,7 +837,7 @@ end
 -- ===== GRAVES (props cloned above each spawn; the zombie rises out from under them) =====
 -- Grave models live in Assets > Graves (Grave1, Grave2, ...). Loaded once; a random one is cloned per spawn.
 local function loadGraveTemplates()
-	local regular, big = {}, {}
+	local regular, big, huge = {}, {}, {}
 	for _, container in { ReplicatedStorage, ServerStorage } do
 		local assets = ciFind(container, "Assets")
 		local gf = assets and ciFind(assets, "Graves")
@@ -842,10 +845,12 @@ local function loadGraveTemplates()
 			for _, c in gf:GetChildren() do
 				local m = asModel(c)
 				if m then
-					-- Models named "Big..." (BigGrave1, BigGrave2) are the big graves for tank/boss.
-					if m.Name:lower():match("^big") then
+					local n = m.Name:lower()
+					if n:match("^huge") then       -- HugeGrave1/2 -> boss
+						table.insert(huge, m)
+					elseif n:match("^big") then    -- BigGrave1/2 -> tanks
 						table.insert(big, m)
-					else
+					else                            -- Grave1/2 -> normal enemies
 						table.insert(regular, m)
 					end
 				end
@@ -854,6 +859,7 @@ local function loadGraveTemplates()
 	end
 	graveTemplates = regular
 	bigGraveTemplates = big
+	hugeGraveTemplates = huge
 end
 
 -- Find the ground Y under a point (ignores zombies, players, and grave props so it hits real terrain).
@@ -872,11 +878,16 @@ local function findGroundY(x: number, z: number, fallbackY: number): number
 	return hit and hit.Position.Y or fallbackY
 end
 
--- Drop a random grave headstone at (x, z) sitting on the ground, then sink it away after a while.
--- Props are non-colliding and non-queryable so they never block movement, shots, or ground checks.
-local function placeGrave(x: number, groundY: number, z: number, big: boolean)
-	-- tank/boss rise from a Big grave; fall back to a regular grave if no Big ones exist.
-	local list = (big and #bigGraveTemplates > 0) and bigGraveTemplates or graveTemplates
+-- Rise a random grave headstone UP out of the ground at (x, z), hold it while the zombie emerges, then
+-- sink it away. `tier` = "huge" (boss) | "big" (tank) | nil (regular); falls back to regular if that tier
+-- has no models. Props are non-colliding + non-queryable so they never block movement/shots/ground checks.
+local function placeGrave(x: number, groundY: number, z: number, tier: string?)
+	local list = graveTemplates
+	if tier == "huge" and #hugeGraveTemplates > 0 then
+		list = hugeGraveTemplates
+	elseif tier == "big" and #bigGraveTemplates > 0 then
+		list = bigGraveTemplates
+	end
 	if #list == 0 then
 		return
 	end
@@ -888,20 +899,35 @@ local function placeGrave(x: number, groundY: number, z: number, big: boolean)
 			p.CanQuery = false
 		end
 	end
-	-- Random yaw so every headstone faces a different way (do this BEFORE measuring, then drop it in place).
+	-- Random yaw so every headstone faces a different way (do this BEFORE measuring).
 	grave:PivotTo(grave:GetPivot() * CFrame.Angles(0, math.random() * 2 * math.pi, 0))
 	local cf, size = grave:GetBoundingBox()
+	local riseDepth = size.Y + 1 -- fully bury it underground so the whole stone can rise out
 	local currentBaseY = cf.Position.Y - size.Y * 0.5
-	grave:PivotTo(grave:GetPivot() + Vector3.new(x - cf.Position.X, groundY - currentBaseY, z - cf.Position.Z))
+	-- Start BURIED: base at (groundY - riseDepth).
+	grave:PivotTo(grave:GetPivot() + Vector3.new(x - cf.Position.X, (groundY - riseDepth) - currentBaseY, z - cf.Position.Z))
 	grave.Parent = graveFolder
+	local buriedCF = grave:GetPivot()
 
 	task.spawn(function()
-		task.wait(EMERGE_TIME + GRAVE_LINGER)
-		local startCF = grave:GetPivot()
+		-- 1) the headstone rises up out of the ground FIRST.
 		local elapsed = 0
+		while elapsed < GRAVE_RISE_TIME and grave.Parent do
+			elapsed += task.wait()
+			grave:PivotTo(buriedCF + Vector3.new(0, riseDepth * math.clamp(elapsed / GRAVE_RISE_TIME, 0, 1), 0))
+		end
+		if not grave.Parent then
+			return
+		end
+		grave:PivotTo(buriedCF + Vector3.new(0, riseDepth, 0)) -- fully up, on the surface
+		-- 2) hold while the zombie climbs out + lingers.
+		task.wait(EMERGE_TIME + GRAVE_LINGER)
+		-- 3) sink the stone back into the ground and despawn.
+		local sinkStart = grave:GetPivot()
+		elapsed = 0
 		while elapsed < GRAVE_SINK_TIME and grave.Parent do
 			elapsed += task.wait()
-			grave:PivotTo(startCF + Vector3.new(0, -EMERGE_DEPTH * math.clamp(elapsed / GRAVE_SINK_TIME, 0, 1), 0))
+			grave:PivotTo(sinkStart + Vector3.new(0, -riseDepth * math.clamp(elapsed / GRAVE_SINK_TIME, 0, 1), 0))
 		end
 		grave:Destroy()
 	end)
@@ -917,7 +943,7 @@ local function startEmergence(record, spawnCF: CFrame)
 	local groundY = findGroundY(pos.X, pos.Z, pos.Y)
 	local finalCF = CFrame.new(pos.X, groundY + GRAVE_STAND_HEIGHT, pos.Z)
 
-	placeGrave(pos.X, groundY, pos.Z, BIG_GRAVE_TYPES[record.typeId] == true)
+	placeGrave(pos.X, groundY, pos.Z, GRAVE_TIER[record.typeId])
 
 	record.emerging = true
 	-- Anchor ONLY the root and limp the Humanoid during the rise. The rig's joints keep the limbs glued to
@@ -930,6 +956,7 @@ local function startEmergence(record, spawnCF: CFrame)
 	local base = finalCF + Vector3.new(0, -EMERGE_DEPTH, 0)
 	model:PivotTo(base)
 	task.spawn(function()
+		task.wait(GRAVE_RISE_TIME) -- let the headstone rise out of the ground FIRST, then the zombie climbs out
 		local elapsed = 0
 		while elapsed < EMERGE_TIME and model.Parent and not record.dead do
 			elapsed += task.wait()
@@ -1338,7 +1365,7 @@ function ZombieService.Start()
 
 	RunService.Heartbeat:Connect(onHeartbeat)
 
-	print(("[ZombieService] started (%d grave model(s) in Assets/Graves)"):format(#graveTemplates))
+	print(("[ZombieService] started (graves: %d regular, %d big, %d huge)"):format(#graveTemplates, #bigGraveTemplates, #hugeGraveTemplates))
 end
 
 return ZombieService
