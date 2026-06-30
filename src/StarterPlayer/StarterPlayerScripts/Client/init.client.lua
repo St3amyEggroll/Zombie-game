@@ -4,19 +4,11 @@
 -- HUD/BuyPrompt in Phase 3, etc.) and will be picked up automatically.
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Make sure shared modules have replicated before any controller requires them.
-local Shared = ReplicatedStorage:WaitForChild("Shared")
+ReplicatedStorage:WaitForChild("Shared")
 ReplicatedStorage:WaitForChild("Remotes")
-
-local Places = require(Shared:WaitForChild("Config"):WaitForChild("Places"))
-
--- In the LIVE lobby place, run ONLY the lobby UI (no crosshair/HUD/combat controllers). Everywhere else —
--- the game place, or Studio testing either place — run all controllers; LobbyController self-gates so it
--- stays dormant in the live game place.
-local liveLobby = Places.IsLobby and not RunService:IsStudio()
 
 local localPlayer = Players.LocalPlayer
 
@@ -45,9 +37,7 @@ end
 
 for _, module in controllersFolder:GetChildren() do
 	if module:IsA("ModuleScript") then
-		if (not liveLobby) or module.Name == "LobbyController" then
-			startController(module)
-		end
+		startController(module)
 	end
 end
 

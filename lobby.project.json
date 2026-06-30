@@ -1,0 +1,24 @@
+{
+  "name": "Zombie Lobby - Lobby Place",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "LobbyServer": {
+        "$path": "lobby-src/ServerScriptService/LobbyServer.server.lua"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "LobbyClient": {
+          "$path": "lobby-src/StarterPlayer/StarterPlayerScripts/LobbyClient.client.lua"
+        }
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace"
+    }
+  }
+}

@@ -1,18 +1,12 @@
 --!strict
--- Places.lua — the Place IDs for this experience's two places, plus convenience flags for code that must
--- behave differently in the lobby vs the game place. BOTH places run the SAME synced code; everything keys
--- off game.PlaceId. If you clone/copy the experience, update these two IDs.
---
---   Game  = the gameplay place (maps + waves). It is ALSO the experience's start place (can't be changed),
---           so it doubles as the entry router: fresh joiners are teleported straight to the lobby.
---   Lobby = the menu lobby place. Press PLAY there to teleport into the game and start a run.
+-- Places.lua — Place IDs for this experience. The GAME place uses Places.Lobby to teleport players back to
+-- the lobby (on a fresh join to the start place, and on death). The LOBBY place is a SEPARATE codebase
+-- (lobby-src/, synced with lobby.project.json) and keeps its own copy of the game place id.
+-- If you clone/copy the experience, update these IDs (here and in lobby-src/.../LobbyServer.server.lua).
 
 local Places = {}
 
-Places.Lobby = 140566663451993
-Places.Game  = 109730423425701
-
-Places.IsLobby = game.PlaceId == Places.Lobby
-Places.IsGame  = game.PlaceId == Places.Game
+Places.Lobby = 140566663451993 -- the menu lobby place
+Places.Game  = 109730423425701 -- the gameplay place (also the experience's start place)
 
 return Places

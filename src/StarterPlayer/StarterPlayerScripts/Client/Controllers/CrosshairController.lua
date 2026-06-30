@@ -9,7 +9,6 @@ local UserInputService = game:GetService("UserInputService")
 
 local InputController = require(script.Parent.InputController)
 local ShopController = require(script.Parent.ShopController)
-local LobbyController = require(script.Parent.LobbyController)
 
 local CrosshairController = {}
 
@@ -106,12 +105,11 @@ local function update(dt: number)
 	if not holder then
 		return
 	end
-	-- Hide the OS mouse icon during gameplay (the crosshair replaces it). While the shop OR the lobby menu
-	-- is open — or there's no character (we're in the lobby) — a real cursor is needed, so back off, show the
+	-- Hide the OS mouse icon during gameplay (the crosshair replaces it). While the shop menu is open — or
+	-- there's no character (spawning / briefly between runs) — a real cursor is needed, so back off, show the
 	-- OS cursor and hide our crosshair.
 	local shopOpen = ShopController.IsOpen and ShopController.IsOpen()
-	local lobbyOpen = LobbyController.IsOpen and LobbyController.IsOpen()
-	if shopOpen or lobbyOpen or not localPlayer.Character then
+	if shopOpen or not localPlayer.Character then
 		holder.Visible = false
 		UserInputService.MouseIconEnabled = true
 		return
