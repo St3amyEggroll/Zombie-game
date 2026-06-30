@@ -20,6 +20,7 @@ export type Weapon = {
 	splashRadius: number?, -- >0 = AoE damage radius in studs (read by CombatService later)
 	ppName: string?,       -- Pack-a-Punch display name override
 	spinUp: number?,       -- >0 = seconds of holding to ramp fire rate from slow -> full (minigun feel)
+	maxTargets: number?,   -- pellets may spread across this many zombies (default 1 = focus the closest)
 }
 
 -- ===== WEAPON TABLE =====

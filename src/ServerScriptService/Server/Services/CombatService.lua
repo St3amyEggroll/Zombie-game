@@ -230,10 +230,14 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		return a.dist < b.dist
 	end)
 
-	-- Take up to `pellets` distinct VISIBLE targets (line of sight checked), nearest first.
+	-- How many distinct zombies the pellets may spread across. Default 1 = all pellets dump into the
+	-- closest zombie (the shotgun focuses one target). A weapon can set maxTargets > 1 to spread.
+	local maxTargets = math.max(1, weapon.maxTargets or 1)
+
+	-- Take up to `maxTargets` distinct VISIBLE targets (line of sight checked), nearest first.
 	local targets = {}
 	for _, c in cands do
-		if #targets >= pellets then
+		if #targets >= maxTargets then
 			break
 		end
 		if not Workspace:Raycast(origin, c.root.Position - origin, losParams) then
