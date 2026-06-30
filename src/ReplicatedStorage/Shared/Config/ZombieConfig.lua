@@ -15,10 +15,18 @@ export type ZombieType = {
 }
 
 -- ===== ZOMBIE TABLE =====
+-- The `id` must match your model's name under Assets > Zombies > <id> (else the default model is used).
 local ZombieConfig: { [string]: any } = {
 	walker = { id="walker", name="Walker", healthMult=1,   speedMult=1,   damage=20, pointsMult=1,   isSpecial=false, minRound=1,  spawnWeight=100, tint=Color3.fromRGB(90,110,80) },
-	runner = { id="runner", name="Runner", healthMult=0.7, speedMult=1.8, damage=15, pointsMult=1.2, isSpecial=false, minRound=4,  spawnWeight=40,  tint=Color3.fromRGB(140,120,60) },
-	brute  = { id="brute",  name="Brute",  healthMult=4,   speedMult=0.6, damage=45, pointsMult=2,   isSpecial=true,  minRound=7,  spawnWeight=12,  tint=Color3.fromRGB(120,40,40) },
+
+	-- ===== NEW ENEMIES (owner-built models: speedy / lead / tank) =====
+	-- Speedy: fragile but FAST — rushes you, low HP, low damage. Forces you to keep moving.
+	speedy = { id="speedy", name="Speedy", healthMult=0.55, speedMult=2.1, damage=12, pointsMult=1.4, isSpecial=false, minRound=3,  spawnWeight=45, tint=Color3.fromRGB(220,200,70) },
+	-- Lead: a heavy mid-tier bullet-sponge — slowish, tanky, hits hard. The "lead-bellied" grunt.
+	lead   = { id="lead",   name="Lead",   healthMult=2.6,  speedMult=0.85, damage=35, pointsMult=1.9, isSpecial=false, minRound=5,  spawnWeight=22, tint=Color3.fromRGB(120,125,135) },
+	-- Tank: rare, huge HP, slow, devastating melee. A mini-boss that makes you reposition.
+	tank   = { id="tank",   name="Tank",   healthMult=7,    speedMult=0.5,  damage=55, pointsMult=3.5, isSpecial=true,  minRound=8,  spawnWeight=8,  tint=Color3.fromRGB(60,70,60) },
+
 	-- elite "mutated" variant — rare + dangerous (rarity-tier callback)
 	mutant = { id="mutant", name="Mutant", healthMult=6,   speedMult=1.2, damage=50, pointsMult=4,   isSpecial=true,  minRound=10, spawnWeight=5,   tint=Color3.fromRGB(150,60,200) },
 	-- boss: spawned by MatchService on interval, never random

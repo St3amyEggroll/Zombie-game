@@ -40,7 +40,10 @@ local SPAWN_INTERVAL   = 0.6    -- seconds between spawns while a round still ow
 local ATTACK_RANGE     = 4.5    -- studs within which a zombie can hit a player
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
-local DESPAWN_DELAY    = 3      -- seconds a corpse lingers before returning to the pool
+local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same quick flash as a hit, NOT permanent)
+local RAGDOLL_TIME     = 0.9    -- seconds the body tumbles/ragdolls before it begins to sink
+local SINK_TIME        = 1.3    -- seconds the corpse sinks into the ground
+local SINK_DEPTH       = 5      -- studs the corpse sinks before it's pooled
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
 local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
@@ -356,6 +359,12 @@ local function release(record)
 
 	-- Reset visuals/physics so the pooled model comes back clean (upright, base color, no velocity).
 	restoreColors(model)
+	-- Un-anchor every part (the death sink anchored them) so the rig can walk again on reuse.
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+		end
+	end
 	if model.PrimaryPart then
 		model.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
 		model.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
@@ -411,6 +420,30 @@ local function recomputePath(record, targetPos: Vector3)
 	record.computing = false
 end
 
+-- Let the corpse ragdoll-tumble briefly, then freeze it and slide it straight down into the ground
+-- before returning it to the pool. Anchoring makes the sink smooth; release() un-anchors for reuse.
+local function sinkAndRelease(record)
+	local model = record.model
+	task.wait(RAGDOLL_TIME)
+	if not model.Parent then
+		release(record)
+		return
+	end
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+		end
+	end
+	local startCF = model:GetPivot()
+	local elapsed = 0
+	while elapsed < SINK_TIME and model.Parent do
+		elapsed += task.wait()
+		local a = math.clamp(elapsed / SINK_TIME, 0, 1)
+		model:PivotTo(startCF + Vector3.new(0, -SINK_DEPTH * a, 0))
+	end
+	release(record)
+end
+
 -- ===== DEATH =====
 local function onZombieDied(record)
 	if record.dead then
@@ -431,9 +464,17 @@ local function onZombieDied(record)
 		record.walkTrack:Stop()
 	end
 
-	-- Death feedback: turn red, then ragdoll. If a death animation is configured, play it; otherwise give
-	-- the rig a physics "pop" so it tumbles over (rigid topple — joints stay intact so it's still poolable).
+	-- Death feedback: a quick RED flash (same brief flash as a hit — NOT permanently red), then back to
+	-- the base color while the body ragdolls and sinks.
 	recolor(record.model, DEATH_COLOR)
+	task.delay(DEATH_FLASH_TIME, function()
+		if record.model.Parent then
+			restoreColors(record.model)
+		end
+	end)
+
+	-- Ragdoll: play a death animation if configured, else give the rig a physics "pop" so it tumbles over
+	-- (rigid topple — joints stay intact so it's still poolable).
 	if record.deathTrack then
 		record.deathTrack:Play()
 	else
@@ -444,9 +485,8 @@ local function onZombieDied(record)
 		end
 	end
 
-	task.delay(DESPAWN_DELAY, function()
-		release(record)
-	end)
+	-- Then sink the corpse into the ground and return it to the pool.
+	task.spawn(sinkAndRelease, record)
 end
 
 -- ===== SPAWN =====
@@ -658,7 +698,7 @@ local function think(record, now: number)
 	-- Attack on contact.
 	if dist <= ATTACK_RANGE and (now - record.lastAttack) >= ATTACK_COOLDOWN then
 		record.lastAttack = now
-		PlayerStateService.Damage(target, record.damage, "zombie")
+		PlayerStateService.Damage(target, record.damage, "zombie", root.Position)
 		if record.attackTrack then
 			record.attackTrack:Play(0.1)
 		end

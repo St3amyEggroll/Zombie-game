@@ -37,6 +37,7 @@ local DEFINITIONS: { [string]: string } = {
 
 	-- PointsService
 	PointsChanged     = "RemoteEvent",     -- S->C: (points)
+	KillStreak        = "RemoteEvent",     -- S->C: (streak, multiplier) — chain-kill flair + cash bonus
 
 	-- ShopService (Zombie Rush menu shop — buy + upgrade weapons for cash)
 	BuyWeapon         = "RemoteEvent",     -- C->S: (weaponId) buy a weapon
@@ -51,6 +52,7 @@ local DEFINITIONS: { [string]: string } = {
 
 	-- PlayerStateService
 	HealthChanged     = "RemoteEvent",     -- S->C: (health, maxHealth)
+	DamageTaken       = "RemoteEvent",     -- S->C: (amount, sourcePosition) — drives directional hurt UI
 	Interact          = "RemoteEvent",     -- C->S: generic interact intent
 	Sprint            = "RemoteEvent",     -- NEW (Phase 1): C->S: (wantSprint: boolean)
 

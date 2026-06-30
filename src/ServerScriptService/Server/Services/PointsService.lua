@@ -16,8 +16,30 @@ local Remotes = require(Modules.Remotes)
 
 local MatchService = require(script.Parent.MatchService)
 local CombatService = require(script.Parent.CombatService)
+local PlayerStateService = require(script.Parent.PlayerStateService)
 
 local PointsService = {}
+
+-- ===== KILL STREAK ===== (chain kills WITHOUT taking damage for escalating cash + on-screen flair)
+local streaks: { [number]: { count: number } } = {}
+
+local function getStreak(player: Player)
+	local s = streaks[player.UserId]
+	if not s then
+		s = { count = 0 }
+		streaks[player.UserId] = s
+	end
+	return s
+end
+
+-- Reset a player's streak (taking damage / respawning) and tell the client to clear the flair.
+local function resetStreak(player: Player)
+	local s = getStreak(player)
+	if s.count ~= 0 then
+		s.count = 0
+		Remotes.Get("KillStreak"):FireClient(player, 0, 1)
+	end
+end
 
 -- ===== CORE =====
 local function fire(player: Player, points: number)
@@ -77,8 +99,13 @@ local function onKill(player: Player, humanoid: Humanoid, isHead: boolean, _weap
 	if not mult then
 		return
 	end
+	-- Bump the streak, then pay out the kill scaled by the streak's cash multiplier.
+	local s = getStreak(player)
+	s.count += 1
+	local streakMult = math.min(GameConfig.KillStreakMaxMult, 1 + s.count * GameConfig.KillStreakBonusPerKill)
 	local base = isHead and GameConfig.PointsHeadshotKill or GameConfig.PointsPerKill
-	PointsService.Award(player, base * mult)
+	PointsService.Award(player, base * mult * streakMult)
+	Remotes.Get("KillStreak"):FireClient(player, s.count, streakMult)
 
 	local ps = MatchService.GetPlayerState(player)
 	if ps then
@@ -100,6 +127,7 @@ end
 
 local function hookPlayer(player: Player)
 	player.CharacterAdded:Connect(function()
+		resetStreak(player) -- a fresh life starts with no streak
 		task.defer(pushInitial, player)
 	end)
 	task.defer(pushInitial, player)
@@ -108,11 +136,17 @@ end
 function PointsService.Start()
 	CombatService.Hit:Connect(onHit)
 	CombatService.Kill:Connect(onKill)
+	PlayerStateService.Damaged:Connect(function(player)
+		resetStreak(player) -- taking ANY damage breaks the chain
+	end)
 
 	for _, player in Players:GetPlayers() do
 		hookPlayer(player)
 	end
 	Players.PlayerAdded:Connect(hookPlayer)
+	Players.PlayerRemoving:Connect(function(player)
+		streaks[player.UserId] = nil
+	end)
 
 	print("[PointsService] started")
 end

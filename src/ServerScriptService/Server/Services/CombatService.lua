@@ -236,7 +236,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			ZombieService.Hit(target, origin) -- knockback + white flash
 		end
 		endpoint = targetRoot.Position
-		Remotes.Get("HitConfirmed"):FireClient(player, endpoint, false, true, killed)
+		Remotes.Get("HitConfirmed"):FireClient(player, endpoint, false, true, killed, math.floor(damage + 0.5))
 	end
 
 	-- Broadcast the shot so every client draws the bullet tracer from the gun to where it landed.

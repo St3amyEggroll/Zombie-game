@@ -20,6 +20,10 @@ local SecurityService = require(script.Parent.SecurityService)
 
 local PlayerStateService = {}
 
+-- ===== SIGNALS (other services subscribe) =====
+local damagedEvent = Instance.new("BindableEvent")
+PlayerStateService.Damaged = damagedEvent.Event -- (player, amount, source) — fired when a player takes damage
+
 -- ===== TUNABLES (most live in GameConfig; these are local feel knobs) =====
 local REGEN_TICK = 0.1   -- how often regen/sprint math runs (seconds); cosmetic granularity only
 
@@ -132,7 +136,9 @@ end
 -- ===== PUBLIC API =====
 
 -- Apply `amount` damage to a player from a validated source (zombies use this in Phase 2).
-function PlayerStateService.Damage(player: Player, amount: number, _source: string?)
+-- `sourcePos` (optional) is where the hit came from — sent to the client so it can draw a directional
+-- hurt indicator pointing at the attacker.
+function PlayerStateService.Damage(player: Player, amount: number, source: string?, sourcePos: Vector3?)
 	if amount <= 0 then
 		return
 	end
@@ -144,6 +150,8 @@ function PlayerStateService.Damage(player: Player, amount: number, _source: stri
 	getRuntime(player).lastDamage = os.clock()
 	humanoid.Health = math.max(0, humanoid.Health - amount)
 	-- HealthChanged connection fires the remote + syncs match state.
+	Remotes.Get("DamageTaken"):FireClient(player, amount, sourcePos)
+	damagedEvent:Fire(player, amount, source)
 end
 
 -- Heal a player by `amount` (capped at MaxHealth). Used by Quick Revive / pickups later.

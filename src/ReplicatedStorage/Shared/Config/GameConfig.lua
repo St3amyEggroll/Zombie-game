@@ -32,6 +32,12 @@ GameConfig.StartingPoints     = 500
 GameConfig.PlayerMaxHealth  = 100
 GameConfig.HealthRegenDelay = 5        -- seconds undamaged before regen
 GameConfig.HealthRegenRate  = 25       -- HP/sec once regenerating
+GameConfig.LowHealthPct     = 0.4      -- at/below this fraction of max HP the red vignette + heartbeat kick in
+
+-- ===== KILL STREAK ===== (chain kills WITHOUT taking damage for escalating cash)
+GameConfig.KillStreakBonusPerKill = 0.08  -- +8% cash per kill in the current streak
+GameConfig.KillStreakMaxMult      = 2.0   -- streak cash multiplier caps here
+GameConfig.KillStreakShowAt       = 3     -- streak length before the on-screen flair appears
 
 -- ===== DOWN / REVIVE =====
 GameConfig.BleedoutSeconds = 30
