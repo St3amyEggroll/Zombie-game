@@ -41,9 +41,10 @@ local ATTACK_RANGE     = 4.5    -- studs within which a zombie can hit a player
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
 local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same quick flash as a hit, NOT permanent)
-local RAGDOLL_TIME     = 0.9    -- seconds the body tumbles/ragdolls before it begins to sink
-local SINK_TIME        = 1.3    -- seconds the corpse sinks into the ground
-local SINK_DEPTH       = 5      -- studs the corpse sinks before it's pooled
+local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles before it begins to sink
+local SINK_TIME        = 3.2    -- seconds the corpse SLOWLY sinks into the ground (bigger = slower/eerier)
+local SINK_DEPTH       = 4      -- studs the corpse sinks before it's pooled
+local RAGDOLL_LIMB_ANGLE = 35   -- BallSocket cone limit (deg) for floppy limbs; smaller = stiffer joints
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
 local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)
@@ -242,6 +243,11 @@ local function prepModel(model: Model)
 			if d:GetAttribute("ZBaseColor") == nil then
 				d:SetAttribute("ZBaseColor", d.Color)
 			end
+			-- Remember each part's pose RELATIVE to the root in the standing rig. After a ragdoll we snap the
+			-- rig back together from this (no reliance on physics resolving while pooled in ServerStorage).
+			if root and root:IsA("BasePart") and d ~= root and d:GetAttribute("ZRel") == nil then
+				d:SetAttribute("ZRel", root.CFrame:ToObjectSpace(d.CFrame))
+			end
 		end
 	end
 	local hum = model:FindFirstChildOfClass("Humanoid")
@@ -331,11 +337,18 @@ local function flashWhite(record)
 	end)
 end
 
+local clearRagdoll -- forward declaration (defined in the DEATH section; used here to un-ragdoll on reuse)
+
 local function release(record)
 	local model = record.model
 	if record.diedConn then
 		record.diedConn:Disconnect()
 		record.diedConn = nil
+	end
+
+	-- Undo the ragdoll: re-enable the rig's joints, remove ragdoll constraints, restore collisions.
+	if clearRagdoll then
+		clearRagdoll(model)
 	end
 
 	-- A Humanoid that reached 0 HP is permanently Dead — raising Health does NOT revive it and
@@ -365,9 +378,20 @@ local function release(record)
 			p.Anchored = false
 		end
 	end
-	if model.PrimaryPart then
-		model.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-		model.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+	-- Snap the rig back to its standing pose (each part relative to the root) so a ragdolled corpse pools
+	-- cleanly instead of being reused as a scattered/limp mess.
+	local rootPart = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+	if rootPart then
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") and p ~= rootPart then
+				local rel = p:GetAttribute("ZRel")
+				if typeof(rel) == "CFrame" then
+					p.CFrame = rootPart.CFrame * rel
+				end
+			end
+		end
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+		rootPart.AssemblyAngularVelocity = Vector3.zero
 	end
 
 	model.Parent = poolFolder
@@ -420,8 +444,91 @@ local function recomputePath(record, targetPos: Vector3)
 	record.computing = false
 end
 
--- Let the corpse ragdoll-tumble briefly, then freeze it and slide it straight down into the ground
--- before returning it to the pool. Anchoring makes the sink smooth; release() un-anchors for reuse.
+-- ===== RAGDOLL =====
+-- Turn a rigged Humanoid model limp: convert each Motor6D joint into a BallSocketConstraint (so limbs
+-- flop and aren't solid against each other), make the limbs collide with the world, and stop the Humanoid
+-- from trying to stand. Returns true if it actually ragdolled (false for the weld-only placeholder rig).
+local function setRagdoll(record): boolean
+	local model = record.model
+	local motors = {}
+	for _, m in model:GetDescendants() do
+		if m:IsA("Motor6D") and m.Part0 and m.Part1 then
+			table.insert(motors, m)
+		end
+	end
+	if #motors == 0 then
+		return false -- no real joints to ragdoll (e.g. the grey placeholder)
+	end
+
+	for _, m in motors do
+		local a0 = Instance.new("Attachment")
+		a0.Name = "RagdollAtt"
+		a0.CFrame = m.C0
+		a0.Parent = m.Part0
+		local a1 = Instance.new("Attachment")
+		a1.Name = "RagdollAtt"
+		a1.CFrame = m.C1
+		a1.Parent = m.Part1
+
+		local bsc = Instance.new("BallSocketConstraint")
+		bsc.Name = "RagdollBSC"
+		bsc.Attachment0 = a0
+		bsc.Attachment1 = a1
+		bsc.LimitsEnabled = true
+		bsc.UpperAngle = RAGDOLL_LIMB_ANGLE
+		bsc.TwistLimitsEnabled = true
+		bsc.TwistLowerAngle = -RAGDOLL_LIMB_ANGLE
+		bsc.TwistUpperAngle = RAGDOLL_LIMB_ANGLE
+		bsc.Parent = m.Part1
+		m.Enabled = false -- the joint is now driven by the constraint, so the limb goes limp
+	end
+
+	-- Limbs collide so the body piles on the floor; the root stops propping it upright. Remember each
+	-- part's original CanCollide so reuse restores it. Server simulates the loose parts (perf + authority).
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			if p:GetAttribute("ZBaseCC") == nil then
+				p:SetAttribute("ZBaseCC", p.CanCollide)
+			end
+			p.CanCollide = (p ~= record.root)
+			pcall(function()
+				p:SetNetworkOwner(nil)
+			end)
+		end
+	end
+
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.PlatformStand = true
+		hum:ChangeState(Enum.HumanoidStateType.Physics)
+	end
+	return true
+end
+
+-- Reverse setRagdoll so the pooled model walks again: re-enable joints, drop the ragdoll constraints,
+-- restore collisions. (Assigned to the forward-declared local so release() above can call it.)
+clearRagdoll = function(model)
+	for _, d in model:GetDescendants() do
+		if d:IsA("Motor6D") then
+			d.Enabled = true
+		elseif d.Name == "RagdollBSC" and d:IsA("BallSocketConstraint") then
+			d:Destroy()
+		elseif d.Name == "RagdollAtt" and d:IsA("Attachment") then
+			d:Destroy()
+		end
+	end
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			local cc = p:GetAttribute("ZBaseCC")
+			if cc ~= nil then
+				p.CanCollide = cc
+			end
+		end
+	end
+end
+
+-- After the limp body has flopped and settled, freeze each part in its settled pose and lower the whole
+-- pile straight down — slowly — so the corpse appears to sink into the earth, then pool it.
 local function sinkAndRelease(record)
 	local model = record.model
 	task.wait(RAGDOLL_TIME)
@@ -429,17 +536,26 @@ local function sinkAndRelease(record)
 		release(record)
 		return
 	end
+	-- Freeze the flopped pose: anchor every part where it landed (preserves the ragdoll shape).
+	local frozen: { [BasePart]: CFrame } = {}
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
+			p.AssemblyLinearVelocity = Vector3.zero
+			p.AssemblyAngularVelocity = Vector3.zero
 			p.Anchored = true
+			frozen[p] = p.CFrame
 		end
 	end
-	local startCF = model:GetPivot()
+	-- Slide each frozen part straight down in world space over SINK_TIME.
 	local elapsed = 0
 	while elapsed < SINK_TIME and model.Parent do
 		elapsed += task.wait()
-		local a = math.clamp(elapsed / SINK_TIME, 0, 1)
-		model:PivotTo(startCF + Vector3.new(0, -SINK_DEPTH * a, 0))
+		local drop = Vector3.new(0, -SINK_DEPTH * math.clamp(elapsed / SINK_TIME, 0, 1), 0)
+		for p, cf in frozen do
+			if p.Parent then
+				p.CFrame = cf + drop
+			end
+		end
 	end
 	release(record)
 end
@@ -473,15 +589,16 @@ local function onZombieDied(record)
 		end
 	end)
 
-	-- Ragdoll: play a death animation if configured, else give the rig a physics "pop" so it tumbles over
-	-- (rigid topple — joints stay intact so it's still poolable).
+	-- Ragdoll: play a death animation if configured, else make the rig LIMP (limbs flop, not a solid
+	-- statue) and let it collapse under gravity. The weld-only placeholder rig can't ragdoll, so it falls
+	-- back to a gentle physics topple.
 	if record.deathTrack then
 		record.deathTrack:Play()
-	else
+	elseif not setRagdoll(record) then
 		local root = record.root
 		if root and root.Parent then
-			root.AssemblyLinearVelocity = Vector3.new(math.random(-6, 6), 9, math.random(-6, 6))
-			root.AssemblyAngularVelocity = Vector3.new(math.random(-10, 10), math.random(-6, 6), math.random(-10, 10))
+			root.AssemblyLinearVelocity = Vector3.new(math.random(-4, 4), 5, math.random(-4, 4))
+			root.AssemblyAngularVelocity = Vector3.new(math.random(-8, 8), math.random(-5, 5), math.random(-8, 8))
 		end
 	end
 
