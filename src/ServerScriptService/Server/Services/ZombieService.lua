@@ -45,7 +45,7 @@ local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles after dea
 local SURFACE_HOLD     = 1.0    -- extra seconds the body lies still ON the surface before it starts sinking
 local SINK_TIME        = 3.2    -- seconds the corpse SLOWLY sinks into the ground (bigger = slower/eerier)
 local SINK_DEPTH       = 4      -- studs the corpse sinks before it's pooled
-local RAGDOLL_LIMB_ANGLE = 120  -- BallSocket cone limit (deg); BIG = floppy limbs, small = stiff joints
+local RAGDOLL_LIMB_ANGLE = 50   -- BallSocket cone limit (deg); too BIG = limbs splay/dislocate, too small = stiff
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
 local STUCK_TIMEOUT    = 8      -- seconds wedged-with-a-target before a zombie force-kills itself
 local PATH_RETRY       = 0.5    -- seconds to wait before retrying a FAILED path (vs PathRecompute on success)

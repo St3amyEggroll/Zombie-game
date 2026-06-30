@@ -74,23 +74,21 @@ local function build()
 	arrowGui.Parent = playerGui
 end
 
--- ===== HEARTBEAT VIGNETTE ===== (per-frame; RenderStepped passes dt)
+-- ===== LOW-HP VIGNETTE ===== (per-frame; RenderStepped passes dt)
+-- Steady red glow that just gets stronger the lower your HP — no heartbeat pulse. Maxes out at 0 HP.
 local function update(dt: number)
 	if not edgeFrames then
 		return
 	end
 	flash = math.max(0, flash - FLASH_DECAY * dt)
 
-	-- Low-HP intensity: 0 above the threshold, ramping to 1 at 0 HP.
+	-- Low-HP intensity: 0 above the threshold, ramping smoothly to 1 (full red) at 0 HP.
 	local low = GameConfig.LowHealthPct
 	local intensity = 0
 	if healthFrac < low and low > 0 then
 		intensity = math.clamp(1 - healthFrac / low, 0, 1)
 	end
-
-	-- Heartbeat pulse: faster + deeper the closer to death.
-	local pulse = 0.5 + 0.5 * math.sin(os.clock() * (6 + intensity * 8))
-	local lowAlpha = intensity * MAX_VIGNETTE * (0.45 + 0.55 * pulse)
+	local lowAlpha = intensity * MAX_VIGNETTE
 
 	-- Combine the steady low-HP glow with the transient hit flash; 0 = fully invisible.
 	local alpha = math.clamp(math.max(lowAlpha, flash), 0, 1)
