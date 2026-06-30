@@ -26,8 +26,10 @@ local SPAWN_DELAY_MAX = 22   -- latest it appears into the wave (if the wave's s
 local PICKUP_RADIUS = 6      -- studs a player must be within to grab it
 local SPAWN_MIN     = 18     -- min studs from a random player to drop a pickup
 local SPAWN_MAX     = 45     -- max studs
-local FLOAT_HEIGHT  = 2.5    -- studs above the ground the pickup hovers
+local FLOAT_HEIGHT  = 2.5    -- studs above the ground the pickup hovers (the centre of the bob)
 local SPIN_SPEED    = 1.5    -- radians/sec it spins
+local BOB_HEIGHT    = 0.6    -- studs it drifts up/down
+local BOB_SPEED     = 1.8    -- bob cycles speed (radians/sec)
 
 local ammoTemplates: { Model } = {}
 local pickupFolder: Folder
@@ -147,7 +149,8 @@ local function spawnOne()
 	model:PivotTo(model:GetPivot() + Vector3.new(x - cf.Position.X, (groundY + FLOAT_HEIGHT) - baseY, z - cf.Position.Z))
 	model.Parent = pickupFolder
 	spawnCounter += 1
-	pickups[model] = { spin = 0, order = spawnCounter }
+	-- base = the resting position; we bob around base.Y and spin around it. Random t so they don't bob in sync.
+	pickups[model] = { spin = 0, order = spawnCounter, base = model:GetPivot().Position, t = math.random() * 10 }
 
 	-- Pile up to MAX_PICKUPS; once over, despawn the OLDEST (smallest order).
 	local count = 0
@@ -197,13 +200,15 @@ local function onHeartbeat(dt: number)
 			pickups[model] = nil
 		else
 			data.spin += dt * SPIN_SPEED
-			local pos = model:GetPivot().Position
-			model:PivotTo(CFrame.new(pos) * CFrame.Angles(0, data.spin, 0))
+			data.t += dt
+			local base = data.base
+			local y = base.Y + math.sin(data.t * BOB_SPEED) * BOB_HEIGHT
+			model:PivotTo(CFrame.new(base.X, y, base.Z) * CFrame.Angles(0, data.spin, 0))
 			for _, pl in Players:GetPlayers() do
 				local char = pl.Character
 				local r = char and char:FindFirstChild("HumanoidRootPart")
 				local h = char and char:FindFirstChildOfClass("Humanoid")
-				if r and h and h.Health > 0 and (r.Position - pos).Magnitude <= PICKUP_RADIUS then
+				if r and h and h.Health > 0 and (r.Position - base).Magnitude <= PICKUP_RADIUS then
 					CombatService.GiveAmmoFraction(pl, AMMO_FRACTION)
 					Remotes.Get("AmmoPickup"):FireClient(pl, AMMO_FRACTION)
 					model:Destroy()
