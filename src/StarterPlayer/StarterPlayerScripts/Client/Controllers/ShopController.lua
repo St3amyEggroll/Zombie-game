@@ -195,6 +195,10 @@ local function render()
 end
 
 -- ===== OPEN / CLOSE =====
+function ShopController.IsOpen(): boolean
+	return open
+end
+
 function ShopController.SetOpen(value: boolean)
 	open = value
 	if gui then

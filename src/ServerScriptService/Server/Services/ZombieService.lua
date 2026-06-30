@@ -54,7 +54,9 @@ local OBSTACLE_AHEAD   = 3      -- studs ahead the zombie probes for a ledge/obs
 local STUCK_REPLAN     = 0.9    -- seconds of no progress before a direct-chaser switches to pathfinding
 local MAX_LIFETIME     = 30     -- backstop: a zombie alive this long is force-killed (anti soft-lock)
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
-local GRAVE_STAND_HEIGHT = 3   -- studs the zombie's root sits above the ground when fully risen (R6 ~3)
+local GRAVE_STAND_HEIGHT = 3.5 -- studs the zombie's root sits above the ground when fully risen (feet land
+                               -- just above ground so it settles cleanly instead of toppling)
+local MIN_SPAWN_DIST   = 10    -- min studs between a new spawn and any active grave (no stacking spawns)
 local EMERGE_DEPTH     = 5      -- studs below ground a zombie starts buried (then rises out)
 local EMERGE_TIME      = 1.6    -- seconds a zombie takes to claw its way up out of the ground (slow, but
                                -- still FASTER than the death sink SINK_TIME so it reads as "rising out")
@@ -773,11 +775,41 @@ local function loadZombieTracks(record)
 	end
 end
 
+-- Don't spawn on top of a zombie that's still climbing out — keep clear of any active grave (graves linger
+-- until that zombie is fully out and the headstone has sunk away).
+local function tooCloseToActiveGrave(pos: Vector3): boolean
+	if not graveFolder then
+		return false
+	end
+	for _, g in graveFolder:GetChildren() do
+		local gp
+		if g:IsA("Model") then
+			gp = g:GetPivot().Position
+		elseif g:IsA("BasePart") then
+			gp = g.Position
+		end
+		if gp then
+			local dx, dz = pos.X - gp.X, pos.Z - gp.Z
+			if dx * dx + dz * dz < MIN_SPAWN_DIST * MIN_SPAWN_DIST then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 local warnedNoSpawns = false
 local function getSpawnCFrame(): CFrame?
 	if #spawnPoints > 0 then
-		local sp = spawnPoints[math.random(#spawnPoints)]
-		return sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0)
+		-- Try several random spawn points; take the first that isn't crowded by a fresh grave.
+		for _ = 1, 12 do
+			local sp = spawnPoints[math.random(#spawnPoints)]
+			local cf = sp.CFrame * CFrame.new(0, SPAWN_HEIGHT, 0)
+			if not tooCloseToActiveGrave(cf.Position) then
+				return cf
+			end
+		end
+		return nil -- everything's occupied right now; skip this spawn and the loop retries next interval
 	end
 	-- No ZombieSpawn parts tagged: fall back to ~35 studs from a random living player so the game works
 	-- with zero map setup. (Tag `ZombieSpawn` parts to place real spawn points.)
@@ -797,9 +829,15 @@ local function getSpawnCFrame(): CFrame?
 	if #candidates == 0 then
 		return nil
 	end
-	local root = candidates[math.random(#candidates)]
-	local angle = math.random() * 2 * math.pi
-	return CFrame.new(root.Position + Vector3.new(math.cos(angle) * 35, SPAWN_HEIGHT, math.sin(angle) * 35))
+	for _ = 1, 12 do
+		local root = candidates[math.random(#candidates)]
+		local angle = math.random() * 2 * math.pi
+		local cf = CFrame.new(root.Position + Vector3.new(math.cos(angle) * 35, SPAWN_HEIGHT, math.sin(angle) * 35))
+		if not tooCloseToActiveGrave(cf.Position) then
+			return cf
+		end
+	end
+	return nil
 end
 
 -- ===== GRAVES (props cloned above each spawn; the zombie rises out from under them) =====
@@ -874,6 +912,8 @@ end
 -- surface over EMERGE_TIME. AI is suppressed (record.emerging) until it's out, then chasing takes over.
 local function startEmergence(record, spawnCF: CFrame)
 	local model = record.model
+	local hum = record.hum
+	local root = record.root
 	local pos = spawnCF.Position
 	local groundY = findGroundY(pos.X, pos.Z, pos.Y)
 	local finalCF = CFrame.new(pos.X, groundY + GRAVE_STAND_HEIGHT, pos.Z)
@@ -881,11 +921,13 @@ local function startEmergence(record, spawnCF: CFrame)
 	placeGrave(pos.X, groundY, pos.Z)
 
 	record.emerging = true
-	for _, p in model:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Anchored = true
-		end
+	-- Anchor ONLY the root and limp the Humanoid during the rise. The rig's joints keep the limbs glued to
+	-- the root, so it rises as one piece; because we never anchor/limp-release the whole body, it doesn't
+	-- topple when it reaches the surface (anchoring every part then releasing made it fall over).
+	if hum then
+		hum.PlatformStand = true
 	end
+	root.Anchored = true
 	local base = finalCF + Vector3.new(0, -EMERGE_DEPTH, 0)
 	model:PivotTo(base)
 	task.spawn(function()
@@ -897,13 +939,14 @@ local function startEmergence(record, spawnCF: CFrame)
 		end
 		if model.Parent and not record.dead then
 			model:PivotTo(finalCF)
-			for _, p in model:GetDescendants() do
-				if p:IsA("BasePart") then
-					p.Anchored = false
-				end
+			root.Anchored = false
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			if hum then
+				hum.PlatformStand = false -- hand control back so it stands and walks
 			end
 			pcall(function()
-				record.root:SetNetworkOwner(nil)
+				root:SetNetworkOwner(nil)
 			end)
 		end
 		record.emerging = false

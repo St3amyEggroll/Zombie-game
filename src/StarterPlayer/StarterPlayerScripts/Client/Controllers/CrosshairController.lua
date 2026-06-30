@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local InputController = require(script.Parent.InputController)
+local ShopController = require(script.Parent.ShopController)
 
 local CrosshairController = {}
 
@@ -71,6 +72,16 @@ local function update(dt: number)
 	if not holder then
 		return
 	end
+	-- Hide the OS mouse icon during gameplay (the crosshair replaces it). While the shop menu is open it
+	-- needs a real cursor, so back off and hide our crosshair instead.
+	local shopOpen = ShopController.IsOpen and ShopController.IsOpen()
+	if shopOpen then
+		holder.Visible = false
+		return
+	end
+	holder.Visible = true
+	UserInputService.MouseIconEnabled = false
+
 	-- Sit at the cursor (aim is cursor-based in this game).
 	local m = UserInputService:GetMouseLocation()
 	holder.Position = UDim2.fromOffset(m.X, m.Y)
