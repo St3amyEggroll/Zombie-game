@@ -17,6 +17,15 @@ local AimController = {}
 local TURN_SPEED = 16 -- higher = snappier lock-on
 
 local localPlayer = Players.LocalPlayer
+local currentTarget: BasePart? = nil -- the zombie we're locked onto this frame (nil = none); read by auto-shoot
+
+-- The zombie root the auto-aim is currently locked onto, or nil. Used by auto-shoot to decide when to fire.
+function AimController.GetTarget(): BasePart?
+	if currentTarget and currentTarget.Parent then
+		return currentTarget
+	end
+	return nil
+end
 
 -- Closest zombie within ArcRange whose direction is within the arc of `dir` (a flat unit vector).
 local function findTargetRoot(fromPos: Vector3, dir: Vector3): BasePart?
@@ -44,6 +53,7 @@ local function findTargetRoot(fromPos: Vector3, dir: Vector3): BasePart?
 end
 
 local function onRender(dt: number)
+	currentTarget = nil -- cleared each frame; set below only when we actually have a live target
 	local character = localPlayer.Character
 	if not character then
 		return
@@ -67,6 +77,7 @@ local function onRender(dt: number)
 	-- Auto-aim: face the closest zombie in the front arc; otherwise face the mouse direction.
 	local faceDir = flat
 	local targetRoot = findTargetRoot(hrp.Position, flat)
+	currentTarget = targetRoot
 	if targetRoot then
 		local td = targetRoot.Position - hrp.Position
 		td = Vector3.new(td.X, 0, td.Z)

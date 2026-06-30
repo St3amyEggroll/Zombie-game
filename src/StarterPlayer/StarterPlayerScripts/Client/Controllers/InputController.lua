@@ -10,6 +10,7 @@
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -20,6 +21,8 @@ local WeaponConfig = require(Config.WeaponConfig)
 local Remotes = require(Modules.Remotes)
 
 local CameraController = require(script.Parent.CameraController)
+local AimController = require(script.Parent.AimController)
+local AutoShootController = require(script.Parent.AutoShootController)
 
 local InputController = {}
 
@@ -246,6 +249,25 @@ function InputController.Start()
 			equipped = eq
 			local m = getMirror(eq)
 			ammoEvent:Fire(eq, m.mag, m.reserve)
+		end
+	end)
+
+	-- Auto-shoot: when enabled, fire automatically at whatever the auto-aim is locked onto (and reload
+	-- hands-free when empty). fireOnce() is gated by fire-rate/ammo/reload, so calling it each frame is safe.
+	RunService.Heartbeat:Connect(function()
+		if not AutoShootController.IsOn() then
+			return
+		end
+		local weapon = WeaponConfig[equipped]
+		if not weapon then
+			return
+		end
+		if getMirror(equipped).mag <= 0 then
+			tryReload()
+			return
+		end
+		if AimController.GetTarget() then
+			fireOnce()
 		end
 	end)
 
