@@ -16,13 +16,13 @@ local AnimationConfig = {}
 --   Length = visible streak length (st)  Glow  = PointLight brightness riding the round (0 = none)
 AnimationConfig.Tracer = {
 	Enabled = true,
-	Default = { Color = Color3.fromRGB(255, 231, 150), Width = 0.18, Length = 6, Speed = 520, Life = 0.10, Glow = 6 },
+	Default = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Length = 5, Speed = 520, Life = 0.10, Glow = 5 },
 	PerWeapon = {
-		pistol  = { Color = Color3.fromRGB(255, 231, 150), Width = 0.16, Length = 5, Speed = 560, Life = 0.08, Glow = 5 },
-		shotgun = { Color = Color3.fromRGB(255, 200, 120), Width = 0.14, Length = 4, Speed = 470, Life = 0.07, Glow = 4 },
-		ak47    = { Color = Color3.fromRGB(255, 240, 170), Width = 0.16, Length = 6, Speed = 620, Life = 0.08, Glow = 5 },
-		minigun = { Color = Color3.fromRGB(255, 170,  90), Width = 0.15, Length = 6, Speed = 640, Life = 0.06, Glow = 4 },
-		raygun  = { Color = Color3.fromRGB(120, 255, 140), Width = 0.45, Length = 9, Speed = 240, Life = 0.16, Glow = 9 }, -- slow fat bolt
+		pistol  = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Length = 5, Speed = 560, Life = 0.08, Glow = 4 },
+		shotgun = { Color = Color3.fromRGB(255, 200, 120), Width = 0.05, Length = 4, Speed = 470, Life = 0.07, Glow = 3 },
+		ak47    = { Color = Color3.fromRGB(255, 240, 170), Width = 0.06, Length = 6, Speed = 620, Life = 0.08, Glow = 4 },
+		minigun = { Color = Color3.fromRGB(255, 170,  90), Width = 0.06, Length = 6, Speed = 640, Life = 0.06, Glow = 3 },
+		raygun  = { Color = Color3.fromRGB(120, 255, 140), Width = 0.16, Length = 9, Speed = 240, Life = 0.16, Glow = 8 }, -- slow fat bolt
 	},
 }
 

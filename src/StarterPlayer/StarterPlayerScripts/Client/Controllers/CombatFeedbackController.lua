@@ -104,6 +104,25 @@ local function muzzleCFrameOf(character: Model?): CFrame?
 	return nil
 end
 
+-- Where the bullet STARTS — kept close to the player (the gun grip / Handle in-hand), NOT the projected
+-- barrel tip, so tracers read as coming from you rather than spawning out in front. A "TracerStart"
+-- attachment on the weapon overrides this if you want a precise spot.
+local function tracerStartOf(character: Model?): Vector3?
+	local held = character and character:FindFirstChild("HeldWeapon")
+	if not held then
+		return nil
+	end
+	local custom = held:FindFirstChild("TracerStart", true)
+	if custom and custom:IsA("Attachment") then
+		return custom.WorldPosition
+	end
+	local handle = held:FindFirstChild("Handle") or held.PrimaryPart
+	if handle and handle:IsA("BasePart") then
+		return handle.Position
+	end
+	return nil
+end
+
 local function tracerCfgFor(weaponId: string?)
 	local t = AnimationConfig.Tracer
 	return (weaponId and t.PerWeapon[weaponId]) or t.Default
@@ -131,7 +150,7 @@ local function drawTracer(from: Vector3, to: Vector3, weaponId: string?)
 	round.Material = Enum.Material.Neon
 	round.Color = cfg.Color
 	round.Shape = Enum.PartType.Ball
-	round.Size = Vector3.new(cfg.Width * 1.6, cfg.Width * 1.6, cfg.Width * 1.6)
+	round.Size = Vector3.new(cfg.Width, cfg.Width, cfg.Width)
 	round.CFrame = CFrame.new(from)
 	round.Parent = fxFolder
 
@@ -151,7 +170,7 @@ local function drawTracer(from: Vector3, to: Vector3, weaponId: string?)
 		NumberSequenceKeypoint.new(1, 1),
 	})
 	trail.WidthScale = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, cfg.Width * 6),
+		NumberSequenceKeypoint.new(0, cfg.Width * 3),
 		NumberSequenceKeypoint.new(1, 0),
 	})
 	trail.Lifetime = cfg.Life
@@ -291,8 +310,10 @@ end
 -- Every shot (incl. our own): draw the bullet tracer from the shooter's gun muzzle to where it landed.
 local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3, weaponId: string?)
 	local shooter = Players:GetPlayerByUserId(shooterUserId)
-	local muzzleCF = muzzleCFrameOf(shooter and shooter.Character)
-	local from = muzzleCF and muzzleCF.Position or origin
+	local character = shooter and shooter.Character
+	local muzzleCF = muzzleCFrameOf(character)
+	-- Tracer starts at the gun grip (close to the player); muzzle flash still pops at the barrel.
+	local from = tracerStartOf(character) or origin
 	if shooterUserId ~= localPlayer.UserId and muzzleCF then
 		muzzleFlash(muzzleCF) -- others' muzzle flash (the local player already flashed on fire)
 	end
