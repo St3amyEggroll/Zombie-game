@@ -851,6 +851,8 @@ local function placeGrave(x: number, groundY: number, z: number)
 			p.CanQuery = false
 		end
 	end
+	-- Random yaw so every headstone faces a different way (do this BEFORE measuring, then drop it in place).
+	grave:PivotTo(grave:GetPivot() * CFrame.Angles(0, math.random() * 2 * math.pi, 0))
 	local cf, size = grave:GetBoundingBox()
 	local currentBaseY = cf.Position.Y - size.Y * 0.5
 	grave:PivotTo(grave:GetPivot() + Vector3.new(x - cf.Position.X, groundY - currentBaseY, z - cf.Position.Z))
