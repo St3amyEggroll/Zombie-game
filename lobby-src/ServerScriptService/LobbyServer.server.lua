@@ -17,7 +17,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- ===== CONFIG (keep in sync with the game's GameConfig) =====
-local GAME_PLACE_ID    = 109730423425701 -- the gameplay place (the experience's START place; PLAY teleports here)
+local GAME_PLACE_ID    = 140566663451993 -- the gameplay place (PLAY teleports here; the lobby is the START place)
 local STORE_NAME       = "PlayerData_v2"
 local DIFFS            = { "easy", "medium", "hard", "nightmare" }
 local WORLDS           = { "forest" }
