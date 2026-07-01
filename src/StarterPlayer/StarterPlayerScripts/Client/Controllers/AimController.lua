@@ -10,7 +10,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local CameraController = require(script.Parent.CameraController)
-local BuffController = require(script.Parent.BuffController)
+-- Buff stats (auto-aim reach). GUARDED: a missing/broken BuffController must never brick auto-aim.
+local okBuff, BuffController = pcall(require, script.Parent.BuffController)
+if not okBuff or type(BuffController) ~= "table" then
+	BuffController = { GetStat = function() return 0 end }
+end
 
 local AimController = {}
 

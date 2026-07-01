@@ -23,7 +23,11 @@ local Remotes = require(Modules.Remotes)
 local CameraController = require(script.Parent.CameraController)
 local AimController = require(script.Parent.AimController)
 local AutoShootController = require(script.Parent.AutoShootController)
-local BuffController = require(script.Parent.BuffController)
+-- Buff stats (fire rate). GUARDED: a missing/broken BuffController must never brick firing.
+local okBuff, BuffController = pcall(require, script.Parent.BuffController)
+if not okBuff or type(BuffController) ~= "table" then
+	BuffController = { GetStat = function() return 0 end }
+end
 
 local InputController = {}
 
