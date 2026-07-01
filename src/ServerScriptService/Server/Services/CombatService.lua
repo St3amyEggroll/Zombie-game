@@ -383,7 +383,27 @@ function CombatService.GiveAmmoFraction(player: Player, frac: number): boolean
 	return true
 end
 
--- Client requests to equip an owned weapon.
+-- Core equip: validate ownership, set the equipped weapon, sync ammo + loadout to the client + model.
+local function applyEquip(player: Player, weaponId: string): boolean
+	local weapon = WeaponConfig[weaponId]
+	if not weapon then
+		return false
+	end
+	local ps = MatchService.GetPlayerState(player)
+	if not ps or not Util.Contains(ps.ownedWeapons, weaponId) then
+		return false
+	end
+	if ps.equippedWeapon == weaponId then
+		return true -- already holding it (avoid redundant re-syncs from Tool.Equipped)
+	end
+	ps.equippedWeapon = weaponId
+	local a = ensureAmmo(ps, weaponId, weapon)
+	fireAmmo(player, weaponId, a)
+	fireLoadout(player, ps)
+	return true
+end
+
+-- Client requests to equip an owned weapon (rate-limited).
 local function onEquip(player: Player, weaponId: any)
 	if not SecurityService.Allow(player, "Interact") then
 		return
@@ -391,18 +411,13 @@ local function onEquip(player: Player, weaponId: any)
 	if typeof(weaponId) ~= "string" then
 		return
 	end
-	local weapon = WeaponConfig[weaponId]
-	if not weapon then
-		return
-	end
-	local ps = MatchService.GetPlayerState(player)
-	if not ps or not Util.Contains(ps.ownedWeapons, weaponId) then
-		return
-	end
-	ps.equippedWeapon = weaponId
-	local a = ensureAmmo(ps, weaponId, weapon)
-	fireAmmo(player, weaponId, a)
-	fireLoadout(player, ps)
+	applyEquip(player, weaponId)
+end
+
+-- Server-side equip (from the native hotbar Tool.Equipped in LoadoutService). No rate limit — Roblox
+-- already gates tool switching, and blocking a switch would desync the held weapon from the tool.
+function CombatService.SetEquipped(player: Player, weaponId: string): boolean
+	return applyEquip(player, weaponId)
 end
 
 -- ===== INITIAL SYNC =====

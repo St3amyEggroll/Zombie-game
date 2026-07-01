@@ -37,6 +37,8 @@ local WeaponConfig: { [string]: Weapon } = {
 		fireRate=9, magSize=30, reserveAmmo=270, reloadSeconds=2.4, range=300, pellets=1, spread=2, auto=true,  wallBuyCost=3000, ammoCost=1000, ppDamageMult=3, knockback=24 },
 	minigun = { id="minigun", name="Minigun", damage=16, headshotMult=1.5,
 		fireRate=18, magSize=200, reserveAmmo=600, reloadSeconds=5, range=300, pellets=1, spread=5, auto=true, wallBuyCost=8000, ammoCost=2500, ppDamageMult=3, spinUp=1.0, knockback=16 },
+	raygun  = { id="raygun", name="Ray Gun", damage=80, headshotMult=2,
+		fireRate=4, magSize=20, reserveAmmo=200, reloadSeconds=2.5, range=250, pellets=1, spread=1, auto=true, wallBuyCost=0, ammoCost=0, ppDamageMult=3, wonder=true, knockback=40 },
 }
 
 return WeaponConfig

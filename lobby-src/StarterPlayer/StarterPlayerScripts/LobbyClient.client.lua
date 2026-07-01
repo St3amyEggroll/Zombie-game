@@ -263,6 +263,81 @@ local invGui = Instance.new("ScreenGui")
 invGui.Name = "LobbyInventory"; invGui.ResetOnSpawn = false; invGui.IgnoreGuiInset = true; invGui.DisplayOrder = 11
 invGui.Parent = playerGui
 
+-- ===== HOVER TOOLTIP (shared: case odds + weapon stats) =====
+local tip = Instance.new("Frame")
+tip.Name = "Tooltip"; tip.BackgroundColor3 = Color3.fromRGB(10, 12, 18); tip.BackgroundTransparency = 0.05
+tip.BorderSizePixel = 0; tip.Visible = false; tip.ZIndex = 60; tip.AutomaticSize = Enum.AutomaticSize.XY
+tip.Size = UDim2.fromOffset(0, 0); tip.Parent = invGui
+corner(tip, 8)
+local tipStroke = Instance.new("UIStroke"); tipStroke.Color = ACCENT; tipStroke.Thickness = 1.2; tipStroke.Transparency = 0.35; tipStroke.Parent = tip
+local tipPad = Instance.new("UIPadding")
+tipPad.PaddingTop = UDim.new(0, 8); tipPad.PaddingBottom = UDim.new(0, 8)
+tipPad.PaddingLeft = UDim.new(0, 10); tipPad.PaddingRight = UDim.new(0, 10); tipPad.Parent = tip
+local tipList = Instance.new("UIListLayout"); tipList.Padding = UDim.new(0, 2); tipList.SortOrder = Enum.SortOrder.LayoutOrder; tipList.Parent = tip
+
+local function showTip(lines)
+	for _, c in tip:GetChildren() do
+		if c:IsA("TextLabel") then c:Destroy() end
+	end
+	for i, ln in lines do
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1; l.AutomaticSize = Enum.AutomaticSize.XY
+		l.Font = ln.bold and Enum.Font.GothamBold or Enum.Font.Gotham
+		l.TextSize = ln.size or 14; l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextColor3 = ln.color or Color3.fromRGB(230, 232, 240); l.Text = ln.text; l.ZIndex = 61
+		l.LayoutOrder = i; l.Parent = tip
+	end
+	tip.Visible = true
+end
+local function hideTip()
+	tip.Visible = false
+end
+local function moveTip(x, y)
+	local w, h = tip.AbsoluteSize.X, tip.AbsoluteSize.Y
+	local screen = invGui.AbsoluteSize
+	local px = math.min(x + 16, screen.X - w - 8)
+	local py = math.min(y + 12, screen.Y - h - 8)
+	tip.Position = UDim2.fromOffset(px, py)
+end
+-- Attach a hover tooltip to any GuiObject; buildLines() returns { {text=,color=,size=,bold=}, ... }.
+local function attachTip(guiObj, buildLines)
+	guiObj.MouseEnter:Connect(function(x, y)
+		showTip(buildLines()); moveTip(x, y)
+	end)
+	guiObj.MouseMoved:Connect(function(x, y)
+		if tip.Visible then moveTip(x, y) end
+	end)
+	guiObj.MouseLeave:Connect(hideTip)
+end
+
+local function weaponTipLines(weaponId)
+	local w = weaponInfo(weaponId)
+	if not w then return {} end
+	local col = rarityColor(w.rarity)
+	local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
+	return {
+		{ text = w.name, color = col, size = 16, bold = true },
+		{ text = (invData.catalog.rarities[w.rarity].name) .. "  ·  Tier " .. tostring(w.tier), color = col, size = 12 },
+		{ text = ("💥 Damage: %s%s"):format(tostring(w.damage or "?"), w.pellets and ("  ×" .. w.pellets) or ""), size = 14 },
+		{ text = ("🔥 Fire Rate: %s/s"):format(tostring(w.fireRate or "?")), size = 14 },
+		{ text = ("🎯 Range: %s"):format(tostring(w.range or "?")), size = 14 },
+		{ text = ("📊 DPS: ~%d"):format(math.floor(dps + 0.5)), color = Color3.fromRGB(150, 220, 150), size = 14 },
+	}
+end
+
+local function caseTipLines(caseId)
+	local disp = invData.catalog.cases[caseId]
+	if not disp then return {} end
+	local lines = { { text = disp.name .. " — Drop Odds", color = Color3.fromRGB(150, 190, 255), size = 15, bold = true } }
+	for _, o in (disp.odds or {}) do
+		table.insert(lines, {
+			text = ("%s: %.1f%%"):format(invData.catalog.rarities[o.rarity].name, o.pct),
+			color = rarityColor(o.rarity), size = 14,
+		})
+	end
+	return lines
+end
+
 -- Left-side Inventory button (opens the panel).
 local invBtn = Instance.new("TextButton")
 invBtn.Position = UDim2.fromOffset(16, 124); invBtn.Size = UDim2.fromOffset(220, 46)
@@ -375,6 +450,7 @@ local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
 	if onClick then
 		card.Activated:Connect(onClick)
 	end
+	attachTip(card, function() return weaponTipLines(weaponId) end) -- hover → weapon stats
 	return card
 end
 
@@ -406,6 +482,7 @@ local function renderWeaponsTab()
 			nm.Position = UDim2.fromOffset(4, 56); nm.Size = UDim2.new(1, -8, 0, 32); nm.BackgroundTransparency = 1
 			nm.Font = Enum.Font.GothamBold; nm.TextSize = 12; nm.TextColor3 = Color3.fromRGB(235, 235, 245)
 			nm.Text = info.name; nm.TextScaled = true; nm.Parent = holder
+			attachTip(holder, function() return weaponTipLines(equipped) end) -- hover a filled slot → weapon stats
 		else
 			local em = Instance.new("TextLabel")
 			em.Position = UDim2.fromOffset(0, 40); em.Size = UDim2.new(1, 0, 0, 20); em.BackgroundTransparency = 1
@@ -471,6 +548,7 @@ local function renderCasesTab()
 		local card = Instance.new("Frame")
 		card.BackgroundColor3 = Color3.fromRGB(26, 30, 44); card.BorderSizePixel = 0; card.Parent = casesScroll
 		corner(card, 10)
+		attachTip(card, function() return caseTipLines(caseId) end) -- hover → rarity drop odds
 		local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(90, 120, 200); st.Thickness = 1.5; st.Transparency = 0.3; st.Parent = card
 		local icon = Instance.new("TextLabel")
 		icon.Position = UDim2.fromOffset(0, 10); icon.Size = UDim2.new(1, 0, 0, 40); icon.BackgroundTransparency = 1
@@ -547,6 +625,7 @@ end
 
 -- ===== TAB SWITCHING =====
 local function showTab(id)
+	hideTip()
 	activeTab = id
 	weaponsTab.Visible = (id == "weapons")
 	casesTab.Visible = (id == "cases")
@@ -690,6 +769,7 @@ end
 invBtn.Activated:Connect(openInventory)
 invClose.Activated:Connect(function()
 	if rolling then return end -- don't close mid-open
+	hideTip()
 	invPanel.Visible = false
 end)
 

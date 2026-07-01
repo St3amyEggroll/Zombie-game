@@ -82,24 +82,54 @@ local function safeTeleport(placeId: number, player: Player, options: TeleportOp
 	return false
 end
 
-local function makePlayerState(player: Player)
-	local pistol = WeaponConfig.pistol
-	-- TEST: own every weapon (GameConfig.DebugUnlockAllWeapons), pistol always in slot 1.
-	local owned = { "pistol" }
+-- The weapons a player brings into a run = whatever they EQUIPPED in the lobby (their tierLoadout, slots
+-- 1..5 in order). DebugUnlockAllWeapons overrides with every weapon. Always yields at least the pistol so
+-- nobody spawns unarmed. Read from the persisted profile (DataService), which the lobby wrote before teleport.
+local function equippedLoadoutFor(player: Player): { string }
 	if GameConfig.DebugUnlockAllWeapons then
+		local all = { "pistol" }
 		for id in WeaponConfig do
 			if id ~= "pistol" then
-				table.insert(owned, id)
+				table.insert(all, id)
+			end
+		end
+		return all
+	end
+	local data = DataService.Get(player)
+	if not data then
+		-- Just teleported in: give the profile a moment to load so we don't fall back to pistol-only.
+		local t0 = os.clock()
+		while not DataService.IsReady(player) and player.Parent and os.clock() - t0 < 5 do
+			task.wait(0.1)
+		end
+		data = DataService.Get(player)
+	end
+	local list, seen = {}, {}
+	if data and typeof(data.tierLoadout) == "table" then
+		for slot = 1, 5 do
+			local id = data.tierLoadout[slot]
+			if typeof(id) == "string" and id ~= "" and WeaponConfig[id] and not seen[id] then
+				seen[id] = true
+				table.insert(list, id)
 			end
 		end
 	end
+	if #list == 0 then
+		list = { "pistol" }
+	end
+	return list
+end
+
+local function makePlayerState(player: Player)
+	local pistol = WeaponConfig.pistol
+	local owned = equippedLoadoutFor(player) -- weapons equipped in the lobby (or all, if debug-unlocked)
 	return {
 		userId = player.UserId,
 		inMatch = false,                          -- false = lobby/menu; true = in the run
 		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run)
 		ownedWeapons = owned,
-		equippedWeapon = "pistol",
-		ammo = { pistol = { mag = pistol.magSize, reserve = pistol.reserveAmmo } },
+		equippedWeapon = owned[1] or "pistol",
+		ammo = { [owned[1] or "pistol"] = { mag = (WeaponConfig[owned[1]] or pistol).magSize, reserve = (WeaponConfig[owned[1]] or pistol).reserveAmmo } },
 		upgrades = {},                            -- [weaponId] = upgrade (tier) level — per-run, resets
 		isDown = false,
 		isDead = false,
@@ -336,6 +366,7 @@ startRunFor = function(player: Player)
 		return -- already in the run
 	end
 	ps.inMatch = true
+	ps.ownedWeapons = equippedLoadoutFor(player) -- re-read the lobby loadout (it may have changed between runs)
 	resetRunState(player, ps)
 	spawnCharacter(player)
 	startMatchIfNeeded()

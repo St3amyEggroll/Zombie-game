@@ -224,9 +224,10 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 			Remotes.Get("Sprint"):FireServer(true)
 		elseif input.KeyCode == KEY_INTERACT then
 			Remotes.Get("Interact"):FireServer()
-		elseif NUMBER_KEYS[input.KeyCode] then
-			equipSlot(NUMBER_KEYS[input.KeyCode])
 		end
+		-- Weapon switching (1/2/3...) is handled by Roblox's NATIVE hotbar now: the equipped weapons are
+		-- real Tools in the Backpack (LoadoutService). Selecting a slot fires the server equip, which sends
+		-- LoadoutChanged back and updates `equipped` below.
 	end
 end
 

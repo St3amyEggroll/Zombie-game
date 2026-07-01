@@ -45,13 +45,16 @@ local RARITY = {
 	legendary = { name = "Legendary", color = { 255, 180,  40 } },
 }
 
+-- Stats mirror the game's WeaponConfig (kept in sync by hand — the lobby can't require it) so the weapon
+-- hover tooltip can show Damage / Fire Rate / Mag / Reload / Range.
 local WEAPONS = {
-	pistol  = { name = "M1911",        tier = 1, rarity = "common" },
-	shotgun = { name = "Pump Shotgun", tier = 2, rarity = "uncommon" },
-	ak47    = { name = "AK-47",        tier = 3, rarity = "rare" },
-	minigun = { name = "Minigun",      tier = 4, rarity = "epic" },
-	raygun  = { name = "Ray Gun",      tier = 5, rarity = "legendary" },
+	pistol  = { name = "M1911",        tier = 1, rarity = "common",    damage = 30, fireRate = 5,   magSize = 8,   reload = 1.4, range = 200 },
+	shotgun = { name = "Pump Shotgun", tier = 2, rarity = "uncommon",  damage = 14, fireRate = 1.2, magSize = 6,   reload = 3,   range = 40, pellets = 8 },
+	ak47    = { name = "AK-47",        tier = 3, rarity = "rare",      damage = 40, fireRate = 9,   magSize = 30,  reload = 2.4, range = 300 },
+	minigun = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 16, fireRate = 18,  magSize = 200, reload = 5,   range = 300 },
+	raygun  = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80, fireRate = 4,   magSize = 20,  reload = 2.5, range = 250 },
 }
+local RARITY_ORDER = { "common", "uncommon", "rare", "epic", "legendary" }
 
 local CASES = {
 	standard = {
@@ -75,16 +78,27 @@ local POTIONS = {
 local CATALOG = {
 	tierCount = TIER_COUNT,
 	rarities = RARITY,
+	rarityOrder = RARITY_ORDER,
 	weapons = WEAPONS,
 	potions = POTIONS,
 	cases = (function()
 		local t = {}
 		for id, c in CASES do
-			local ids = {}
+			local ids, byRarity, total = {}, {}, 0
 			for _, e in c.pool do
 				table.insert(ids, e.id)
+				total += e.weight
+				local rar = WEAPONS[e.id].rarity
+				byRarity[rar] = (byRarity[rar] or 0) + e.weight
 			end
-			t[id] = { name = c.name, dupValue = c.dupValue, poolIds = ids }
+			-- Per-rarity drop odds (%), in rarity order, for the case hover tooltip.
+			local odds = {}
+			for _, rar in RARITY_ORDER do
+				if byRarity[rar] then
+					table.insert(odds, { rarity = rar, pct = (byRarity[rar] / total) * 100 })
+				end
+			end
+			t[id] = { name = c.name, dupValue = c.dupValue, poolIds = ids, odds = odds }
 		end
 		return t
 	end)(),
