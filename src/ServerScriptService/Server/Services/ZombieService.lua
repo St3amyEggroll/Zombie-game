@@ -78,6 +78,9 @@ local GRAVE_RISE_TIME  = 0.8    -- seconds the headstone takes to rise OUT of th
 -- Which grave tier each enemy rises from: boss -> a "Huge*" grave, tank -> a "Big*" grave, others -> regular.
 local GRAVE_TIER       = { boss = "huge", tank = "big" }
 local HIT_KNOCKBACK    = 18     -- studs/sec shove away from the shooter on a non-lethal hit
+local KNOCKBACK_SPEED  = 68     -- studs/sec the DEATH ragdoll is launched, away from where the bullet came
+                               -- from (strong, fixed for every kill)
+local KNOCKBACK_UP     = 22     -- upward component so the body tumbles/flies rather than sliding along the floor
 local HIT_FLASH_TIME   = 0.12   -- seconds a zombie flashes white when hit
 local FLASH_COLOR      = Color3.fromRGB(255, 255, 255)
 local DEATH_COLOR      = Color3.fromRGB(170, 30, 30)
@@ -610,9 +613,16 @@ local function setRagdoll(record): boolean
 		hum:ChangeState(Enum.HumanoidStateType.Physics)
 	end
 
-	-- A small nudge so the limp body actually starts to collapse instead of standing perfectly still.
+	-- Knock the ragdoll backward, AWAY from where the bullet came from (a strong, fixed launch). Every part
+	-- gets the same velocity so the whole body flies off together, then the loose joints make it tumble.
 	if record.root and record.root.Parent then
-		record.root.AssemblyLinearVelocity = Vector3.new(math.random(-3, 3), 2, math.random(-3, 3))
+		local dir = record.knockDir or -record.root.CFrame.LookVector
+		local launch = dir * KNOCKBACK_SPEED + Vector3.new(0, KNOCKBACK_UP, 0)
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.AssemblyLinearVelocity = launch
+			end
+		end
 	end
 	return true
 end
@@ -689,6 +699,22 @@ local function onZombieDied(record)
 	record.dead = true
 	active[record.model] = nil
 
+	-- Direction to launch the ragdoll: along the bullet's travel — from the shot origin toward the zombie,
+	-- i.e. it flies backward away from the shooter. Falls back to "away from whoever it was facing".
+	local kroot = record.root
+	if kroot then
+		local dir
+		if record.lastHitOrigin then
+			local d = kroot.Position - record.lastHitOrigin
+			dir = Vector3.new(d.X, 0, d.Z)
+		end
+		if not dir or dir.Magnitude < 0.01 then
+			local look = kroot.CFrame.LookVector
+			dir = Vector3.new(-look.X, 0, -look.Z)
+		end
+		record.knockDir = (dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, -1)
+	end
+
 	-- Boss bookkeeping: if this was the boss, tell clients to drop the health bar + show the defeat banner.
 	if record == bossRecord then
 		bossRecord = nil
@@ -726,7 +752,8 @@ local function onZombieDied(record)
 	elseif not setRagdoll(record) then
 		local root = record.root
 		if root and root.Parent then
-			root.AssemblyLinearVelocity = Vector3.new(math.random(-4, 4), 5, math.random(-4, 4))
+			local dir = record.knockDir or Vector3.new(0, 0, -1)
+			root.AssemblyLinearVelocity = dir * KNOCKBACK_SPEED + Vector3.new(0, KNOCKBACK_UP, 0)
 			root.AssemblyAngularVelocity = Vector3.new(math.random(-8, 8), math.random(-5, 5), math.random(-8, 8))
 		end
 	end
@@ -1406,6 +1433,12 @@ function ZombieService.GetActive()
 		end
 	end
 	return list
+end
+
+-- Remember where the last shot that hit this zombie came from, so a KILLING shot can launch the ragdoll
+-- backward along the bullet's travel. Cheap; called for every hit (lethal or not) from CombatService.
+function ZombieService.NoteHit(record, fromPos: Vector3)
+	record.lastHitOrigin = fromPos
 end
 
 -- Hit feedback for a non-lethal hit: a little knockback away from the shooter + a white flash.

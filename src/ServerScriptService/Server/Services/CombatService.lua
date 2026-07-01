@@ -239,6 +239,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			local damage = baseDamage * falloffMult(c.dist) * count
 			humanoid.Health = math.max(0, humanoid.Health - damage)
 			local killed = humanoid.Health <= 0
+			ZombieService.NoteHit(c.record, origin) -- so a kill launches the ragdoll away from the shooter
 			hitEvent:Fire(player, humanoid, false, weaponId, damage)
 			if killed then
 				killEvent:Fire(player, humanoid, false, weaponId)
