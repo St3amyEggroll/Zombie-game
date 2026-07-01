@@ -27,7 +27,6 @@ local DataService = {}
 
 -- ===== TUNABLES =====
 local STORE_NAME    = "PlayerData_v2" -- bump this string to wipe everyone's save (new schema epoch)
-local LOADOUT_SLOTS = 6               -- max equipped weapons
 local SAVE_RETRIES  = 4               -- attempts per load/save before giving up
 local AUTOSAVE_SECS = 120             -- periodic background save interval
 
@@ -38,12 +37,10 @@ local TEMPLATE = {
 	level        = 1,
 	lobbyMoney   = 0,                 -- persistent currency (spent in the lobby on crates/cosmetics)
 	ownedWeapons = { "pistol" },      -- weapons you own (pistol = free starter; the rest come from cases)
-	loadout      = { "pistol" },      -- equipped, up to LOADOUT_SLOTS (slot 1 = your starter)
-	crates       = {},                -- unopened crate rarities, e.g. { "common", "rare" }
 	-- ===== LOBBY INVENTORY (managed by the LOBBY place; the game just preserves these on save) =====
-	selectedWeapon = "pistol",       -- THE one gun you carry into runs (picked in the lobby inventory)
-	cases        = { standard = 3 }, -- unopened cases by id -> count (3 free Standard Cases to start)
-	potions      = {},               -- owned potions by id -> count (usable in-run)
+	loadout      = { "pistol" },      -- the up-to-2 guns you carry into runs (picked in the lobby inventory)
+	cases        = { common = 3 },    -- unopened cases by RARITY id -> count (3 free Common Cases to start)
+	potions      = {},                -- owned potions by id -> count (usable in-run)
 	bestWave     = 0,
 	completed    = {},                -- ["forest:easy"] = true — difficulties beaten (drives unlocks)
 	stats        = { totalKills = 0, matchesPlayed = 0 },
@@ -256,7 +253,7 @@ function DataService.TrySpendMoney(player: Player, amount: number): boolean
 	return true
 end
 
--- ----- owned weapons + loadout -----
+-- ----- owned weapons -----
 function DataService.OwnsWeapon(player: Player, weaponId: string): boolean
 	local data = getData(player)
 	return data ~= nil and Util.Contains(data.ownedWeapons, weaponId)
@@ -270,50 +267,17 @@ function DataService.AddWeapon(player: Player, weaponId: string)
 	end
 end
 
-function DataService.GetLoadout(player: Player): { string }
+-- ----- cases (granted in-run every 10th wave; opened in the LOBBY) -----
+function DataService.AddCase(player: Player, rarity: string, count: number?)
 	local data = getData(player)
-	return data and data.loadout or { "pistol" }
-end
-
--- Set the equipped loadout (validated: <= LOADOUT_SLOTS, all owned). Returns true on success.
-function DataService.SetLoadout(player: Player, list: { string }): boolean
-	local data = getData(player)
-	if not data or typeof(list) ~= "table" or #list == 0 or #list > LOADOUT_SLOTS then
-		return false
+	if not data then
+		return
 	end
-	for _, id in list do
-		if not Util.Contains(data.ownedWeapons, id) then
-			return false
-		end
+	if typeof(data.cases) ~= "table" then
+		data.cases = {}
 	end
-	data.loadout = table.clone(list)
+	data.cases[rarity] = (data.cases[rarity] or 0) + (count or 1)
 	markDirty(player)
-	return true
-end
-
--- ----- crates -----
-function DataService.AddCrate(player: Player, rarity: string)
-	local data = getData(player)
-	if data then
-		table.insert(data.crates, rarity)
-		markDirty(player)
-	end
-end
-
-function DataService.GetCrates(player: Player): { string }
-	local data = getData(player)
-	return data and data.crates or {}
-end
-
--- Remove + return the crate at `index` (for opening it). Returns the rarity or nil.
-function DataService.TakeCrate(player: Player, index: number): string?
-	local data = getData(player)
-	if not data or not data.crates[index] then
-		return nil
-	end
-	local rarity = table.remove(data.crates, index)
-	markDirty(player)
-	return rarity
 end
 
 -- ----- potions (dropped by elite zombies; usable in-game/lobby) -----

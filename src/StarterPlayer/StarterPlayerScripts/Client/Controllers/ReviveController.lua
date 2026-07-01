@@ -106,7 +106,7 @@ local function build()
 	-- Revive prompt (bottom-center, above the hotbar area).
 	prompt = Instance.new("Frame")
 	prompt.AnchorPoint = Vector2.new(0.5, 1)
-	prompt.Position = UDim2.new(0.5, 0, 1, -90)
+	prompt.Position = UDim2.new(0.5, 0, 1, -140) -- above the hotbar + upgrade button
 	prompt.Size = UDim2.fromOffset(280, 52)
 	prompt.BackgroundColor3 = COL_PANEL
 	prompt.BackgroundTransparency = 0.1

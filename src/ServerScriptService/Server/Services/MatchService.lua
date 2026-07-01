@@ -61,6 +61,10 @@ MatchService.State = state
 
 local matchRunning = false
 
+-- Fired with (round) each time a wave is fully cleared (before the victory check / next-wave break).
+local waveClearedEvent = Instance.new("BindableEvent")
+MatchService.WaveCleared = waveClearedEvent.Event
+
 -- ===== INTERNAL =====
 local function setPhase(phase: string)
 	state.phase = phase
@@ -82,34 +86,9 @@ local function safeTeleport(placeId: number, player: Player, options: TeleportOp
 	return false
 end
 
--- THE ONE GUN a player brings into a run = whatever they SELECTED in the lobby (data.selectedWeapon).
--- No in-run gun buying, no ladder — just the gun you picked. Migration: old saves without selectedWeapon
--- fall back to the best gun in their legacy tierLoadout, then the pistol. Read from the persisted profile
--- (DataService), which the lobby wrote before teleport.
-local function selectedWeaponFor(player: Player): string
-	-- Just teleported in: WAIT for the profile (DataService.WaitFor always resolves — on DataStore failure
-	-- it falls back to a template — so this can't hang).
-	local data = DataService.Get(player) or DataService.WaitFor(player)
-	if data then
-		local sel = data.selectedWeapon
-		if typeof(sel) == "string" and WeaponConfig[sel] then
-			return sel
-		end
-		-- Legacy migration: pick the highest-tier gun from the old tierLoadout.
-		if typeof(data.tierLoadout) == "table" then
-			for slot = 5, 1, -1 do
-				local id = data.tierLoadout[slot]
-				if typeof(id) == "string" and WeaponConfig[id] then
-					return id
-				end
-			end
-		end
-	end
-	return "pistol"
-end
-
--- Debug: own every weapon (number keys switch) for Studio testing; otherwise exactly ONE gun — the
--- lobby-selected one.
+-- The UP-TO-2 guns a player brings into a run = their lobby LOADOUT (data.loadout, slots 1-2).
+-- Migration: old saves fall back to selectedWeapon, then the pistol. Read from the persisted profile
+-- (DataService), which the lobby wrote before teleport. Debug: own every weapon for Studio testing.
 local function runWeaponsFor(player: Player): { string }
 	if GameConfig.DebugUnlockAllWeapons then
 		local all = { "pistol" }
@@ -120,17 +99,36 @@ local function runWeaponsFor(player: Player): { string }
 		end
 		return all
 	end
-	return { selectedWeaponFor(player) }
+	-- Just teleported in: WAIT for the profile (DataService.WaitFor always resolves — on DataStore failure
+	-- it falls back to a template — so this can't hang).
+	local data = DataService.Get(player) or DataService.WaitFor(player)
+	local list, seen = {}, {}
+	if data and typeof(data.loadout) == "table" then
+		for slot = 1, 2 do
+			local id = data.loadout[slot]
+			if typeof(id) == "string" and WeaponConfig[id] and not seen[id] then
+				seen[id] = true
+				table.insert(list, id)
+			end
+		end
+	end
+	if #list == 0 then
+		-- Legacy migration: single selectedWeapon, else pistol.
+		local sel = data and data.selectedWeapon
+		list = { (typeof(sel) == "string" and WeaponConfig[sel]) and sel or "pistol" }
+	end
+	return list
 end
 
 local function makePlayerState(player: Player)
-	local weapons = runWeaponsFor(player) -- ONE gun: whatever was selected in the lobby
+	local weapons = runWeaponsFor(player) -- the up-to-2 guns equipped in the lobby
 	return {
 		userId = player.UserId,
 		inMatch = false,                          -- false = lobby/menu; true = in the run
-		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run; spent on traps)
+		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral; spent on upgrades + traps)
 		ownedWeapons = weapons,
 		equippedWeapon = weapons[1] or "pistol",
+		upgrades = {},                            -- [weaponId] = in-run upgrade level 0..5 (never saved)
 		isDead = false,
 		isDowned = false,                         -- at 0 HP with teammates up: crawling, waiting for a revive
 		downedUntil = 0,                          -- os.clock() the bleedout ends
@@ -163,6 +161,7 @@ local function resetRunState(player: Player, ps)
 	ps.pendingDraft = nil
 	ps.regenMult = 1
 	ps.usedPotions = {}
+	ps.upgrades = {} -- upgrades are per-run only
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
 	ps.isDead = false
 	ps.isDowned = false
@@ -390,6 +389,8 @@ runMatch = function()
 		if not anyInMatch() then
 			break
 		end
+
+		waveClearedEvent:Fire(state.round) -- GameInventoryService drops wave-clear cases off this
 
 		-- Cleared the difficulty's FINAL wave → victory.
 		if state.round >= state.maxWave then

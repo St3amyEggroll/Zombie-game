@@ -1,6 +1,7 @@
--- LobbyClient (LOBBY PLACE ONLY) — the hub HUD + the run SELECTION menu (Map → Difficulty → Party Size).
--- The menu opens while you stand in a loading zone; locked difficulties show 🔒. PLAY queues you; the panel
--- then shows the party count + countdown. Self-contained (no game controllers run here).
+-- LobbyClient (LOBBY PLACE ONLY) — the hub HUD + the PARTY PAD menu + the inventory.
+-- Step on an empty pad -> you HOST it (Map / Difficulty / Party Size + PLAY). After PLAY the panel becomes
+-- party info + a LEAVE button; others who step on join (if they've unlocked the settings) or see why not.
+-- The party launches when full or when the countdown ends. Self-contained (no game controllers run here).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -12,17 +13,17 @@ local remotes = ReplicatedStorage:WaitForChild("LobbyRemotes")
 local StatsRemote = remotes:WaitForChild("Stats")
 local ZoneEnter = remotes:WaitForChild("ZoneEnter")
 local ZoneLeave = remotes:WaitForChild("ZoneLeave")
-local RequestQueue = remotes:WaitForChild("RequestQueue")
-local LeaveQueue = remotes:WaitForChild("LeaveQueue")
-local QueueStatus = remotes:WaitForChild("QueueStatus")
+local FinalizeParty = remotes:WaitForChild("FinalizeParty")
+local LeaveParty = remotes:WaitForChild("LeaveParty")
+local PartyStatus = remotes:WaitForChild("PartyStatus")
 
 local ACCENT = Color3.fromRGB(87, 196, 116)
 local DIM = Color3.fromRGB(64, 68, 80)
 local CARD = Color3.fromRGB(31, 34, 42)
 
 local sel = { map = "forest", difficulty = "easy", size = 1 }
-local payload = nil
-local queued = false
+local unlocks = nil       -- unlock payload while configuring a pad
+local zoneMode = nil      -- "config" | "party" | "blocked" (what the pad UI is showing)
 
 local function fmt(n)
 	local s = tostring(math.floor(n))
@@ -91,12 +92,28 @@ local function button(parent, w, h, text)
 	return b
 end
 
-sectionLabel("MAP", 56)
+local mapLbl = sectionLabel("MAP", 56)
 local mapRow = row(78, 40)
-sectionLabel("DIFFICULTY", 130)
+local diffLbl = sectionLabel("DIFFICULTY", 130)
 local diffRow = row(152, 44)
-sectionLabel("PARTY SIZE", 208)
+local sizeLbl = sectionLabel("PARTY SIZE", 208)
 local sizeRow = row(230, 40)
+
+-- Party view (shown after the host presses PLAY / when you join someone's party).
+local partyInfo = Instance.new("TextLabel")
+partyInfo.Position = UDim2.new(0, 0, 0, 96); partyInfo.Size = UDim2.new(1, 0, 0, 40); partyInfo.BackgroundTransparency = 1
+partyInfo.Font = Enum.Font.GothamBlack; partyInfo.TextSize = 24; partyInfo.TextColor3 = Color3.fromRGB(238, 240, 245)
+partyInfo.Text = ""; partyInfo.Visible = false; partyInfo.Parent = panel
+
+local partySub = Instance.new("TextLabel")
+partySub.Position = UDim2.new(0, 0, 0, 140); partySub.Size = UDim2.new(1, 0, 0, 26); partySub.BackgroundTransparency = 1
+partySub.Font = Enum.Font.GothamBold; partySub.TextSize = 16; partySub.TextColor3 = Color3.fromRGB(150, 156, 168)
+partySub.Text = ""; partySub.Visible = false; partySub.Parent = panel
+
+local blockedMsg = Instance.new("TextLabel")
+blockedMsg.Position = UDim2.new(0, 24, 0, 110); blockedMsg.Size = UDim2.new(1, -48, 0, 80); blockedMsg.BackgroundTransparency = 1
+blockedMsg.Font = Enum.Font.GothamBold; blockedMsg.TextSize = 17; blockedMsg.TextWrapped = true
+blockedMsg.TextColor3 = Color3.fromRGB(238, 240, 245); blockedMsg.Text = ""; blockedMsg.Visible = false; blockedMsg.Parent = panel
 
 local mapBtns, diffBtns, sizeBtns = {}, {}, {}
 
@@ -113,12 +130,12 @@ status.TextColor3 = Color3.fromRGB(150, 156, 168); status.Text = ""; status.Pare
 
 -- ===== RENDER =====
 local function refresh()
-	if not payload then return end
+	if not unlocks then return end
 	-- map buttons
 	for _, b in mapBtns do b:Destroy() end
 	mapBtns = {}
-	for _, w in payload.worldOrder do
-		local info = payload.worlds[w]
+	for _, w in unlocks.worldOrder do
+		local info = unlocks.worlds[w]
 		local b = button(mapRow, 150, 40, cap(w))
 		b.LayoutOrder = #mapBtns + 1
 		if not info.unlocked then
@@ -126,15 +143,15 @@ local function refresh()
 		end
 		b.BackgroundColor3 = (sel.map == w) and ACCENT or CARD
 		b.Activated:Connect(function()
-			if info.unlocked and not queued then sel.map = w; refresh() end
+			if info.unlocked then sel.map = w; refresh() end
 		end)
 		table.insert(mapBtns, b)
 	end
 	-- difficulty buttons
 	for _, b in diffBtns do b:Destroy() end
 	diffBtns = {}
-	local worldInfo = payload.worlds[sel.map]
-	for _, d in payload.order do
+	local worldInfo = unlocks.worlds[sel.map]
+	for _, d in unlocks.order do
 		local unlocked = worldInfo and worldInfo.diffs[d]
 		local b = button(diffRow, 120, 44, unlocked and cap(d) or (cap(d) .. " 🔒"))
 		b.LayoutOrder = #diffBtns + 1
@@ -145,7 +162,7 @@ local function refresh()
 			b.TextColor3 = (sel.difficulty == d) and Color3.fromRGB(15, 25, 15) or Color3.fromRGB(235, 235, 245)
 		end
 		b.Activated:Connect(function()
-			if unlocked and not queued then sel.difficulty = d; refresh() end
+			if unlocked then sel.difficulty = d; refresh() end
 		end)
 		table.insert(diffBtns, b)
 	end
@@ -158,21 +175,45 @@ local function refresh()
 		b.BackgroundColor3 = (sel.size == n) and ACCENT or CARD
 		b.TextColor3 = (sel.size == n) and Color3.fromRGB(15, 25, 15) or Color3.fromRGB(235, 235, 245)
 		b.Activated:Connect(function()
-			if not queued then sel.size = n; refresh() end
+			sel.size = n; refresh()
 		end)
 		table.insert(sizeBtns, b)
 	end
-	play.Text = queued and "CANCEL" or "PLAY"
-	play.BackgroundColor3 = queued and Color3.fromRGB(224, 82, 82) or ACCENT
 end
 
 -- default difficulty = first unlocked for the selected map
 local function pickDefaultDifficulty()
-	local info = payload and payload.worlds[sel.map]
+	local info = unlocks and unlocks.worlds[sel.map]
 	if info then
-		for _, d in payload.order do
+		for _, d in unlocks.order do
 			if info.diffs[d] then sel.difficulty = d; return end
 		end
+	end
+end
+
+-- Show/hide the three pad-UI modes inside the one panel.
+local function setPanelMode(mode)
+	zoneMode = mode
+	local config = (mode == "config")
+	mapLbl.Visible = config; mapRow.Visible = config
+	diffLbl.Visible = config; diffRow.Visible = config
+	sizeLbl.Visible = config; sizeRow.Visible = config
+	partyInfo.Visible = (mode == "party")
+	partySub.Visible = (mode == "party")
+	blockedMsg.Visible = (mode == "blocked")
+	play.Visible = (mode ~= "blocked")
+	if mode == "config" then
+		title.Text = "SET UP YOUR RUN"
+		play.Text = "PLAY"
+		play.BackgroundColor3 = ACCENT
+		play.TextColor3 = Color3.fromRGB(15, 25, 15)
+	elseif mode == "party" then
+		title.Text = "PARTY"
+		play.Text = "LEAVE"
+		play.BackgroundColor3 = Color3.fromRGB(224, 82, 82)
+		play.TextColor3 = Color3.fromRGB(255, 255, 255)
+	else
+		title.Text = "PARTY PAD"
 	end
 end
 
@@ -184,42 +225,45 @@ StatsRemote.OnClientEvent:Connect(function(s)
 end)
 
 ZoneEnter.OnClientEvent:Connect(function(p)
-	payload = p
-	queued = false
+	if typeof(p) ~= "table" then return end
 	status.Text = ""
-	if not (payload.worlds[sel.map]) then sel.map = payload.worldOrder[1] end
-	pickDefaultDifficulty()
-	sel.size = 1
-	refresh()
+	if p.mode == "config" then
+		unlocks = p.unlocks
+		if unlocks then
+			if not unlocks.worlds[sel.map] then sel.map = unlocks.worldOrder[1] end
+			pickDefaultDifficulty()
+		end
+		sel.size = 1
+		setPanelMode("config")
+		refresh()
+	elseif p.mode == "party" then
+		setPanelMode("party")
+		partyInfo.Text = ("%s  ·  %s"):format(cap(p.map or "?"), cap(p.difficulty or "?"))
+		partySub.Text = "Waiting for players..."
+	else
+		setPanelMode("blocked")
+		blockedMsg.Text = p.reason or "You can't join this pad right now."
+	end
 	panel.Visible = true
 end)
 
 ZoneLeave.OnClientEvent:Connect(function()
 	panel.Visible = false
-	queued = false
+	status.Text = ""
 end)
 
-QueueStatus.OnClientEvent:Connect(function(info)
-	if typeof(info) ~= "table" then
-		queued = false
-		status.Text = ""
-		refresh()
-		return
+PartyStatus.OnClientEvent:Connect(function(info)
+	if typeof(info) ~= "table" then return end
+	if zoneMode == "party" then
+		partySub.Text = ("Party %d/%d  ·  starting in %ds"):format(info.count or 1, info.size or 1, info.seconds or 0)
 	end
-	queued = true
-	status.Text = ("%s · %s · Party %d/%d · Starting in %d...")
-		:format(cap(info.map), cap(info.difficulty), info.count or 1, info.size or 1, info.seconds or 0)
-	refresh()
 end)
 
 play.Activated:Connect(function()
-	if queued then
-		LeaveQueue:FireServer()
-		queued = false
-		status.Text = ""
-		refresh()
-	else
-		RequestQueue:FireServer({ map = sel.map, difficulty = sel.difficulty, size = sel.size })
+	if zoneMode == "config" then
+		FinalizeParty:FireServer({ map = sel.map, difficulty = sel.difficulty, size = sel.size })
+	elseif zoneMode == "party" then
+		LeaveParty:FireServer()
 	end
 end)
 
@@ -229,7 +273,7 @@ end)
 local TweenService = game:GetService("TweenService")
 local InvRequest = remotes:WaitForChild("InvRequest")
 local InvSync    = remotes:WaitForChild("InvSync")
-local SelectWeapon = remotes:WaitForChild("SelectWeapon")
+local EquipSlot = remotes:WaitForChild("EquipSlot")
 local OpenCase   = remotes:WaitForChild("OpenCase")
 local CaseResult = remotes:WaitForChild("CaseResult")
 
@@ -398,18 +442,31 @@ casesTab.Size = UDim2.fromScale(1, 1); casesTab.BackgroundTransparency = 1; case
 local potionsTab = Instance.new("Frame")
 potionsTab.Size = UDim2.fromScale(1, 1); potionsTab.BackgroundTransparency = 1; potionsTab.Visible = false; potionsTab.Parent = content
 
--- ---------- WEAPONS TAB ---------- (all your guns; click ONE to select it — that's what you take into runs)
+-- ---------- WEAPONS TAB ---------- 2 EQUIP SLOTS on top; all owned guns below. Click a slot to select it,
+-- then click a gun to put it there (clicking a gun already in the other slot swaps them).
+local slotsHint = Instance.new("TextLabel")
+slotsHint.Position = UDim2.fromOffset(14, 10); slotsHint.Size = UDim2.new(1, -28, 0, 18); slotsHint.BackgroundTransparency = 1
+slotsHint.Font = Enum.Font.GothamBold; slotsHint.TextSize = 13; slotsHint.TextXAlignment = Enum.TextXAlignment.Left
+slotsHint.TextColor3 = Color3.fromRGB(170, 180, 195); slotsHint.Text = "YOUR LOADOUT — equip any 2 guns"; slotsHint.Parent = weaponsTab
+
+local slotsRow = Instance.new("Frame")
+slotsRow.Position = UDim2.fromOffset(14, 32); slotsRow.Size = UDim2.new(1, -28, 0, 96); slotsRow.BackgroundTransparency = 1; slotsRow.Parent = weaponsTab
+local slotsList = Instance.new("UIListLayout")
+slotsList.FillDirection = Enum.FillDirection.Horizontal; slotsList.Padding = UDim.new(0, 10); slotsList.Parent = slotsRow
+
 local gunsHint = Instance.new("TextLabel")
-gunsHint.Position = UDim2.fromOffset(14, 10); gunsHint.Size = UDim2.new(1, -28, 0, 18); gunsHint.BackgroundTransparency = 1
+gunsHint.Position = UDim2.fromOffset(14, 138); gunsHint.Size = UDim2.new(1, -28, 0, 18); gunsHint.BackgroundTransparency = 1
 gunsHint.Font = Enum.Font.GothamBold; gunsHint.TextSize = 13; gunsHint.TextXAlignment = Enum.TextXAlignment.Left
-gunsHint.TextColor3 = Color3.fromRGB(170, 180, 195); gunsHint.Text = "YOUR GUNS — click one to select it for runs"; gunsHint.Parent = weaponsTab
+gunsHint.TextColor3 = Color3.fromRGB(170, 180, 195); gunsHint.Text = ""; gunsHint.Parent = weaponsTab
 
 local gunsScroll = Instance.new("ScrollingFrame")
-gunsScroll.Position = UDim2.fromOffset(14, 36); gunsScroll.Size = UDim2.new(1, -28, 1, -48)
+gunsScroll.Position = UDim2.fromOffset(14, 160); gunsScroll.Size = UDim2.new(1, -28, 1, -172)
 gunsScroll.BackgroundTransparency = 1; gunsScroll.BorderSizePixel = 0; gunsScroll.ScrollBarThickness = 6
 gunsScroll.CanvasSize = UDim2.new(); gunsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; gunsScroll.Parent = weaponsTab
 local gunsGrid = Instance.new("UIGridLayout")
 gunsGrid.CellSize = UDim2.fromOffset(122, 92); gunsGrid.CellPadding = UDim2.fromOffset(10, 10); gunsGrid.Parent = gunsScroll
+
+local activeSlot = 1 -- which loadout slot a gun click assigns to
 
 local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
 	local info = weaponInfo(weaponId)
@@ -439,10 +496,49 @@ end
 
 local function renderWeaponsTab()
 	if not invData then return end
+	for _, c in slotsRow:GetChildren() do
+		if c:IsA("GuiObject") then c:Destroy() end
+	end
 	for _, c in gunsScroll:GetChildren() do
 		if c:IsA("GuiObject") then c:Destroy() end
 	end
-	-- Owned guns sorted by tier, the selected one highlighted.
+
+	-- The 2 equip slots (click one to make it the active target for gun clicks).
+	local loadout = invData.loadout or {}
+	for slot = 1, 2 do
+		local id = loadout[slot]
+		local info = id and weaponInfo(id)
+		local isActive = (activeSlot == slot)
+		local holder
+		if info then
+			holder = weaponCard(slotsRow, id, "SLOT " .. slot, nil, isActive)
+		else
+			holder = Instance.new("TextButton")
+			holder.BackgroundColor3 = Color3.fromRGB(22, 25, 36); holder.Text = ""; holder.BorderSizePixel = 0
+			holder.AutoButtonColor = true; holder.Parent = slotsRow
+			corner(holder, 8)
+			local hs = Instance.new("UIStroke"); hs.Color = isActive and ACCENT or Color3.fromRGB(60, 64, 80)
+			hs.Thickness = isActive and 2.5 or 1; hs.Parent = holder
+			local em = Instance.new("TextLabel")
+			em.Position = UDim2.fromOffset(0, 26); em.Size = UDim2.new(1, 0, 0, 20); em.BackgroundTransparency = 1
+			em.Font = Enum.Font.Gotham; em.TextSize = 13; em.TextColor3 = Color3.fromRGB(120, 125, 140)
+			em.Text = "Empty"; em.Parent = holder
+			local sl = Instance.new("TextLabel")
+			sl.Position = UDim2.fromOffset(0, 56); sl.Size = UDim2.new(1, 0, 0, 16); sl.BackgroundTransparency = 1
+			sl.Font = Enum.Font.GothamBold; sl.TextSize = 12; sl.TextColor3 = Color3.fromRGB(150, 160, 175)
+			sl.Text = "SLOT " .. slot; sl.Parent = holder
+		end
+		holder.Size = UDim2.fromOffset(150, 92)
+		holder.LayoutOrder = slot
+		holder.Activated:Connect(function()
+			activeSlot = slot
+			renderWeaponsTab()
+		end)
+	end
+
+	gunsHint.Text = ("ALL YOUR GUNS — click one to equip it in SLOT %d"):format(activeSlot)
+
+	-- Owned guns sorted by tier; ones already in the loadout are highlighted.
 	local ids = {}
 	for _, id in invData.owned do
 		if weaponInfo(id) then table.insert(ids, id) end
@@ -451,13 +547,13 @@ local function renderWeaponsTab()
 		return (weaponInfo(a).tier or 0) < (weaponInfo(b).tier or 0)
 	end)
 	for _, id in ids do
-		local isSelected = (id == invData.selected)
-		weaponCard(gunsScroll, id, isSelected and "SELECTED" or (invData.catalog.rarities[weaponInfo(id).rarity].name),
+		local inSlot = (id == loadout[1] and 1) or (id == loadout[2] and 2) or nil
+		weaponCard(gunsScroll, id, inSlot and ("EQUIPPED · SLOT " .. inSlot) or (invData.catalog.rarities[weaponInfo(id).rarity].name),
 			function()
-				if not isSelected then
-					SelectWeapon:FireServer({ weaponId = id })
+				if inSlot ~= activeSlot then
+					EquipSlot:FireServer({ slot = activeSlot, weaponId = id })
 				end
-			end, isSelected)
+			end, inSlot ~= nil)
 	end
 end
 
@@ -480,7 +576,9 @@ local function renderCasesTab()
 		if c:IsA("GuiObject") then c:Destroy() end
 	end
 	local any = false
-	for caseId, disp in invData.catalog.cases do
+	for _, caseId in invData.catalog.rarityOrder do
+		local disp = invData.catalog.cases[caseId]
+		if not disp then continue end
 		local count = invData.cases[caseId] or 0
 		any = any or count > 0
 		local card = Instance.new("Frame")

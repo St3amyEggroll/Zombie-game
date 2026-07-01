@@ -20,6 +20,7 @@ local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
+local UpgradeConfig = require(Config.UpgradeConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
@@ -112,13 +113,16 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 
 	local c = getCombat(player)
 
-	-- 5) fire-rate gate — CONSTANT per weapon, enforced with a small token bucket instead of a strict
-	-- inter-arrival check: remotes drain per server frame, so two legit shots can arrive bunched together
-	-- (network jitter / a 30Hz horde frame). The bucket refills at fireRate/FIRE_RATE_SLACK and holds
-	-- FIRE_BURST, so the AVERAGE rate is still hard-capped but frame-bunched shots aren't silently eaten.
+	-- Effective stats = base weapon stats + this run's upgrade levels (UpgradeConfig, per-run only).
+	local eff = UpgradeConfig.EffectiveStats(weapon, (ps.upgrades and ps.upgrades[weaponId]) or 0)
+
+	-- 5) fire-rate gate — CONSTANT per weapon (+ its upgrades), enforced with a small token bucket instead
+	-- of a strict inter-arrival check: remotes drain per server frame, so two legit shots can arrive bunched
+	-- together (network jitter / a 30Hz horde frame). The bucket refills at fireRate/FIRE_RATE_SLACK and
+	-- holds FIRE_BURST, so the AVERAGE rate is still hard-capped but frame-bunched shots aren't eaten.
 	-- One bucket per player (not per weapon): switching weapons can't reset your cadence.
 	local now = os.clock()
-	local refill = weapon.fireRate / FIRE_RATE_SLACK
+	local refill = eff.fireRate / FIRE_RATE_SLACK
 	local b = c.fire
 	if not b then
 		b = { tokens = 1, last = now }
@@ -141,7 +145,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- to AimController's lock rule, so what locks is exactly what hits. Distance/falloff stay 3D.
 	local flatDir = Vector3.new(dir.X, 0, dir.Z)
 	flatDir = (flatDir.Magnitude > 0.01) and flatDir.Unit or dir
-	local baseDamage = weapon.damage * (1 + buffOf(ps, "damage")) -- Damage buff
+	local baseDamage = eff.damage * (1 + buffOf(ps, "damage")) -- upgraded damage × Damage buff
 	local arcRange = GameConfig.ArcRange
 	local dotThreshold = math.cos(math.rad(GameConfig.ArcDegrees * 0.5)) -- 180° -> 0 (forward hemisphere)
 
@@ -159,9 +163,9 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	losParams.FilterDescendantsInstances = losExclude
 
 	-- Shotguns fire `pellets` per shot; everything else fires 1. The effective reach is the shorter of the
-	-- global arc range and the weapon's own range (so a shotgun is genuinely short-range).
-	local effRange = math.min(arcRange, weapon.range or arcRange) * (1 + buffOf(ps, "range")) -- Attack Range buff
-	local pellets = math.max(1, weapon.pellets or 1)
+	-- global arc range and the weapon's (upgraded) range — so a shotgun is genuinely short-range.
+	local effRange = math.min(arcRange, eff.range or arcRange) * (1 + buffOf(ps, "range")) -- Attack Range buff
+	local pellets = math.max(1, eff.pellets)
 
 	-- Collect in-arc, in-range zombies, nearest first (flat angle test — see flatDir above).
 	local cands = {}
@@ -214,14 +218,15 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			if killed then
 				killEvent:Fire(player, humanoid, false, weaponId)
 			else
-				ZombieService.Hit(c.record, origin, weapon.knockback) -- per-weapon knockback + white flash
+				ZombieService.Hit(c.record, origin, eff.knockback) -- upgraded knockback + white flash
 			end
 			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5))
-			-- A tracer to each zombie hit (a shotgun visibly sprays).
-			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, c.root.Position, weaponId)
+			-- A tracer per zombie hit, carrying how many pellets landed there (the client fans that many bolts).
+			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, c.root.Position, weaponId, count)
 		end
 	else
-		Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint, weaponId) -- miss: one tracer straight ahead
+		-- Miss: fan all the pellets straight ahead.
+		Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint, weaponId, pellets)
 	end
 end
 

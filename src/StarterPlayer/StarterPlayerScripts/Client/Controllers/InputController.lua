@@ -17,6 +17,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local WeaponConfig = require(Config.WeaponConfig)
+local UpgradeConfig = require(Config.UpgradeConfig)
 local Remotes = require(Modules.Remotes)
 
 local CameraController = require(script.Parent.CameraController)
@@ -44,6 +45,7 @@ local localPlayer = Players.LocalPlayer
 -- ===== STATE =====
 local equipped = "pistol"
 local ownedWeapons: { string } = { "pistol" }
+local upgrades: { [string]: number } = {} -- this run's upgrade levels (from UpgradeState); drives cadence
 local wantManual = false   -- mouse/touch held (continuous fire for auto weapons)
 local pendingShot = false  -- a semi-auto click waiting for the fire gate to open (clicks are never eaten)
 local wasFiring = false    -- was the driver firing last frame (edge-detects a new burst for spin-up)
@@ -59,16 +61,21 @@ function InputController.GetEquipped(): string
 end
 
 -- ===== THE FIRE DRIVER =====
--- Seconds between shots. Constant 1/fireRate; spin-up weapons ramp from SPIN_START_FRAC over weapon.spinUp
--- seconds of continuous firing (releasing resets the ramp).
+-- The equipped weapon's fire rate INCLUDING this run's upgrade levels (mirrors the server's math).
+local function effFireRate(weapon): number
+	return UpgradeConfig.EffectiveStats(weapon, upgrades[weapon.id] or 0).fireRate
+end
+
+-- Seconds between shots. Constant 1/fireRate (+ upgrades); spin-up weapons ramp from SPIN_START_FRAC over
+-- weapon.spinUp seconds of continuous firing (releasing resets the ramp).
 local function shotInterval(weapon): number
+	local rate = effFireRate(weapon)
 	if weapon.spinUp and weapon.spinUp > 0 then
 		local held = os.clock() - fireStart
 		local t = math.clamp(held / weapon.spinUp, 0, 1)
-		local rate = weapon.fireRate * (SPIN_START_FRAC + (1 - SPIN_START_FRAC) * t)
-		return 1 / rate
+		rate = rate * (SPIN_START_FRAC + (1 - SPIN_START_FRAC) * t)
 	end
-	return 1 / weapon.fireRate
+	return 1 / rate
 end
 
 local function fireShot(weapon)
@@ -183,6 +190,13 @@ function InputController.Start()
 		if type(eq) == "string" then
 			equipped = eq
 			AimController.SetWeapon(eq)
+		end
+	end)
+
+	-- This run's upgrade levels (drives the client-side cadence to match the server's upgraded fire rate).
+	Remotes.Get("UpgradeState").OnClientEvent:Connect(function(levels)
+		if type(levels) == "table" then
+			upgrades = levels
 		end
 	end)
 

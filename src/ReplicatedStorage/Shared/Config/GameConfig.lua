@@ -89,8 +89,16 @@ GameConfig.FalloffMinMult = 0.45 -- damage multiplier at/after FalloffEnd
 
 -- ===== RATE LIMITS (token bucket, max requests/sec per player) =====
 GameConfig.RateLimits = {
-	Fire = 20, Buy = 6, Interact = 8, Sprint = 10, Revive = 10,
+	Fire = 40, Buy = 6, Interact = 8, Sprint = 10, Revive = 10, -- Fire headroom for upgraded fire rates
 }
+
+-- ===== CASE DROPS (every 10th wave cleared, EVERY player gets one random-rarity case) =====
+-- The case pops out and homes to each player like a potion drop. Rarity odds shift UP the deeper you go:
+-- weight(tier) = CaseWeightsBase[tier] * CaseWeightGrowth ^ ((tier-1) * stage), stage = wave/10 - 1.
+GameConfig.CaseDropEvery   = 10
+GameConfig.CaseRarities    = { "common", "uncommon", "rare", "epic", "legendary", "mythic", "divine" }
+GameConfig.CaseWeightsBase = { 50, 25, 12, 7, 4, 1.5, 0.5 } -- odds at wave 10 (per rarity, in order)
+GameConfig.CaseWeightGrowth = 1.5                            -- higher = deeper waves upgrade odds faster
 
 -- ===== ELITE (buffed) ZOMBIES ===== a small chance any spawned zombie is an "elite": tougher, glows
 -- yellow (for testing), and DROPS A POTION on death (into your persistent potion inventory → usable in the

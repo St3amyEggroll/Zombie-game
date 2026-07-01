@@ -57,10 +57,15 @@ local DEFINITIONS: { [string]: string } = {
 	Interact          = "RemoteEvent",     -- C->S: generic interact intent
 	Sprint            = "RemoteEvent",     -- NEW (Phase 1): C->S: (wantSprint: boolean)
 
-	-- GameInventoryService (in-game VIEW of the lobby inventory + potion use)
+	-- GameInventoryService (in-game VIEW of the lobby inventory + potion use + wave case drops)
 	InvSnapshot       = "RemoteEvent",     -- S->C: (snapshot) equipped weapons + cases + potions; C->S: request one
 	ConsumePotion     = "RemoteEvent",     -- C->S: (potionId) use a potion (applies its run effect; once per type per run)
 	PotionDropped     = "RemoteEvent",     -- S->C: (potionId) an elite zombie dropped a potion (toast)
+	CaseDropped       = "RemoteEvent",     -- S->C: (rarity) you collected a wave-clear case (toast)
+
+	-- UpgradeService (in-run gun upgrades, 5 levels per gun, per-run only)
+	BuyUpgrade        = "RemoteEvent",     -- C->S: buy the next upgrade level for the HELD gun
+	UpgradeState      = "RemoteEvent",     -- S->C: ({ [weaponId] = level }) your run's upgrade levels
 
 	-- Down / Revive (co-op: at 0 HP with teammates up you go DOWNED instead of dying; they revive you)
 	Revive            = "RemoteEvent",     -- C->S: (targetUserId, holding: boolean) start/stop a revive hold

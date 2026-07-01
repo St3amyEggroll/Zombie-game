@@ -322,17 +322,43 @@ local function onLocalFired(weaponId: string)
 	end
 end
 
--- Every shot (incl. our own): draw the bullet tracer from the shooter's gun muzzle to where it landed.
-local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3, weaponId: string?)
+-- Every shot (incl. our own): draw the bullet from the shooter's gun muzzle to where it landed.
+-- `pellets` (shotguns) fans that many bolts with a little scatter around the endpoint, so a shell visibly
+-- sprays instead of drawing one line.
+local MAX_VISUAL_PELLETS = 6
+local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3, weaponId: string?, pellets: number?)
 	local shooter = Players:GetPlayerByUserId(shooterUserId)
 	local character = shooter and shooter.Character
 	local muzzleCF = gunMuzzleCF(character)
-	-- Tracer + flash both start at the gun barrel (the "Muzzle" attachment, or the gun in-hand).
+	-- Bolts + flash both start at the gun barrel (the "Muzzle" attachment, or the gun in-hand).
 	local from = muzzleCF and muzzleCF.Position or origin
 	if shooterUserId ~= localPlayer.UserId and muzzleCF then
 		muzzleFlash(muzzleCF) -- others' muzzle flash (the local player already flashed on fire)
 	end
-	spawnProjectile(from, endpoint, weaponId) -- a real bolt that flies from the barrel to the impact
+
+	local count = math.clamp(tonumber(pellets) or 1, 1, MAX_VISUAL_PELLETS)
+	if count <= 1 then
+		spawnProjectile(from, endpoint, weaponId)
+		return
+	end
+	local dir = endpoint - from
+	local dist = dir.Magnitude
+	if dist < 1 then
+		spawnProjectile(from, endpoint, weaponId)
+		return
+	end
+	dir = dir.Unit
+	-- Scatter endpoints in a small disc perpendicular to the travel direction (~4.5° spread).
+	local up = (math.abs(dir.Y) > 0.99) and Vector3.xAxis or Vector3.yAxis
+	local right = dir:Cross(up).Unit
+	local upP = dir:Cross(right).Unit
+	local radius = dist * 0.08
+	for i = 1, count do
+		local ang = math.random() * math.pi * 2
+		local r = math.sqrt(math.random()) * radius
+		local target = endpoint + (right * math.cos(ang) + upP * math.sin(ang)) * r
+		spawnProjectile(from, target, weaponId)
+	end
 end
 
 local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean)
