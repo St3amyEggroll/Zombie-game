@@ -1,12 +1,12 @@
 --!strict
--- Places.lua — Place IDs for this experience. The LOBBY is the experience's START place (players land there
--- first). The GAME is a secondary place reached only by teleport from the lobby (into a reserved server);
--- on death/victory the game teleports players back to Places.Lobby.
+-- Places.lua — Place IDs for this experience. The GAME place (the experience's START place) routes fresh
+-- joiners to the LOBBY, and teleports players back to the LOBBY on death/victory. The LOBBY is a separate
+-- place (lobby-src/, synced with lobby.project.json) whose PLAY teleports back to the game.
 -- If you clone/copy the experience, update these IDs (here and in lobby-src/.../LobbyServer.server.lua).
 
 local Places = {}
 
-Places.Lobby = 109730423425701 -- the lobby hub — the experience's START place (players join here first)
-Places.Game  = 140566663451993 -- the gameplay place (reserved-server, reached via the lobby's PLAY)
+Places.Lobby = 140566663451993 -- the lobby place
+Places.Game  = 109730423425701 -- the gameplay place (also the experience's START place)
 
 return Places

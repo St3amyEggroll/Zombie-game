@@ -361,6 +361,10 @@ local function handleArrival(player: Player)
 	end
 	if startRun then
 		startRunFor(player)
+	elseif game.PlaceId == Places.Lobby then
+		-- SAFETY: this place is configured as the lobby but is running the GAME code. Never teleport a
+		-- player to the place they're already on (that's the self-teleport loop). Just start their run.
+		startRunFor(player)
 	else
 		local options = Instance.new("TeleportOptions")
 		if not safeTeleport(Places.Lobby, player, options) then
