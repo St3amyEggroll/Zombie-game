@@ -54,7 +54,6 @@ local function statLabel(color)
 	return l
 end
 local moneyLabel = statLabel(Color3.fromRGB(255, 220, 120))
-local levelLabel = statLabel(Color3.fromRGB(200, 220, 255))
 local bestLabel = statLabel(Color3.fromRGB(210, 210, 220))
 
 -- selection panel
@@ -181,7 +180,6 @@ end
 StatsRemote.OnClientEvent:Connect(function(s)
 	if typeof(s) ~= "table" then return end
 	moneyLabel.Text = "🪙 " .. fmt(s.lobbyMoney or 0)
-	levelLabel.Text = "Level " .. tostring(s.level or 1)
 	bestLabel.Text = "Best: Wave " .. tostring(s.bestWave or 0)
 end)
 
