@@ -10,7 +10,7 @@ local RunService = game:GetService("RunService")
 local WindController = {}
 
 -- ===== TUNABLES =====
-local COUNT       = 16                              -- how many streaks exist at once (subtle = few)
+local COUNT       = 9                               -- how many streaks exist at once (subtle = few)
 local WIND_DIR    = Vector3.new(1, -0.05, 0.35)     -- direction the wind blows (auto-normalized)
 local SPEED       = 34                               -- studs/sec the streaks drift
 local SPEED_VAR   = 0.4                              -- ± fraction of SPEED, randomized per streak
@@ -20,8 +20,8 @@ local HEIGHT_MAX  = 26                               -- highest streak height re
 local LENGTH_MIN  = 5                                -- shortest streak (studs)
 local LENGTH_MAX  = 11                               -- longest streak
 local THICK       = 0.06                             -- streak thickness (studs) — keep tiny
-local TRANSP_MIN  = 0.82                             -- most visible a streak gets (higher = fainter)
-local TRANSP_MAX  = 0.92                             -- faintest
+local TRANSP_MIN  = 0.9                              -- most visible a streak gets (higher = fainter)
+local TRANSP_MAX  = 0.97                             -- faintest
 local COLOR       = Color3.fromRGB(232, 240, 255)    -- cool, near-white
 
 local localPlayer = Players.LocalPlayer
