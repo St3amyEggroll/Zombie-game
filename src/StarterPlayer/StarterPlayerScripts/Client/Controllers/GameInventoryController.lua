@@ -46,6 +46,19 @@ toast.BackgroundColor3 = Color3.fromRGB(20, 22, 30); toast.BackgroundTransparenc
 toast.Font = Enum.Font.GothamBold; toast.TextSize = 16; toast.TextColor3 = Color3.fromRGB(255, 225, 120)
 toast.Text = ""; toast.Visible = false; toast.Parent = gui; corner(toast, 8)
 
+local toastToken = 0
+local function showToast(text)
+	toast.Text = text
+	toast.Visible = true
+	toastToken += 1
+	local myToken = toastToken
+	task.delay(3, function()
+		if toastToken == myToken then
+			toast.Visible = false
+		end
+	end)
+end
+
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
 panel.Size = UDim2.fromOffset(680, 440); panel.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
@@ -162,6 +175,10 @@ local function renderPotions()
 			use.TextSize = 15; use.Text = "USE"; use.BorderSizePixel = 0; use.Parent = card; corner(use, 8)
 			use.Activated:Connect(function()
 				Remotes.Get("ConsumePotion"):FireServer(potId)
+				local fx = (potId == "xp" and "2× run XP this run!")
+					or (potId == "luck" and "better buff odds this run!")
+					or "used!"
+				showToast("🧪 " .. disp.name .. " — " .. fx)
 			end)
 		end
 	end
@@ -200,19 +217,6 @@ openBtn.Activated:Connect(function()
 end)
 
 -- ===== EVENTS =====
-local toastToken = 0
-local function showToast(text)
-	toast.Text = text
-	toast.Visible = true
-	toastToken += 1
-	local myToken = toastToken
-	task.delay(3, function()
-		if toastToken == myToken then
-			toast.Visible = false
-		end
-	end)
-end
-
 function GameInventoryController.Start()
 	Remotes.Get("InvSnapshot").OnClientEvent:Connect(function(snap)
 		if typeof(snap) == "table" then

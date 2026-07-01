@@ -13,6 +13,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local BuffConfig = require(Config.BuffConfig)
+local GameConfig = require(Config.GameConfig)
 local Remotes = require(Modules.Remotes)
 
 local MatchService = require(script.Parent.MatchService)
@@ -121,7 +122,7 @@ local function addXP(player: Player, amount: number)
 	if not ps or not ps.inMatch then
 		return
 	end
-	ps.runXP += amount
+	ps.runXP += amount * (ps.potionXPMult or 1) -- XP Potion boosts how fast the run bar fills
 	local leveled = false
 	while ps.runXP >= BuffConfig.XPForLevel(ps.runLevel) do
 		ps.runXP -= BuffConfig.XPForLevel(ps.runLevel)
@@ -139,6 +140,27 @@ local function onKill(player: Player, humanoid: Humanoid, _isHead: boolean, _wea
 	local model = humanoid.Parent
 	local special = model and model:GetAttribute("IsSpecial") == true
 	addXP(player, special and BuffConfig.XPPerSpecialKill or BuffConfig.XPPerKill)
+end
+
+-- Apply a consumed potion's effect to the player's CURRENT RUN. Returns true if it applied.
+--   "xp"   → boosts run XP gain (potionXPMult) for the rest of the run
+--   "luck" → raises the run's Luck (better buff-draft rarities) for the rest of the run
+-- Both stack and last until the run ends. Only works while in a run.
+function BuffService.ApplyPotion(player: Player, potionId: string): boolean
+	local ps = MatchService.GetPlayerState(player)
+	if not ps or not ps.inMatch then
+		return false
+	end
+	local fx = GameConfig.PotionEffects
+	if potionId == "xp" then
+		ps.potionXPMult = (ps.potionXPMult or 1) + fx.xpMultBonus
+		return true
+	elseif potionId == "luck" then
+		ps.buffs.luck = (ps.buffs.luck or 0) + fx.luckBonus
+		pushBuffs(player, ps) -- refresh the client's buff totals (HUD + prediction)
+		return true
+	end
+	return false
 end
 
 local function onPick(player: Player, index)

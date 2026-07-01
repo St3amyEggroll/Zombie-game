@@ -113,4 +113,11 @@ GameConfig.EliteHealthMult     = 4                    -- elites have 4× a norma
 GameConfig.EliteHighlightColor = Color3.fromRGB(255, 225, 40) -- yellow test highlight
 GameConfig.PotionDrops         = { "luck", "xp" }     -- potion ids an elite can drop (match the lobby POTIONS)
 
+-- ===== POTION EFFECTS ===== consumed IN A RUN (in-game inventory → Use). Effects last the rest of the run
+-- and stack. XP boosts how fast the run's buff-draft bar fills; Luck raises the buff-draft rarity odds.
+GameConfig.PotionEffects = {
+	xpMultBonus = 1.0,  -- XP Potion: +100% run XP per potion (2× with one, 3× with two, …)
+	luckBonus   = 0.2,  -- Luck Potion: +0.2 to the run's Luck (better buff-draft rarities) per potion
+}
+
 return GameConfig

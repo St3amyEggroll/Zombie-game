@@ -21,6 +21,8 @@ local Remotes = require(Modules.Remotes)
 
 local DataService = require(script.Parent.DataService)
 local CombatService = require(script.Parent.CombatService)
+local MatchService = require(script.Parent.MatchService)
+local BuffService = require(script.Parent.BuffService)
 
 local GameInventoryService = {}
 
@@ -31,8 +33,8 @@ local CASES = {
 	standard = { name = "Standard Case" },
 }
 local POTIONS = {
-	luck = { name = "Luck Potion", desc = "Boosts rare drops (coming soon)" },
-	xp   = { name = "XP Potion",   desc = "Bonus run XP (coming soon)" },
+	luck = { name = "Luck Potion", desc = "Use in a run → better buff-draft odds (+Luck)" },
+	xp   = { name = "XP Potion",   desc = "Use in a run → 2× run XP" },
 }
 
 local CATALOG = {
@@ -89,8 +91,13 @@ local function onConsume(player: Player, potionId: any)
 	if typeof(potionId) ~= "string" or not POTIONS[potionId] then
 		return
 	end
+	-- Potions take effect DURING a run (they boost the run's XP / Luck). Don't burn one otherwise.
+	local ps = MatchService.GetPlayerState(player)
+	if not ps or not ps.inMatch then
+		return
+	end
 	if DataService.TryConsumePotion(player, potionId) then
-		-- (Potion effect goes here later — for now it just gets consumed.)
+		BuffService.ApplyPotion(player, potionId) -- apply the run effect
 		push(player)
 	end
 end
