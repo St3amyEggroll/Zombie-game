@@ -173,14 +173,16 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	end
 	c.lastShot[weaponId] = now
 
-	-- 5b) ammo
+	-- 5b) ammo (skipped entirely when GameConfig.InfiniteAmmo — guns never run dry)
 	local ammo = ensureAmmo(ps, weaponId, weapon)
-	if ammo.mag <= 0 then
-		return -- client must reload; no shot, no ammo spent
+	if not GameConfig.InfiniteAmmo then
+		if ammo.mag <= 0 then
+			return -- client must reload; no shot, no ammo spent
+		end
+		ammo.mag -= 1
+		fireAmmo(player, weaponId, ammo)
 	end
-	ammo.mag -= 1
 	ps.equippedWeapon = weaponId
-	fireAmmo(player, weaponId, ammo)
 	firedEvent:Fire(player, weaponId) -- drives the server-side gun recoil
 
 	-- 6) AUTO-AIM: hit the CLOSEST live zombie within ArcRange that sits in the forward arc (centered on the

@@ -62,8 +62,11 @@ GameConfig.SprintDrainPerSec = 25
 GameConfig.SprintRegenPerSec = 15
 
 -- ===== TESTING / DEBUG ===== (turn these OFF for the real game)
-GameConfig.DebugUnlockAllWeapons = true   -- every player starts owning every weapon
-GameConfig.DebugStartWave        = 10     -- start the match at this wave (0 = normal, start at wave 1)
+GameConfig.DebugUnlockAllWeapons = false  -- every player starts owning every weapon
+GameConfig.DebugStartWave        = 0      -- start the match at this wave (0 = normal, start at wave 1)
+
+-- ===== AMMO =====
+GameConfig.InfiniteAmmo = true            -- guns never run out (no reloads needed)
 
 -- ===== DIFFICULTY ===== (set by the lobby; caps how far a run goes — clearing the final wave = VICTORY)
 GameConfig.Difficulties = {

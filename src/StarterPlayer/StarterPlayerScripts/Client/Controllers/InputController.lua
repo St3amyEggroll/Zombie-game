@@ -18,6 +18,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local WeaponConfig = require(Config.WeaponConfig)
+local GameConfig = require(Config.GameConfig)
 local Remotes = require(Modules.Remotes)
 
 local CameraController = require(script.Parent.CameraController)
@@ -105,7 +106,7 @@ local function fireOnce()
 		return
 	end
 	local mirror = getMirror(equipped)
-	if mirror.mag <= 0 then
+	if not GameConfig.InfiniteAmmo and mirror.mag <= 0 then
 		return
 	end
 
@@ -113,8 +114,10 @@ local function fireOnce()
 	Remotes.Get("FireWeapon"):FireServer(equipped, origin, direction)
 
 	-- Local prediction so the gun feels instant; the server's AmmoChanged is the real count.
-	mirror.mag -= 1
-	ammoEvent:Fire(equipped, mirror.mag, mirror.reserve)
+	if not GameConfig.InfiniteAmmo then
+		mirror.mag -= 1
+		ammoEvent:Fire(equipped, mirror.mag, mirror.reserve)
+	end
 	firedEvent:Fire(equipped)
 end
 

@@ -40,7 +40,7 @@ local ZombieService = {}
 
 -- ===== TUNABLES (most live in GameConfig; these are local feel knobs) =====
 local SPAWN_INTERVAL   = 0.6    -- seconds between spawns while a round still owes zombies
-local ATTACK_RANGE     = 4.5    -- studs (HORIZONTAL) within which a zombie can hit a player
+local ATTACK_RANGE     = 3.5    -- studs of CONTACT — a zombie damages you when its body touches yours
 local ATTACK_VERTICAL  = 6      -- studs of height difference allowed for a hit (so a zombie far below/above
                                -- on a ramp/ledge can't tag you); paired with a line-of-sight check
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
@@ -1319,22 +1319,10 @@ local function think(record, now: number)
 		record.waypointIndex = 1
 	end
 
-	-- Attack on contact — only when the zombie is genuinely NEXT TO you: within melee range HORIZONTALLY,
-	-- at roughly the same height (no tagging across a ramp/ledge), and with a clear line to you (no hitting
-	-- through walls). This is the fix for "enemies hit me from far away".
+	-- Damage-on-touch is handled per-frame in steer(). Here, if we're NOT in contact, a Leaper may pounce.
 	local toPlayer = targetRoot.Position - root.Position
 	local flatDist = Vector3.new(toPlayer.X, 0, toPlayer.Z).Magnitude
-	local heightGap = math.abs(toPlayer.Y)
-	if flatDist <= ATTACK_RANGE and heightGap <= ATTACK_VERTICAL
-		and (now - record.lastAttack) >= ATTACK_COOLDOWN
-		and not sightBlocked(root.Position, targetRoot.Position) then
-		record.lastAttack = now
-		PlayerStateService.Damage(target, record.damage, "zombie", root.Position)
-		if record.attackTrack then
-			record.attackTrack:Play(0.1)
-		end
-	else
-		-- Not in melee range: a Leaper may pounce to close the gap (no-op for every other type).
+	if flatDist > ATTACK_RANGE then
 		tryLeap(record, now, targetRoot, flatDist)
 	end
 
@@ -1429,7 +1417,15 @@ local function steer(record, now: number)
 	end
 
 	if dist <= ATTACK_RANGE then
-		hum:Move(Vector3.zero) -- in melee range: stop shoving the player around
+		hum:Move(Vector3.zero) -- in contact: stop shoving the player around
+		-- Damage on TOUCH: while its body is against yours, it bites once per cooldown.
+		if record.target and (now - record.lastAttack) >= ATTACK_COOLDOWN then
+			record.lastAttack = now
+			PlayerStateService.Damage(record.target, record.damage, "zombie", root.Position)
+			if record.attackTrack then
+				record.attackTrack:Play(0.1)
+			end
+		end
 	else
 		local toGoal = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z)
 		if toGoal.Magnitude > 0.1 then
