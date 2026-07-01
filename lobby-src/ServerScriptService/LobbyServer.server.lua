@@ -2,19 +2,16 @@
 -- tagged "LoadingZone") to queue; a countdown starts and SHORTENS to 3s once the zone hits its MaxParty; at
 -- zero, everyone in the zone teleports TOGETHER into a fresh private game server at the zone's difficulty.
 --
--- BUILD IN THIS PLACE (you): a SpawnLocation (so players spawn in the hub) + 3 Parts tagged "LoadingZone",
--- each covering the standing area, with attributes:
---   Difficulty : "easy" | "medium" | "hard" | "nightmare"   (default "medium")
---   MaxParty   : number   (default 4)  — reaching this = "full party" → 3s countdown
---   Countdown  : number   (default 12) — seconds to launch with at least 1 player
--- The part's size IS the trigger volume (make it tall enough to cover standing players; a little headroom is
--- added automatically). This is separate from the game codebase; sync with `rojo serve lobby.project.json`.
+-- BUILD IN THIS PLACE (you): a SpawnLocation (so players spawn in the hub) + 3 Parts whose NAME starts with
+-- "LoadingZone" (e.g. LoadingZoneEasy, LoadingZoneHard, LoadingZoneNightmare). Each part's size IS the
+-- trigger volume (cover the standing area; a little headroom is added automatically). Difficulty comes from
+-- the NAME (contains easy/medium/hard/nightmare) OR a "Difficulty" string attribute; optional number
+-- attributes MaxParty (default 4) and Countdown (default 12). Sync with `rojo serve lobby.project.json`.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local TeleportService = game:GetService("TeleportService")
-local CollectionService = game:GetService("CollectionService")
 local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -73,6 +70,35 @@ local function inPart(pos: Vector3, part: BasePart): boolean
 	return math.abs(rel.X) <= s.X and math.abs(rel.Z) <= s.Z and rel.Y >= -s.Y - 1 and rel.Y <= s.Y + V_MARGIN
 end
 
+-- Zones are found BY NAME: any BasePart whose name starts with "LoadingZone". Cached + refreshed slowly.
+local zoneParts: { BasePart } = {}
+local lastZoneScan = -math.huge
+local function refreshZones()
+	local list = {}
+	for _, d in Workspace:GetDescendants() do
+		if d:IsA("BasePart") and d.Name:lower():match("^loadingzone") then
+			table.insert(list, d)
+		end
+	end
+	zoneParts = list
+end
+
+-- Difficulty from a "Difficulty" attribute, else parsed from the NAME (…Easy/Medium/Hard/Nightmare), else medium.
+local DIFFS = { "nightmare", "hard", "medium", "easy" }
+local function difficultyOf(part: BasePart): string
+	local a = part:GetAttribute("Difficulty")
+	if type(a) == "string" and a ~= "" then
+		return a:lower()
+	end
+	local n = part.Name:lower()
+	for _, d in DIFFS do
+		if n:find(d, 1, true) then
+			return d
+		end
+	end
+	return "medium"
+end
+
 local function teleportGroup(list: { Player }, difficulty: string)
 	local ok, code = pcall(function()
 		return TeleportService:ReserveServer(GAME_PLACE_ID) -- a fresh PRIVATE arena for this party
@@ -95,10 +121,14 @@ local function teleportGroup(list: { Player }, difficulty: string)
 end
 
 local function tick()
-	-- Collect valid zone parts.
+	-- Refresh the zone list slowly (found by name); use only ones still in the world.
+	if os.clock() - lastZoneScan > 3 then
+		lastZoneScan = os.clock()
+		refreshZones()
+	end
 	local parts = {}
-	for _, p in CollectionService:GetTagged("LoadingZone") do
-		if p:IsA("BasePart") and p:IsDescendantOf(Workspace) then
+	for _, p in zoneParts do
+		if p.Parent and p:IsDescendantOf(Workspace) then
 			table.insert(parts, p)
 		end
 	end
@@ -135,7 +165,7 @@ local function tick()
 			else
 				local maxp = attr(part, "MaxParty", DEFAULT_MAXPARTY)
 				local cd = attr(part, "Countdown", DEFAULT_COUNTDOWN)
-				local diff = tostring(attr(part, "Difficulty", "medium"))
+				local diff = difficultyOf(part)
 				if not z.deadline then
 					z.deadline = nowc + cd
 				end
