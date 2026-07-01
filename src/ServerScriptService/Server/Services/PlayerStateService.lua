@@ -189,9 +189,11 @@ local function onHeartbeat(dt: number)
 		if humanoid and humanoid.Health > 0 then
 			local r = getRuntime(player)
 
-			-- Health regen after a quiet period.
+			-- Health regen after a quiet period (Regen Potion multiplies the rate for the run).
 			if humanoid.Health < humanoid.MaxHealth and (now - r.lastDamage) >= GameConfig.HealthRegenDelay then
-				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + GameConfig.HealthRegenRate * step)
+				local ps = MatchService.GetPlayerState(player)
+				local regenMult = (ps and ps.regenMult) or 1
+				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + GameConfig.HealthRegenRate * regenMult * step)
 			end
 
 			-- Sprint stamina.

@@ -70,8 +70,8 @@ local CASES = {
 }
 
 local POTIONS = {
-	luck = { name = "Luck Potion", rarity = "rare",     desc = "Boosts rare drops (coming soon)" },
-	xp   = { name = "XP Potion",   rarity = "uncommon", desc = "Bonus run XP (coming soon)" },
+	damage = { name = "Damage Potion", rarity = "rare",     desc = "Use in a run: +15% damage (once per run)" },
+	regen  = { name = "Regen Potion",  rarity = "uncommon", desc = "Use in a run: +50% health regen (once per run)" },
 }
 
 -- Display catalog the client renders from (colors as {r,g,b} so it survives replication cleanly).

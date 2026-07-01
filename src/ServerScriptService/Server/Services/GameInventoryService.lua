@@ -35,8 +35,8 @@ local CASES = {
 	standard = { name = "Standard Case" },
 }
 local POTIONS = {
-	luck = { name = "Luck Potion", desc = "Use in a run → better buff-draft odds (+Luck)" },
-	xp   = { name = "XP Potion",   desc = "Use in a run → 2× run XP" },
+	damage = { name = "Damage Potion", desc = "+15% damage for the rest of the run (once per run)" },
+	regen  = { name = "Regen Potion",  desc = "+50% health regen speed for the rest of the run (once per run)" },
 }
 
 local CATALOG = {
@@ -53,12 +53,14 @@ local CATALOG = {
 
 local function snapshotFor(player: Player)
 	local data = DataService.Get(player)
+	local ps = MatchService.GetPlayerState(player)
 	return {
 		catalog = CATALOG,
 		tierLoadout = (data and typeof(data.tierLoadout) == "table") and data.tierLoadout or { "pistol", "", "", "", "" },
 		owned = (data and typeof(data.ownedWeapons) == "table") and data.ownedWeapons or { "pistol" },
 		cases = (data and typeof(data.cases) == "table") and data.cases or {},
 		potions = (data and typeof(data.potions) == "table") and data.potions or {},
+		used = (ps and ps.usedPotions) or {}, -- potion types already drunk THIS run (grays their Use button)
 	}
 end
 
@@ -72,8 +74,8 @@ GameInventoryService.Push = push
 -- ===== PHYSICAL POTION DROPS ===== an elite death spawns a glowing potion that pops out of the corpse,
 -- then homes to the NEAREST player and is collected on contact (they get the potion + the overhead toast).
 local POTION_COLOR = {
-	luck = Color3.fromRGB(90, 140, 255),
-	xp   = Color3.fromRGB(120, 230, 120),
+	damage = Color3.fromRGB(235, 100, 90),  -- red = damage
+	regen  = Color3.fromRGB(110, 225, 130), -- green = regen
 }
 local POP_TIME      = 0.45  -- seconds the potion arcs out of the corpse before the magnet kicks in
 local POP_UP        = 24    -- initial upward pop speed
@@ -228,13 +230,14 @@ local function onConsume(player: Player, potionId: any)
 	if typeof(potionId) ~= "string" or not POTIONS[potionId] then
 		return
 	end
-	-- Potions take effect DURING a run (they boost the run's XP / Luck). Don't burn one otherwise.
+	-- Potions take effect DURING a run, and each TYPE only works once per run. Check eligibility BEFORE
+	-- consuming so an ineligible click never burns a potion from the inventory.
 	local ps = MatchService.GetPlayerState(player)
-	if not ps or not ps.inMatch then
+	if not ps or not ps.inMatch or (ps.usedPotions and ps.usedPotions[potionId]) then
 		return
 	end
 	if DataService.TryConsumePotion(player, potionId) then
-		BuffService.ApplyPotion(player, potionId) -- apply the run effect
+		BuffService.ApplyPotion(player, potionId) -- applies the run effect + marks the type as used
 		push(player)
 	end
 end

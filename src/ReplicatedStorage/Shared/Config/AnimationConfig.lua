@@ -9,20 +9,20 @@
 local AnimationConfig = {}
 
 -- ===== PROCEDURAL (no uploads needed) =====
--- PROJECTILE: a small neon bolt that actually TRAVELS from the gun barrel to the impact point (with a Trail
--- streak), instead of an instant line. Speed = studs/sec it flies; the bullet reaches the target in
--- distance/Speed seconds, then the impact plays. PerWeapon overrides Default.
---   Color = bolt/trail color   Length = bolt length (studs, along travel)   Width = thickness (studs)
---   Speed = studs/sec          Life  = fade time after it lands / max lifetime
+-- PROJECTILE: a THIN LASER BOLT that actually TRAVELS from the gun barrel to the impact point — a skinny
+-- bright streak with a short fading tail. Speed = studs/sec it flies; the bolt reaches the target in
+-- distance/Speed seconds, then fades over Life. PerWeapon overrides Default.
+--   Color = bolt/tail color   Length = streak length (studs, along travel)   Width = thickness (studs)
+--   Speed = studs/sec         Life  = fade time once it lands
 AnimationConfig.Projectile = {
 	Enabled = true,
-	Default = { Color = Color3.fromRGB(255, 231, 150), Length = 2.2, Width = 0.14, Speed = 320, Life = 0.06 },
+	Default = { Color = Color3.fromRGB(255, 235, 170), Length = 3.5, Width = 0.06, Speed = 420, Life = 0.05 },
 	PerWeapon = {
-		pistol  = { Color = Color3.fromRGB(255, 231, 150), Length = 2.2, Width = 0.14, Speed = 320, Life = 0.06 },
-		shotgun = { Color = Color3.fromRGB(255, 200, 120), Length = 1.8, Width = 0.13, Speed = 300, Life = 0.05 },
-		ak47    = { Color = Color3.fromRGB(255, 240, 170), Length = 2.6, Width = 0.14, Speed = 380, Life = 0.06 },
-		minigun = { Color = Color3.fromRGB(255, 170,  90), Length = 2.6, Width = 0.13, Speed = 420, Life = 0.05 },
-		raygun  = { Color = Color3.fromRGB(120, 255, 140), Length = 3.0, Width = 0.30, Speed = 220, Life = 0.10 },
+		pistol  = { Color = Color3.fromRGB(255, 235, 170), Length = 3.5, Width = 0.06, Speed = 420, Life = 0.05 },
+		shotgun = { Color = Color3.fromRGB(255, 205, 130), Length = 2.6, Width = 0.05, Speed = 380, Life = 0.04 },
+		ak47    = { Color = Color3.fromRGB(255, 242, 180), Length = 4.0, Width = 0.06, Speed = 480, Life = 0.05 },
+		minigun = { Color = Color3.fromRGB(255, 180, 100), Length = 4.0, Width = 0.05, Speed = 520, Life = 0.04 },
+		raygun  = { Color = Color3.fromRGB(120, 255, 140), Length = 4.5, Width = 0.14, Speed = 300, Life = 0.08 },
 	},
 }
 

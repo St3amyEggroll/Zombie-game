@@ -98,13 +98,18 @@ GameConfig.RateLimits = {
 GameConfig.EliteChance         = 0.05                 -- 5% of normal spawns become elites
 GameConfig.EliteHealthMult     = 4                    -- elites have 4× a normal same-type zombie's health
 GameConfig.EliteHighlightColor = Color3.fromRGB(255, 225, 40) -- yellow test highlight
-GameConfig.PotionDrops         = { "luck", "xp" }     -- potion ids an elite can drop (match the lobby POTIONS)
+GameConfig.PotionDrops         = { "damage", "regen" } -- potion ids an elite can drop (match the lobby POTIONS)
 
--- ===== POTION EFFECTS ===== consumed IN A RUN (in-game inventory → Use). Effects last the rest of the run
--- and stack. XP boosts how fast the run's buff-draft bar fills; Luck raises the buff-draft rarity odds.
+-- ===== POTION EFFECTS ===== consumed IN A RUN (in-game inventory → Use). Effects last the rest of the
+-- run; each potion TYPE can only be used ONCE per run.
 GameConfig.PotionEffects = {
-	xpMultBonus = 1.0,  -- XP Potion: +100% run XP per potion (2× with one, 3× with two, …)
-	luckBonus   = 0.2,  -- Luck Potion: +0.2 to the run's Luck (better buff-draft rarities) per potion
+	damageBonus = 0.15, -- Damage Potion: +15% damage for the rest of the run
+	regenBonus  = 0.5,  -- Regen Potion: +50% health regen speed for the rest of the run
 }
+
+-- ===== GUN LADDER ===== you START every run with your TIER 1 gun and BUY your way up your equipped
+-- lobby loadout with in-run cash ("NEXT GUN" button). Buying REPLACES your current gun — one gun at a
+-- time. Price is keyed by the tier of the gun being bought.
+GameConfig.NextGunPrices = { [2] = 1500, [3] = 4000, [4] = 10000, [5] = 25000 }
 
 return GameConfig

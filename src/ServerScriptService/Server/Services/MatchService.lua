@@ -115,13 +115,17 @@ local function equippedLoadoutFor(player: Player): { string }
 end
 
 local function makePlayerState(player: Player)
-	local owned = equippedLoadoutFor(player) -- weapons equipped in the lobby (or all, if debug-unlocked)
+	local ladder = equippedLoadoutFor(player) -- the lobby loadout in tier order (or all, if debug-unlocked)
 	return {
 		userId = player.UserId,
 		inMatch = false,                          -- false = lobby/menu; true = in the run
-		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run; spent on traps)
-		ownedWeapons = owned,
-		equippedWeapon = owned[1] or "pistol",
+		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run; guns + traps)
+		-- GUN LADDER: you start every run holding your TIER 1 gun and buy up the ladder with cash.
+		-- Exactly ONE gun is owned/equipped at a time; buying REPLACES it with the next ladder entry.
+		gunLadder = ladder,
+		ladderIndex = 1,
+		ownedWeapons = { ladder[1] or "pistol" },
+		equippedWeapon = ladder[1] or "pistol",
 		isDead = false,
 		health = GameConfig.PlayerMaxHealth,
 		maxHealth = GameConfig.PlayerMaxHealth,
@@ -133,13 +137,14 @@ local function makePlayerState(player: Player)
 		runLevel = 1,
 		draftsOwed = 0,
 		pendingDraft = nil,
-		potionXPMult = 1, -- XP Potion multiplier for this run (1 = none)
+		regenMult = 1,     -- Regen Potion multiplier for this run (1 = none)
+		usedPotions = {},  -- [potionId] = true — each potion type is usable ONCE per run
 		buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 },
 	}
 end
 
--- Reset a player's PER-RUN ephemeral state (the moment a run begins). Weapons come from the lobby loadout;
--- in-wave cash, kills, XP and buffs all reset so every run starts fresh.
+-- Reset a player's PER-RUN ephemeral state (the moment a run begins). The gun ladder restarts at TIER 1
+-- (progress up the ladder is never saved); in-wave cash, kills, XP, buffs and potions all reset too.
 local function resetRunState(player: Player, ps)
 	ps.points = GameConfig.StartingPoints
 	ps.kills = 0
@@ -149,12 +154,15 @@ local function resetRunState(player: Player, ps)
 	ps.runLevel = 1
 	ps.draftsOwed = 0
 	ps.pendingDraft = nil
-	ps.potionXPMult = 1
+	ps.regenMult = 1
+	ps.usedPotions = {}
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
 	ps.isDead = false
 	ps.health = GameConfig.PlayerMaxHealth
 	ps.maxHealth = GameConfig.PlayerMaxHealth
-	ps.equippedWeapon = ps.ownedWeapons[1] or "pistol"
+	ps.ladderIndex = 1
+	ps.ownedWeapons = { ps.gunLadder[1] or "pistol" }
+	ps.equippedWeapon = ps.gunLadder[1] or "pistol"
 end
 
 -- Zombies owed this wave (CLAUDE.md §8) — scaled by how many players are in the run.
@@ -353,7 +361,7 @@ startRunFor = function(player: Player)
 		return -- already in the run
 	end
 	ps.inMatch = true
-	ps.ownedWeapons = equippedLoadoutFor(player) -- re-read the lobby loadout (it may have changed between runs)
+	ps.gunLadder = equippedLoadoutFor(player) -- re-read the lobby loadout (it may have changed between runs)
 	resetRunState(player, ps)
 	spawnCharacter(player)
 	startMatchIfNeeded()

@@ -58,9 +58,13 @@ local DEFINITIONS: { [string]: string } = {
 	Sprint            = "RemoteEvent",     -- NEW (Phase 1): C->S: (wantSprint: boolean)
 
 	-- GameInventoryService (in-game VIEW of the lobby inventory + potion use)
-	InvSnapshot       = "RemoteEvent",     -- S->C: (snapshot) equipped weapons + cases + potions (view-only)
-	ConsumePotion     = "RemoteEvent",     -- C->S: (potionId) use a potion (effect TBD; just consumes for now)
+	InvSnapshot       = "RemoteEvent",     -- S->C: (snapshot) equipped weapons + cases + potions; C->S: request one
+	ConsumePotion     = "RemoteEvent",     -- C->S: (potionId) use a potion (applies its run effect; once per type per run)
 	PotionDropped     = "RemoteEvent",     -- S->C: (potionId) an elite zombie dropped a potion (toast)
+
+	-- GunLadderService (in-run tier progression: start at tier 1, buy up your lobby loadout)
+	BuyNextGun        = "RemoteEvent",     -- C->S: buy the next gun on your ladder (replaces the current one)
+	GunLadder         = "RemoteEvent",     -- S->C: ({ name, price } for the next gun, or nil when maxed)
 }
 
 local cache: { [string]: Instance } = {}

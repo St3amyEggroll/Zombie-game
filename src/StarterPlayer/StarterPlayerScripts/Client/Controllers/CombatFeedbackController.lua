@@ -151,6 +151,7 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	end
 	local dir = delta.Unit
 
+	-- THIN LASER BOLT: a skinny bright streak. The core is deliberately tiny (cfg.Width studs).
 	local bolt = Instance.new("Part")
 	bolt.Anchored = true
 	bolt.CanCollide = false
@@ -159,28 +160,34 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	bolt.CastShadow = false
 	bolt.Material = Enum.Material.Neon
 	bolt.Color = cfg.Color
-	bolt.Size = Vector3.new(cfg.Width, cfg.Width, cfg.Length)
+	bolt.Size = Vector3.new(cfg.Width, cfg.Width, math.min(cfg.Length, dist))
 	bolt.CFrame = CFrame.lookAt(from, from + dir)
 
-	-- Trailing streak between two attachments strung along the bolt's length.
-	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0, 0, cfg.Length * 0.5); a0.Parent = bolt
-	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(0, 0, -cfg.Length * 0.5); a1.Parent = bolt
+	-- Short fading tail. The trail's ribbon width = the distance between its two attachments, so they
+	-- sit across the bolt's THICKNESS (not its length — that made a 2-3 stud wide ribbon, the old
+	-- "super thick" look). Result: a tail exactly as skinny as the bolt.
+	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0, cfg.Width * 0.5, 0); a0.Parent = bolt
+	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(0, -cfg.Width * 0.5, 0); a1.Parent = bolt
 	local trail = Instance.new("Trail")
 	trail.Attachment0 = a0
 	trail.Attachment1 = a1
 	trail.Color = ColorSequence.new(cfg.Color)
-	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
-	trail.Lifetime = 0.10
+	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) })
+	trail.Lifetime = 0.07
 	trail.FaceCamera = true
 	trail.LightEmission = 1
-	trail.WidthScale = NumberSequence.new(1, 0)
+	trail.WidthScale = NumberSequence.new(1, 0.2)
 	trail.Parent = bolt
 
 	bolt.Parent = fxFolder
-	table.insert(activeBolts, { part = bolt, from = from, dir = dir, dist = dist, speed = cfg.Speed, t = 0 })
+	table.insert(activeBolts, {
+		part = bolt, from = from, dir = dir, dist = dist,
+		speed = cfg.Speed, life = cfg.Life or 0.05, t = 0,
+	})
 end
 
--- Advance every in-flight bolt; when one reaches its impact point, fade it out and drop it from the list.
+-- Advance every in-flight bolt; when one reaches its impact point, fade it out (over its cfg.Life) and
+-- drop it from the list.
 local function updateBolts(dt: number)
 	for i = #activeBolts, 1, -1 do
 		local b = activeBolts[i]
@@ -192,8 +199,8 @@ local function updateBolts(dt: number)
 			if traveled >= b.dist then
 				local pos = b.from + b.dir * b.dist
 				b.part.CFrame = CFrame.lookAt(pos, pos + b.dir)
-				TweenService:Create(b.part, TweenInfo.new(0.05), { Transparency = 1 }):Play()
-				Debris:AddItem(b.part, 0.15) -- let the trail fade out after it lands
+				TweenService:Create(b.part, TweenInfo.new(b.life), { Transparency = 1 }):Play()
+				Debris:AddItem(b.part, b.life + 0.08) -- + a beat for the tail to finish fading
 				table.remove(activeBolts, i)
 			else
 				local pos = b.from + b.dir * traveled

@@ -1,8 +1,8 @@
 --!nonstrict
--- GameInventoryController.lua — the IN-GAME inventory window (view-only). Open it with the top-left button
--- to SEE your equipped weapons and the cases you own (you equip weapons + open cases back in the LOBBY),
--- and to USE potions you've collected. Potions are dropped by elite (yellow) zombies; using one currently
--- just consumes it (no effect yet). Data comes from GameInventoryService via the InvSnapshot remote.
+-- GameInventoryController.lua — the IN-GAME inventory window. Opens on the POTIONS tab (the interactive
+-- one: drink Damage/Regen potions, once per type per run); Weapons and Cases tabs are VIEW-ONLY here
+-- (you equip weapons + open cases back in the LOBBY). Potions drop from elite zombies. Data comes from
+-- GameInventoryService via the InvSnapshot remote (snapshot.used grays potions already drunk this run).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -21,7 +21,7 @@ local CARD = Color3.fromRGB(31, 34, 42)
 local DIM = Color3.fromRGB(64, 68, 80)
 
 local data = nil
-local activeTab = "weapons"
+local activeTab = "potions" -- potions FIRST: the one tab you can actually interact with in-run
 
 local function corner(o, r)
 	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = o
@@ -87,9 +87,9 @@ local function navButton(id, text)
 	corner(b, 8); navBtns[id] = b
 	return b
 end
+navButton("potions", "Potions")
 navButton("weapons", "Weapons")
 navButton("cases", "Cases")
-navButton("potions", "Potions")
 
 local hint = Instance.new("TextLabel")
 hint.AnchorPoint = Vector2.new(0.5, 1); hint.Position = UDim2.new(0.5, 78, 1, -8); hint.Size = UDim2.fromOffset(480, 18)
@@ -169,21 +169,27 @@ local function renderPotions()
 			label(card, 12, 200, disp.name, Color3.fromRGB(240, 240, 245), 16)
 			label(card, 12, 440, disp.desc, Color3.fromRGB(160, 170, 185), 11, Enum.Font.Gotham).Position = UDim2.fromOffset(12, 30)
 			label(card, 220, 90, "x" .. count, Color3.fromRGB(200, 210, 225), 15)
+			local usedThisRun = (data.used or {})[potId] == true
 			local use = Instance.new("TextButton")
 			use.AnchorPoint = Vector2.new(1, 0.5); use.Position = UDim2.new(1, -12, 0.5, 0); use.Size = UDim2.fromOffset(90, 34)
-			use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15); use.Font = Enum.Font.GothamBold
-			use.TextSize = 15; use.Text = "USE"; use.BorderSizePixel = 0; use.Parent = card; corner(use, 8)
-			use.Activated:Connect(function()
-				Remotes.Get("ConsumePotion"):FireServer(potId)
-				local fx = (potId == "xp" and "2× run XP this run!")
-					or (potId == "luck" and "better buff odds this run!")
-					or "used!"
-				showToast(disp.name .. " — " .. fx)
-			end)
+			use.Font = Enum.Font.GothamBold; use.TextSize = 15; use.BorderSizePixel = 0; use.Parent = card; corner(use, 8)
+			if usedThisRun then
+				use.BackgroundColor3 = DIM; use.TextColor3 = Color3.fromRGB(160, 165, 180)
+				use.Text = "USED"; use.AutoButtonColor = false
+			else
+				use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15); use.Text = "USE"
+				use.Activated:Connect(function()
+					Remotes.Get("ConsumePotion"):FireServer(potId)
+					local fx = (potId == "damage" and "+15% damage this run!")
+						or (potId == "regen" and "+50% regen this run!")
+						or "used!"
+					showToast(disp.name .. " — " .. fx)
+				end)
+			end
 		end
 	end
 	if not any then
-		label(rowCard(40), 12, 440, "No potions yet — kill YELLOW elite zombies to get them.", Color3.fromRGB(150, 155, 170), 14, Enum.Font.Gotham)
+		label(rowCard(40), 12, 440, "No potions yet — kill glowing ELITE zombies to earn them.", Color3.fromRGB(150, 155, 170), 14, Enum.Font.Gotham)
 	end
 end
 
