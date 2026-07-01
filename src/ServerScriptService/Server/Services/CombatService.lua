@@ -163,10 +163,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		return
 	end
 
-	-- 5a) fire-rate gate (Attack Speed buff lets you fire faster)
+	-- 5a) fire-rate gate — CONSTANT per weapon. The cadence is exactly weapon.fireRate; nothing (buffs
+	-- included) speeds it up or slows it down. This is the only thing that limits how fast you can shoot.
 	local now = os.clock()
-	local effFireRate = weapon.fireRate * (1 + buffOf(ps, "attackspeed"))
-	local minInterval = (1 / effFireRate) * FIRE_RATE_SLACK
+	local minInterval = (1 / weapon.fireRate) * FIRE_RATE_SLACK
 	local last = c.lastShot[weaponId] or 0
 	if now - last < minInterval then
 		return

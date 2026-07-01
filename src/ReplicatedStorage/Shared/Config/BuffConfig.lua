@@ -27,7 +27,7 @@ BuffConfig.MaxUpgradeChance = 0.95   -- luck can never push a climb roll above t
 -- (Crit Chance base 0.03 -> Common +3% ... Mythic +18% ... Divine +21%.)
 BuffConfig.Buffs = {
 	{ id = "damage",      name = "Damage",       stat = "damage",      base = 0.05 },
-	{ id = "attackspeed", name = "Attack Speed", stat = "attackspeed", base = 0.04 },
+	-- (Attack Speed removed — fire rate is CONSTANT per weapon and nothing is allowed to change it.)
 	{ id = "walkspeed",   name = "Move Speed",   stat = "walkspeed",   base = 0.03 },
 	{ id = "range",       name = "Attack Range", stat = "range",       base = 0.05 },
 	{ id = "critchance",  name = "Crit Chance",  stat = "critchance",  base = 0.03 },

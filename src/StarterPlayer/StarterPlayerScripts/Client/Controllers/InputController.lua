@@ -98,7 +98,9 @@ local function fireOnce()
 	if now < reloadingUntil then
 		return
 	end
-	if now - lastFireClock < (1 / (weapon.fireRate * (1 + BuffController.GetStat("attackspeed")))) * 0.9 then
+	-- CONSTANT fire rate: the cadence is exactly weapon.fireRate, nothing changes it. The 0.95 keeps the
+	-- client a hair under the server's slack so a predicted shot is never bounced (even cadence, no drops).
+	if now - lastFireClock < (1 / weapon.fireRate) * 0.95 then
 		return
 	end
 	local origin, direction = CameraController.GetAim()
@@ -140,20 +142,22 @@ local function tryReload()
 	reloadEvent:Fire(equipped, weapon.reloadSeconds)
 end
 
--- Seconds to wait before the next shot. Spin-up weapons ramp from SPIN_START_FRAC× the fire rate up to
--- full over weapon.spinUp seconds of continuous holding; releasing resets the ramp (so it spins down).
+-- Seconds to wait before the next shot. CONSTANT: exactly 1/fireRate — no buff, no click-cadence jitter.
+-- Spin-up weapons (minigun) ramp from SPIN_START_FRAC× the fire rate up to full over weapon.spinUp seconds
+-- of continuous holding; releasing resets the ramp (so it spins down).
 local function shotInterval(weapon): number
-	local atk = 1 + BuffController.GetStat("attackspeed") -- Attack Speed buff fires faster
 	if weapon.spinUp and weapon.spinUp > 0 then
 		local held = os.clock() - fireStart
 		local t = math.clamp(held / weapon.spinUp, 0, 1)
 		local startRate = weapon.fireRate * SPIN_START_FRAC
 		local rate = startRate + (weapon.fireRate - startRate) * t
-		return 1 / (rate * atk)
+		return 1 / rate
 	end
-	return 1 / (weapon.fireRate * atk)
+	return 1 / weapon.fireRate
 end
 
+-- While the trigger is held, fire on a STEADY cadence (every 1/fireRate) for every weapon — so holding OR
+-- clicking gives perfectly even fire, capped only by the weapon's fire rate. Nothing else stops it.
 local function fireLoop()
 	while firing do
 		local weapon = WeaponConfig[equipped]
@@ -161,18 +165,12 @@ local function fireLoop()
 			break
 		end
 		local mirror = getMirror(equipped)
-		if mirror.mag > 0 then
+		if GameConfig.InfiniteAmmo or mirror.mag > 0 then
 			fireOnce()
 			task.wait(shotInterval(weapon))
-			if not weapon.auto then
-				break -- semi-auto: one shot per press
-			end
 		else
-			-- Empty: idle quietly (don't spam the server). Resume if reloaded while still held.
+			-- Empty (only when ammo is finite): idle quietly and resume if reloaded while still held.
 			task.wait(0.1)
-			if not weapon.auto then
-				break
-			end
 		end
 	end
 	firing = false

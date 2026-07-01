@@ -9,10 +9,27 @@
 local AnimationConfig = {}
 
 -- ===== PROCEDURAL (no uploads needed) =====
--- Tracers: a thin neon LINE from the gun barrel to the impact point, fading out. PerWeapon overrides Default.
---   Color = line color   Width = thickness in studs (small = skinny)   Life = seconds before it fades out
-AnimationConfig.Tracer = {
+-- PROJECTILE: a small neon bolt that actually TRAVELS from the gun barrel to the impact point (with a Trail
+-- streak), instead of an instant line. Speed = studs/sec it flies; the bullet reaches the target in
+-- distance/Speed seconds, then the impact plays. PerWeapon overrides Default.
+--   Color = bolt/trail color   Length = bolt length (studs, along travel)   Width = thickness (studs)
+--   Speed = studs/sec          Life  = fade time after it lands / max lifetime
+AnimationConfig.Projectile = {
 	Enabled = true,
+	Default = { Color = Color3.fromRGB(255, 231, 150), Length = 2.2, Width = 0.14, Speed = 320, Life = 0.06 },
+	PerWeapon = {
+		pistol  = { Color = Color3.fromRGB(255, 231, 150), Length = 2.2, Width = 0.14, Speed = 320, Life = 0.06 },
+		shotgun = { Color = Color3.fromRGB(255, 200, 120), Length = 1.8, Width = 0.13, Speed = 300, Life = 0.05 },
+		ak47    = { Color = Color3.fromRGB(255, 240, 170), Length = 2.6, Width = 0.14, Speed = 380, Life = 0.06 },
+		minigun = { Color = Color3.fromRGB(255, 170,  90), Length = 2.6, Width = 0.13, Speed = 420, Life = 0.05 },
+		raygun  = { Color = Color3.fromRGB(120, 255, 140), Length = 3.0, Width = 0.30, Speed = 220, Life = 0.10 },
+	},
+}
+
+-- (Legacy line tracer — kept for reference; the projectile above replaces it. Set Projectile.Enabled=false
+-- and Tracer.Enabled=true to fall back to instant lines.)
+AnimationConfig.Tracer = {
+	Enabled = false,
 	Default = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Life = 0.06 },
 	PerWeapon = {
 		pistol  = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Life = 0.06 },

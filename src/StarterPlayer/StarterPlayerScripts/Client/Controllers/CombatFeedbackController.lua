@@ -114,33 +114,93 @@ local function tracerCfgFor(weaponId: string?)
 	return (weaponId and t.PerWeapon[weaponId]) or t.Default
 end
 
--- A thin neon tracer LINE spanning the whole shot — from the gun barrel (`from`) to where it landed (`to`)
--- — so it always visibly connects to your gun. Skinny (cfg.Width) and fades out over cfg.Life. No light.
-local function drawTracer(from: Vector3, to: Vector3, weaponId: string?)
-	if not AnimationConfig.Tracer.Enabled then
-		return
-	end
-	local cfg = tracerCfgFor(weaponId)
-	local dist = (to - from).Magnitude
-	if dist < 1 or dist ~= dist then
+local function projectileCfgFor(weaponId: string?)
+	local p = AnimationConfig.Projectile
+	return (weaponId and p.PerWeapon[weaponId]) or p.Default
+end
+
+-- ===== MOVING PROJECTILE ===== a small neon bolt (with a trailing streak) that actually FLIES from the gun
+-- barrel to where the shot landed, at cfg.Speed studs/sec, then fades. Updated every frame from `activeBolts`
+-- (one Heartbeat connection for all bolts — cheap even with a horde firing). No dynamic light.
+local activeBolts: { any } = {}
+
+local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
+	if not AnimationConfig.Projectile.Enabled then
+		-- Fallback to the legacy instant line if projectiles are disabled.
+		if AnimationConfig.Tracer.Enabled then
+			local cfg = tracerCfgFor(weaponId)
+			local d = (to - from).Magnitude
+			if d < 1 or d ~= d then return end
+			local beam = Instance.new("Part")
+			beam.Anchored = true; beam.CanCollide = false; beam.CanQuery = false; beam.CanTouch = false
+			beam.CastShadow = false; beam.Material = Enum.Material.Neon; beam.Color = cfg.Color
+			beam.Transparency = 0.1; beam.Size = Vector3.new(cfg.Width, cfg.Width, d)
+			beam.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -d * 0.5)
+			beam.Parent = fxFolder
+			TweenService:Create(beam, TweenInfo.new(cfg.Life), { Transparency = 1 }):Play()
+			Debris:AddItem(beam, cfg.Life + 0.05)
+		end
 		return
 	end
 
-	local beam = Instance.new("Part")
-	beam.Anchored = true
-	beam.CanCollide = false
-	beam.CanQuery = false
-	beam.CanTouch = false
-	beam.CastShadow = false
-	beam.Material = Enum.Material.Neon
-	beam.Color = cfg.Color
-	beam.Transparency = 0.1
-	beam.Size = Vector3.new(cfg.Width, cfg.Width, dist)
-	beam.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -dist * 0.5) -- stretch from `from` to `to`
-	beam.Parent = fxFolder
+	local cfg = projectileCfgFor(weaponId)
+	local delta = to - from
+	local dist = delta.Magnitude
+	if dist < 0.5 or dist ~= dist then
+		return
+	end
+	local dir = delta.Unit
 
-	TweenService:Create(beam, TweenInfo.new(cfg.Life), { Transparency = 1 }):Play()
-	Debris:AddItem(beam, cfg.Life + 0.05)
+	local bolt = Instance.new("Part")
+	bolt.Anchored = true
+	bolt.CanCollide = false
+	bolt.CanQuery = false
+	bolt.CanTouch = false
+	bolt.CastShadow = false
+	bolt.Material = Enum.Material.Neon
+	bolt.Color = cfg.Color
+	bolt.Size = Vector3.new(cfg.Width, cfg.Width, cfg.Length)
+	bolt.CFrame = CFrame.lookAt(from, from + dir)
+
+	-- Trailing streak between two attachments strung along the bolt's length.
+	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0, 0, cfg.Length * 0.5); a0.Parent = bolt
+	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(0, 0, -cfg.Length * 0.5); a1.Parent = bolt
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = a0
+	trail.Attachment1 = a1
+	trail.Color = ColorSequence.new(cfg.Color)
+	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+	trail.Lifetime = 0.10
+	trail.FaceCamera = true
+	trail.LightEmission = 1
+	trail.WidthScale = NumberSequence.new(1, 0)
+	trail.Parent = bolt
+
+	bolt.Parent = fxFolder
+	table.insert(activeBolts, { part = bolt, from = from, dir = dir, dist = dist, speed = cfg.Speed, t = 0 })
+end
+
+-- Advance every in-flight bolt; when one reaches its impact point, fade it out and drop it from the list.
+local function updateBolts(dt: number)
+	for i = #activeBolts, 1, -1 do
+		local b = activeBolts[i]
+		if not b.part.Parent then
+			table.remove(activeBolts, i)
+		else
+			b.t += dt
+			local traveled = b.speed * b.t
+			if traveled >= b.dist then
+				local pos = b.from + b.dir * b.dist
+				b.part.CFrame = CFrame.lookAt(pos, pos + b.dir)
+				TweenService:Create(b.part, TweenInfo.new(0.05), { Transparency = 1 }):Play()
+				Debris:AddItem(b.part, 0.15) -- let the trail fade out after it lands
+				table.remove(activeBolts, i)
+			else
+				local pos = b.from + b.dir * traveled
+				b.part.CFrame = CFrame.lookAt(pos, pos + b.dir)
+			end
+		end
+	end
 end
 
 local function muzzleFlash(cf: CFrame)
@@ -265,7 +325,7 @@ local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vec
 	if shooterUserId ~= localPlayer.UserId and muzzleCF then
 		muzzleFlash(muzzleCF) -- others' muzzle flash (the local player already flashed on fire)
 	end
-	drawTracer(from, endpoint, weaponId)
+	spawnProjectile(from, endpoint, weaponId) -- a real bolt that flies from the barrel to the impact
 end
 
 local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean)
@@ -289,6 +349,7 @@ function CombatFeedbackController.Start()
 	Remotes.Get("HitConfirmed").OnClientEvent:Connect(onHitConfirmed)
 
 	RunService.RenderStepped:Connect(updateShake) -- decays trauma + applies the camera shake/kick each frame
+	RunService.Heartbeat:Connect(updateBolts)     -- flies every in-flight projectile toward its impact
 
 	print("[CombatFeedbackController] started")
 end
