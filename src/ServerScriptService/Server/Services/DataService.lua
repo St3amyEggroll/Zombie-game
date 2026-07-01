@@ -110,27 +110,53 @@ local function loadAsync(player: Player): any
 	return data
 end
 
-local function saveAsync(player: Player)
+-- MERGE-style write: the GAME place only owns some fields; the LOBBY place owns the inventory fields
+-- (tierLoadout/cases/ownedWeapons). Writing the whole cached blob with SetAsync could clobber a lobby
+-- write that landed while our save was still retrying (case dupes / lost weapons) — so we UpdateAsync
+-- and only assign the fields this place actually mutates. Shared fields the game adds to during a run
+-- (lobbyMoney, potions) are ours to write here because a player is only ever in ONE place at a time and
+-- the lobby saves them before teleporting the player to us.
+local GAME_OWNED_FIELDS = {
+	"dataVersion", "xp", "level", "bestWave", "completed", "stats", "cosmetics", "settings",
+	"lobbyMoney", "potions",
+}
+
+local function saveAsync(player: Player): boolean
 	local s = sessions[player.UserId]
-	if not s or not s.dirty or s.saving or s.data._noPersist then
-		return
+	if not s or s.data._noPersist then
+		return true
+	end
+	-- A save is already in flight: WAIT for it instead of silently doing nothing — callers like the
+	-- before-teleport SaveNow depend on the data actually being written when this returns.
+	while s.saving do
+		task.wait(0.1)
+	end
+	if not s.dirty then
+		return true -- the in-flight save (or an earlier one) already wrote everything current
 	end
 	s.saving = true
 	s.dirty = false
 	local data = s.data
 	for attempt = 1, SAVE_RETRIES do
 		local ok, err = pcall(function()
-			store:SetAsync(keyFor(player), data)
+			store:UpdateAsync(keyFor(player), function(old)
+				old = (typeof(old) == "table") and old or {}
+				for _, field in GAME_OWNED_FIELDS do
+					old[field] = data[field]
+				end
+				return old
+			end)
 		end)
 		if ok then
 			s.saving = false
-			return
+			return true
 		end
 		warn(("[DataService] save failed for %s (attempt %d): %s"):format(player.Name, attempt, tostring(err)))
 		task.wait(attempt)
 	end
 	s.saving = false
 	s.dirty = true -- failed; try again next autosave/leave
+	return false
 end
 
 local function markDirty(player: Player)
@@ -181,11 +207,11 @@ function DataService.Save(player: Player)
 	task.spawn(saveAsync, player)
 end
 
--- BLOCKING save — runs in the caller's thread and returns when the save attempt finishes. Use right before
--- teleporting a player to another place so the data they just banked is written before they leave this
--- server (otherwise the destination place can load a stale profile).
-function DataService.SaveNow(player: Player)
-	saveAsync(player)
+-- BLOCKING save — runs in the caller's thread and returns when the data is actually written (it waits out
+-- any in-flight save first, then flushes anything still dirty). Use right before teleporting a player to
+-- another place so the destination never loads a stale profile. Returns false if every attempt failed.
+function DataService.SaveNow(player: Player): boolean
+	return saveAsync(player)
 end
 
 -- ----- XP / level -----

@@ -23,7 +23,7 @@ GameConfig.ZombieBaseSpeed     = 8
 GameConfig.ZombieSpeedPerRound = 0.15
 GameConfig.ZombieMaxSpeed      = 22
 
--- ===== POINTS (CoD-Zombies style) — the IN-WAVE cash you spend at the shop (resets every run) =====
+-- ===== POINTS — the IN-WAVE cash from kills (resets every run; spent on TRAPS for now) =====
 GameConfig.PointsPerHit       = 10
 GameConfig.PointsPerKill      = 60
 GameConfig.PointsHeadshotKill = 100    -- replaces PointsPerKill on a headshot kill
@@ -49,11 +49,6 @@ GameConfig.KillStreakBonusPerKill = 0.08  -- +8% cash per kill in the current st
 GameConfig.KillStreakMaxMult      = 2.0   -- streak cash multiplier caps here
 GameConfig.KillStreakShowAt       = 3     -- streak length before the on-screen flair appears
 
--- ===== DOWN / REVIVE =====
-GameConfig.BleedoutSeconds = 30
-GameConfig.ReviveSeconds   = 4
-GameConfig.ReviveHealthPct = 0.5       -- revived players come back at this % of max health
-
 -- ===== MOVEMENT =====
 GameConfig.PlayerWalkSpeed   = 16      -- base humanoid WalkSpeed (Stamin-Up multiplies this)
 GameConfig.SprintMultiplier  = 1.4     -- sprint speed = WalkSpeed × this
@@ -64,9 +59,6 @@ GameConfig.SprintRegenPerSec = 15
 -- ===== TESTING / DEBUG ===== (turn these OFF for the real game)
 GameConfig.DebugUnlockAllWeapons = false  -- every player starts owning every weapon
 GameConfig.DebugStartWave        = 0      -- start the match at this wave (0 = normal, start at wave 1)
-
--- ===== AMMO =====
-GameConfig.InfiniteAmmo = true            -- guns never run out (no reloads needed)
 
 -- ===== DIFFICULTY ===== (set by the lobby; caps how far a run goes — clearing the final wave = VICTORY)
 GameConfig.Difficulties = {
@@ -84,11 +76,6 @@ GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare" }
 GameConfig.Worlds          = { "forest" }
 GameConfig.DefaultMap      = "forest"
 
--- ===== MATCH FLOW =====
-GameConfig.LobbyCountdown     = 5      -- seconds in lobby before a match auto-starts
-GameConfig.MinPlayersToStart  = 1      -- solo-playable
-GameConfig.GameOverHoldSeconds = 10    -- summary screen time before returning to lobby
-
 -- ===== AUTO-AIM SHOOTING =====
 GameConfig.ArcDegrees = 60    -- a shot auto-targets the CLOSEST zombie within this arc in front of your aim
                               -- (60 = a 60° cone, ±30° from where you face)
@@ -102,7 +89,7 @@ GameConfig.FalloffMinMult = 0.45 -- damage multiplier at/after FalloffEnd
 
 -- ===== RATE LIMITS (token bucket, max requests/sec per player) =====
 GameConfig.RateLimits = {
-	Fire = 20, Reload = 3, Buy = 6, Revive = 3, Interact = 8, Sprint = 10,
+	Fire = 20, Buy = 6, Interact = 8, Sprint = 10,
 }
 
 -- ===== ELITE (buffed) ZOMBIES ===== a small chance any spawned zombie is an "elite": tougher, glows

@@ -1360,17 +1360,22 @@ local function think(record, now: number)
 		end
 	end
 
-	-- Necromancer: raise extra grunts on a cooldown (on top of the wave's own spawns).
+	-- Necromancer: raise extra grunts on a cooldown (on top of the wave's own spawns). DEFERRED: spawning
+	-- inserts new keys into `active` and this think() runs inside onHeartbeat's iteration of `active` —
+	-- mutating a table mid-iteration is undefined (can error/skip records), so the spawns land next step.
 	if t and t.summons and now >= (record.nextSummon or 0) then
 		record.nextSummon = now + SUMMON_CD
-		summonAdds(SUMMON_COUNT)
+		task.defer(summonAdds, SUMMON_COUNT)
 	end
 
 	-- Backstop: a zombie wedged for STUCK_TIMEOUT (or alive too long) force-kills itself so the round
-	-- can't soft-lock on something unreachable.
-	if (now - record.lastMoveTime) > STUCK_TIMEOUT or (now - record.spawnTime) > MAX_LIFETIME then
-		record.hum.Health = 0
-		return
+	-- can't soft-lock on something unreachable. NEVER applies to bosses — a long boss fight is normal, and
+	-- force-killing one would fire "Boss Defeated" (and even a free victory on the final wave).
+	if not record.isBoss and record ~= bossRecord then
+		if (now - record.lastMoveTime) > STUCK_TIMEOUT or (now - record.spawnTime) > MAX_LIFETIME then
+			record.hum.Health = 0
+			return
+		end
 	end
 
 	record.nextThink = now + GameConfig.ZombieAITickRate
@@ -1399,6 +1404,10 @@ local function steer(record, now: number)
 	-- we set velocity each frame to hold height, chase horizontally, and drop on a dive.
 	if record.type and record.type.canFly then
 		hum.PlatformStand = true
+		-- Flyers are always "making progress" (velocity-driven, never truly wedged) — keep the stuck
+		-- detector fed, or think()'s 8s backstop force-kills every ghost shortly after it spawns.
+		record.lastPos = root.Position
+		record.lastMoveTime = now
 		local pPos = targetRoot.Position
 		local flatToP = Vector3.new(pPos.X - root.Position.X, 0, pPos.Z - root.Position.Z)
 		local diving = now < (record.ghostDiveUntil or 0)

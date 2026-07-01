@@ -213,9 +213,23 @@ local function sanitizePotions(v)
 end
 
 local function readProfile(player)
-	local ok, data = pcall(function()
-		return store:GetAsync("Player_" .. player.UserId)
-	end)
+	-- Retry with backoff (like the game's DataService): a single transient DataStore error must NOT make a
+	-- veteran look like a brand-new player — persisting that fallback would permanently WIPE their profile.
+	local ok, data = false, nil
+	for attempt = 1, 4 do
+		ok, data = pcall(function()
+			return store:GetAsync("Player_" .. player.UserId)
+		end)
+		if ok then
+			break
+		end
+		warn(("[LobbyServer] profile load failed for %s (attempt %d): %s"):format(player.Name, attempt, tostring(data)))
+		task.wait(attempt)
+		if not player.Parent then
+			break
+		end
+	end
+	local loadFailed = not ok
 	data = (ok and typeof(data) == "table") and data or {}
 	local owned = sanitizeOwned(data.ownedWeapons)
 	return {
@@ -227,6 +241,7 @@ local function readProfile(player)
 		tierLoadout = sanitizeTierLoadout(data.tierLoadout, owned),
 		cases = sanitizeCases(data.cases),
 		potions = sanitizePotions(data.potions),
+		noPersist = loadFailed, -- read failed → this is a fallback profile; NEVER write it back
 	}
 end
 
@@ -234,8 +249,8 @@ end
 -- (completed/bestWave/level/stats). One player is only ever in one place at a time, so this is safe.
 local function persist(player)
 	local prof = profileCache[player.UserId]
-	if not prof then
-		return
+	if not prof or prof.noPersist then
+		return -- no cached profile, or the load failed (writing the fallback would wipe the real save)
 	end
 	pcall(function()
 		store:UpdateAsync("Player_" .. player.UserId, function(old)
@@ -420,8 +435,8 @@ EquipTier.OnServerEvent:Connect(function(player, req)
 		return
 	end
 	local prof = profileCache[player.UserId]
-	if not prof then
-		return
+	if not prof or prof.noPersist then
+		return -- fallback profile (load failed): don't let them mutate state that can never save
 	end
 	local slot = tonumber(req.slot)
 	local weaponId = tostring(req.weaponId or "")
@@ -446,8 +461,8 @@ OpenCase.OnServerEvent:Connect(function(player, req)
 		return
 	end
 	local prof = profileCache[player.UserId]
-	if not prof then
-		return
+	if not prof or prof.noPersist then
+		return -- fallback profile (load failed): opening cases now would be lost (or dupe) on the real save
 	end
 	local caseId = tostring(req.caseId or "")
 	if not CASES[caseId] then

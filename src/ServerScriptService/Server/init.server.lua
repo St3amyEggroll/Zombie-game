@@ -24,7 +24,6 @@ local START_ORDER = {
 	"CombatService",
 	"ZombieService",
 	"PointsService",
-	"ShopService",
 	"WeaponModelService",
 }
 

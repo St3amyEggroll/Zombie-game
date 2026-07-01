@@ -95,15 +95,9 @@ local function equippedLoadoutFor(player: Player): { string }
 		end
 		return all
 	end
-	local data = DataService.Get(player)
-	if not data then
-		-- Just teleported in: give the profile a moment to load so we don't fall back to pistol-only.
-		local t0 = os.clock()
-		while not DataService.IsReady(player) and player.Parent and os.clock() - t0 < 5 do
-			task.wait(0.1)
-		end
-		data = DataService.Get(player)
-	end
+	-- Just teleported in: WAIT for the profile (DataService.WaitFor always resolves — on DataStore failure
+	-- it falls back to a template — so this can't hang, and a slow load can't strand them pistol-only).
+	local data = DataService.Get(player) or DataService.WaitFor(player)
 	local list, seen = {}, {}
 	if data and typeof(data.tierLoadout) == "table" then
 		for slot = 1, 5 do
@@ -121,23 +115,18 @@ local function equippedLoadoutFor(player: Player): { string }
 end
 
 local function makePlayerState(player: Player)
-	local pistol = WeaponConfig.pistol
 	local owned = equippedLoadoutFor(player) -- weapons equipped in the lobby (or all, if debug-unlocked)
 	return {
 		userId = player.UserId,
 		inMatch = false,                          -- false = lobby/menu; true = in the run
-		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run)
+		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run; spent on traps)
 		ownedWeapons = owned,
 		equippedWeapon = owned[1] or "pistol",
-		ammo = { [owned[1] or "pistol"] = { mag = (WeaponConfig[owned[1]] or pistol).magSize, reserve = (WeaponConfig[owned[1]] or pistol).reserveAmmo } },
-		upgrades = {},                            -- [weaponId] = upgrade (tier) level — per-run, resets
-		isDown = false,
 		isDead = false,
 		health = GameConfig.PlayerMaxHealth,
 		maxHealth = GameConfig.PlayerMaxHealth,
 		kills = 0,
 		specialKills = 0,
-		revives = 0,
 		lobbyEarned = 0,                          -- persistent "Coins" earned THIS run (for the end screen)
 		-- In-run buff draft (BuffService) — all per-run, reset every run:
 		runXP = 0,
@@ -149,14 +138,12 @@ local function makePlayerState(player: Player)
 	}
 end
 
--- Reset a player's PER-RUN ephemeral state (the moment a run begins). Owned weapons persist; in-wave cash,
--- upgrades (tiers), kills and ammo all reset so every run starts from the base weapon again.
+-- Reset a player's PER-RUN ephemeral state (the moment a run begins). Weapons come from the lobby loadout;
+-- in-wave cash, kills, XP and buffs all reset so every run starts fresh.
 local function resetRunState(player: Player, ps)
 	ps.points = GameConfig.StartingPoints
-	ps.upgrades = {}
 	ps.kills = 0
 	ps.specialKills = 0
-	ps.revives = 0
 	ps.lobbyEarned = 0
 	ps.runXP = 0
 	ps.runLevel = 1
@@ -165,17 +152,9 @@ local function resetRunState(player: Player, ps)
 	ps.potionXPMult = 1
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
 	ps.isDead = false
-	ps.isDown = false
 	ps.health = GameConfig.PlayerMaxHealth
 	ps.maxHealth = GameConfig.PlayerMaxHealth
 	ps.equippedWeapon = ps.ownedWeapons[1] or "pistol"
-	ps.ammo = {}
-	for _, id in ps.ownedWeapons do
-		local w = WeaponConfig[id]
-		if w then
-			ps.ammo[id] = { mag = w.magSize, reserve = w.reserveAmmo }
-		end
-	end
 end
 
 -- Zombies owed this wave (CLAUDE.md §8) — scaled by how many players are in the run.
@@ -219,14 +198,21 @@ end
 -- Send a player back to the lobby PLACE (published only): blocking-save so the bank lands first, then
 -- teleport carrying the run summary for the lobby menu to show.
 local function teleportToLobby(player: Player, summary)
-	DataService.SaveNow(player) -- make sure the bank is written before we leave this server
+	DataService.SaveNow(player) -- truly blocking: the bank is written before we leave this server
 	local options = Instance.new("TeleportOptions")
 	options:SetTeleportData({ summary = summary })
-	safeTeleport(Places.Lobby, player, options)
+	if not safeTeleport(Places.Lobby, player, options) then
+		-- Teleport totally failed (throttle/outage): don't leave them character-less and soft-locked —
+		-- their run was already banked, so just drop them into a fresh run on this server.
+		warn(("[MatchService] lobby teleport failed for %s — restarting a run instead"):format(player.Name))
+		if player.Parent then
+			startRunFor(player)
+		end
+	end
 end
 
 -- Spawn a player into the arena and arm the death->lobby handoff. resetRunState already reset their cash/
--- upgrades/ammo. Death ENDS the run (banks, returns to the lobby) — there is no respawn-in-place.
+-- buffs. Death ENDS the run (banks, returns to the lobby) — there is no respawn-in-place.
 spawnCharacter = function(player: Player)
 	player:LoadCharacter()
 	local char = player.Character or player.CharacterAdded:Wait()
@@ -235,7 +221,6 @@ spawnCharacter = function(player: Player)
 	local ps = state.players[player.UserId]
 	if ps then
 		ps.isDead = false
-		ps.isDown = false
 	end
 
 	local hum = char:FindFirstChildOfClass("Humanoid")

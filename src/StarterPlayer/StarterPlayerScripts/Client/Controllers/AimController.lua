@@ -1,14 +1,21 @@
 --!nonstrict
 -- AimController.lua — auto-aim. Your character automatically turns to face the CLOSEST zombie within the
 -- forward arc (relative to where your mouse points), so shooting locks onto it. If no zombie is in front,
--- the character just faces the mouse direction. The server uses the same closest-in-arc rule for the hit.
+-- the character just faces the mouse direction.
+--
+-- THE LOCK RULE MIRRORS THE SERVER'S HIT RULE EXACTLY (CombatService.onFire): flat arc angle, reach
+-- clamped to min(ArcRange, weapon.range) × range buff, and a line-of-sight ray that ignores zombies and
+-- player bodies. If it locks here, the server can hit it — no locking onto zombies behind walls or past
+-- the equipped weapon's range.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
+local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
+local GameConfig = require(SharedConfig:WaitForChild("GameConfig"))
+local WeaponConfig = require(SharedConfig:WaitForChild("WeaponConfig"))
 local CameraController = require(script.Parent.CameraController)
 -- Buff stats (auto-aim reach). GUARDED: a missing/broken BuffController must never brick auto-aim.
 local okBuff, BuffController = pcall(require, script.Parent.BuffController)
@@ -26,6 +33,13 @@ local localPlayer = Players.LocalPlayer
 local currentTarget: BasePart? = nil -- the zombie we're locked onto this frame (nil = none); read by auto-shoot
 local lastTarget: BasePart? = nil    -- most recent target, for the stickiness grace
 local lastTargetTime = 0
+local equippedWeapon = "pistol"      -- kept in sync by InputController (avoids a circular require)
+
+function AimController.SetWeapon(weaponId: string)
+	if WeaponConfig[weaponId] then
+		equippedWeapon = weaponId
+	end
+end
 
 -- The zombie root the auto-aim is currently locked onto, or nil. Used by auto-shoot to decide when to fire.
 function AimController.GetTarget(): BasePart?
@@ -43,30 +57,61 @@ function AimController.GetTarget(): BasePart?
 	return nil
 end
 
--- Closest zombie within ArcRange whose direction is within the arc of `dir` (a flat unit vector).
+-- Line-of-sight filter mirroring the server's: ignore zombies and EVERY player's character (bodies are
+-- not cover — there's no friendly fire). Rebuilt per query because characters respawn.
+local function losParamsNow(zombieFolder: Instance): RaycastParams
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.IgnoreWater = true
+	local exclude = { zombieFolder }
+	for _, pl in Players:GetPlayers() do
+		if pl.Character then
+			table.insert(exclude, pl.Character)
+		end
+	end
+	params.FilterDescendantsInstances = exclude
+	return params
+end
+
+-- Closest VISIBLE zombie within the equipped weapon's reach whose flat direction is within the arc of
+-- `dir` (a flat unit vector). Same candidate rule as the server, then LOS-checked nearest-first.
 local function findTargetRoot(fromPos: Vector3, dir: Vector3): BasePart?
 	local folder = Workspace:FindFirstChild("Zombies")
 	if not folder then
 		return nil
 	end
+	local weapon = WeaponConfig[equippedWeapon]
 	local dotThreshold = math.cos(math.rad(GameConfig.ArcDegrees * 0.5))
-	local reach = GameConfig.ArcRange * (1 + BuffController.GetStat("range")) -- Attack Range buff
-	local best, bestDist = nil, math.huge
+	local reach = math.min(GameConfig.ArcRange, (weapon and weapon.range) or GameConfig.ArcRange)
+		* (1 + BuffController.GetStat("range")) -- Attack Range buff
+
+	local cands = {}
 	for _, model in folder:GetChildren() do
 		local humanoid = model:FindFirstChildOfClass("Humanoid")
 		local root = model:FindFirstChild("HumanoidRootPart")
 		if humanoid and root and humanoid.Health > 0 then
 			local to = root.Position - fromPos
 			local dist = to.Magnitude
-			if dist > 0.01 and dist <= reach and dist < bestDist then
+			if dist > 0.01 and dist <= reach then
 				local flatTo = Vector3.new(to.X, 0, to.Z)
 				if flatTo.Magnitude > 0.01 and flatTo.Unit:Dot(dir) >= dotThreshold then
-					best, bestDist = root, dist
+					table.insert(cands, { root = root, dist = dist })
 				end
 			end
 		end
 	end
-	return best
+	table.sort(cands, function(a, b)
+		return a.dist < b.dist
+	end)
+
+	-- Nearest-first, take the first with clear line of sight (usually one ray).
+	local params = losParamsNow(folder)
+	for _, c in cands do
+		if not Workspace:Raycast(fromPos, c.root.Position - fromPos, params) then
+			return c.root
+		end
+	end
+	return nil
 end
 
 local function onRender(dt: number)
@@ -91,7 +136,7 @@ local function onRender(dt: number)
 	end
 	flat = flat.Unit
 
-	-- Auto-aim: face the closest zombie in the front arc; otherwise face the mouse direction.
+	-- Auto-aim: face the closest hittable zombie in the front arc; otherwise face the mouse direction.
 	local faceDir = flat
 	local targetRoot = findTargetRoot(hrp.Position, flat)
 	currentTarget = targetRoot
@@ -112,7 +157,7 @@ end
 
 function AimController.Start()
 	RunService.RenderStepped:Connect(onRender)
-	print("[AimController] started (auto-aim to closest zombie)")
+	print("[AimController] started (auto-aim mirrors the server hit rule)")
 end
 
 return AimController

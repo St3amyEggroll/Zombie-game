@@ -32,8 +32,10 @@ local WeaponModelService = {}
 local GRIPS = {
 	default = { pos = { 0, -0.1, -0.6 }, rot = { -90, 0, 0 } },
 	pistol  = { pos = { 0, -0.1, -0.6 }, rot = { -90, 0, 0 } },
+	shotgun = { pos = { 0, -0.3, -1.1 }, rot = { -90, 0, 0 } },
 	ak47    = { pos = { 0, -0.3, -1.2 }, rot = { -90, 0, 0 } },
 	minigun = { pos = { 0, -0.5, -1.6 }, rot = { -90, 0, 0 } },
+	raygun  = { pos = { 0, -0.2, -0.9 }, rot = { -90, 0, 0 } },
 }
 
 local function gripCFrame(weaponId: string): CFrame
@@ -125,20 +127,6 @@ local function playHold(player: Player, weaponId: string)
 	track.Priority = Enum.AnimationPriority.Action
 	track:Play(0.1)
 	charHoldTrack[player.UserId] = track
-end
-
--- Play the weapon's reload animation once (ID-gated).
-local function playReload(player: Player, weaponId: string)
-	local cfg = AnimationConfig.Weapons[weaponId]
-	local id = cfg and AnimationConfig.Resolve(cfg.Reload)
-	local character = player.Character
-	local animator = id and character and getAnimator(character)
-	if not animator then
-		return
-	end
-	local track = animator:LoadAnimation(getAnim(id))
-	track.Priority = Enum.AnimationPriority.Action2
-	track:Play(0.1)
 end
 
 -- Procedural gun recoil: kick the hand→handle weld and tween it back. Server-side so everyone sees it.
@@ -336,7 +324,6 @@ function WeaponModelService.Start()
 	-- Re-attach on equip changes and on (re)spawn.
 	CombatService.Equipped:Connect(attach)
 	CombatService.Fired:Connect(recoil)
-	CombatService.ReloadStarted:Connect(playReload)
 	Players.PlayerAdded:Connect(function(player)
 		player.CharacterAdded:Connect(function()
 			task.defer(attach, player)

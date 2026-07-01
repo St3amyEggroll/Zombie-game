@@ -31,13 +31,11 @@ local DEFINITIONS: { [string]: string } = {
 	BossDefeated      = "RemoteEvent",     -- S->C: hide the bar + "boss defeated" banner
 
 	-- CombatService (THE exploit surface — server validates everything)
-	FireWeapon        = "RemoteEvent",     -- C->S: intent (origin, direction, weaponId)
-	Reload            = "RemoteEvent",     -- C->S: intent
-	HitConfirmed      = "RemoteEvent",     -- S->C: drives hit juice
-	ShotFired         = "RemoteEvent",     -- S->C broadcast: (shooterUserId, origin, endpoint) for tracers
-	AmmoChanged       = "RemoteEvent",     -- S->C: (weaponId, mag, reserve)
-	EquipWeapon       = "RemoteEvent",     -- NEW (Phase 3): C->S: (weaponId) request equip
-	LoadoutChanged    = "RemoteEvent",     -- NEW (Phase 3): S->C: (ownedWeapons, equippedWeaponId)
+	FireWeapon        = "RemoteEvent",     -- C->S: intent (weaponId, origin, direction)
+	HitConfirmed      = "RemoteEvent",     -- S->C: (position, isHeadshot, hitHumanoid, killed, damage) hit juice
+	ShotFired         = "RemoteEvent",     -- S->C broadcast: (shooterUserId, origin, endpoint, weaponId) for tracers
+	EquipWeapon       = "RemoteEvent",     -- C->S: (weaponId) request equip
+	LoadoutChanged    = "RemoteEvent",     -- S->C: (ownedWeapons, equippedWeaponId)
 
 	-- BuffService (in-run level-up buff draft)
 	RunXPChanged      = "RemoteEvent",     -- S->C: (xp, needed, level) — the run's level bar
@@ -53,26 +51,11 @@ local DEFINITIONS: { [string]: string } = {
 	TrapActivated     = "RemoteEvent",     -- S->C: (trapPart, trapType, duration) — turn trap VFX on
 	TrapDeactivated   = "RemoteEvent",     -- S->C: (trapPart) — turn trap VFX off
 
-	-- ShopService (Zombie Rush menu shop — buy + upgrade weapons for cash)
-	BuyWeapon         = "RemoteEvent",     -- C->S: (weaponId) buy a weapon
-	UpgradeWeapon     = "RemoteEvent",     -- C->S: (weaponId) upgrade a weapon
-	ShopChanged       = "RemoteEvent",     -- S->C: (ownedWeapons, upgrades, cash) refresh the menu
-
-	-- ReviveService (co-op heart)
-	Revive            = "RemoteEvent",     -- C->S: start/stop a revive hold
-	PlayerDowned      = "RemoteEvent",     -- S->C
-	ReviveProgress    = "RemoteEvent",     -- S->C: (targetUserId, progress 0..1)
-	PlayerRevived     = "RemoteEvent",     -- S->C
-
 	-- PlayerStateService
 	HealthChanged     = "RemoteEvent",     -- S->C: (health, maxHealth)
 	DamageTaken       = "RemoteEvent",     -- S->C: (amount, sourcePosition) — drives directional hurt UI
 	Interact          = "RemoteEvent",     -- C->S: generic interact intent
 	Sprint            = "RemoteEvent",     -- NEW (Phase 1): C->S: (wantSprint: boolean)
-
-	-- ProgressionService (between-run meta)
-	MatchSummary      = "RemoteEvent",     -- S->C: end-of-match stats + XP/unlocks
-	BuyUnlock         = "RemoteFunction",  -- C->S: spend tokens, returns success bool
 
 	-- GameInventoryService (in-game VIEW of the lobby inventory + potion use)
 	InvSnapshot       = "RemoteEvent",     -- S->C: (snapshot) equipped weapons + cases + potions (view-only)

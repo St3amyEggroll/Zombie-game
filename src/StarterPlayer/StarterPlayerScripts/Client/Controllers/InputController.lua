@@ -1,12 +1,11 @@
 --!nonstrict
--- InputController.lua — turns input into server intent. Owns the client fire loop (auto/semi), a
--- predicted ammo mirror (corrected by the server's authoritative AmmoChanged), reload, sprint, the
--- camera toggle, and interact. It NEVER computes damage — it only asks the server to fire.
+-- InputController.lua — turns input into server intent. Owns THE single fire driver (manual hold, semi-auto
+-- clicks, and auto-shoot all flow through one paced loop, so the cadence is perfectly even and the minigun
+-- spin-up applies in every mode). No ammo, no reload — guns fire forever, capped only by fire rate.
 --
 -- Exposes for other controllers:
---   InputController.Fired      : Signal (weaponId)            -> (for combat-juice FX later)
---   InputController.AmmoUpdated: Signal (weaponId, mag, reserve) -> HUDController
---   InputController.GetEquipped() / GetAmmo(weaponId)
+--   InputController.Fired : Signal (weaponId)  -> combat juice (muzzle flash, shake)
+--   InputController.GetEquipped()
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -18,22 +17,15 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local WeaponConfig = require(Config.WeaponConfig)
-local GameConfig = require(Config.GameConfig)
 local Remotes = require(Modules.Remotes)
 
 local CameraController = require(script.Parent.CameraController)
 local AimController = require(script.Parent.AimController)
 local AutoShootController = require(script.Parent.AutoShootController)
--- Buff stats (fire rate). GUARDED: a missing/broken BuffController must never brick firing.
-local okBuff, BuffController = pcall(require, script.Parent.BuffController)
-if not okBuff or type(BuffController) ~= "table" then
-	BuffController = { GetStat = function() return 0 end }
-end
 
 local InputController = {}
 
 -- ===== TUNABLES (keybinds) =====
-local KEY_RELOAD   = Enum.KeyCode.R
 local KEY_SPRINT   = Enum.KeyCode.LeftShift
 local KEY_INTERACT = Enum.KeyCode.E
 
@@ -52,141 +44,83 @@ local localPlayer = Players.LocalPlayer
 -- ===== STATE =====
 local equipped = "pistol"
 local ownedWeapons: { string } = { "pistol" }
-local ammoMirror: { [string]: { mag: number, reserve: number } } = {}
-local firing = false
-local fireStart = 0       -- os.clock() when the current trigger-hold began (drives minigun spin-up)
-local lastFireClock = 0   -- os.clock() of the last predicted shot (client-side fire-rate gate)
-local reloadingUntil = 0  -- os.clock() the current reload ends; can't fire before then
+local wantManual = false   -- mouse/touch held (continuous fire for auto weapons)
+local pendingShot = false  -- a semi-auto click waiting for the fire gate to open (clicks are never eaten)
+local wasFiring = false    -- was the driver firing last frame (edge-detects a new burst for spin-up)
+local fireStart = 0        -- os.clock() the current burst began (drives minigun spin-up)
+local nextShotAt = 0       -- os.clock() the next shot is allowed — THE one cadence gate
 
 -- ===== SIGNALS =====
 local firedEvent = Instance.new("BindableEvent")
-local ammoEvent = Instance.new("BindableEvent")
-local reloadEvent = Instance.new("BindableEvent")
 InputController.Fired = firedEvent.Event
-InputController.AmmoUpdated = ammoEvent.Event
-InputController.ReloadStarted = reloadEvent.Event -- (weaponId, duration) -> drives the reload ring
-
--- ===== HELPERS =====
-local function getMirror(weaponId: string)
-	local m = ammoMirror[weaponId]
-	if not m then
-		local w = WeaponConfig[weaponId]
-		m = { mag = w and w.magSize or 0, reserve = w and w.reserveAmmo or 0 }
-		ammoMirror[weaponId] = m
-	end
-	return m
-end
 
 function InputController.GetEquipped(): string
 	return equipped
 end
 
-function InputController.GetAmmo(weaponId: string?)
-	return getMirror(weaponId or equipped)
-end
-
--- ===== FIRING =====
-local function fireOnce()
-	local weapon = WeaponConfig[equipped]
-	if not weapon then
-		return
-	end
-	local now = os.clock()
-	-- Can't fire while reloading, and can't fire faster than the weapon's fire rate (stops rapid-clicking a
-	-- semi-auto like the shotgun from predicting extra shots the server then rejects). 0.9 keeps the client
-	-- a touch stricter than the server's fire-rate slack, so a predicted shot is never bounced.
-	if now < reloadingUntil then
-		return
-	end
-	-- CONSTANT fire rate: the cadence is exactly weapon.fireRate, nothing changes it. The 0.95 keeps the
-	-- client a hair under the server's slack so a predicted shot is never bounced (even cadence, no drops).
-	if now - lastFireClock < (1 / weapon.fireRate) * 0.95 then
-		return
-	end
-	local origin, direction = CameraController.GetAim()
-	if not origin or not direction then
-		return
-	end
-	local mirror = getMirror(equipped)
-	if not GameConfig.InfiniteAmmo and mirror.mag <= 0 then
-		return
-	end
-
-	lastFireClock = now
-	Remotes.Get("FireWeapon"):FireServer(equipped, origin, direction)
-
-	-- Local prediction so the gun feels instant; the server's AmmoChanged is the real count.
-	if not GameConfig.InfiniteAmmo then
-		mirror.mag -= 1
-		ammoEvent:Fire(equipped, mirror.mag, mirror.reserve)
-	end
-	firedEvent:Fire(equipped)
-end
-
--- Start a reload IF there's something to reload. Mirrors the server's conditions so the client ring/block
--- only show when the server will actually reload. Blocks firing for weapon.reloadSeconds.
-local function tryReload()
-	local weapon = WeaponConfig[equipped]
-	if not weapon then
-		return
-	end
-	if os.clock() < reloadingUntil then
-		return -- already reloading
-	end
-	local mirror = getMirror(equipped)
-	if mirror.mag >= weapon.magSize or mirror.reserve <= 0 then
-		return -- mag full or no reserve: nothing to do
-	end
-	reloadingUntil = os.clock() + weapon.reloadSeconds
-	Remotes.Get("Reload"):FireServer(equipped)
-	reloadEvent:Fire(equipped, weapon.reloadSeconds)
-end
-
--- Seconds to wait before the next shot. CONSTANT: exactly 1/fireRate — no buff, no click-cadence jitter.
--- Spin-up weapons (minigun) ramp from SPIN_START_FRAC× the fire rate up to full over weapon.spinUp seconds
--- of continuous holding; releasing resets the ramp (so it spins down).
+-- ===== THE FIRE DRIVER =====
+-- Seconds between shots. Constant 1/fireRate; spin-up weapons ramp from SPIN_START_FRAC over weapon.spinUp
+-- seconds of continuous firing (releasing resets the ramp).
 local function shotInterval(weapon): number
 	if weapon.spinUp and weapon.spinUp > 0 then
 		local held = os.clock() - fireStart
 		local t = math.clamp(held / weapon.spinUp, 0, 1)
-		local startRate = weapon.fireRate * SPIN_START_FRAC
-		local rate = startRate + (weapon.fireRate - startRate) * t
+		local rate = weapon.fireRate * (SPIN_START_FRAC + (1 - SPIN_START_FRAC) * t)
 		return 1 / rate
 	end
 	return 1 / weapon.fireRate
 end
 
--- While the trigger is held, fire on a STEADY cadence (every 1/fireRate) for every weapon — so holding OR
--- clicking gives perfectly even fire, capped only by the weapon's fire rate. Nothing else stops it.
-local function fireLoop()
-	while firing do
-		local weapon = WeaponConfig[equipped]
-		if not weapon then
-			break
-		end
-		local mirror = getMirror(equipped)
-		if GameConfig.InfiniteAmmo or mirror.mag > 0 then
-			fireOnce()
-			task.wait(shotInterval(weapon))
-		else
-			-- Empty (only when ammo is finite): idle quietly and resume if reloaded while still held.
-			task.wait(0.1)
-		end
+local function fireShot(weapon)
+	local origin, direction = CameraController.GetAim()
+	if not origin or not direction then
+		return false
 	end
-	firing = false
+	Remotes.Get("FireWeapon"):FireServer(equipped, origin, direction)
+	firedEvent:Fire(equipped)
+	-- Even spacing with no drift: extend from the previous slot unless we've fallen behind a full interval.
+	local interval = shotInterval(weapon)
+	local now = os.clock()
+	nextShotAt = (now - nextShotAt < interval) and (nextShotAt + interval) or (now + interval)
+	return true
 end
 
-local function startFiring()
-	if firing then
+-- One Heartbeat drives everything: manual hold, queued semi-auto clicks, and auto-shoot. A single gate
+-- (nextShotAt) means the cadence can't stutter from two drivers racing, and spin-up applies in every mode.
+local function onHeartbeat()
+	local weapon = WeaponConfig[equipped]
+	if not weapon then
 		return
 	end
-	firing = true
-	fireStart = os.clock() -- begin the spin-up ramp from this moment
-	task.spawn(fireLoop)
-end
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		pendingShot = false
+		wasFiring = false
+		return
+	end
 
-local function stopFiring()
-	firing = false
+	local autoFiring = AutoShootController.IsOn() and AimController.GetTarget() ~= nil
+	local holdFiring = wantManual and weapon.auto
+	local continuous = autoFiring or holdFiring
+
+	-- Edge-detect a fresh burst so the spin-up ramp restarts.
+	if continuous and not wasFiring then
+		fireStart = os.clock()
+	end
+	wasFiring = continuous
+
+	if os.clock() < nextShotAt then
+		return -- gate closed; a pendingShot stays queued (semi-auto clicks are never dropped)
+	end
+	if continuous then
+		fireShot(weapon)
+		pendingShot = false -- the click's shot just happened
+	elseif pendingShot then
+		if fireShot(weapon) then
+			pendingShot = false
+		end
+	end
 end
 
 -- ===== WEAPON SWITCHING =====
@@ -195,11 +129,9 @@ local function equip(weaponId: string)
 		return
 	end
 	equipped = weaponId
-	stopFiring()
-	reloadingUntil = 0 -- switching weapons cancels the reload gate
-	Remotes.Get("EquipWeapon"):FireServer(weaponId) -- server validates ownership + sends authoritative ammo
-	local m = getMirror(weaponId)
-	ammoEvent:Fire(weaponId, m.mag, m.reserve) -- refresh the HUD to the newly held weapon
+	pendingShot = false
+	AimController.SetWeapon(weaponId) -- auto-aim reach follows the equipped weapon's range
+	Remotes.Get("EquipWeapon"):FireServer(weaponId) -- server validates ownership
 end
 
 local function equipSlot(i: number)
@@ -216,23 +148,26 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 	end
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
-		startFiring()
+		wantManual = true
+		local weapon = WeaponConfig[equipped]
+		if weapon and not weapon.auto then
+			pendingShot = true -- semi-auto: exactly one shot per click, fired the moment the gate opens
+		end
 	elseif input.UserInputType == Enum.UserInputType.Keyboard then
 		if input.KeyCode == KEY_SPRINT then
 			Remotes.Get("Sprint"):FireServer(true)
 		elseif input.KeyCode == KEY_INTERACT then
 			Remotes.Get("Interact"):FireServer()
 		elseif NUMBER_KEYS[input.KeyCode] then
-			equipSlot(NUMBER_KEYS[input.KeyCode]) -- 1/2/3… switch between your equipped weapons
+			equipSlot(NUMBER_KEYS[input.KeyCode])
 		end
-		-- (Reload removed — the ammo/reload system is gone; guns fire freely, capped only by fire rate.)
 	end
 end
 
 local function onInputEnded(input: InputObject)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
-		stopFiring()
+		wantManual = false
 	elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == KEY_SPRINT then
 		Remotes.Get("Sprint"):FireServer(false)
 	end
@@ -240,50 +175,32 @@ end
 
 -- ===== LIFECYCLE =====
 function InputController.Start()
-	-- Authoritative ammo updates from the server overwrite the predicted mirror.
-	Remotes.Get("AmmoChanged").OnClientEvent:Connect(function(weaponId, mag, reserve)
-		ammoMirror[weaponId] = { mag = mag, reserve = reserve }
-		ammoEvent:Fire(weaponId, mag, reserve)
-	end)
-
-	-- Server tells us our owned weapons + which one is equipped (spawn, buy, equip).
+	-- Server tells us our owned weapons + which one is equipped (spawn, equip).
 	Remotes.Get("LoadoutChanged").OnClientEvent:Connect(function(owned, eq)
 		if type(owned) == "table" then
 			ownedWeapons = owned
 		end
 		if type(eq) == "string" then
 			equipped = eq
-			local m = getMirror(eq)
-			ammoEvent:Fire(eq, m.mag, m.reserve)
+			AimController.SetWeapon(eq)
 		end
 	end)
 
-	-- Auto-shoot: when enabled, fire automatically at whatever the auto-aim is locked onto (and reload
-	-- hands-free when empty). fireOnce() is gated by fire-rate/ammo/reload, so calling it each frame is safe.
-	RunService.Heartbeat:Connect(function()
-		if not AutoShootController.IsOn() then
-			return
-		end
-		local weapon = WeaponConfig[equipped]
-		if not weapon then
-			return
-		end
-		if AimController.GetTarget() then
-			fireOnce() -- fire-rate-gated; ammo is infinite so no reload/empty handling needed
-		end
-	end)
-
+	RunService.Heartbeat:Connect(onHeartbeat)
 	UserInputService.InputBegan:Connect(onInputBegan)
 	UserInputService.InputEnded:Connect(onInputEnded)
 
-	-- Stop firing if the character dies or we lose focus.
+	-- Stop firing if the character dies/respawns or we lose focus.
 	localPlayer.CharacterAdded:Connect(function()
-		stopFiring()
-		reloadingUntil = 0 -- a fresh life isn't mid-reload
+		wantManual = false
+		pendingShot = false
 	end)
-	UserInputService.WindowFocusReleased:Connect(stopFiring)
+	UserInputService.WindowFocusReleased:Connect(function()
+		wantManual = false
+		pendingShot = false
+	end)
 
-	print("[InputController] started")
+	print("[InputController] started (unified fire driver)")
 end
 
 return InputController
