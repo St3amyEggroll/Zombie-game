@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules")
 local Remotes = require(Modules.Remotes)
+local SpawnZones = require(Modules.SpawnZones)
 
 local MatchService = require(script.Parent.MatchService)
 local CombatService = require(script.Parent.CombatService)
@@ -132,11 +133,22 @@ local function spawnOne()
 	if not root then
 		return
 	end
-	local angle = math.random() * 2 * math.pi
-	local dist = SPAWN_MIN + math.random() * (SPAWN_MAX - SPAWN_MIN)
-	local x = root.Position.X + math.cos(angle) * dist
-	local z = root.Position.Z + math.sin(angle) * dist
-	local groundY = findGround(x, z, root.Position.Y)
+	-- Pick a spot that's OUTSIDE the out-of-bounds fog (retry a few angles/distances before giving up).
+	local x, z, groundY
+	for _ = 1, 10 do
+		local angle = math.random() * 2 * math.pi
+		local dist = SPAWN_MIN + math.random() * (SPAWN_MAX - SPAWN_MIN)
+		local cx = root.Position.X + math.cos(angle) * dist
+		local cz = root.Position.Z + math.sin(angle) * dist
+		local gy = findGround(cx, cz, root.Position.Y)
+		if not SpawnZones.IsBlocked(Vector3.new(cx, gy, cz)) then
+			x, z, groundY = cx, cz, gy
+			break
+		end
+	end
+	if not x then
+		return -- everywhere we tried was in the fog; skip this pickup
+	end
 
 	local model = ammoTemplates[math.random(#ammoTemplates)]:Clone()
 	for _, p in model:GetDescendants() do

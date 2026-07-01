@@ -30,6 +30,7 @@ local ZombieConfig = require(Config.ZombieConfig)
 local AnimationConfig = require(Config.AnimationConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
+local SpawnZones = require(Modules.SpawnZones)
 
 local PlayerStateService = require(script.Parent.PlayerStateService)
 
@@ -42,11 +43,13 @@ local ATTACK_VERTICAL  = 6      -- studs of height difference allowed for a hit 
                                -- on a ramp/ledge can't tag you); paired with a line-of-sight check
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
 -- ----- Leaper pounce (only zombies whose type has canLeap=true) -----
-local LEAP_COOLDOWN    = 4.0    -- seconds between pounces
-local LEAP_MIN_DIST    = 14     -- pounce only from at least this far (closer = it just walks in)
-local LEAP_MAX_DIST    = 48     -- and no farther than this (out of range = keep approaching)
-local LEAP_UP_SPEED    = 50     -- vertical launch velocity (sets arc height + air time)
-local LEAP_MAX_HSPEED  = 95     -- cap on the horizontal launch speed (studs/sec)
+local LEAP_COOLDOWN    = 2.0    -- seconds between pounces (low = leaps constantly)
+local LEAP_MIN_DIST    = 6      -- pounce from as close as this (so it keeps pouncing, not just once from afar)
+local LEAP_MAX_DIST    = 55     -- and no farther than this (out of range = keep approaching)
+local LEAP_UP_SPEED    = 46     -- vertical launch velocity (sets arc height + air time)
+local LEAP_MAX_HSPEED  = 110    -- cap on the horizontal launch speed (studs/sec)
+local LEAP_REACH_FRAC  = 0.7    -- fraction of the gap each pounce covers (<1 lands SHORT so it keeps leaping
+                               -- in over several pounces instead of burying straight into melee on the first)
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
 local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same quick flash as a hit, NOT permanent)
 local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles after death
@@ -829,8 +832,8 @@ local function getSpawnCFrame(): CFrame?
 		local root = candidates[math.random(#candidates)]
 		local angle = math.random() * 2 * math.pi
 		local cf = CFrame.new(root.Position + Vector3.new(math.cos(angle) * 35, SPAWN_HEIGHT, math.sin(angle) * 35))
-		if not tooCloseToActiveGrave(cf.Position) then
-			return cf
+		if not tooCloseToActiveGrave(cf.Position) and not SpawnZones.IsBlocked(cf.Position) then
+			return cf -- clear of other graves AND outside the out-of-bounds fog
 		end
 	end
 	return nil
@@ -1151,7 +1154,7 @@ local function tryLeap(record, now: number, targetRoot: BasePart, flatDist: numb
 	-- Time aloft for the fixed vertical launch, then the horizontal speed that covers `flatDist` in that time.
 	local g = math.max(1, Workspace.Gravity)
 	local airTime = 2 * LEAP_UP_SPEED / g
-	local hSpeed = math.min(LEAP_MAX_HSPEED, flatDist / airTime)
+	local hSpeed = math.min(LEAP_MAX_HSPEED, (flatDist * LEAP_REACH_FRAC) / airTime)
 
 	-- Mark the pounce window so steer() stops driving it: while grounded the Humanoid's walk controller damps
 	-- horizontal velocity back to WalkSpeed (which made it "just jump straight up"). Put it in the Jumping
