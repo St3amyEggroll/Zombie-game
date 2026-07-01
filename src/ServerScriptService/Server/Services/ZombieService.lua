@@ -19,6 +19,8 @@ local ServerStorage = game:GetService("ServerStorage")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local PathfindingService = game:GetService("PathfindingService")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -50,6 +52,19 @@ local LEAP_UP_SPEED    = 46     -- vertical launch velocity (sets arc height + a
 local LEAP_MAX_HSPEED  = 110    -- cap on the horizontal launch speed (studs/sec)
 local LEAP_REACH_FRAC  = 0.7    -- fraction of the gap each pounce covers (<1 lands SHORT so it keeps leaping
                                -- in over several pounces instead of burying straight into melee on the first)
+-- ----- BombZombie (isBomb) -----
+local BOMB_TRIGGER     = 8      -- studs from a player that LIGHTS the fuse
+local BOMB_FUSE        = 2.0    -- seconds after the fuse lights before it detonates
+local BOMB_RADIUS      = 14     -- explosion radius (players inside take damage, falling off to 0 at the edge)
+local BOMB_DAMAGE      = 60     -- explosion damage at the centre
+-- ----- Ghost (canFly) -----
+local GHOST_HEIGHT     = 12     -- studs above the player the ghost hovers
+local GHOST_DIVE_CD    = 3.0    -- seconds between dive-bombs
+local GHOST_DIVE_TIME  = 0.4    -- seconds spent dropping down on a dive
+local GHOST_DIVE_RANGE = 22     -- horizontal studs within which it commits to a dive
+-- ----- Necromancer (summons) -----
+local SUMMON_CD        = 5.0    -- seconds between summons
+local SUMMON_COUNT     = 3      -- zombies raised per summon (respects the MaxAliveZombies cap)
 local WAYPOINT_REACH   = 4      -- studs to consider a path waypoint reached
 local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same quick flash as a hit, NOT permanent)
 local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles after death
@@ -76,7 +91,7 @@ local GRAVE_LINGER     = 4      -- seconds the grave headstone stays after the z
 local GRAVE_SINK_TIME  = 1.5    -- seconds the grave then takes to sink away and despawn
 local GRAVE_RISE_TIME  = 0.8    -- seconds the headstone takes to rise OUT of the ground (before the zombie)
 -- Which grave tier each enemy rises from: boss -> a "Huge*" grave, tank -> a "Big*" grave, others -> regular.
-local GRAVE_TIER       = { boss = "huge", tank = "big" }
+local GRAVE_TIER       = { boss = "huge", lumberjack = "huge", necromancer = "huge", tank = "big" }
 local HIT_KNOCKBACK    = 18     -- studs/sec shove away from the shooter on a non-lethal hit
 local KNOCKBACK_SPEED  = 68     -- studs/sec the DEATH ragdoll is launched, away from where the bullet came
                                -- from (strong, fixed for every kill)
@@ -108,7 +123,7 @@ local templates: { [string]: Model } = {}
 local defaultTemplate: Model? = nil
 local templatesFolder: Folder
 
--- The spawnable archetypes (ZombieConfig also holds non-type scalars like BossInterval — filter them out).
+-- The spawnable archetypes (ZombieConfig also holds non-type tables like BossWaves — filter them out).
 local ZOMBIE_TYPES: { [string]: any } = {}
 local ALL_WEIGHTS: { [string]: number } = {}
 for id, t in ZombieConfig do
@@ -1091,6 +1106,12 @@ local function spawnOne(round: number, forcedType: string?)
 		lastAttack = 0,
 		nextLeap = 0,           -- Leaper pounce cooldown clock
 		leapUntil = 0,          -- while os.clock() < this, the Leaper is mid-pounce (don't drive it)
+		fuseLit = false,        -- BombZombie: has the fuse started
+		fuseEnd = 0,            -- BombZombie: os.clock() the fuse detonates
+		exploded = false,       -- BombZombie: already blew up
+		nextSummon = 0,         -- Necromancer: summon cooldown clock
+		ghostNextDive = 0,      -- Ghost: dive cooldown clock
+		ghostDiveUntil = 0,     -- Ghost: while os.clock() < this, it's dropping on a dive
 		nextJumpCheck = 0,
 		spawnTime = now,
 		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
@@ -1113,6 +1134,68 @@ local function spawnOne(round: number, forcedType: string?)
 	startEmergence(record, spawnCF)
 
 	return record
+end
+
+-- ===== SPECIAL BEHAVIORS (BombZombie / Ghost / Necromancer) =====
+-- Expanding neon blast sphere (server-made, so everyone sees it).
+local function spawnExplosionVFX(pos: Vector3)
+	local p = Instance.new("Part")
+	p.Shape = Enum.PartType.Ball
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.Material = Enum.Material.Neon
+	p.Color = Color3.fromRGB(255, 140, 45)
+	p.Size = Vector3.new(2, 2, 2)
+	p.CFrame = CFrame.new(pos)
+	p.Parent = zombieFolder
+	TweenService:Create(p, TweenInfo.new(0.4), {
+		Size = Vector3.new(BOMB_RADIUS * 2, BOMB_RADIUS * 2, BOMB_RADIUS * 2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(p, 0.45)
+end
+
+-- BombZombie detonation: damage players in radius (falls off to 0 at the edge), flash, and die.
+local function explode(record)
+	if record.exploded then
+		return
+	end
+	record.exploded = true
+	local root = record.root
+	local pos = root and root.Position
+	if pos then
+		for _, pl in Players:GetPlayers() do
+			local char = pl.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if hrp and hum and hum.Health > 0 then
+				local d = (hrp.Position - pos).Magnitude
+				if d <= BOMB_RADIUS then
+					local dmg = BOMB_DAMAGE * (1 - d / BOMB_RADIUS)
+					if dmg > 0 then
+						PlayerStateService.Damage(pl, dmg, "explosion", pos)
+					end
+				end
+			end
+		end
+		spawnExplosionVFX(pos)
+	end
+	if record.hum then
+		record.hum.Health = 0 -- dies in its own blast
+	end
+end
+
+-- Necromancer: raise `n` extra grunts, respecting the alive cap.
+local function summonAdds(n: number)
+	for _ = 1, n do
+		if aliveCount >= GameConfig.MaxAliveZombies then
+			break
+		end
+		spawnOne(currentRound, "default")
+	end
 end
 
 -- ===== AI =====
@@ -1255,6 +1338,26 @@ local function think(record, now: number)
 		tryLeap(record, now, targetRoot, flatDist)
 	end
 
+	local t = record.type
+	-- BombZombie: light the fuse when close, then detonate a couple seconds later.
+	if t and t.isBomb and not record.exploded then
+		if not record.fuseLit and flatDist <= BOMB_TRIGGER then
+			record.fuseLit = true
+			record.fuseEnd = now + BOMB_FUSE
+			recolor(record.model, DEATH_COLOR) -- warning flash while the fuse burns
+		end
+		if record.fuseLit and now >= record.fuseEnd then
+			explode(record)
+			return
+		end
+	end
+
+	-- Necromancer: raise extra grunts on a cooldown (on top of the wave's own spawns).
+	if t and t.summons and now >= (record.nextSummon or 0) then
+		record.nextSummon = now + SUMMON_CD
+		summonAdds(SUMMON_COUNT)
+	end
+
 	-- Backstop: a zombie wedged for STUCK_TIMEOUT (or alive too long) force-kills itself so the round
 	-- can't soft-lock on something unreachable.
 	if (now - record.lastMoveTime) > STUCK_TIMEOUT or (now - record.spawnTime) > MAX_LIFETIME then
@@ -1281,6 +1384,31 @@ local function steer(record, now: number)
 	-- Mid-pounce (Leaper): let the ballistic arc carry it; applying walk force here would kill the horizontal
 	-- speed and it'd just drop straight down. Resume normal steering once it lands.
 	if now < (record.leapUntil or 0) then
+		return
+	end
+
+	-- Ghost (canFly): hover above the player and dive-bomb. Physics stays on (still shootable/knockable);
+	-- we set velocity each frame to hold height, chase horizontally, and drop on a dive.
+	if record.type and record.type.canFly then
+		hum.PlatformStand = true
+		local pPos = targetRoot.Position
+		local flatToP = Vector3.new(pPos.X - root.Position.X, 0, pPos.Z - root.Position.Z)
+		local diving = now < (record.ghostDiveUntil or 0)
+		if not diving and now >= (record.ghostNextDive or 0) and flatToP.Magnitude < GHOST_DIVE_RANGE then
+			record.ghostDiveUntil = now + GHOST_DIVE_TIME
+			record.ghostNextDive = now + GHOST_DIVE_CD
+			diving = true
+		end
+		local aimY = diving and pPos.Y or (pPos.Y + GHOST_HEIGHT)
+		local horiz = flatToP.Magnitude > 0.5 and (flatToP.Unit * hum.WalkSpeed) or Vector3.zero
+		local vy = math.clamp((aimY - root.Position.Y) * 6, -60, 60)
+		root.AssemblyLinearVelocity = Vector3.new(horiz.X, vy, horiz.Z)
+		-- Bite on contact (mostly lands during a dive).
+		if record.target and (pPos - root.Position).Magnitude <= ATTACK_RANGE + 1.5
+			and (now - record.lastAttack) >= ATTACK_COOLDOWN then
+			record.lastAttack = now
+			PlayerStateService.Damage(record.target, record.damage, "zombie", root.Position)
+		end
 		return
 	end
 
@@ -1383,11 +1511,12 @@ end
 
 -- Spawn exactly ONE boss for this wave: broadcasts an entrance, then streams its health to the boss bar
 -- until it dies. The boss counts toward aliveCount, so the wave won't clear until it's dead.
-function ZombieService.SpawnBoss(round: number)
+function ZombieService.SpawnBoss(round: number, bossId: string?)
 	task.spawn(function()
+		local id = bossId or "boss"
 		local record
 		for _ = 1, 30 do -- retry in case every spawn point is briefly crowded by a fresh grave
-			record = spawnOne(round, ZombieConfig.BossId)
+			record = spawnOne(round, id)
 			if record then
 				break
 			end

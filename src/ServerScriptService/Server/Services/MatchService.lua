@@ -49,6 +49,8 @@ local LIVE = not RunService:IsStudio()
 local state = {
 	phase = "Lobby",       -- Lobby | Playing | RoundBreak
 	round = 0,             -- the current SHARED wave
+	difficulty = nil,      -- "easy" | "medium" | "hard" | "nightmare" (set when the run starts)
+	maxWave = 0,           -- the difficulty's final wave — clearing it wins the run
 	zombiesRemaining = 0,
 	zombiesAlive = 0,
 	players = {},          -- [userId] = PlayerMatchState
@@ -228,7 +230,36 @@ spawnCharacter = function(player: Player)
 end
 
 -- ===== THE RUN (endless, shared) =====
+-- Run cleared its difficulty's final wave → VICTORY: bank everyone (+ a Coins bonus) and send them to the
+-- lobby with a win summary.
+local function winRun()
+	for _, player in Players:GetPlayers() do
+		local ps = state.players[player.UserId]
+		if ps and ps.inMatch then
+			ps.inMatch = false
+			DataService.AddMoney(player, GameConfig.VictoryBonusCoins)
+			local summary = bankRun(player, ps)
+			summary.win = true
+			summary.money = (summary.money or 0) + GameConfig.VictoryBonusCoins
+			if LIVE then
+				teleportToLobby(player, summary)
+			else
+				task.delay(STUDIO_RESTART_DELAY, function()
+					if player.Parent then
+						startRunFor(player)
+					end
+				end)
+			end
+		end
+	end
+end
+
 runMatch = function()
+	-- Difficulty (from the lobby, else the default) sets the final wave; clearing it wins the run.
+	state.difficulty = state.difficulty or GameConfig.DefaultDifficulty
+	local diff = GameConfig.Difficulties[state.difficulty] or GameConfig.Difficulties[GameConfig.DefaultDifficulty]
+	state.maxWave = diff.maxWave
+
 	-- TEST: jump straight to GameConfig.DebugStartWave (0 = normal start at wave 1).
 	state.round = (GameConfig.DebugStartWave and GameConfig.DebugStartWave > 0) and GameConfig.DebugStartWave or 1
 	state.startedAt = os.clock()
@@ -240,9 +271,10 @@ runMatch = function()
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
 
-		-- Every BossInterval waves (10, 20, ...): one boss joins the wave (counts toward the clear).
-		if state.round % ZombieConfig.BossInterval == 0 then
-			ZombieService.SpawnBoss(state.round)
+		-- Boss waves (10 = Boss, 20 = Lumberjack, 30 = Necromancer) — the boss counts toward the clear.
+		local bossId = ZombieConfig.BossWaves[state.round]
+		if bossId then
+			ZombieService.SpawnBoss(state.round, bossId)
 		end
 
 		while not ZombieService.IsRoundCleared() do
@@ -257,6 +289,12 @@ runMatch = function()
 			break
 		end
 
+		-- Cleared the difficulty's FINAL wave → victory.
+		if state.round >= state.maxWave then
+			winRun()
+			break
+		end
+
 		setPhase("RoundBreak")
 		task.wait(GameConfig.RoundBreakSeconds)
 		state.round += 1
@@ -264,9 +302,11 @@ runMatch = function()
 		setPhase("Playing")
 	end
 
-	-- Last player died / left: clear the field and idle back to Lobby until someone starts a run again.
+	-- Run ended (victory, or everyone left): clear the field and idle back to Lobby.
 	ZombieService.ClearAll()
 	state.round = 0
+	state.difficulty = nil
+	state.maxWave = 0
 	state.zombiesAlive = 0
 	state.zombiesRemaining = 0
 	matchRunning = false
@@ -308,6 +348,10 @@ local function handleArrival(player: Player)
 	end)
 	if ok and typeof(joinData) == "table" and typeof(joinData.TeleportData) == "table" then
 		startRun = joinData.TeleportData.startRun == true
+		-- The lobby sends the chosen difficulty; the first player to start the run sets it for the server.
+		if startRun and not state.difficulty and typeof(joinData.TeleportData.difficulty) == "string" then
+			state.difficulty = joinData.TeleportData.difficulty
+		end
 	end
 	if startRun then
 		startRunFor(player)

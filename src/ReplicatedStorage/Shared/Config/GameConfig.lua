@@ -65,6 +65,16 @@ GameConfig.SprintRegenPerSec = 15
 GameConfig.DebugUnlockAllWeapons = true   -- every player starts owning every weapon
 GameConfig.DebugStartWave        = 10     -- start the match at this wave (0 = normal, start at wave 1)
 
+-- ===== DIFFICULTY ===== (set by the lobby; caps how far a run goes — clearing the final wave = VICTORY)
+GameConfig.Difficulties = {
+	easy      = { name = "Easy",      maxWave = 10 },
+	medium    = { name = "Medium",    maxWave = 20 },
+	hard      = { name = "Hard",      maxWave = 25 },
+	nightmare = { name = "Nightmare", maxWave = 30 },
+}
+GameConfig.DefaultDifficulty = "nightmare"  -- used in Studio / if the lobby didn't send one
+GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for completing (winning) a run
+
 -- ===== MATCH FLOW =====
 GameConfig.LobbyCountdown     = 5      -- seconds in lobby before a match auto-starts
 GameConfig.MinPlayersToStart  = 1      -- solo-playable
