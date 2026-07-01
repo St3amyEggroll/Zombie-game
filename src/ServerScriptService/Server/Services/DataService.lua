@@ -287,6 +287,44 @@ function DataService.TakeCrate(player: Player, index: number): string?
 	return rarity
 end
 
+-- ----- potions (dropped by elite zombies; usable in-game/lobby) -----
+function DataService.GetPotions(player: Player): { [string]: number }
+	local data = getData(player)
+	return (data and typeof(data.potions) == "table") and data.potions or {}
+end
+
+function DataService.AddPotion(player: Player, potionId: string, count: number?)
+	local data = getData(player)
+	if not data then
+		return
+	end
+	if typeof(data.potions) ~= "table" then
+		data.potions = {}
+	end
+	data.potions[potionId] = (data.potions[potionId] or 0) + (count or 1)
+	markDirty(player)
+end
+
+-- Consume one potion. Returns true if the player had one (and it was removed).
+function DataService.TryConsumePotion(player: Player, potionId: string): boolean
+	local data = getData(player)
+	if not data or typeof(data.potions) ~= "table" then
+		return false
+	end
+	local have = data.potions[potionId] or 0
+	if have < 1 then
+		return false
+	end
+	have -= 1
+	if have <= 0 then
+		data.potions[potionId] = nil
+	else
+		data.potions[potionId] = have
+	end
+	markDirty(player)
+	return true
+end
+
 -- ----- stats / best wave / settings -----
 function DataService.UpdateBestWave(player: Player, wave: number): boolean
 	local data = getData(player)

@@ -218,16 +218,14 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 		or input.UserInputType == Enum.UserInputType.Touch then
 		startFiring()
 	elseif input.UserInputType == Enum.UserInputType.Keyboard then
-		if input.KeyCode == KEY_RELOAD then
-			tryReload()
-		elseif input.KeyCode == KEY_SPRINT then
+		if input.KeyCode == KEY_SPRINT then
 			Remotes.Get("Sprint"):FireServer(true)
 		elseif input.KeyCode == KEY_INTERACT then
 			Remotes.Get("Interact"):FireServer()
+		elseif NUMBER_KEYS[input.KeyCode] then
+			equipSlot(NUMBER_KEYS[input.KeyCode]) -- 1/2/3… switch between your equipped weapons
 		end
-		-- Weapon switching (1/2/3...) is handled by Roblox's NATIVE hotbar now: the equipped weapons are
-		-- real Tools in the Backpack (LoadoutService). Selecting a slot fires the server equip, which sends
-		-- LoadoutChanged back and updates `equipped` below.
+		-- (Reload removed — the ammo/reload system is gone; guns fire freely, capped only by fire rate.)
 	end
 end
 
@@ -270,12 +268,8 @@ function InputController.Start()
 		if not weapon then
 			return
 		end
-		if getMirror(equipped).mag <= 0 then
-			tryReload()
-			return
-		end
 		if AimController.GetTarget() then
-			fireOnce()
+			fireOnce() -- fire-rate-gated; ammo is infinite so no reload/empty handling needed
 		end
 	end)
 

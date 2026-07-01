@@ -414,8 +414,7 @@ local function onEquip(player: Player, weaponId: any)
 	applyEquip(player, weaponId)
 end
 
--- Server-side equip (from the native hotbar Tool.Equipped in LoadoutService). No rate limit — Roblox
--- already gates tool switching, and blocking a switch would desync the held weapon from the tool.
+-- Server-side equip helper (no rate limit) for other services that need to force an equip.
 function CombatService.SetEquipped(player: Player, weaponId: string): boolean
 	return applyEquip(player, weaponId)
 end

@@ -53,9 +53,6 @@ local DEFINITIONS: { [string]: string } = {
 	TrapActivated     = "RemoteEvent",     -- S->C: (trapPart, trapType, duration) — turn trap VFX on
 	TrapDeactivated   = "RemoteEvent",     -- S->C: (trapPart) — turn trap VFX off
 
-	-- PickupService (ammo pickups)
-	AmmoPickup        = "RemoteEvent",     -- S->C: (percent) — player grabbed an ammo pickup (HUD/sound feedback)
-
 	-- ShopService (Zombie Rush menu shop — buy + upgrade weapons for cash)
 	BuyWeapon         = "RemoteEvent",     -- C->S: (weaponId) buy a weapon
 	UpgradeWeapon     = "RemoteEvent",     -- C->S: (weaponId) upgrade a weapon
@@ -76,6 +73,11 @@ local DEFINITIONS: { [string]: string } = {
 	-- ProgressionService (between-run meta)
 	MatchSummary      = "RemoteEvent",     -- S->C: end-of-match stats + XP/unlocks
 	BuyUnlock         = "RemoteFunction",  -- C->S: spend tokens, returns success bool
+
+	-- GameInventoryService (in-game VIEW of the lobby inventory + potion use)
+	InvSnapshot       = "RemoteEvent",     -- S->C: (snapshot) equipped weapons + cases + potions (view-only)
+	ConsumePotion     = "RemoteEvent",     -- C->S: (potionId) use a potion (effect TBD; just consumes for now)
+	PotionDropped     = "RemoteEvent",     -- S->C: (potionId) an elite zombie dropped a potion (toast)
 }
 
 local cache: { [string]: Instance } = {}

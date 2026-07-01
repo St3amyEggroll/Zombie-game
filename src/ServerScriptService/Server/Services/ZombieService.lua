@@ -1071,7 +1071,26 @@ local function spawnOne(round: number, forcedType: string?)
 		return nil
 	end
 
+	-- ELITE roll: a small chance a NORMAL spawn (never a boss) is a buffed "elite" — tougher + glows yellow
+	-- + drops a potion on death. Pooled models are reused, so always clear a stale highlight first.
+	local isElite = (not forcedType) and (t.spawnWeight > 0) and (math.random() < GameConfig.EliteChance)
+	local oldHL = model:FindFirstChild("EliteHighlight")
+	if oldHL then
+		oldHL:Destroy()
+	end
+
 	local hp = scaledHealth(round, t)
+	if isElite then
+		hp = math.floor(hp * GameConfig.EliteHealthMult)
+		local hl = Instance.new("Highlight")
+		hl.Name = "EliteHighlight"
+		hl.FillColor = GameConfig.EliteHighlightColor
+		hl.OutlineColor = GameConfig.EliteHighlightColor
+		hl.FillTransparency = 0.55
+		hl.OutlineTransparency = 0
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.Parent = model
+	end
 	hum.MaxHealth = hp
 	hum.Health = hp
 	hum.WalkSpeed = scaledSpeed(round, t)
@@ -1079,6 +1098,7 @@ local function spawnOne(round: number, forcedType: string?)
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)
 	model:SetAttribute("IsSpecial", t.isSpecial)
+	model:SetAttribute("IsElite", isElite)
 
 	model:PivotTo(spawnCF)
 	model.Parent = zombieFolder

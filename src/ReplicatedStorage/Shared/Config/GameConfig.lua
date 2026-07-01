@@ -105,4 +105,12 @@ GameConfig.RateLimits = {
 	Fire = 20, Reload = 3, Buy = 6, Revive = 3, Interact = 8, Sprint = 10,
 }
 
+-- ===== ELITE (buffed) ZOMBIES ===== a small chance any spawned zombie is an "elite": tougher, glows
+-- yellow (for testing), and DROPS A POTION on death (into your persistent potion inventory → usable in the
+-- lobby/game). For now the only buff is health ×EliteHealthMult.
+GameConfig.EliteChance         = 0.05                 -- 5% of normal spawns become elites
+GameConfig.EliteHealthMult     = 4                    -- elites have 4× a normal same-type zombie's health
+GameConfig.EliteHighlightColor = Color3.fromRGB(255, 225, 40) -- yellow test highlight
+GameConfig.PotionDrops         = { "luck", "xp" }     -- potion ids an elite can drop (match the lobby POTIONS)
+
 return GameConfig
