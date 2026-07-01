@@ -9,20 +9,17 @@
 local AnimationConfig = {}
 
 -- ===== PROCEDURAL (no uploads needed) =====
--- Tracers: a glowing round FLIES from the muzzle to the impact point (instead of an instant line), leaving
--- a tapered, fading streak (a Trail) + a little light. Tune the feel here; PerWeapon overrides Default.
---   Color  = round + trail color        Speed = studs/sec it travels (higher = snappier)
---   Width  = round/trail thickness (st)  Life  = seconds the streak lingers
---   Length = visible streak length (st)  Glow  = PointLight brightness riding the round (0 = none)
+-- Tracers: a thin neon LINE from the gun barrel to the impact point, fading out. PerWeapon overrides Default.
+--   Color = line color   Width = thickness in studs (small = skinny)   Life = seconds before it fades out
 AnimationConfig.Tracer = {
 	Enabled = true,
-	Default = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Length = 5, Speed = 520, Life = 0.10, Glow = 5 },
+	Default = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Life = 0.06 },
 	PerWeapon = {
-		pistol  = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Length = 5, Speed = 560, Life = 0.08, Glow = 4 },
-		shotgun = { Color = Color3.fromRGB(255, 200, 120), Width = 0.05, Length = 4, Speed = 470, Life = 0.07, Glow = 3 },
-		ak47    = { Color = Color3.fromRGB(255, 240, 170), Width = 0.06, Length = 6, Speed = 620, Life = 0.08, Glow = 4 },
-		minigun = { Color = Color3.fromRGB(255, 170,  90), Width = 0.06, Length = 6, Speed = 640, Life = 0.06, Glow = 3 },
-		raygun  = { Color = Color3.fromRGB(120, 255, 140), Width = 0.16, Length = 9, Speed = 240, Life = 0.16, Glow = 8 }, -- slow fat bolt
+		pistol  = { Color = Color3.fromRGB(255, 231, 150), Width = 0.06, Life = 0.06 },
+		shotgun = { Color = Color3.fromRGB(255, 200, 120), Width = 0.05, Life = 0.05 },
+		ak47    = { Color = Color3.fromRGB(255, 240, 170), Width = 0.06, Life = 0.06 },
+		minigun = { Color = Color3.fromRGB(255, 170,  90), Width = 0.06, Life = 0.05 },
+		raygun  = { Color = Color3.fromRGB(120, 255, 140), Width = 0.16, Life = 0.10 },
 	},
 }
 
