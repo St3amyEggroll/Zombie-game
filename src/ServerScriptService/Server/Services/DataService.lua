@@ -37,9 +37,13 @@ local TEMPLATE = {
 	xp           = 0,
 	level        = 1,
 	lobbyMoney   = 0,                 -- persistent currency (spent in the lobby on crates/cosmetics)
-	ownedWeapons = { "pistol" },      -- weapons you own (pistol = free starter; the rest come from crates)
+	ownedWeapons = { "pistol" },      -- weapons you own (pistol = free starter; the rest come from cases)
 	loadout      = { "pistol" },      -- equipped, up to LOADOUT_SLOTS (slot 1 = your starter)
 	crates       = {},                -- unopened crate rarities, e.g. { "common", "rare" }
+	-- ===== LOBBY INVENTORY (managed by the LOBBY place; the game just preserves these on save) =====
+	tierLoadout  = { "pistol", "", "", "", "" }, -- equipped weapon per TIER slot (index 1..5; "" = empty)
+	cases        = { standard = 3 }, -- unopened cases by id -> count (3 free Standard Cases to start)
+	potions      = {},               -- owned potions by id -> count (UI placeholder for now)
 	bestWave     = 0,
 	completed    = {},                -- ["forest:easy"] = true — difficulties beaten (drives unlocks)
 	stats        = { totalKills = 0, matchesPlayed = 0 },

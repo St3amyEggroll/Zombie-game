@@ -29,6 +29,84 @@ local TELEPORT_RETRIES = 4
 
 Players.CharacterAutoLoads = true
 
+local rng = Random.new()
+
+-- ===== INVENTORY CATALOG =====
+-- The lobby is self-contained (it can't require the game's Shared config), so the catalog lives here and is
+-- SENT to the client for display. Add a weapon = add a WEAPONS entry (+ put it in a case pool to make it
+-- droppable). TIERS: each weapon has a tier 1..TIER_COUNT; the loadout has one slot PER tier.
+local TIER_COUNT = 5
+
+local RARITY = {
+	common    = { name = "Common",    color = { 165, 170, 180 } },
+	uncommon  = { name = "Uncommon",  color = {  80, 200, 120 } },
+	rare      = { name = "Rare",      color = {  70, 140, 255 } },
+	epic      = { name = "Epic",      color = { 170,  90, 255 } },
+	legendary = { name = "Legendary", color = { 255, 180,  40 } },
+}
+
+local WEAPONS = {
+	pistol  = { name = "M1911",        tier = 1, rarity = "common" },
+	shotgun = { name = "Pump Shotgun", tier = 2, rarity = "uncommon" },
+	ak47    = { name = "AK-47",        tier = 3, rarity = "rare" },
+	minigun = { name = "Minigun",      tier = 4, rarity = "epic" },
+	raygun  = { name = "Ray Gun",      tier = 5, rarity = "legendary" },
+}
+
+local CASES = {
+	standard = {
+		name = "Standard Case",
+		dupValue = 40, -- Coins refunded when you roll a weapon you already own
+		pool = {
+			{ id = "shotgun", weight = 48 },
+			{ id = "ak47",    weight = 30 },
+			{ id = "minigun", weight = 16 },
+			{ id = "raygun",  weight = 6 },
+		},
+	},
+}
+
+local POTIONS = {
+	luck = { name = "Luck Potion", rarity = "rare",     desc = "Boosts rare drops (coming soon)" },
+	xp   = { name = "XP Potion",   rarity = "uncommon", desc = "Bonus run XP (coming soon)" },
+}
+
+-- Display catalog the client renders from (colors as {r,g,b} so it survives replication cleanly).
+local CATALOG = {
+	tierCount = TIER_COUNT,
+	rarities = RARITY,
+	weapons = WEAPONS,
+	potions = POTIONS,
+	cases = (function()
+		local t = {}
+		for id, c in CASES do
+			local ids = {}
+			for _, e in c.pool do
+				table.insert(ids, e.id)
+			end
+			t[id] = { name = c.name, dupValue = c.dupValue, poolIds = ids }
+		end
+		return t
+	end)(),
+}
+
+local function rollCase(caseId)
+	local case = CASES[caseId]
+	local total = 0
+	for _, e in case.pool do
+		total += e.weight
+	end
+	local r = rng:NextNumber(0, total)
+	local acc = 0
+	for _, e in case.pool do
+		acc += e.weight
+		if r <= acc then
+			return e.id
+		end
+	end
+	return case.pool[#case.pool].id
+end
+
 -- ===== REMOTES =====
 local remotes = Instance.new("Folder")
 remotes.Name = "LobbyRemotes"
@@ -45,24 +123,136 @@ local ZoneLeave    = mk("ZoneLeave")    -- S->C: close the menu
 local RequestQueue = mk("RequestQueue") -- C->S: {map, difficulty, size}
 local LeaveQueue   = mk("LeaveQueue")   -- C->S: cancel
 local QueueStatus  = mk("QueueStatus")  -- S->C: {map, difficulty, size, count, seconds}
+-- Inventory (weapons / cases / potions)
+local InvRequest   = mk("InvRequest")   -- C->S: (please send my inventory)
+local InvSync      = mk("InvSync")      -- S->C: full inventory snapshot + catalog
+local EquipTier    = mk("EquipTier")    -- C->S: {slot, weaponId} equip a weapon into a tier slot ("" clears)
+local OpenCase     = mk("OpenCase")     -- C->S: {caseId} open a case
+local CaseResult   = mk("CaseResult")   -- S->C: {caseId, wonId, duplicate, coins} the roll outcome (drives the reel)
 
 -- ===== PROFILE + PROGRESSION =====
 local store = DataStoreService:GetDataStore(STORE_NAME)
 local profileCache = {} -- userId -> { level, lobbyMoney, bestWave, completed }
 
+-- Coerce loaded inventory fields into valid shapes (defaults mirror the game's DataService template so a
+-- brand-new player who joins the LOBBY first still gets a pistol + starter cases).
+local function sanitizeOwned(v)
+	local owned, seen = {}, {}
+	if typeof(v) == "table" then
+		for _, id in v do
+			if WEAPONS[id] and not seen[id] then
+				seen[id] = true
+				table.insert(owned, id)
+			end
+		end
+	end
+	if not seen.pistol then
+		table.insert(owned, 1, "pistol")
+	end
+	return owned
+end
+
+local function sanitizeTierLoadout(v, owned)
+	local ownedSet = {}
+	for _, id in owned do
+		ownedSet[id] = true
+	end
+	local out = {}
+	for slot = 1, TIER_COUNT do
+		local id = (typeof(v) == "table") and v[slot] or nil
+		if typeof(id) == "string" and WEAPONS[id] and WEAPONS[id].tier == slot and ownedSet[id] then
+			out[slot] = id
+		else
+			out[slot] = ""
+		end
+	end
+	if out[1] == "" and ownedSet.pistol then
+		out[1] = "pistol" -- keep the starter equipped by default
+	end
+	return out
+end
+
+local function sanitizeCases(v)
+	local out = {}
+	if typeof(v) == "table" then
+		for id, n in v do
+			if CASES[id] and typeof(n) == "number" and n > 0 then
+				out[id] = math.floor(n)
+			end
+		end
+	else
+		out.standard = 3 -- no field yet (first ever load) → grant the starter cases
+	end
+	return out
+end
+
+local function sanitizePotions(v)
+	local out = {}
+	if typeof(v) == "table" then
+		for id, n in v do
+			if POTIONS[id] and typeof(n) == "number" and n > 0 then
+				out[id] = math.floor(n)
+			end
+		end
+	end
+	return out
+end
+
 local function readProfile(player)
 	local ok, data = pcall(function()
 		return store:GetAsync("Player_" .. player.UserId)
 	end)
-	if ok and typeof(data) == "table" then
-		return {
-			level = data.level or 1,
-			lobbyMoney = data.lobbyMoney or 0,
-			bestWave = data.bestWave or 0,
-			completed = (typeof(data.completed) == "table") and data.completed or {},
-		}
+	data = (ok and typeof(data) == "table") and data or {}
+	local owned = sanitizeOwned(data.ownedWeapons)
+	return {
+		level = data.level or 1,
+		lobbyMoney = data.lobbyMoney or 0,
+		bestWave = data.bestWave or 0,
+		completed = (typeof(data.completed) == "table") and data.completed or {},
+		ownedWeapons = owned,
+		tierLoadout = sanitizeTierLoadout(data.tierLoadout, owned),
+		cases = sanitizeCases(data.cases),
+		potions = sanitizePotions(data.potions),
+	}
+end
+
+-- Merge the lobby-owned fields back into the shared profile WITHOUT clobbering game-owned fields
+-- (completed/bestWave/level/stats). One player is only ever in one place at a time, so this is safe.
+local function persist(player)
+	local prof = profileCache[player.UserId]
+	if not prof then
+		return
 	end
-	return { level = 1, lobbyMoney = 0, bestWave = 0, completed = {} }
+	pcall(function()
+		store:UpdateAsync("Player_" .. player.UserId, function(old)
+			old = (typeof(old) == "table") and old or {}
+			old.ownedWeapons = prof.ownedWeapons
+			old.tierLoadout = prof.tierLoadout
+			old.cases = prof.cases
+			old.potions = prof.potions
+			old.lobbyMoney = prof.lobbyMoney
+			return old
+		end)
+	end)
+end
+
+-- Snapshot sent to the client (everything the inventory UI needs).
+local function invSnapshot(prof)
+	return {
+		catalog = CATALOG,
+		owned = prof.ownedWeapons,
+		tierLoadout = prof.tierLoadout,
+		cases = prof.cases,
+		potions = prof.potions,
+		coins = prof.lobbyMoney,
+	}
+end
+
+local function pushInv(player)
+	local prof = profileCache[player.UserId]
+	if prof then
+		InvSync:FireClient(player, invSnapshot(prof))
+	end
 end
 
 local function indexOf(t, v)
@@ -162,6 +352,10 @@ local function teleportGroup(list, map, difficulty)
 		options.ReservedServerAccessCode = code
 	end
 	options:SetTeleportData({ startRun = true, map = map, difficulty = difficulty })
+	-- Save each traveler's inventory BEFORE they leave, so the game server loads their latest data.
+	for _, pl in list do
+		persist(pl)
+	end
 	for attempt = 1, TELEPORT_RETRIES do
 		local tok = pcall(function()
 			TeleportService:TeleportAsync(GAME_PLACE_ID, list, options)
@@ -200,6 +394,79 @@ end)
 
 LeaveQueue.OnServerEvent:Connect(function(player)
 	removeFromQueue(player)
+end)
+
+-- ===== INVENTORY HANDLERS =====
+InvRequest.OnServerEvent:Connect(function(player)
+	pushInv(player)
+end)
+
+EquipTier.OnServerEvent:Connect(function(player, req)
+	if typeof(req) ~= "table" then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof then
+		return
+	end
+	local slot = tonumber(req.slot)
+	local weaponId = tostring(req.weaponId or "")
+	if not slot or slot < 1 or slot > TIER_COUNT or slot ~= math.floor(slot) then
+		return
+	end
+	if weaponId == "" then
+		prof.tierLoadout[slot] = "" -- clear the slot
+	else
+		local w = WEAPONS[weaponId]
+		if not w or w.tier ~= slot or not table.find(prof.ownedWeapons, weaponId) then
+			return -- not a real weapon / wrong tier / not owned
+		end
+		prof.tierLoadout[slot] = weaponId
+	end
+	persist(player)
+	pushInv(player)
+end)
+
+OpenCase.OnServerEvent:Connect(function(player, req)
+	if typeof(req) ~= "table" then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof then
+		return
+	end
+	local caseId = tostring(req.caseId or "")
+	if not CASES[caseId] then
+		return
+	end
+	local have = prof.cases[caseId] or 0
+	if have < 1 then
+		return -- you don't own one
+	end
+	-- Consume the case (authoritative) and roll the result server-side.
+	prof.cases[caseId] = have - 1
+	if prof.cases[caseId] <= 0 then
+		prof.cases[caseId] = nil
+	end
+	local wonId = rollCase(caseId)
+	local duplicate = table.find(prof.ownedWeapons, wonId) ~= nil
+	local coins = 0
+	if duplicate then
+		coins = CASES[caseId].dupValue
+		prof.lobbyMoney += coins
+	else
+		table.insert(prof.ownedWeapons, wonId)
+		-- Auto-equip into its tier slot if that slot is empty (nice first-time-owned convenience).
+		local tier = WEAPONS[wonId].tier
+		if prof.tierLoadout[tier] == "" then
+			prof.tierLoadout[tier] = wonId
+		end
+	end
+	persist(player)
+	-- Tell the client the outcome (drives the reel), then the fresh inventory + updated Coins stat.
+	CaseResult:FireClient(player, { caseId = caseId, wonId = wonId, duplicate = duplicate, coins = coins })
+	pushInv(player)
+	StatsRemote:FireClient(player, prof)
 end)
 
 -- ===== TICK =====
@@ -271,6 +538,7 @@ local function onJoin(player)
 		local profile = readProfile(player)
 		profileCache[player.UserId] = profile
 		StatsRemote:FireClient(player, profile)
+		pushInv(player) -- seed the inventory UI so it's ready the moment they open it
 	end)
 end
 
@@ -280,6 +548,7 @@ for _, pl in Players:GetPlayers() do
 end
 Players.PlayerRemoving:Connect(function(pl)
 	removeFromQueue(pl)
+	persist(pl) -- save inventory/coins before their session ends
 	profileCache[pl.UserId] = nil
 	inZone[pl.UserId] = nil
 end)

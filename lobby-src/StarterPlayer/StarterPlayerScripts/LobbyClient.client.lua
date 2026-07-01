@@ -223,4 +223,491 @@ play.Activated:Connect(function()
 	end
 end)
 
+-- =====================================================================================================
+-- ===== INVENTORY (Weapons / Cases / Potions) =========================================================
+-- =====================================================================================================
+local TweenService = game:GetService("TweenService")
+local InvRequest = remotes:WaitForChild("InvRequest")
+local InvSync    = remotes:WaitForChild("InvSync")
+local EquipTier  = remotes:WaitForChild("EquipTier")
+local OpenCase   = remotes:WaitForChild("OpenCase")
+local CaseResult = remotes:WaitForChild("CaseResult")
+
+local invData = nil          -- latest snapshot: { catalog, owned, tierLoadout, cases, potions, coins }
+local activeTab = "weapons"
+local selectedTier = 1
+local rolling = false
+
+local BLACK = Color3.fromRGB(12, 13, 18)
+
+local function rarityColor(rarityId)
+	local r = invData and invData.catalog.rarities[rarityId]
+	if r then
+		return Color3.fromRGB(r.color[1], r.color[2], r.color[3])
+	end
+	return Color3.fromRGB(160, 160, 170)
+end
+local function weaponInfo(id)
+	return invData and invData.catalog.weapons[id]
+end
+local function ownsSet()
+	local s = {}
+	if invData then
+		for _, id in invData.owned do s[id] = true end
+	end
+	return s
+end
+
+-- ===== INVENTORY GUI (its own layer, above the selection menu) =====
+local invGui = Instance.new("ScreenGui")
+invGui.Name = "LobbyInventory"; invGui.ResetOnSpawn = false; invGui.IgnoreGuiInset = true; invGui.DisplayOrder = 11
+invGui.Parent = playerGui
+
+-- Left-side Inventory button (opens the panel).
+local invBtn = Instance.new("TextButton")
+invBtn.Position = UDim2.fromOffset(16, 124); invBtn.Size = UDim2.fromOffset(220, 46)
+invBtn.BackgroundColor3 = Color3.fromRGB(40, 44, 60); invBtn.BorderSizePixel = 0
+invBtn.Font = Enum.Font.GothamBlack; invBtn.TextSize = 18; invBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+invBtn.Text = "🎒  INVENTORY"; invBtn.Parent = invGui; corner(invBtn, 10)
+local ibStroke = Instance.new("UIStroke"); ibStroke.Color = ACCENT; ibStroke.Thickness = 1.5; ibStroke.Transparency = 0.4; ibStroke.Parent = invBtn
+
+-- Panel.
+local invPanel = Instance.new("Frame")
+invPanel.AnchorPoint = Vector2.new(0.5, 0.5); invPanel.Position = UDim2.fromScale(0.5, 0.5)
+invPanel.Size = UDim2.fromOffset(760, 480); invPanel.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
+invPanel.BackgroundTransparency = 0.03; invPanel.BorderSizePixel = 0; invPanel.Visible = false; invPanel.Parent = invGui
+corner(invPanel, 16)
+local ipStroke = Instance.new("UIStroke"); ipStroke.Color = ACCENT; ipStroke.Thickness = 2; ipStroke.Transparency = 0.5; ipStroke.Parent = invPanel
+
+local invTitle = Instance.new("TextLabel")
+invTitle.Position = UDim2.new(0, 0, 0, 12); invTitle.Size = UDim2.new(1, 0, 0, 32); invTitle.BackgroundTransparency = 1
+invTitle.Font = Enum.Font.GothamBlack; invTitle.TextSize = 24; invTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
+invTitle.Text = "INVENTORY"; invTitle.Parent = invPanel
+
+local invCoins = Instance.new("TextLabel")
+invCoins.Position = UDim2.new(1, -180, 0, 16); invCoins.Size = UDim2.fromOffset(150, 24); invCoins.BackgroundTransparency = 1
+invCoins.Font = Enum.Font.GothamBold; invCoins.TextSize = 16; invCoins.TextXAlignment = Enum.TextXAlignment.Right
+invCoins.TextColor3 = Color3.fromRGB(255, 220, 120); invCoins.Text = "🪙 0"; invCoins.Parent = invPanel
+
+local invClose = Instance.new("TextButton")
+invClose.AnchorPoint = Vector2.new(1, 0); invClose.Position = UDim2.new(1, -12, 0, 12); invClose.Size = UDim2.fromOffset(32, 32)
+invClose.BackgroundColor3 = Color3.fromRGB(210, 70, 70); invClose.Font = Enum.Font.GothamBlack; invClose.TextSize = 20
+invClose.TextColor3 = Color3.fromRGB(255, 255, 255); invClose.Text = "✕"; invClose.Parent = invPanel; corner(invClose, 8)
+
+-- Left sub-nav (Weapons / Cases / Potions).
+local nav = Instance.new("Frame")
+nav.Position = UDim2.fromOffset(16, 56); nav.Size = UDim2.fromOffset(150, 408); nav.BackgroundTransparency = 1; nav.Parent = invPanel
+local navList = Instance.new("UIListLayout"); navList.Padding = UDim.new(0, 8); navList.Parent = nav
+local navBtns = {}
+local function navButton(id, text)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, 0, 0, 46); b.BackgroundColor3 = CARD; b.BorderSizePixel = 0
+	b.Font = Enum.Font.GothamBold; b.TextSize = 16; b.TextColor3 = Color3.fromRGB(235, 235, 245); b.Text = text; b.Parent = nav
+	corner(b, 8)
+	navBtns[id] = b
+	return b
+end
+navButton("weapons", "🔫  Weapons")
+navButton("cases", "📦  Cases")
+navButton("potions", "🧪  Potions")
+
+-- Content area (a frame per tab).
+local content = Instance.new("Frame")
+content.Position = UDim2.fromOffset(178, 56); content.Size = UDim2.fromOffset(566, 408)
+content.BackgroundColor3 = Color3.fromRGB(12, 14, 22); content.BackgroundTransparency = 0.2; content.BorderSizePixel = 0
+content.Parent = invPanel; corner(content, 12)
+
+local weaponsTab = Instance.new("Frame")
+weaponsTab.Size = UDim2.fromScale(1, 1); weaponsTab.BackgroundTransparency = 1; weaponsTab.Parent = content
+local casesTab = Instance.new("Frame")
+casesTab.Size = UDim2.fromScale(1, 1); casesTab.BackgroundTransparency = 1; casesTab.Visible = false; casesTab.Parent = content
+local potionsTab = Instance.new("Frame")
+potionsTab.Size = UDim2.fromScale(1, 1); potionsTab.BackgroundTransparency = 1; potionsTab.Visible = false; potionsTab.Parent = content
+
+-- ---------- WEAPONS TAB ----------
+local tierHint = Instance.new("TextLabel")
+tierHint.Position = UDim2.fromOffset(14, 10); tierHint.Size = UDim2.new(1, -28, 0, 18); tierHint.BackgroundTransparency = 1
+tierHint.Font = Enum.Font.GothamBold; tierHint.TextSize = 13; tierHint.TextXAlignment = Enum.TextXAlignment.Left
+tierHint.TextColor3 = Color3.fromRGB(170, 180, 195); tierHint.Text = "YOUR LOADOUT — one weapon per tier"; tierHint.Parent = weaponsTab
+
+local tierRow = Instance.new("Frame")
+tierRow.Position = UDim2.fromOffset(14, 32); tierRow.Size = UDim2.new(1, -28, 0, 96); tierRow.BackgroundTransparency = 1; tierRow.Parent = weaponsTab
+local tierRowList = Instance.new("UIListLayout")
+tierRowList.FillDirection = Enum.FillDirection.Horizontal; tierRowList.Padding = UDim.new(0, 8)
+tierRowList.HorizontalAlignment = Enum.HorizontalAlignment.Left; tierRowList.Parent = tierRow
+
+local eligibleHint = Instance.new("TextLabel")
+eligibleHint.Position = UDim2.fromOffset(14, 140); eligibleHint.Size = UDim2.new(1, -28, 0, 18); eligibleHint.BackgroundTransparency = 1
+eligibleHint.Font = Enum.Font.GothamBold; eligibleHint.TextSize = 13; eligibleHint.TextXAlignment = Enum.TextXAlignment.Left
+eligibleHint.TextColor3 = Color3.fromRGB(170, 180, 195); eligibleHint.Text = ""; eligibleHint.Parent = weaponsTab
+
+local eligibleScroll = Instance.new("ScrollingFrame")
+eligibleScroll.Position = UDim2.fromOffset(14, 162); eligibleScroll.Size = UDim2.new(1, -28, 1, -174)
+eligibleScroll.BackgroundTransparency = 1; eligibleScroll.BorderSizePixel = 0; eligibleScroll.ScrollBarThickness = 6
+eligibleScroll.CanvasSize = UDim2.new(); eligibleScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; eligibleScroll.Parent = weaponsTab
+local eligibleGrid = Instance.new("UIGridLayout")
+eligibleGrid.CellSize = UDim2.fromOffset(120, 84); eligibleGrid.CellPadding = UDim2.fromOffset(10, 10); eligibleGrid.Parent = eligibleScroll
+
+local eligibleEmpty = Instance.new("TextLabel") -- shown when the selected tier has no owned weapons
+eligibleEmpty.Position = UDim2.fromOffset(14, 168); eligibleEmpty.Size = UDim2.new(1, -28, 0, 40); eligibleEmpty.BackgroundTransparency = 1
+eligibleEmpty.Font = Enum.Font.GothamBold; eligibleEmpty.TextSize = 15; eligibleEmpty.TextXAlignment = Enum.TextXAlignment.Left
+eligibleEmpty.TextColor3 = Color3.fromRGB(150, 155, 170); eligibleEmpty.Text = ""; eligibleEmpty.Visible = false; eligibleEmpty.Parent = weaponsTab
+
+local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
+	local info = weaponInfo(weaponId)
+	local col = info and rarityColor(info.rarity) or Color3.fromRGB(150, 150, 160)
+	local card = Instance.new("TextButton")
+	card.BackgroundColor3 = col:Lerp(BLACK, 0.55); card.AutoButtonColor = onClick ~= nil; card.Text = ""
+	card.BorderSizePixel = 0; card.Parent = parent
+	corner(card, 8)
+	local st = Instance.new("UIStroke"); st.Color = col; st.Thickness = highlight and 2.5 or 1.2
+	st.Transparency = highlight and 0 or 0.35; st.Parent = card
+	local icon = Instance.new("TextLabel")
+	icon.Position = UDim2.fromOffset(0, 8); icon.Size = UDim2.new(1, 0, 0, 26); icon.BackgroundTransparency = 1
+	icon.Font = Enum.Font.GothamBlack; icon.TextSize = 22; icon.Text = "🔫"; icon.TextColor3 = Color3.fromRGB(255, 255, 255); icon.Parent = card
+	local name = Instance.new("TextLabel")
+	name.Position = UDim2.fromOffset(4, 34); name.Size = UDim2.new(1, -8, 0, 20); name.BackgroundTransparency = 1
+	name.Font = Enum.Font.GothamBold; name.TextSize = 14; name.TextColor3 = Color3.fromRGB(240, 240, 245)
+	name.Text = info and info.name or weaponId; name.TextScaled = true; name.Parent = card
+	local sub = Instance.new("TextLabel")
+	sub.Position = UDim2.fromOffset(4, 56); sub.Size = UDim2.new(1, -8, 0, 16); sub.BackgroundTransparency = 1
+	sub.Font = Enum.Font.Gotham; sub.TextSize = 12; sub.TextColor3 = col; sub.Text = subtitle or ""; sub.TextScaled = true; sub.Parent = card
+	if onClick then
+		card.Activated:Connect(onClick)
+	end
+	return card
+end
+
+local tierSlotCards = {}
+local function renderWeaponsTab()
+	if not invData then return end
+	for _, c in tierSlotCards do c:Destroy() end
+	tierSlotCards = {}
+	for slot = 1, invData.catalog.tierCount do
+		local equipped = invData.tierLoadout[slot]
+		local holder = Instance.new("TextButton")
+		holder.Size = UDim2.fromOffset(96, 96); holder.AutoButtonColor = false; holder.Text = ""; holder.BorderSizePixel = 0
+		holder.LayoutOrder = slot; holder.Parent = tierRow
+		local selected = (selectedTier == slot)
+		holder.BackgroundColor3 = selected and Color3.fromRGB(40, 46, 64) or Color3.fromRGB(22, 25, 36)
+		corner(holder, 8)
+		local hs = Instance.new("UIStroke"); hs.Color = selected and ACCENT or Color3.fromRGB(60, 64, 80)
+		hs.Thickness = selected and 2.5 or 1; hs.Parent = holder
+		local tl = Instance.new("TextLabel")
+		tl.Position = UDim2.fromOffset(0, 4); tl.Size = UDim2.new(1, 0, 0, 14); tl.BackgroundTransparency = 1
+		tl.Font = Enum.Font.GothamBold; tl.TextSize = 11; tl.TextColor3 = Color3.fromRGB(150, 160, 175); tl.Text = "TIER " .. slot; tl.Parent = holder
+		if equipped ~= "" and weaponInfo(equipped) then
+			local info = weaponInfo(equipped)
+			local col = rarityColor(info.rarity)
+			local icon = Instance.new("TextLabel")
+			icon.Position = UDim2.fromOffset(0, 22); icon.Size = UDim2.new(1, 0, 0, 30); icon.BackgroundTransparency = 1
+			icon.Font = Enum.Font.GothamBlack; icon.TextSize = 24; icon.Text = "🔫"; icon.TextColor3 = col; icon.Parent = holder
+			local nm = Instance.new("TextLabel")
+			nm.Position = UDim2.fromOffset(4, 56); nm.Size = UDim2.new(1, -8, 0, 32); nm.BackgroundTransparency = 1
+			nm.Font = Enum.Font.GothamBold; nm.TextSize = 12; nm.TextColor3 = Color3.fromRGB(235, 235, 245)
+			nm.Text = info.name; nm.TextScaled = true; nm.Parent = holder
+		else
+			local em = Instance.new("TextLabel")
+			em.Position = UDim2.fromOffset(0, 40); em.Size = UDim2.new(1, 0, 0, 20); em.BackgroundTransparency = 1
+			em.Font = Enum.Font.Gotham; em.TextSize = 12; em.TextColor3 = Color3.fromRGB(120, 125, 140); em.Text = "Empty"; em.Parent = holder
+		end
+		holder.Activated:Connect(function()
+			selectedTier = slot
+			renderWeaponsTab()
+		end)
+		table.insert(tierSlotCards, holder)
+	end
+
+	-- Eligible owned weapons for the selected tier.
+	for _, c in eligibleScroll:GetChildren() do
+		if c:IsA("GuiObject") then c:Destroy() end
+	end
+	eligibleHint.Text = ("TIER %d WEAPONS — click one to equip in this slot"):format(selectedTier)
+	local any = false
+	local equippedHere = invData.tierLoadout[selectedTier]
+	for _, id in invData.owned do
+		local info = weaponInfo(id)
+		if info and info.tier == selectedTier then
+			any = true
+			local isOn = (id == equippedHere)
+			weaponCard(eligibleScroll, id, isOn and "EQUIPPED" or (invData.catalog.rarities[info.rarity].name),
+				function()
+					if isOn then
+						EquipTier:FireServer({ slot = selectedTier, weaponId = "" }) -- toggle off
+					else
+						EquipTier:FireServer({ slot = selectedTier, weaponId = id })
+					end
+				end, isOn)
+		end
+	end
+	eligibleEmpty.Visible = not any
+	if not any then
+		eligibleEmpty.Text = "No Tier " .. selectedTier .. " weapons yet — open cases to find some!"
+	end
+end
+
+-- ---------- CASES TAB ----------
+local casesScroll = Instance.new("ScrollingFrame")
+casesScroll.Position = UDim2.fromOffset(14, 44); casesScroll.Size = UDim2.new(1, -28, 1, -58)
+casesScroll.BackgroundTransparency = 1; casesScroll.BorderSizePixel = 0; casesScroll.ScrollBarThickness = 6
+casesScroll.CanvasSize = UDim2.new(); casesScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; casesScroll.Parent = casesTab
+local casesGrid = Instance.new("UIGridLayout")
+casesGrid.CellSize = UDim2.fromOffset(160, 150); casesGrid.CellPadding = UDim2.fromOffset(12, 12); casesGrid.Parent = casesScroll
+local casesHint = Instance.new("TextLabel")
+casesHint.Position = UDim2.fromOffset(14, 12); casesHint.Size = UDim2.new(1, -28, 0, 20); casesHint.BackgroundTransparency = 1
+casesHint.Font = Enum.Font.GothamBold; casesHint.TextSize = 13; casesHint.TextXAlignment = Enum.TextXAlignment.Left
+casesHint.TextColor3 = Color3.fromRGB(170, 180, 195); casesHint.Text = "OPEN CASES to unlock new weapons"; casesHint.Parent = casesTab
+
+local playReel -- forward decl
+local function renderCasesTab()
+	if not invData then return end
+	for _, c in casesScroll:GetChildren() do
+		if c:IsA("GuiObject") then c:Destroy() end
+	end
+	local any = false
+	for caseId, disp in invData.catalog.cases do
+		local count = invData.cases[caseId] or 0
+		any = any or count > 0
+		local card = Instance.new("Frame")
+		card.BackgroundColor3 = Color3.fromRGB(26, 30, 44); card.BorderSizePixel = 0; card.Parent = casesScroll
+		corner(card, 10)
+		local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(90, 120, 200); st.Thickness = 1.5; st.Transparency = 0.3; st.Parent = card
+		local icon = Instance.new("TextLabel")
+		icon.Position = UDim2.fromOffset(0, 10); icon.Size = UDim2.new(1, 0, 0, 40); icon.BackgroundTransparency = 1
+		icon.Font = Enum.Font.GothamBlack; icon.TextSize = 34; icon.Text = "📦"; icon.TextColor3 = Color3.fromRGB(255, 255, 255); icon.Parent = card
+		local nm = Instance.new("TextLabel")
+		nm.Position = UDim2.fromOffset(4, 52); nm.Size = UDim2.new(1, -8, 0, 20); nm.BackgroundTransparency = 1
+		nm.Font = Enum.Font.GothamBold; nm.TextSize = 15; nm.TextColor3 = Color3.fromRGB(240, 240, 245); nm.Text = disp.name; nm.TextScaled = true; nm.Parent = card
+		local cnt = Instance.new("TextLabel")
+		cnt.Position = UDim2.fromOffset(4, 74); cnt.Size = UDim2.new(1, -8, 0, 16); cnt.BackgroundTransparency = 1
+		cnt.Font = Enum.Font.Gotham; cnt.TextSize = 13; cnt.TextColor3 = Color3.fromRGB(180, 190, 205); cnt.Text = "Owned: " .. count; cnt.Parent = card
+		local open = Instance.new("TextButton")
+		open.AnchorPoint = Vector2.new(0.5, 1); open.Position = UDim2.new(0.5, 0, 1, -10); open.Size = UDim2.new(1, -20, 0, 36)
+		open.Font = Enum.Font.GothamBlack; open.TextSize = 16; open.BorderSizePixel = 0; open.Parent = card; corner(open, 8)
+		if count > 0 then
+			open.BackgroundColor3 = ACCENT; open.TextColor3 = Color3.fromRGB(15, 25, 15); open.Text = "OPEN"
+			open.Activated:Connect(function()
+				if rolling then return end
+				rolling = true
+				open.Text = "..."; open.BackgroundColor3 = DIM
+				OpenCase:FireServer({ caseId = caseId })
+			end)
+		else
+			open.BackgroundColor3 = DIM; open.TextColor3 = Color3.fromRGB(160, 165, 180); open.Text = "NONE"; open.AutoButtonColor = false
+		end
+	end
+	if not any then
+		local msg = Instance.new("TextLabel")
+		msg.Size = UDim2.fromOffset(540, 40); msg.BackgroundTransparency = 1; msg.Font = Enum.Font.GothamBold
+		msg.TextSize = 15; msg.TextColor3 = Color3.fromRGB(150, 155, 170)
+		msg.Text = "No cases right now — earn them by playing!"; msg.Parent = casesScroll
+	end
+end
+
+-- ---------- POTIONS TAB (UI works; effects come later) ----------
+local potionsScroll = Instance.new("ScrollingFrame")
+potionsScroll.Position = UDim2.fromOffset(14, 44); potionsScroll.Size = UDim2.new(1, -28, 1, -58)
+potionsScroll.BackgroundTransparency = 1; potionsScroll.BorderSizePixel = 0; potionsScroll.ScrollBarThickness = 6
+potionsScroll.CanvasSize = UDim2.new(); potionsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; potionsScroll.Parent = potionsTab
+local potionsGrid = Instance.new("UIGridLayout")
+potionsGrid.CellSize = UDim2.fromOffset(160, 130); potionsGrid.CellPadding = UDim2.fromOffset(12, 12); potionsGrid.Parent = potionsScroll
+local potionsHint = Instance.new("TextLabel")
+potionsHint.Position = UDim2.fromOffset(14, 12); potionsHint.Size = UDim2.new(1, -28, 0, 20); potionsHint.BackgroundTransparency = 1
+potionsHint.Font = Enum.Font.GothamBold; potionsHint.TextSize = 13; potionsHint.TextXAlignment = Enum.TextXAlignment.Left
+potionsHint.TextColor3 = Color3.fromRGB(170, 180, 195); potionsHint.Text = "POTIONS — consumable boosts (coming soon)"; potionsHint.Parent = potionsTab
+
+local function renderPotionsTab()
+	if not invData then return end
+	for _, c in potionsScroll:GetChildren() do
+		if c:IsA("GuiObject") then c:Destroy() end
+	end
+	for potId, disp in invData.catalog.potions do
+		local count = invData.potions[potId] or 0
+		local col = rarityColor(disp.rarity)
+		local card = Instance.new("Frame")
+		card.BackgroundColor3 = col:Lerp(BLACK, 0.6); card.BorderSizePixel = 0; card.Parent = potionsScroll
+		corner(card, 10)
+		local st = Instance.new("UIStroke"); st.Color = col; st.Thickness = 1.4; st.Transparency = 0.3; st.Parent = card
+		local icon = Instance.new("TextLabel")
+		icon.Position = UDim2.fromOffset(0, 10); icon.Size = UDim2.new(1, 0, 0, 36); icon.BackgroundTransparency = 1
+		icon.Font = Enum.Font.GothamBlack; icon.TextSize = 30; icon.Text = "🧪"; icon.TextColor3 = Color3.fromRGB(255, 255, 255); icon.Parent = card
+		local nm = Instance.new("TextLabel")
+		nm.Position = UDim2.fromOffset(4, 48); nm.Size = UDim2.new(1, -8, 0, 20); nm.BackgroundTransparency = 1
+		nm.Font = Enum.Font.GothamBold; nm.TextSize = 15; nm.TextColor3 = Color3.fromRGB(240, 240, 245); nm.Text = disp.name; nm.TextScaled = true; nm.Parent = card
+		local ds = Instance.new("TextLabel")
+		ds.Position = UDim2.fromOffset(6, 70); ds.Size = UDim2.new(1, -12, 0, 30); ds.BackgroundTransparency = 1
+		ds.Font = Enum.Font.Gotham; ds.TextSize = 12; ds.TextColor3 = Color3.fromRGB(190, 195, 210); ds.Text = disp.desc; ds.TextWrapped = true; ds.Parent = card
+		local use = Instance.new("TextButton")
+		use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 30)
+		use.Font = Enum.Font.GothamBold; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = card; corner(use, 8)
+		use.BackgroundColor3 = DIM; use.TextColor3 = Color3.fromRGB(160, 165, 180); use.AutoButtonColor = false
+		use.Text = "x" .. count .. "  (Soon)"
+	end
+end
+
+-- ===== TAB SWITCHING =====
+local function showTab(id)
+	activeTab = id
+	weaponsTab.Visible = (id == "weapons")
+	casesTab.Visible = (id == "cases")
+	potionsTab.Visible = (id == "potions")
+	for bid, b in navBtns do
+		local on = (bid == id)
+		b.BackgroundColor3 = on and ACCENT or CARD
+		b.TextColor3 = on and Color3.fromRGB(15, 25, 15) or Color3.fromRGB(235, 235, 245)
+	end
+	if id == "weapons" then renderWeaponsTab()
+	elseif id == "cases" then renderCasesTab()
+	else renderPotionsTab() end
+end
+for bid, b in navBtns do
+	b.Activated:Connect(function()
+		if not rolling then showTab(bid) end
+	end)
+end
+
+local function renderActive()
+	invCoins.Text = "🪙 " .. fmt(invData and invData.coins or 0)
+	if activeTab == "weapons" then renderWeaponsTab()
+	elseif activeTab == "cases" then renderCasesTab()
+	else renderPotionsTab() end
+end
+
+-- ===== CASE-OPENING REEL (CS:GO-style horizontal scroll) =====
+local TILE_W, GAP = 100, 8
+local STEP = TILE_W + GAP
+local N_TILES = 50
+local WIN_INDEX = 44
+local REEL_W = 540
+local REEL_H = 120
+
+local reel = Instance.new("Frame") -- full overlay while opening
+reel.Size = UDim2.fromScale(1, 1); reel.BackgroundColor3 = Color3.fromRGB(8, 9, 14); reel.BackgroundTransparency = 0.08
+reel.BorderSizePixel = 0; reel.Visible = false; reel.ZIndex = 5; reel.Parent = invPanel; corner(reel, 16)
+local reelTitle = Instance.new("TextLabel")
+reelTitle.Position = UDim2.new(0, 0, 0, 40); reelTitle.Size = UDim2.new(1, 0, 0, 30); reelTitle.BackgroundTransparency = 1
+reelTitle.Font = Enum.Font.GothamBlack; reelTitle.TextSize = 24; reelTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
+reelTitle.Text = "OPENING..."; reelTitle.ZIndex = 6; reelTitle.Parent = reel
+local window = Instance.new("Frame")
+window.AnchorPoint = Vector2.new(0.5, 0.5); window.Position = UDim2.fromScale(0.5, 0.5); window.Size = UDim2.fromOffset(REEL_W, REEL_H)
+window.BackgroundColor3 = Color3.fromRGB(16, 18, 26); window.BorderSizePixel = 0; window.ClipsDescendants = true; window.ZIndex = 6; window.Parent = reel
+corner(window, 10)
+local strip = Instance.new("Frame")
+strip.Position = UDim2.fromOffset(0, 0); strip.Size = UDim2.fromOffset(N_TILES * STEP, REEL_H); strip.BackgroundTransparency = 1; strip.ZIndex = 6; strip.Parent = window
+local pointer = Instance.new("Frame")
+pointer.AnchorPoint = Vector2.new(0.5, 0.5); pointer.Position = UDim2.fromScale(0.5, 0.5); pointer.Size = UDim2.fromOffset(3, REEL_H)
+pointer.BackgroundColor3 = ACCENT; pointer.BorderSizePixel = 0; pointer.ZIndex = 8; pointer.Parent = window
+local resultLabel = Instance.new("TextLabel")
+resultLabel.AnchorPoint = Vector2.new(0.5, 0); resultLabel.Position = UDim2.new(0.5, 0, 0.5, REEL_H / 2 + 16); resultLabel.Size = UDim2.fromOffset(560, 30)
+resultLabel.BackgroundTransparency = 1; resultLabel.Font = Enum.Font.GothamBlack; resultLabel.TextSize = 22; resultLabel.Text = ""
+resultLabel.TextColor3 = Color3.fromRGB(240, 240, 245); resultLabel.ZIndex = 7; resultLabel.Parent = reel
+local reelBtn = Instance.new("TextButton") -- doubles as Skip (while rolling) and Continue (after)
+reelBtn.AnchorPoint = Vector2.new(0.5, 1); reelBtn.Position = UDim2.new(0.5, 0, 1, -34); reelBtn.Size = UDim2.fromOffset(200, 44)
+reelBtn.BackgroundColor3 = CARD; reelBtn.Font = Enum.Font.GothamBold; reelBtn.TextSize = 18; reelBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+reelBtn.Text = "SKIP"; reelBtn.ZIndex = 7; reelBtn.Parent = reel; corner(reelBtn, 8)
+
+local activeTween = nil
+local finishReel = nil
+
+playReel = function(caseId, wonId, duplicate, coins)
+	local disp = invData.catalog.cases[caseId]
+	local poolIds = disp and disp.poolIds or { wonId }
+	for _, c in strip:GetChildren() do c:Destroy() end
+	for i = 1, N_TILES do
+		local id = (i == WIN_INDEX) and wonId or poolIds[math.random(1, #poolIds)]
+		local info = weaponInfo(id)
+		local col = info and rarityColor(info.rarity) or Color3.fromRGB(150, 150, 160)
+		local tile = Instance.new("Frame")
+		tile.Position = UDim2.fromOffset((i - 1) * STEP, 8); tile.Size = UDim2.fromOffset(TILE_W, REEL_H - 16)
+		tile.BackgroundColor3 = col:Lerp(BLACK, 0.5); tile.BorderSizePixel = 0; tile.ZIndex = 6; tile.Parent = strip
+		corner(tile, 8)
+		local ts = Instance.new("UIStroke"); ts.Color = col; ts.Thickness = 1.5; ts.Parent = tile
+		local ic = Instance.new("TextLabel")
+		ic.Position = UDim2.fromOffset(0, 12); ic.Size = UDim2.new(1, 0, 0, 34); ic.BackgroundTransparency = 1
+		ic.Font = Enum.Font.GothamBlack; ic.TextSize = 28; ic.Text = "🔫"; ic.TextColor3 = Color3.fromRGB(255, 255, 255); ic.ZIndex = 7; ic.Parent = tile
+		local nm = Instance.new("TextLabel")
+		nm.Position = UDim2.fromOffset(4, 50); nm.Size = UDim2.new(1, -8, 0, 24); nm.BackgroundTransparency = 1
+		nm.Font = Enum.Font.GothamBold; nm.TextSize = 13; nm.TextColor3 = Color3.fromRGB(240, 240, 245)
+		nm.Text = info and info.name or id; nm.TextScaled = true; nm.ZIndex = 7; nm.Parent = tile
+		local rr = Instance.new("TextLabel")
+		rr.Position = UDim2.fromOffset(4, 76); rr.Size = UDim2.new(1, -8, 0, 16); rr.BackgroundTransparency = 1
+		rr.Font = Enum.Font.Gotham; rr.TextSize = 11; rr.TextColor3 = col
+		rr.Text = info and invData.catalog.rarities[info.rarity].name or ""; rr.TextScaled = true; rr.ZIndex = 7; rr.Parent = tile
+	end
+
+	reelTitle.Text = "OPENING " .. (disp and disp.name or "CASE"):upper()
+	resultLabel.Text = ""
+	reelBtn.Text = "SKIP"; reelBtn.BackgroundColor3 = CARD; reelBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+	reel.Visible = true
+
+	local jitter = math.random(-10, 10) + (TILE_W * 0.5) * (math.random() - 0.5)
+	local target = math.floor(REEL_W / 2 - ((WIN_INDEX - 1) * STEP + TILE_W / 2) + jitter)
+	strip.Position = UDim2.fromOffset(0, 0)
+
+	local revealed = false
+	finishReel = function()
+		if revealed then return end
+		revealed = true
+		if activeTween then activeTween:Cancel() end
+		strip.Position = UDim2.fromOffset(target, 0)
+		local info = weaponInfo(wonId)
+		local col = info and rarityColor(info.rarity) or Color3.fromRGB(240, 240, 245)
+		if duplicate then
+			resultLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
+			resultLabel.Text = ("Duplicate %s — sold for 🪙 %d"):format(info and info.name or wonId, coins)
+		else
+			resultLabel.TextColor3 = col
+			resultLabel.Text = ("Unlocked %s!"):format(info and info.name or wonId)
+		end
+		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = ACCENT; reelBtn.TextColor3 = Color3.fromRGB(15, 25, 15)
+	end
+
+	activeTween = TweenService:Create(strip, TweenInfo.new(4.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.fromOffset(target, 0) })
+	activeTween.Completed:Connect(function()
+		finishReel()
+	end)
+	activeTween:Play()
+end
+
+reelBtn.Activated:Connect(function()
+	if not finishReel then return end
+	if reelBtn.Text == "CONTINUE" then
+		reel.Visible = false
+		rolling = false
+		renderActive()
+	else
+		finishReel() -- SKIP: snap to the result
+	end
+end)
+
+-- ===== OPEN / CLOSE + REMOTE WIRING =====
+local function openInventory()
+	InvRequest:FireServer()
+	showTab(activeTab)
+	renderActive()
+	invPanel.Visible = true
+end
+invBtn.Activated:Connect(openInventory)
+invClose.Activated:Connect(function()
+	if rolling then return end -- don't close mid-open
+	invPanel.Visible = false
+end)
+
+InvSync.OnClientEvent:Connect(function(snap)
+	if typeof(snap) ~= "table" then return end
+	invData = snap
+	if invPanel.Visible then
+		renderActive()
+	end
+end)
+
+CaseResult.OnClientEvent:Connect(function(res)
+	if typeof(res) ~= "table" or not res.caseId then
+		rolling = false
+		return
+	end
+	showTab("cases") -- make sure we're on the cases view behind the reel
+	playReel(res.caseId, res.wonId, res.duplicate == true, tonumber(res.coins) or 0)
+end)
+
 print("[LobbyClient] started")
