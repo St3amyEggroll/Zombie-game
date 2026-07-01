@@ -1,90 +1,198 @@
--- LobbyServer (LOBBY PLACE ONLY) — this place is a standalone menu, NOT the game. It does one job: when a
--- player presses PLAY, teleport them to the game place to start a run. It also reads their saved profile
--- (read-only) so the menu can show money / level / best wave, and forwards any run summary they arrived with.
+-- LobbyServer (LOBBY PLACE ONLY) — a walkable hub with MATCHMAKING loading zones. Stand in a zone (a Part
+-- tagged "LoadingZone") to queue; a countdown starts and SHORTENS to 3s once the zone hits its MaxParty; at
+-- zero, everyone in the zone teleports TOGETHER into a fresh private game server at the zone's difficulty.
 --
--- This is deliberately separate from the game codebase — the lobby place contains only this script and the
--- matching LobbyClient. Sync it with `rojo serve lobby.project.json`.
+-- BUILD IN THIS PLACE (you): a SpawnLocation (so players spawn in the hub) + 3 Parts tagged "LoadingZone",
+-- each covering the standing area, with attributes:
+--   Difficulty : "easy" | "medium" | "hard" | "nightmare"   (default "medium")
+--   MaxParty   : number   (default 4)  — reaching this = "full party" → 3s countdown
+--   Countdown  : number   (default 12) — seconds to launch with at least 1 player
+-- The part's size IS the trigger volume (make it tall enough to cover standing players; a little headroom is
+-- added automatically). This is separate from the game codebase; sync with `rojo serve lobby.project.json`.
 
 local Players = game:GetService("Players")
-local TeleportService = game:GetService("TeleportService")
-local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TeleportService = game:GetService("TeleportService")
+local CollectionService = game:GetService("CollectionService")
+local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- ===== CONFIG =====
-local GAME_PLACE_ID    = 109730423425701 -- the gameplay place (where PLAY sends you)
-local STORE_NAME       = "PlayerData_v2" -- MUST match DataService.STORE_NAME in the game codebase
-local TELEPORT_RETRIES = 4
+local GAME_PLACE_ID     = 109730423425701 -- the gameplay place
+local STORE_NAME        = "PlayerData_v2" -- MUST match DataService.STORE_NAME in the game codebase
+local DEFAULT_COUNTDOWN = 12
+local FULL_PARTY_SECS   = 3
+local DEFAULT_MAXPARTY  = 4
+local V_MARGIN          = 6               -- extra studs of headroom above a zone part so a flat pad still works
+local TICK              = 0.25            -- seconds between occupancy checks
+local TELEPORT_RETRIES  = 4
 
-Players.CharacterAutoLoads = false -- the lobby is a full-screen menu; no character needed
+Players.CharacterAutoLoads = true -- walkable hub
 
--- ===== REMOTES (this place builds its own; the game place's remotes don't exist here) =====
+-- ===== REMOTES =====
 local remotes = Instance.new("Folder")
 remotes.Name = "LobbyRemotes"
 remotes.Parent = ReplicatedStorage
-
-local function makeRemote(name: string): RemoteEvent
+local function mk(name: string): RemoteEvent
 	local r = Instance.new("RemoteEvent")
 	r.Name = name
 	r.Parent = remotes
 	return r
 end
+local StatsRemote = mk("Stats")      -- S->C: (stats) money/level/best wave for the HUD
+local ZoneRemote  = mk("ZoneStatus")  -- S->C: (info | nil) drives the countdown panel
 
-local PlayRemote = makeRemote("Play")     -- C->S: player pressed PLAY
-local MenuRemote = makeRemote("ShowMenu")  -- S->C: (stats, summary) -> populate + show the menu
-
+-- ===== PROFILE (read-only, for the HUD) =====
 local store = DataStoreService:GetDataStore(STORE_NAME)
-
--- Read just the few fields the menu shows. Read-only — the game place owns all writes. Falls back to a clean
--- profile if DataStores are unavailable (e.g. Studio with API access off) so the menu always works.
 local function readProfile(player: Player)
 	local ok, data = pcall(function()
 		return store:GetAsync("Player_" .. player.UserId)
 	end)
 	if ok and typeof(data) == "table" then
-		return {
-			level = data.level or 1,
-			lobbyMoney = data.lobbyMoney or 0,
-			bestWave = data.bestWave or 0,
-		}
+		return { level = data.level or 1, lobbyMoney = data.lobbyMoney or 0, bestWave = data.bestWave or 0 }
 	end
 	return { level = 1, lobbyMoney = 0, bestWave = 0 }
 end
 
-local function onJoin(player: Player)
-	-- The run summary the player arrived with (set by the game place when they died), if any.
-	local summary
-	local ok, joinData = pcall(function()
-		return player:GetJoinData()
-	end)
-	if ok and typeof(joinData) == "table" and typeof(joinData.TeleportData) == "table" then
-		summary = joinData.TeleportData.summary
+-- ===== ZONES =====
+local zones: { [BasePart]: any } = {}      -- part -> { deadline, launching }
+local playerZone: { [number]: BasePart? } = {}
+
+local function attr(part: BasePart, name: string, default)
+	local v = part:GetAttribute(name)
+	if v == nil then
+		return default
 	end
-	MenuRemote:FireClient(player, readProfile(player), summary)
+	return v
 end
 
-local function play(player: Player)
+local function inPart(pos: Vector3, part: BasePart): boolean
+	local rel = part.CFrame:PointToObjectSpace(pos)
+	local s = part.Size * 0.5
+	return math.abs(rel.X) <= s.X and math.abs(rel.Z) <= s.Z and rel.Y >= -s.Y - 1 and rel.Y <= s.Y + V_MARGIN
+end
+
+local function teleportGroup(list: { Player }, difficulty: string)
+	local ok, code = pcall(function()
+		return TeleportService:ReserveServer(GAME_PLACE_ID) -- a fresh PRIVATE arena for this party
+	end)
 	local options = Instance.new("TeleportOptions")
-	options:SetTeleportData({ startRun = true })
+	if ok and code then
+		options.ReservedServerAccessCode = code
+	end
+	options:SetTeleportData({ startRun = true, difficulty = difficulty })
 	for attempt = 1, TELEPORT_RETRIES do
-		local ok, err = pcall(function()
-			TeleportService:TeleportAsync(GAME_PLACE_ID, { player }, options)
+		local tok = pcall(function()
+			TeleportService:TeleportAsync(GAME_PLACE_ID, list, options)
 		end)
-		if ok then
+		if tok then
 			return
 		end
-		warn(("[LobbyServer] teleport failed for %s (attempt %d): %s"):format(player.Name, attempt, tostring(err)))
+		warn(("[LobbyServer] group teleport failed (attempt %d)"):format(attempt))
 		task.wait(attempt)
 	end
 end
 
-PlayRemote.OnServerEvent:Connect(play)
+local function tick()
+	-- Collect valid zone parts.
+	local parts = {}
+	for _, p in CollectionService:GetTagged("LoadingZone") do
+		if p:IsA("BasePart") and p:IsDescendantOf(Workspace) then
+			table.insert(parts, p)
+		end
+	end
 
-Players.PlayerAdded:Connect(function(player)
-	task.spawn(onJoin, player)
-end)
-for _, player in Players:GetPlayers() do
-	task.spawn(onJoin, player)
+	-- Who is standing in which zone (a player counts for at most one zone).
+	local occByZone: { [BasePart]: { Player } } = {}
+	local zoneOfPlayer: { [number]: BasePart } = {}
+	for _, part in parts do
+		local list = {}
+		for _, pl in Players:GetPlayers() do
+			if not zoneOfPlayer[pl.UserId] then
+				local hrp = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+				if hrp and inPart(hrp.Position, part) then
+					table.insert(list, pl)
+					zoneOfPlayer[pl.UserId] = part
+				end
+			end
+		end
+		occByZone[part] = list
+	end
+
+	local nowc = os.clock()
+	for _, part in parts do
+		local z = zones[part]
+		if not z then
+			z = { deadline = nil, launching = false }
+			zones[part] = z
+		end
+		if not z.launching then
+			local occ = occByZone[part]
+			local n = #occ
+			if n == 0 then
+				z.deadline = nil
+			else
+				local maxp = attr(part, "MaxParty", DEFAULT_MAXPARTY)
+				local cd = attr(part, "Countdown", DEFAULT_COUNTDOWN)
+				local diff = tostring(attr(part, "Difficulty", "medium"))
+				if not z.deadline then
+					z.deadline = nowc + cd
+				end
+				if n >= maxp and (z.deadline - nowc) > FULL_PARTY_SECS then
+					z.deadline = nowc + FULL_PARTY_SECS -- full party → hurry up
+				end
+				local secs = math.max(0, math.ceil(z.deadline - nowc))
+				for _, pl in occ do
+					ZoneRemote:FireClient(pl, { difficulty = diff, count = n, maxParty = maxp, seconds = secs })
+				end
+				if nowc >= z.deadline then
+					z.launching = true
+					task.spawn(function()
+						teleportGroup(occ, diff)
+						task.wait(2)
+						z.launching = false
+						z.deadline = nil
+					end)
+				end
+			end
+		end
+	end
+
+	-- Clear the panel for anyone who stepped out of every zone.
+	for _, pl in Players:GetPlayers() do
+		local nowZone = zoneOfPlayer[pl.UserId]
+		if nowZone ~= playerZone[pl.UserId] then
+			if not nowZone then
+				ZoneRemote:FireClient(pl, nil)
+			end
+			playerZone[pl.UserId] = nowZone
+		end
+	end
 end
 
-print(("[LobbyServer] started (lobby place%s)"):format(RunService:IsStudio() and " — Studio: PLAY can't teleport until published" or ""))
+-- ===== LIFECYCLE =====
+local function onJoin(player: Player)
+	task.spawn(function()
+		StatsRemote:FireClient(player, readProfile(player))
+	end)
+end
+
+Players.PlayerAdded:Connect(onJoin)
+for _, pl in Players:GetPlayers() do
+	onJoin(pl)
+end
+Players.PlayerRemoving:Connect(function(pl)
+	playerZone[pl.UserId] = nil
+end)
+
+local acc = 0
+RunService.Heartbeat:Connect(function(dt)
+	acc += dt
+	if acc >= TICK then
+		acc = 0
+		tick()
+	end
+end)
+
+print(("[LobbyServer] started (hub + matchmaking%s)"):format(RunService:IsStudio() and " — Studio: teleports won't fire until published" or ""))
