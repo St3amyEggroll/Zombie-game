@@ -23,6 +23,7 @@ local Remotes = require(Modules.Remotes)
 local CameraController = require(script.Parent.CameraController)
 local AimController = require(script.Parent.AimController)
 local AutoShootController = require(script.Parent.AutoShootController)
+local BuffController = require(script.Parent.BuffController)
 
 local InputController = {}
 
@@ -92,7 +93,7 @@ local function fireOnce()
 	if now < reloadingUntil then
 		return
 	end
-	if now - lastFireClock < (1 / weapon.fireRate) * 0.9 then
+	if now - lastFireClock < (1 / (weapon.fireRate * (1 + BuffController.GetStat("attackspeed")))) * 0.9 then
 		return
 	end
 	local origin, direction = CameraController.GetAim()
@@ -135,14 +136,15 @@ end
 -- Seconds to wait before the next shot. Spin-up weapons ramp from SPIN_START_FRAC× the fire rate up to
 -- full over weapon.spinUp seconds of continuous holding; releasing resets the ramp (so it spins down).
 local function shotInterval(weapon): number
+	local atk = 1 + BuffController.GetStat("attackspeed") -- Attack Speed buff fires faster
 	if weapon.spinUp and weapon.spinUp > 0 then
 		local held = os.clock() - fireStart
 		local t = math.clamp(held / weapon.spinUp, 0, 1)
 		local startRate = weapon.fireRate * SPIN_START_FRAC
 		local rate = startRate + (weapon.fireRate - startRate) * t
-		return 1 / rate
+		return 1 / (rate * atk)
 	end
-	return 1 / weapon.fireRate
+	return 1 / (weapon.fireRate * atk)
 end
 
 local function fireLoop()

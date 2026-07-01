@@ -106,6 +106,12 @@ local function makePlayerState(player: Player)
 		specialKills = 0,
 		revives = 0,
 		lobbyEarned = 0,                          -- persistent "Coins" earned THIS run (for the end screen)
+		-- In-run buff draft (BuffService) — all per-run, reset every run:
+		runXP = 0,
+		runLevel = 1,
+		draftsOwed = 0,
+		pendingDraft = nil,
+		buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 },
 	}
 end
 
@@ -118,6 +124,11 @@ local function resetRunState(player: Player, ps)
 	ps.specialKills = 0
 	ps.revives = 0
 	ps.lobbyEarned = 0
+	ps.runXP = 0
+	ps.runLevel = 1
+	ps.draftsOwed = 0
+	ps.pendingDraft = nil
+	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
 	ps.isDead = false
 	ps.isDown = false
 	ps.health = GameConfig.PlayerMaxHealth

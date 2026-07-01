@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local CameraController = require(script.Parent.CameraController)
+local BuffController = require(script.Parent.BuffController)
 
 local AimController = {}
 
@@ -34,6 +35,7 @@ local function findTargetRoot(fromPos: Vector3, dir: Vector3): BasePart?
 		return nil
 	end
 	local dotThreshold = math.cos(math.rad(GameConfig.ArcDegrees * 0.5))
+	local reach = GameConfig.ArcRange * (1 + BuffController.GetStat("range")) -- Attack Range buff
 	local best, bestDist = nil, math.huge
 	for _, model in folder:GetChildren() do
 		local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -41,7 +43,7 @@ local function findTargetRoot(fromPos: Vector3, dir: Vector3): BasePart?
 		if humanoid and root and humanoid.Health > 0 then
 			local to = root.Position - fromPos
 			local dist = to.Magnitude
-			if dist > 0.01 and dist <= GameConfig.ArcRange and dist < bestDist then
+			if dist > 0.01 and dist <= reach and dist < bestDist then
 				local flatTo = Vector3.new(to.X, 0, to.Z)
 				if flatTo.Magnitude > 0.01 and flatTo.Unit:Dot(dir) >= dotThreshold then
 					best, bestDist = root, dist

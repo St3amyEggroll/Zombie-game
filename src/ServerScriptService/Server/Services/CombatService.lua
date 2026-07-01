@@ -63,6 +63,11 @@ local function getCombat(player: Player)
 end
 
 -- ===== HELPERS =====
+-- The player's current in-run buff total for a stat (additive fraction; 0 if none). Set by BuffService.
+local function buffOf(ps, key: string): number
+	return (ps.buffs and ps.buffs[key]) or 0
+end
+
 local function ensureAmmo(ps, weaponId: string, weapon)
 	local a = ps.ammo[weaponId]
 	if not a then
@@ -158,9 +163,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		return
 	end
 
-	-- 5a) fire-rate gate
+	-- 5a) fire-rate gate (Attack Speed buff lets you fire faster)
 	local now = os.clock()
-	local minInterval = (1 / weapon.fireRate) * FIRE_RATE_SLACK
+	local effFireRate = weapon.fireRate * (1 + buffOf(ps, "attackspeed"))
+	local minInterval = (1 / effFireRate) * FIRE_RATE_SLACK
 	local last = c.lastShot[weaponId] or 0
 	if now - last < minInterval then
 		return
@@ -181,7 +187,9 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- aim direction) and is in line of sight. The bullet (tracer) then travels to that zombie.
 	local character = player.Character
 	local dir = direction.Unit
-	local baseDamage = weapon.damage * ShopConfig.DamageMultFor(ps.upgrades and ps.upgrades[weaponId] or 0)
+	local baseDamage = weapon.damage
+		* ShopConfig.DamageMultFor(ps.upgrades and ps.upgrades[weaponId] or 0)
+		* (1 + buffOf(ps, "damage")) -- Damage buff
 	local arcRange = GameConfig.ArcRange
 	local dotThreshold = math.cos(math.rad(GameConfig.ArcDegrees * 0.5)) -- 180° -> 0 (forward hemisphere)
 
@@ -192,7 +200,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 
 	-- Shotguns fire `pellets` per shot; everything else fires 1. The effective reach is the shorter of the
 	-- global arc range and the weapon's own range (so a shotgun is genuinely short-range).
-	local effRange = math.min(arcRange, weapon.range or arcRange)
+	local effRange = math.min(arcRange, weapon.range or arcRange) * (1 + buffOf(ps, "range")) -- Attack Range buff
 	local pellets = math.max(1, weapon.pellets or 1)
 
 	-- Collect in-arc, in-range zombies, nearest first.
@@ -237,6 +245,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			local c = targets[idx]
 			local humanoid = c.record.hum
 			local damage = baseDamage * falloffMult(c.dist) * count
+				if math.random() < buffOf(ps, "critchance") then damage *= (1 + GameConfig.CritBaseBonus + buffOf(ps, "critdamage")) end -- Crit buffs
 			humanoid.Health = math.max(0, humanoid.Health - damage)
 			local killed = humanoid.Health <= 0
 			ZombieService.NoteHit(c.record, origin) -- so a kill launches the ragdoll away from the shooter

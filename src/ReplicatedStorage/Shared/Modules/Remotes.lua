@@ -39,6 +39,12 @@ local DEFINITIONS: { [string]: string } = {
 	EquipWeapon       = "RemoteEvent",     -- NEW (Phase 3): C->S: (weaponId) request equip
 	LoadoutChanged    = "RemoteEvent",     -- NEW (Phase 3): S->C: (ownedWeapons, equippedWeaponId)
 
+	-- BuffService (in-run level-up buff draft)
+	RunXPChanged      = "RemoteEvent",     -- S->C: (xp, needed, level) — the run's level bar
+	BuffDraft         = "RemoteEvent",     -- S->C: (draft) — present 3 same-rarity options (roll then reveal)
+	BuffPick          = "RemoteEvent",     -- C->S: (optionIndex) — chose a buff
+	BuffsChanged      = "RemoteEvent",     -- S->C: (buffs) — current per-run buff totals (drives client fire rate/range + HUD)
+
 	-- PointsService
 	PointsChanged     = "RemoteEvent",     -- S->C: (points)
 	KillStreak        = "RemoteEvent",     -- S->C: (streak, multiplier) — chain-kill flair + cash bonus

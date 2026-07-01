@@ -47,9 +47,11 @@ local function getRuntime(player: Player)
 	return r
 end
 
--- Base walk speed / max health. (Hooks for future buffs — currently just the GameConfig values.)
-local function computeMoveSpeed(_player: Player): number
-	return GameConfig.PlayerWalkSpeed
+-- Base walk speed × the in-run Move Speed buff (BuffService). Sprint multiplies this on top (see heartbeat).
+local function computeMoveSpeed(player: Player): number
+	local ps = MatchService.GetPlayerState(player)
+	local buff = (ps and ps.buffs and ps.buffs.walkspeed) or 0
+	return GameConfig.PlayerWalkSpeed * (1 + buff)
 end
 
 local function computeMaxHealth(_player: Player): number

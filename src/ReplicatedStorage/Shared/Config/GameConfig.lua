@@ -35,6 +35,9 @@ GameConfig.StartingPoints     = 500
 GameConfig.LobbyMoneyPerKill = 1
 GameConfig.LobbyMoneyPerWave = 25
 
+-- ===== CRIT ===== (crit chance/damage come from the in-run buff draft; this is the base a crit adds)
+GameConfig.CritBaseBonus = 0.5   -- a crit does +50% damage baseline; the Crit Damage buff adds on top
+
 -- ===== HEALTH =====
 GameConfig.PlayerMaxHealth  = 100
 GameConfig.HealthRegenDelay = 5        -- seconds undamaged before regen
