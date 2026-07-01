@@ -10,6 +10,8 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
@@ -67,9 +69,138 @@ local function push(player: Player)
 end
 GameInventoryService.Push = push
 
--- Elite kill → drop a potion to the killer.
-local function onKill(player: Player, humanoid: Instance)
-	if not player or typeof(humanoid) ~= "Instance" then
+-- ===== PHYSICAL POTION DROPS ===== an elite death spawns a glowing potion that pops out of the corpse,
+-- then homes to the NEAREST player and is collected on contact (they get the potion + the overhead toast).
+local POTION_COLOR = {
+	luck = Color3.fromRGB(90, 140, 255),
+	xp   = Color3.fromRGB(120, 230, 120),
+}
+local POP_TIME      = 0.45  -- seconds the potion arcs out of the corpse before the magnet kicks in
+local POP_UP        = 24    -- initial upward pop speed
+local POP_OUT       = 9     -- initial sideways scatter speed
+local GRAVITY       = 70    -- pop-phase gravity
+local MAGNET_START  = 24    -- magnet speed at the start of the pull
+local MAGNET_ACCEL  = 90    -- magnet acceleration (studs/s²) — snappier the longer it flies
+local MAGNET_MAX    = 220
+local PICKUP_RADIUS = 4.5   -- studs from a player to collect
+local MAX_LIFETIME  = 20    -- seconds before a stranded potion despawns
+
+local dropsFolder: Folder
+local drops: { any } = {}
+
+local function nearestPlayer(pos: Vector3): (Player?, BasePart?)
+	local bestPlayer, bestRoot, bestDist = nil, nil, math.huge
+	for _, pl in Players:GetPlayers() do
+		local ps = MatchService.GetPlayerState(pl)
+		local char = pl.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if root and hum and hum.Health > 0 and ps and ps.inMatch then
+			local d = (root.Position - pos).Magnitude
+			if d < bestDist then
+				bestDist, bestPlayer, bestRoot = d, pl, root
+			end
+		end
+	end
+	return bestPlayer, bestRoot
+end
+
+local function grantPotion(player: Player, potionId: string)
+	DataService.AddPotion(player, potionId, 1)
+	DataService.Save(player) -- persist soon so the lobby sees it (teleport-back also does a blocking save)
+	Remotes.Get("PotionDropped"):FireClient(player, potionId) -- overhead toast
+	push(player)
+end
+
+local function spawnPotionDrop(pos: Vector3, potionId: string)
+	local color = POTION_COLOR[potionId] or Color3.fromRGB(220, 220, 230)
+	local part = Instance.new("Part")
+	part.Name = "PotionDrop"
+	part.Shape = Enum.PartType.Ball
+	part.Size = Vector3.new(1.1, 1.1, 1.1)
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.CFrame = CFrame.new(pos)
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Brightness = 4
+	light.Range = 10
+	light.Parent = part
+	-- Floating label so it reads as a potion.
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromOffset(40, 40)
+	bb.StudsOffsetWorldSpace = Vector3.new(0, 1.6, 0)
+	bb.AlwaysOnTop = true
+	bb.Parent = part
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromScale(1, 1)
+	icon.BackgroundTransparency = 1
+	icon.Text = "🧪"
+	icon.TextScaled = true
+	icon.Parent = bb
+	part.Parent = dropsFolder
+
+	-- Random pop-out velocity (up + a little scatter).
+	local ang = math.random() * math.pi * 2
+	local vel = Vector3.new(math.cos(ang) * POP_OUT, POP_UP, math.sin(ang) * POP_OUT)
+	table.insert(drops, {
+		part = part,
+		potionId = potionId,
+		vel = vel,
+		popUntil = os.clock() + POP_TIME,
+		born = os.clock(),
+		spin = 0,
+		magnetSpeed = MAGNET_START,
+	})
+end
+
+local function updateDrops(dt: number)
+	local now = os.clock()
+	for i = #drops, 1, -1 do
+		local d = drops[i]
+		local part = d.part
+		if not part or not part.Parent then
+			table.remove(drops, i)
+		elseif now - d.born > MAX_LIFETIME then
+			part:Destroy()
+			table.remove(drops, i)
+		else
+			d.spin += dt * 5
+			if now < d.popUntil then
+				-- Pop phase: simple ballistic arc out of the corpse.
+				d.vel = d.vel - Vector3.new(0, GRAVITY * dt, 0)
+				local newPos = part.Position + d.vel * dt
+				part.CFrame = CFrame.new(newPos) * CFrame.Angles(0, d.spin, 0)
+			else
+				-- Magnet phase: accelerate toward the nearest player; collect on contact.
+				local player, root = nearestPlayer(part.Position)
+				if player and root then
+					local to = root.Position - part.Position
+					local dist = to.Magnitude
+					if dist <= PICKUP_RADIUS then
+						grantPotion(player, d.potionId)
+						part:Destroy()
+						table.remove(drops, i)
+					else
+						d.magnetSpeed = math.min(MAGNET_MAX, d.magnetSpeed + MAGNET_ACCEL * dt)
+						local step = math.min(dist, d.magnetSpeed * dt)
+						local newPos = part.Position + (to.Unit * step)
+						part.CFrame = CFrame.new(newPos) * CFrame.Angles(0, d.spin, 0)
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Elite kill → drop a physical potion at the corpse (homes to the nearest player, who collects it).
+local function onKill(_player: Player, humanoid: Instance)
+	if typeof(humanoid) ~= "Instance" then
 		return
 	end
 	local model = humanoid.Parent
@@ -81,10 +212,16 @@ local function onKill(player: Player, humanoid: Instance)
 		return
 	end
 	local potionId = pool[math.random(1, #pool)]
-	DataService.AddPotion(player, potionId, 1)
-	DataService.Save(player) -- persist soon so the lobby sees it (teleport-back also does a blocking save)
-	Remotes.Get("PotionDropped"):FireClient(player, potionId)
-	push(player)
+	local pos
+	local ok, pivot = pcall(function()
+		return model:GetPivot()
+	end)
+	if ok and pivot then
+		pos = pivot.Position + Vector3.new(0, 2, 0)
+	end
+	if pos then
+		spawnPotionDrop(pos, potionId)
+	end
 end
 
 local function onConsume(player: Player, potionId: any)
@@ -103,6 +240,11 @@ local function onConsume(player: Player, potionId: any)
 end
 
 function GameInventoryService.Start()
+	dropsFolder = Instance.new("Folder")
+	dropsFolder.Name = "PotionDrops"
+	dropsFolder.Parent = Workspace
+	RunService.Heartbeat:Connect(updateDrops) -- flies + collects physical potion drops
+
 	-- Push a snapshot when data loads and on each (re)spawn.
 	DataService.Ready:Connect(function(player)
 		push(player)
