@@ -19,15 +19,26 @@ end
 local AimController = {}
 
 -- ===== TUNABLES =====
-local TURN_SPEED = 16 -- higher = snappier lock-on
+local TURN_SPEED = 16   -- higher = snappier lock-on
+local STICKY     = 0.35 -- seconds to keep "having a target" after it leaves the cone (steadies the fire rate)
 
 local localPlayer = Players.LocalPlayer
 local currentTarget: BasePart? = nil -- the zombie we're locked onto this frame (nil = none); read by auto-shoot
+local lastTarget: BasePart? = nil    -- most recent target, for the stickiness grace
+local lastTargetTime = 0
 
 -- The zombie root the auto-aim is currently locked onto, or nil. Used by auto-shoot to decide when to fire.
 function AimController.GetTarget(): BasePart?
 	if currentTarget and currentTarget.Parent then
 		return currentTarget
+	end
+	-- Stickiness: a zombie briefly leaving the tight cone shouldn't stutter the fire rate — keep firing at
+	-- the last target for a short grace while it's still alive.
+	if lastTarget and lastTarget.Parent and (os.clock() - lastTargetTime) < STICKY then
+		local hum = lastTarget.Parent:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 then
+			return lastTarget
+		end
 	end
 	return nil
 end
@@ -85,6 +96,8 @@ local function onRender(dt: number)
 	local targetRoot = findTargetRoot(hrp.Position, flat)
 	currentTarget = targetRoot
 	if targetRoot then
+		lastTarget = targetRoot
+		lastTargetTime = os.clock()
 		local td = targetRoot.Position - hrp.Position
 		td = Vector3.new(td.X, 0, td.Z)
 		if td.Magnitude > 0.01 then

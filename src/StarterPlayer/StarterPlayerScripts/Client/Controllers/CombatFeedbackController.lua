@@ -269,9 +269,10 @@ local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vec
 end
 
 local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean)
-	impact(position, hitHumanoid)
 	if hitHumanoid then
-		showHitmarker(killed, isHeadshot)
+		showHitmarker(killed, isHeadshot) -- just the hitmarker; no green splat on the zombie
+	else
+		impact(position, false) -- world/miss impact only
 	end
 end
 

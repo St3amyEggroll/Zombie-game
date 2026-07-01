@@ -1566,8 +1566,9 @@ function ZombieService.NoteHit(record, fromPos: Vector3)
 	record.lastHitOrigin = fromPos
 end
 
--- Hit feedback for a non-lethal hit: a little knockback away from the shooter + a white flash.
-function ZombieService.Hit(record, fromPos: Vector3)
+-- Hit feedback for a non-lethal hit: knockback away from the shooter (scaled by the weapon) + a white flash.
+-- `knockback` is the weapon's shove in studs/sec (falls back to HIT_KNOCKBACK). This is NOT the death launch.
+function ZombieService.Hit(record, fromPos: Vector3, knockback: number?)
 	if record.dead then
 		return
 	end
@@ -1576,7 +1577,7 @@ function ZombieService.Hit(record, fromPos: Vector3)
 		local away = root.Position - fromPos
 		away = Vector3.new(away.X, 0, away.Z)
 		if away.Magnitude > 0.01 then
-			root.AssemblyLinearVelocity = away.Unit * HIT_KNOCKBACK + Vector3.new(0, 4, 0)
+			root.AssemblyLinearVelocity = away.Unit * (knockback or HIT_KNOCKBACK) + Vector3.new(0, 4, 0)
 		end
 	end
 	flashWhite(record)

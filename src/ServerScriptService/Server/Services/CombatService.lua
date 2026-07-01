@@ -255,7 +255,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			if killed then
 				killEvent:Fire(player, humanoid, false, weaponId)
 			else
-				ZombieService.Hit(c.record, origin) -- knockback + white flash
+				ZombieService.Hit(c.record, origin, weapon.knockback) -- per-weapon knockback + white flash
 			end
 			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5))
 			-- A tracer to each zombie hit (a shotgun visibly sprays).

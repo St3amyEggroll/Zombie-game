@@ -89,7 +89,7 @@ local function buildDebugHud()
 	end
 
 	makeLabel("HealthLabel", -90, false)
-	makeLabel("AmmoLabel", -50, true)
+	-- (no AmmoLabel — ammo is infinite, so the ammo counter is gone)
 	makeLabel("RoundLabel", -90, true)
 	makeLabel("PointsLabel", -50, false)
 	makeLabel("LobbyMoneyLabel", -130, false) -- persistent "Coins" (above the in-wave cash)
