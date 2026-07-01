@@ -1,176 +1,205 @@
 --!nonstrict
--- HUDController.lua — drives the on-screen readouts. **You style the UI; this code feeds it data.**
---
--- NAMED-INSTANCE CONTRACT: build your HUD ScreenGui however you like, and name the text elements:
---   AmmoLabel, HealthLabel, RoundLabel, PointsLabel
--- This controller finds them ANYWHERE under PlayerGui by name and sets their .Text. Missing elements
--- are simply skipped. If none exist and SHOW_DEBUG_HUD is on, a plain fallback HUD is created so the
--- Phase 1 acceptance check is observable — delete it (or set SHOW_DEBUG_HUD=false) once you style yours.
---
--- (Phase 3 expands this with the full points/round/team HUD via -- NEW: markers.)
+-- HUDController.lua — the in-game HUD, built fully in code with a clean professional style:
+--   bottom-left : health bar (fill turns red when low) + HP number
+--   top-center  : wave pill ("WAVE 7") — named RoundLabel (AutoShootController anchors to it)
+--   top-right   : Coins (persistent) and Cash (this run) readouts
+-- Element names (RoundLabel / PointsLabel / LobbyMoneyLabel / HealthLabel) are kept stable so other
+-- controllers can find them by name.
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
-local WeaponConfig = require(Config.WeaponConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
-local InputController = require(script.Parent.InputController)
-
 local HUDController = {}
 
--- ===== TUNABLES =====
-local SHOW_DEBUG_HUD = true   -- set false (or just delete the DebugHUD) once you build your own UI
-local LOW_AMMO_PCT   = 0.25   -- at/below this fraction of the mag, the ammo counter goes red + pulses
-local LOW_AMMO_COLOR = Color3.fromRGB(255, 60, 60)
-local LOW_AMMO_PULSE = 6      -- pulses per second when low
+-- ===== STYLE (shared design system) =====
+local COL_PANEL     = Color3.fromRGB(22, 24, 30)
+local COL_TEXT      = Color3.fromRGB(238, 240, 245)
+local COL_TEXT_DIM  = Color3.fromRGB(150, 156, 168)
+local COL_ACCENT    = Color3.fromRGB(87, 196, 116)
+local COL_DANGER    = Color3.fromRGB(224, 82, 82)
+local COL_GOLD      = Color3.fromRGB(235, 190, 85)
+local COL_TRACK     = Color3.fromRGB(40, 44, 54)
+local PANEL_ALPHA   = 0.15
+local LOW_HP_PCT    = 0.4
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
--- ===== ELEMENT LOOKUP (by name, anywhere under PlayerGui) =====
--- Cached lazily: steady-state cost is one .Parent check, not a full PlayerGui scan per update.
--- Re-resolves automatically if a cached label is destroyed/reparented (respawn, styled HUD swap).
-local labelCache: { [string]: Instance? } = {}
+local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel
+local healthPct = 1
 
-local function findLabel(name: string)
-	local cached = labelCache[name]
-	if cached and cached.Parent then
-		return cached
-	end
-	for _, d in playerGui:GetDescendants() do
-		if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Name == name then
-			labelCache[name] = d
-			return d
-		end
-	end
-	labelCache[name] = nil
-	return nil
+-- ===== BUILD HELPERS =====
+local function corner(o, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r)
+	c.Parent = o
 end
 
-local function setText(name: string, text: string)
-	local label = findLabel(name)
-	if label then
-		label.Text = text
-	end
+local function hairline(o)
+	local s = Instance.new("UIStroke")
+	s.Color = Color3.fromRGB(255, 255, 255)
+	s.Transparency = 0.92
+	s.Thickness = 1
+	s.Parent = o
 end
 
--- ===== DEBUG FALLBACK HUD =====
-local function buildDebugHud()
-	if findLabel("AmmoLabel") or findLabel("HealthLabel") then
-		return -- a styled HUD already exists; don't add the fallback
-	end
+local function panel(parent, name)
+	local f = Instance.new("Frame")
+	f.Name = name
+	f.BackgroundColor3 = COL_PANEL
+	f.BackgroundTransparency = PANEL_ALPHA
+	f.BorderSizePixel = 0
+	f.Parent = parent
+	corner(f, 10)
+	hairline(f)
+	return f
+end
+
+local function text(parent, name, font, size, color)
+	local l = Instance.new("TextLabel")
+	l.Name = name
+	l.BackgroundTransparency = 1
+	l.Font = font
+	l.TextSize = size
+	l.TextColor3 = color
+	l.Text = ""
+	l.Parent = parent
+	return l
+end
+
+-- ===== BUILD =====
+local function build()
 	local gui = Instance.new("ScreenGui")
-	gui.Name = "DebugHUD"
+	gui.Name = "GameHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 4
 	gui.Parent = playerGui
 
-	local function makeLabel(name: string, posY: number, anchorRight: boolean)
-		local l = Instance.new("TextLabel")
-		l.Name = name
-		l.Size = UDim2.fromOffset(260, 34)
-		l.Position = anchorRight and UDim2.new(1, -270, 1, posY) or UDim2.new(0, 10, 1, posY)
-		l.BackgroundTransparency = 0.4
-		l.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		l.TextColor3 = Color3.fromRGB(255, 255, 255)
-		l.TextScaled = true
-		l.Font = Enum.Font.GothamBold
-		l.Text = name
-		l.Parent = gui
-		return l
-	end
+	-- Health (bottom-left): "HEALTH" caption, bar, HP number.
+	local hp = panel(gui, "HealthPanel")
+	hp.Position = UDim2.new(0, 16, 1, -78)
+	hp.Size = UDim2.fromOffset(260, 62)
 
-	makeLabel("HealthLabel", -90, false)
-	-- (no AmmoLabel — ammo is infinite, so the ammo counter is gone)
-	makeLabel("RoundLabel", -90, true)
-	makeLabel("PointsLabel", -50, false)
-	makeLabel("LobbyMoneyLabel", -130, false) -- persistent "Coins" (above the in-wave cash)
+	local hpCaption = text(hp, "Caption", Enum.Font.GothamBold, 11, COL_TEXT_DIM)
+	hpCaption.Position = UDim2.fromOffset(14, 8)
+	hpCaption.Size = UDim2.fromOffset(120, 12)
+	hpCaption.TextXAlignment = Enum.TextXAlignment.Left
+	hpCaption.Text = "HEALTH"
+
+	healthLabel = text(hp, "HealthLabel", Enum.Font.GothamBold, 14, COL_TEXT)
+	healthLabel.AnchorPoint = Vector2.new(1, 0)
+	healthLabel.Position = UDim2.new(1, -14, 0, 6)
+	healthLabel.Size = UDim2.fromOffset(120, 16)
+	healthLabel.TextXAlignment = Enum.TextXAlignment.Right
+	healthLabel.Text = "100 / 100"
+
+	local track = Instance.new("Frame")
+	track.Name = "Track"
+	track.Position = UDim2.fromOffset(14, 30)
+	track.Size = UDim2.new(1, -28, 0, 16)
+	track.BackgroundColor3 = COL_TRACK
+	track.BorderSizePixel = 0
+	track.Parent = hp
+	corner(track, 8)
+
+	healthFill = Instance.new("Frame")
+	healthFill.Name = "Fill"
+	healthFill.Size = UDim2.fromScale(1, 1)
+	healthFill.BackgroundColor3 = COL_ACCENT
+	healthFill.BorderSizePixel = 0
+	healthFill.Parent = track
+	corner(healthFill, 8)
+
+	-- Wave pill (top-center).
+	local wave = panel(gui, "WavePanel")
+	wave.AnchorPoint = Vector2.new(0.5, 0)
+	wave.Position = UDim2.new(0.5, 0, 0, 12)
+	wave.Size = UDim2.fromOffset(150, 40)
+
+	roundLabel = text(wave, "RoundLabel", Enum.Font.GothamBlack, 19, COL_TEXT)
+	roundLabel.Size = UDim2.fromScale(1, 1)
+	roundLabel.Text = "WAVE 0"
+
+	-- Currency (top-right): Coins over Cash.
+	local cur = panel(gui, "CurrencyPanel")
+	cur.AnchorPoint = Vector2.new(1, 0)
+	cur.Position = UDim2.new(1, -16, 0, 12)
+	cur.Size = UDim2.fromOffset(190, 66)
+
+	local coinsCaption = text(cur, "CoinsCaption", Enum.Font.GothamBold, 11, COL_TEXT_DIM)
+	coinsCaption.Position = UDim2.fromOffset(14, 8)
+	coinsCaption.Size = UDim2.fromOffset(90, 14)
+	coinsCaption.TextXAlignment = Enum.TextXAlignment.Left
+	coinsCaption.Text = "COINS"
+
+	coinsLabel = text(cur, "LobbyMoneyLabel", Enum.Font.GothamBold, 15, COL_GOLD)
+	coinsLabel.AnchorPoint = Vector2.new(1, 0)
+	coinsLabel.Position = UDim2.new(1, -14, 0, 7)
+	coinsLabel.Size = UDim2.fromOffset(110, 16)
+	coinsLabel.TextXAlignment = Enum.TextXAlignment.Right
+	coinsLabel.Text = "0"
+
+	local cashCaption = text(cur, "CashCaption", Enum.Font.GothamBold, 11, COL_TEXT_DIM)
+	cashCaption.Position = UDim2.fromOffset(14, 36)
+	cashCaption.Size = UDim2.fromOffset(90, 14)
+	cashCaption.TextXAlignment = Enum.TextXAlignment.Left
+	cashCaption.Text = "CASH"
+
+	pointsLabel = text(cur, "PointsLabel", Enum.Font.GothamBold, 15, COL_ACCENT)
+	pointsLabel.AnchorPoint = Vector2.new(1, 0)
+	pointsLabel.Position = UDim2.new(1, -14, 0, 35)
+	pointsLabel.Size = UDim2.fromOffset(110, 16)
+	pointsLabel.TextXAlignment = Enum.TextXAlignment.Right
+	pointsLabel.Text = "$0"
 end
 
 -- ===== UPDATES =====
--- Always reflect the EQUIPPED weapon (ammo events for other owned weapons shouldn't change the display).
-local ammoRatio = 1               -- equipped weapon's mag / magSize, for the low-ammo tell
-local function refreshAmmo()
-	local id = InputController.GetEquipped()
-	local a = InputController.GetAmmo(id)
-	local weapon = WeaponConfig[id]
-	local name = weapon and weapon.name or id
-	ammoRatio = (weapon and weapon.magSize > 0) and (a.mag / weapon.magSize) or 1
-	setText("AmmoLabel", string.format("%s   %d / %d", name, a.mag, a.reserve))
-end
-
--- Low-ammo tell: when the mag is at/below LOW_AMMO_PCT, flash the ammo counter red; otherwise leave it
--- at the label's own styled color. We remember each AmmoLabel's base color so restyles still work.
-local ammoBaseColor, ammoBaseLabel
-local function updateLowAmmo()
-	local label = findLabel("AmmoLabel")
-	if not label then
-		return
-	end
-	if label ~= ammoBaseLabel then
-		ammoBaseLabel = label
-		ammoBaseColor = label.TextColor3
-	end
-	if ammoRatio <= LOW_AMMO_PCT then
-		label.TextColor3 = LOW_AMMO_COLOR
-		label.TextTransparency = 0.55 * (0.5 + 0.5 * math.sin(os.clock() * LOW_AMMO_PULSE * math.pi * 2))
-	else
-		label.TextColor3 = ammoBaseColor or label.TextColor3
-		label.TextTransparency = 0
-	end
+local function setHealth(health, maxHealth)
+	health = math.max(0, health)
+	maxHealth = math.max(1, maxHealth)
+	healthPct = math.clamp(health / maxHealth, 0, 1)
+	healthLabel.Text = ("%d / %d"):format(math.floor(health + 0.5), math.floor(maxHealth + 0.5))
+	TweenService:Create(healthFill, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = UDim2.fromScale(healthPct, 1),
+		BackgroundColor3 = (healthPct <= LOW_HP_PCT) and COL_DANGER or COL_ACCENT,
+	}):Play()
 end
 
 -- ===== LIFECYCLE =====
 function HUDController.Start()
-	if SHOW_DEBUG_HUD then
-		buildDebugHud()
-	end
+	build()
 
-	-- Ammo (from the predicted mirror + server corrections); always shows the equipped weapon.
-	InputController.AmmoUpdated:Connect(function()
-		refreshAmmo()
-	end)
-	refreshAmmo()
-
-	-- Health (server-authoritative).
-	Remotes.Get("HealthChanged").OnClientEvent:Connect(function(health, maxHealth)
-		setText("HealthLabel", string.format("HP  %d / %d", math.floor(health + 0.5), math.floor(maxHealth + 0.5)))
-	end)
-
-	-- Wave + cash.
+	Remotes.Get("HealthChanged").OnClientEvent:Connect(setHealth)
 	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
-		setText("RoundLabel", "Wave " .. tostring(round))
+		roundLabel.Text = "WAVE " .. tostring(round)
 	end)
 	Remotes.Get("PointsChanged").OnClientEvent:Connect(function(points)
-		setText("PointsLabel", "$" .. Util.FormatNumber(points))
+		pointsLabel.Text = "$" .. Util.FormatNumber(points)
 	end)
-
-	-- Persistent "Coins" (lobby money): seed the total from the profile snapshot, then tick up live.
 	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
 		if typeof(data) == "table" and data.lobbyMoney then
-			setText("LobbyMoneyLabel", "Coins  " .. Util.FormatNumber(data.lobbyMoney))
+			coinsLabel.Text = Util.FormatNumber(data.lobbyMoney)
 		end
 	end)
 	Remotes.Get("LobbyMoneyChanged").OnClientEvent:Connect(function(total)
-		setText("LobbyMoneyLabel", "Coins  " .. Util.FormatNumber(total))
+		coinsLabel.Text = Util.FormatNumber(total)
 	end)
 
-	-- Seed initial text.
-	setText("PointsLabel", "$" .. Util.FormatNumber(GameConfig.StartingPoints))
-	setText("LobbyMoneyLabel", "Coins  0")
-	setText("RoundLabel", "Wave 0")
+	-- Seed initial values.
+	setHealth(GameConfig.PlayerMaxHealth, GameConfig.PlayerMaxHealth)
+	pointsLabel.Text = "$" .. Util.FormatNumber(GameConfig.StartingPoints)
 
-	RunService.RenderStepped:Connect(updateLowAmmo) -- drives the low-ammo red pulse
-
-	print("[HUDController] started" .. (SHOW_DEBUG_HUD and " (debug HUD on)" or ""))
+	print("[HUDController] started (styled HUD)")
 end
 
 return HUDController

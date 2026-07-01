@@ -1,7 +1,7 @@
 --!nonstrict
 -- PointsService.lua — per-player, match-scoped points (CoD-Zombies economy). The server is the ONLY
 -- writer. Points are awarded on hit/kill from CombatService's Hit/Kill signals (CLAUDE.md §8) and spent
--- through TrySpend() by ShopService. The zombie's pointsMult rides on a model Attribute set
+-- through TrySpend() by TrapService. The zombie's pointsMult rides on a model Attribute set
 -- at spawn, so we never reach across into ZombieService.
 
 local Players = game:GetService("Players")

@@ -11,7 +11,7 @@
 -- STUDIO: TeleportService doesn't work in Studio, so we skip the routing and just drop you straight into a
 -- run (and restart a fresh one a few seconds after death) so the whole loop stays testable solo.
 --
--- Two currencies (CLAUDE.md §6): in-wave CASH (ephemeral ps.points, resets every run, spent at the shop)
+-- Two currencies (CLAUDE.md §6): in-wave CASH (ephemeral ps.points, resets every run, spent on traps)
 -- and LOBBY MONEY (persistent, banked at run-end) — DataService owns the persistent side.
 
 local Players = game:GetService("Players")

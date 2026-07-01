@@ -16,9 +16,9 @@ local RequestQueue = remotes:WaitForChild("RequestQueue")
 local LeaveQueue = remotes:WaitForChild("LeaveQueue")
 local QueueStatus = remotes:WaitForChild("QueueStatus")
 
-local ACCENT = Color3.fromRGB(120, 220, 120)
-local DIM = Color3.fromRGB(70, 70, 82)
-local CARD = Color3.fromRGB(24, 24, 32)
+local ACCENT = Color3.fromRGB(87, 196, 116)
+local DIM = Color3.fromRGB(64, 68, 80)
+local CARD = Color3.fromRGB(31, 34, 42)
 
 local sel = { map = "forest", difficulty = "easy", size = 1 }
 local payload = nil
@@ -43,7 +43,7 @@ gui.Parent = playerGui
 -- stats card
 local stats = Instance.new("Frame")
 stats.Position = UDim2.fromOffset(16, 16); stats.Size = UDim2.fromOffset(220, 96)
-stats.BackgroundColor3 = Color3.fromRGB(22, 20, 28); stats.BackgroundTransparency = 0.1; stats.BorderSizePixel = 0
+stats.BackgroundColor3 = Color3.fromRGB(22, 24, 30); stats.BackgroundTransparency = 0.05; stats.BorderSizePixel = 0
 stats.Parent = gui; corner(stats, 12)
 local sp = Instance.new("UIPadding"); sp.PaddingLeft = UDim.new(0, 12); sp.PaddingTop = UDim.new(0, 8); sp.Parent = stats
 local sl = Instance.new("UIListLayout"); sl.Padding = UDim.new(0, 4); sl.Parent = stats
@@ -53,21 +53,21 @@ local function statLabel(color)
 	l.TextSize = 18; l.TextXAlignment = Enum.TextXAlignment.Left; l.TextColor3 = color; l.Text = ""; l.Parent = stats
 	return l
 end
-local moneyLabel = statLabel(Color3.fromRGB(255, 220, 120))
+local moneyLabel = statLabel(Color3.fromRGB(235, 190, 85))
 local bestLabel = statLabel(Color3.fromRGB(210, 210, 220))
 
 -- selection panel
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.fromOffset(560, 380); panel.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
+panel.Size = UDim2.fromOffset(560, 380); panel.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
 panel.BackgroundTransparency = 0.05; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
 corner(panel, 16)
 local pstroke = Instance.new("UIStroke"); pstroke.Color = ACCENT; pstroke.Thickness = 2; pstroke.Transparency = 0.5; pstroke.Parent = panel
 
 local title = Instance.new("TextLabel")
 title.Position = UDim2.new(0, 0, 0, 14); title.Size = UDim2.new(1, 0, 0, 34); title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBlack; title.TextSize = 26; title.TextColor3 = Color3.fromRGB(240, 240, 245)
-title.Text = "SELECT YOUR RUN"; title.Parent = panel
+title.Font = Enum.Font.GothamBlack; title.TextSize = 22; title.TextColor3 = Color3.fromRGB(240, 240, 245)
+title.Text = "CHOOSE YOUR RUN"; title.Parent = panel
 
 local function sectionLabel(text, y)
 	local l = Instance.new("TextLabel")
@@ -102,14 +102,14 @@ local mapBtns, diffBtns, sizeBtns = {}, {}, {}
 
 local play = Instance.new("TextButton")
 play.AnchorPoint = Vector2.new(0.5, 1); play.Position = UDim2.new(0.5, 0, 1, -46); play.Size = UDim2.fromOffset(240, 52)
-play.BackgroundColor3 = ACCENT; play.Font = Enum.Font.GothamBlack; play.TextSize = 24
+play.BackgroundColor3 = ACCENT; play.Font = Enum.Font.GothamBlack; play.TextSize = 20
 play.TextColor3 = Color3.fromRGB(15, 25, 15); play.Text = "PLAY"; play.Parent = panel
 corner(play, 10)
 
 local status = Instance.new("TextLabel")
 status.AnchorPoint = Vector2.new(0.5, 1); status.Position = UDim2.new(0.5, 0, 1, -12); status.Size = UDim2.new(1, -40, 0, 24)
 status.BackgroundTransparency = 1; status.Font = Enum.Font.GothamBold; status.TextSize = 15
-status.TextColor3 = Color3.fromRGB(190, 220, 255); status.Text = ""; status.Parent = panel
+status.TextColor3 = Color3.fromRGB(150, 156, 168); status.Text = ""; status.Parent = panel
 
 -- ===== RENDER =====
 local function refresh()
@@ -163,7 +163,7 @@ local function refresh()
 		table.insert(sizeBtns, b)
 	end
 	play.Text = queued and "CANCEL" or "PLAY"
-	play.BackgroundColor3 = queued and Color3.fromRGB(230, 90, 90) or ACCENT
+	play.BackgroundColor3 = queued and Color3.fromRGB(224, 82, 82) or ACCENT
 end
 
 -- default difficulty = first unlocked for the selected map
@@ -179,7 +179,7 @@ end
 -- ===== EVENTS =====
 StatsRemote.OnClientEvent:Connect(function(s)
 	if typeof(s) ~= "table" then return end
-	moneyLabel.Text = "🪙 " .. fmt(s.lobbyMoney or 0)
+	moneyLabel.Text = fmt(s.lobbyMoney or 0) .. " Coins"
 	bestLabel.Text = "Best: Wave " .. tostring(s.bestWave or 0)
 end)
 
@@ -318,10 +318,10 @@ local function weaponTipLines(weaponId)
 	return {
 		{ text = w.name, color = col, size = 16, bold = true },
 		{ text = (invData.catalog.rarities[w.rarity].name) .. "  ·  Tier " .. tostring(w.tier), color = col, size = 12 },
-		{ text = ("💥 Damage: %s%s"):format(tostring(w.damage or "?"), w.pellets and ("  ×" .. w.pellets) or ""), size = 14 },
-		{ text = ("🔥 Fire Rate: %s/s"):format(tostring(w.fireRate or "?")), size = 14 },
-		{ text = ("🎯 Range: %s"):format(tostring(w.range or "?")), size = 14 },
-		{ text = ("📊 DPS: ~%d"):format(math.floor(dps + 0.5)), color = Color3.fromRGB(150, 220, 150), size = 14 },
+		{ text = ("Damage: %s%s"):format(tostring(w.damage or "?"), w.pellets and ("  ×" .. w.pellets) or ""), size = 14 },
+		{ text = ("Fire Rate: %s/s"):format(tostring(w.fireRate or "?")), size = 14 },
+		{ text = ("Range: %s"):format(tostring(w.range or "?")), size = 14 },
+		{ text = ("DPS: ~%d"):format(math.floor(dps + 0.5)), color = Color3.fromRGB(150, 220, 150), size = 14 },
 	}
 end
 
@@ -341,15 +341,15 @@ end
 -- Left-side Inventory button (opens the panel).
 local invBtn = Instance.new("TextButton")
 invBtn.Position = UDim2.fromOffset(16, 124); invBtn.Size = UDim2.fromOffset(220, 46)
-invBtn.BackgroundColor3 = Color3.fromRGB(40, 44, 60); invBtn.BorderSizePixel = 0
-invBtn.Font = Enum.Font.GothamBlack; invBtn.TextSize = 18; invBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
-invBtn.Text = "🎒  INVENTORY"; invBtn.Parent = invGui; corner(invBtn, 10)
+invBtn.BackgroundColor3 = Color3.fromRGB(22, 24, 30); invBtn.BorderSizePixel = 0
+invBtn.Font = Enum.Font.GothamBold; invBtn.TextSize = 15; invBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+invBtn.Text = "INVENTORY"; invBtn.Parent = invGui; corner(invBtn, 10)
 local ibStroke = Instance.new("UIStroke"); ibStroke.Color = ACCENT; ibStroke.Thickness = 1.5; ibStroke.Transparency = 0.4; ibStroke.Parent = invBtn
 
 -- Panel.
 local invPanel = Instance.new("Frame")
 invPanel.AnchorPoint = Vector2.new(0.5, 0.5); invPanel.Position = UDim2.fromScale(0.5, 0.5)
-invPanel.Size = UDim2.fromOffset(760, 480); invPanel.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
+invPanel.Size = UDim2.fromOffset(760, 480); invPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
 invPanel.BackgroundTransparency = 0.03; invPanel.BorderSizePixel = 0; invPanel.Visible = false; invPanel.Parent = invGui
 corner(invPanel, 16)
 local ipStroke = Instance.new("UIStroke"); ipStroke.Color = ACCENT; ipStroke.Thickness = 2; ipStroke.Transparency = 0.5; ipStroke.Parent = invPanel
@@ -362,11 +362,11 @@ invTitle.Text = "INVENTORY"; invTitle.Parent = invPanel
 local invCoins = Instance.new("TextLabel")
 invCoins.Position = UDim2.new(1, -180, 0, 16); invCoins.Size = UDim2.fromOffset(150, 24); invCoins.BackgroundTransparency = 1
 invCoins.Font = Enum.Font.GothamBold; invCoins.TextSize = 16; invCoins.TextXAlignment = Enum.TextXAlignment.Right
-invCoins.TextColor3 = Color3.fromRGB(255, 220, 120); invCoins.Text = "🪙 0"; invCoins.Parent = invPanel
+invCoins.TextColor3 = Color3.fromRGB(235, 190, 85); invCoins.Text = "0 Coins"; invCoins.Parent = invPanel
 
 local invClose = Instance.new("TextButton")
 invClose.AnchorPoint = Vector2.new(1, 0); invClose.Position = UDim2.new(1, -12, 0, 12); invClose.Size = UDim2.fromOffset(32, 32)
-invClose.BackgroundColor3 = Color3.fromRGB(210, 70, 70); invClose.Font = Enum.Font.GothamBlack; invClose.TextSize = 20
+invClose.BackgroundColor3 = Color3.fromRGB(224, 82, 82); invClose.Font = Enum.Font.GothamBold; invClose.TextSize = 16
 invClose.TextColor3 = Color3.fromRGB(255, 255, 255); invClose.Text = "✕"; invClose.Parent = invPanel; corner(invClose, 8)
 
 -- Left sub-nav (Weapons / Cases / Potions).
@@ -382,14 +382,14 @@ local function navButton(id, text)
 	navBtns[id] = b
 	return b
 end
-navButton("weapons", "🔫  Weapons")
-navButton("cases", "📦  Cases")
-navButton("potions", "🧪  Potions")
+navButton("weapons", "Weapons")
+navButton("cases", "Cases")
+navButton("potions", "Potions")
 
 -- Content area (a frame per tab).
 local content = Instance.new("Frame")
 content.Position = UDim2.fromOffset(178, 56); content.Size = UDim2.fromOffset(566, 408)
-content.BackgroundColor3 = Color3.fromRGB(12, 14, 22); content.BackgroundTransparency = 0.2; content.BorderSizePixel = 0
+content.BackgroundColor3 = Color3.fromRGB(17, 19, 24); content.BackgroundTransparency = 0.2; content.BorderSizePixel = 0
 content.Parent = invPanel; corner(content, 12)
 
 local weaponsTab = Instance.new("Frame")
@@ -437,11 +437,11 @@ local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
 	corner(card, 8)
 	local st = Instance.new("UIStroke"); st.Color = col; st.Thickness = highlight and 2.5 or 1.2
 	st.Transparency = highlight and 0 or 0.35; st.Parent = card
-	local icon = Instance.new("TextLabel")
-	icon.Position = UDim2.fromOffset(0, 8); icon.Size = UDim2.new(1, 0, 0, 26); icon.BackgroundTransparency = 1
-	icon.Font = Enum.Font.GothamBlack; icon.TextSize = 22; icon.Text = "🔫"; icon.TextColor3 = Color3.fromRGB(255, 255, 255); icon.Parent = card
+	local bar = Instance.new("Frame")
+	bar.Position = UDim2.fromOffset(0, 0); bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = col
+	bar.BorderSizePixel = 0; bar.Parent = card
 	local name = Instance.new("TextLabel")
-	name.Position = UDim2.fromOffset(4, 34); name.Size = UDim2.new(1, -8, 0, 20); name.BackgroundTransparency = 1
+	name.Position = UDim2.fromOffset(4, 22); name.Size = UDim2.new(1, -8, 0, 24); name.BackgroundTransparency = 1
 	name.Font = Enum.Font.GothamBold; name.TextSize = 14; name.TextColor3 = Color3.fromRGB(240, 240, 245)
 	name.Text = info and info.name or weaponId; name.TextScaled = true; name.Parent = card
 	local sub = Instance.new("TextLabel")
@@ -475,11 +475,12 @@ local function renderWeaponsTab()
 		if equipped ~= "" and weaponInfo(equipped) then
 			local info = weaponInfo(equipped)
 			local col = rarityColor(info.rarity)
-			local icon = Instance.new("TextLabel")
-			icon.Position = UDim2.fromOffset(0, 22); icon.Size = UDim2.new(1, 0, 0, 30); icon.BackgroundTransparency = 1
-			icon.Font = Enum.Font.GothamBlack; icon.TextSize = 24; icon.Text = "🔫"; icon.TextColor3 = col; icon.Parent = holder
+			local rbar = Instance.new("Frame")
+			rbar.AnchorPoint = Vector2.new(0.5, 0); rbar.Position = UDim2.new(0.5, 0, 0, 30); rbar.Size = UDim2.fromOffset(40, 5)
+			rbar.BackgroundColor3 = col; rbar.BorderSizePixel = 0; rbar.Parent = holder
+			local rc2 = Instance.new("UICorner"); rc2.CornerRadius = UDim.new(1, 0); rc2.Parent = rbar
 			local nm = Instance.new("TextLabel")
-			nm.Position = UDim2.fromOffset(4, 56); nm.Size = UDim2.new(1, -8, 0, 32); nm.BackgroundTransparency = 1
+			nm.Position = UDim2.fromOffset(4, 46); nm.Size = UDim2.new(1, -8, 0, 40); nm.BackgroundTransparency = 1
 			nm.Font = Enum.Font.GothamBold; nm.TextSize = 12; nm.TextColor3 = Color3.fromRGB(235, 235, 245)
 			nm.Text = info.name; nm.TextScaled = true; nm.Parent = holder
 			attachTip(holder, function() return weaponTipLines(equipped) end) -- hover a filled slot → weapon stats
@@ -552,7 +553,7 @@ local function renderCasesTab()
 		local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(90, 120, 200); st.Thickness = 1.5; st.Transparency = 0.3; st.Parent = card
 		local icon = Instance.new("TextLabel")
 		icon.Position = UDim2.fromOffset(0, 10); icon.Size = UDim2.new(1, 0, 0, 40); icon.BackgroundTransparency = 1
-		icon.Font = Enum.Font.GothamBlack; icon.TextSize = 34; icon.Text = "📦"; icon.TextColor3 = Color3.fromRGB(255, 255, 255); icon.Parent = card
+		icon.Font = Enum.Font.GothamBlack; icon.TextSize = 22; icon.Text = "CASE"; icon.TextColor3 = Color3.fromRGB(120, 150, 210); icon.Parent = card
 		local nm = Instance.new("TextLabel")
 		nm.Position = UDim2.fromOffset(4, 52); nm.Size = UDim2.new(1, -8, 0, 20); nm.BackgroundTransparency = 1
 		nm.Font = Enum.Font.GothamBold; nm.TextSize = 15; nm.TextColor3 = Color3.fromRGB(240, 240, 245); nm.Text = disp.name; nm.TextScaled = true; nm.Parent = card
@@ -608,7 +609,7 @@ local function renderPotionsTab()
 		local st = Instance.new("UIStroke"); st.Color = col; st.Thickness = 1.4; st.Transparency = 0.3; st.Parent = card
 		local icon = Instance.new("TextLabel")
 		icon.Position = UDim2.fromOffset(0, 10); icon.Size = UDim2.new(1, 0, 0, 36); icon.BackgroundTransparency = 1
-		icon.Font = Enum.Font.GothamBlack; icon.TextSize = 30; icon.Text = "🧪"; icon.TextColor3 = Color3.fromRGB(255, 255, 255); icon.Parent = card
+		icon.Font = Enum.Font.GothamBlack; icon.TextSize = 18; icon.Text = "POTION"; icon.TextColor3 = col; icon.Parent = card
 		local nm = Instance.new("TextLabel")
 		nm.Position = UDim2.fromOffset(4, 48); nm.Size = UDim2.new(1, -8, 0, 20); nm.BackgroundTransparency = 1
 		nm.Font = Enum.Font.GothamBold; nm.TextSize = 15; nm.TextColor3 = Color3.fromRGB(240, 240, 245); nm.Text = disp.name; nm.TextScaled = true; nm.Parent = card
@@ -703,13 +704,15 @@ playReel = function(caseId, wonId, duplicate, coins)
 		local ts = Instance.new("UIStroke"); ts.Color = col; ts.Thickness = 1.5; ts.Parent = tile
 		local ic = Instance.new("TextLabel")
 		ic.Position = UDim2.fromOffset(0, 12); ic.Size = UDim2.new(1, 0, 0, 34); ic.BackgroundTransparency = 1
-		ic.Font = Enum.Font.GothamBlack; ic.TextSize = 28; ic.Text = "🔫"; ic.TextColor3 = Color3.fromRGB(255, 255, 255); ic.ZIndex = 7; ic.Parent = tile
+		ic.Font = Enum.Font.GothamBlack; ic.TextSize = 12; ic.Text = ""; ic.BackgroundTransparency = 1; ic.ZIndex = 7; ic.Parent = tile
+		local tbar = Instance.new("Frame"); tbar.Position = UDim2.fromOffset(0, 0); tbar.Size = UDim2.new(1, 0, 0, 4)
+		tbar.BackgroundColor3 = col; tbar.BorderSizePixel = 0; tbar.ZIndex = 7; tbar.Parent = tile
 		local nm = Instance.new("TextLabel")
-		nm.Position = UDim2.fromOffset(4, 50); nm.Size = UDim2.new(1, -8, 0, 24); nm.BackgroundTransparency = 1
+		nm.Position = UDim2.fromOffset(4, 34); nm.Size = UDim2.new(1, -8, 0, 26); nm.BackgroundTransparency = 1
 		nm.Font = Enum.Font.GothamBold; nm.TextSize = 13; nm.TextColor3 = Color3.fromRGB(240, 240, 245)
 		nm.Text = info and info.name or id; nm.TextScaled = true; nm.ZIndex = 7; nm.Parent = tile
 		local rr = Instance.new("TextLabel")
-		rr.Position = UDim2.fromOffset(4, 76); rr.Size = UDim2.new(1, -8, 0, 16); rr.BackgroundTransparency = 1
+		rr.Position = UDim2.fromOffset(4, 64); rr.Size = UDim2.new(1, -8, 0, 16); rr.BackgroundTransparency = 1
 		rr.Font = Enum.Font.Gotham; rr.TextSize = 11; rr.TextColor3 = col
 		rr.Text = info and invData.catalog.rarities[info.rarity].name or ""; rr.TextScaled = true; rr.ZIndex = 7; rr.Parent = tile
 	end

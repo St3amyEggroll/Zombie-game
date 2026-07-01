@@ -88,7 +88,7 @@ AnimationConfig.Shake = {
 }
 
 -- ===== ANIMATION IDS ===== (paste the rbxassetid number; "" = none)
--- Played on the CHARACTER. "Hold" makes the character pose with the gun; "Reload" plays on R.
+-- Played on the CHARACTER. "Hold" makes the character pose with the gun. (No reload — ammo is infinite.)
 AnimationConfig.Weapons = {
 	pistol = { Hold = "", Reload = "" },
 	ak47   = { Hold = "", Reload = "" },

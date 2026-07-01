@@ -1,57 +1,44 @@
 --!nonstrict
 -- AutoShootController.lua — toggle for auto-fire. When ON (default), your gun automatically shoots any
--- zombie the auto-aim is locked onto (no need to hold the mouse); when OFF you fire manually. Shows a
--- green "AUTO: ON" / red "AUTO: OFF" button that sits right above the wave number (the RoundLabel).
--- Press T or click the button to toggle. Other code reads AutoShootController.IsOn().
+-- zombie the auto-aim is locked onto (no need to hold the mouse); when OFF you fire manually.
+-- A small pill sits bottom-right: press T or click it to toggle. Other code reads AutoShootController.IsOn().
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local AutoShootController = {}
 
 -- ===== TUNABLES =====
 local TOGGLE_KEY = Enum.KeyCode.T
-local ON_COLOR   = Color3.fromRGB(55, 180, 75)
-local OFF_COLOR  = Color3.fromRGB(200, 55, 55)
-local GAP        = 6  -- px above the wave number
-local BTN_H      = 32 -- button height (px)
+
+-- ===== STYLE (shared design system) =====
+local COL_PANEL    = Color3.fromRGB(22, 24, 30)
+local COL_TEXT     = Color3.fromRGB(238, 240, 245)
+local COL_TEXT_DIM = Color3.fromRGB(150, 156, 168)
+local COL_ACCENT   = Color3.fromRGB(87, 196, 116)
+local COL_OFF      = Color3.fromRGB(110, 115, 128)
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 local on = true -- default ON
-local button
-local roundLabelCache
+local button, dot, label
 
 function AutoShootController.IsOn(): boolean
 	return on
 end
 
 local function refresh()
-	if button then
-		button.Text = on and "AUTO: ON" or "AUTO: OFF"
-		button.BackgroundColor3 = on and ON_COLOR or OFF_COLOR
+	if not button then
+		return
 	end
+	dot.BackgroundColor3 = on and COL_ACCENT or COL_OFF
+	label.Text = on and "AUTO FIRE  ·  ON" or "AUTO FIRE  ·  OFF"
+	label.TextColor3 = on and COL_TEXT or COL_TEXT_DIM
 end
 
 local function setOn(v: boolean)
 	on = v
 	refresh()
-end
-
--- The wave-number label (cached; re-found if it's destroyed/restyled).
-local function findRoundLabel()
-	if roundLabelCache and roundLabelCache.Parent then
-		return roundLabelCache
-	end
-	for _, d in playerGui:GetDescendants() do
-		if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Name == "RoundLabel" then
-			roundLabelCache = d
-			return d
-		end
-	end
-	roundLabelCache = nil
-	return nil
 end
 
 local function build()
@@ -64,21 +51,55 @@ local function build()
 
 	button = Instance.new("TextButton")
 	button.Name = "AutoShootButton"
-	button.AnchorPoint = Vector2.new(0, 0)
-	button.Size = UDim2.fromOffset(150, BTN_H)
-	button.Position = UDim2.new(1, -270, 1, -130) -- default; follow() repositions it above the wave number
-	button.Font = Enum.Font.GothamBold
-	button.TextScaled = true
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.AnchorPoint = Vector2.new(1, 1)
+	button.Position = UDim2.new(1, -16, 1, -16)
+	button.Size = UDim2.fromOffset(170, 38)
+	button.BackgroundColor3 = COL_PANEL
+	button.BackgroundTransparency = 0.15
+	button.BorderSizePixel = 0
+	button.Text = ""
 	button.AutoButtonColor = true
 	button.Parent = gui
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 8)
+	c.CornerRadius = UDim.new(0, 10)
 	c.Parent = button
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 5)
-	pad.PaddingBottom = UDim.new(0, 5)
-	pad.Parent = button
+	local s = Instance.new("UIStroke")
+	s.Color = Color3.fromRGB(255, 255, 255)
+	s.Transparency = 0.92
+	s.Parent = button
+
+	dot = Instance.new("Frame")
+	dot.Name = "Dot"
+	dot.AnchorPoint = Vector2.new(0, 0.5)
+	dot.Position = UDim2.new(0, 14, 0.5, 0)
+	dot.Size = UDim2.fromOffset(9, 9)
+	dot.BorderSizePixel = 0
+	dot.Parent = button
+	local dc = Instance.new("UICorner")
+	dc.CornerRadius = UDim.new(1, 0)
+	dc.Parent = dot
+
+	label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Position = UDim2.fromOffset(32, 0)
+	label.Size = UDim2.new(1, -40, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = button
+
+	local hint = Instance.new("TextLabel")
+	hint.Name = "Hint"
+	hint.AnchorPoint = Vector2.new(1, 0.5)
+	hint.Position = UDim2.new(1, -12, 0.5, 0)
+	hint.Size = UDim2.fromOffset(20, 16)
+	hint.BackgroundTransparency = 1
+	hint.Font = Enum.Font.GothamBold
+	hint.TextSize = 11
+	hint.TextColor3 = COL_TEXT_DIM
+	hint.Text = "T"
+	hint.Parent = button
 
 	button.Activated:Connect(function()
 		setOn(not on)
@@ -86,21 +107,8 @@ local function build()
 	refresh()
 end
 
--- Keep the button sitting right above the wave number, matching its width.
-local function follow()
-	if not button then
-		return
-	end
-	local rl = findRoundLabel()
-	if rl and rl.AbsoluteSize.X > 0 then
-		button.Size = UDim2.fromOffset(math.max(120, rl.AbsoluteSize.X), BTN_H)
-		button.Position = UDim2.fromOffset(rl.AbsolutePosition.X, rl.AbsolutePosition.Y - BTN_H - GAP)
-	end
-end
-
 function AutoShootController.Start()
 	build()
-	RunService.RenderStepped:Connect(follow)
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then
 			return

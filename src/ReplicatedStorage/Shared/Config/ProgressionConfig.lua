@@ -20,8 +20,8 @@ ProgressionConfig.MaxLevel    = 100
 ProgressionConfig.TokensPerLevel = 1  -- unlock tokens granted on each level-up
 
 -- ===== UNLOCK CATALOG ===== (token cost to permanently unlock for future runs)
--- Weapons are bought with cash in the shop (ShopConfig); meta token-unlocks come in a later phase.
-ProgressionConfig.WeaponUnlocks = {}   -- (cash shop handles weapons now; meta unlocks come in a later phase)
+-- Weapons come from the LOBBY (cases -> tier loadout); meta token-unlocks may come in a later phase.
+ProgressionConfig.WeaponUnlocks = {}
 ProgressionConfig.PerkUnlocks   = {}
 
 -- ===== CURVE HELPERS (pure; tunables above drive them) =====

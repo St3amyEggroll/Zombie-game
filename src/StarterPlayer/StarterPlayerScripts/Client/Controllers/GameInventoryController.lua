@@ -16,9 +16,9 @@ local GameInventoryController = {}
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local ACCENT = Color3.fromRGB(120, 220, 120)
-local CARD = Color3.fromRGB(24, 24, 32)
-local DIM = Color3.fromRGB(70, 70, 82)
+local ACCENT = Color3.fromRGB(87, 196, 116)
+local CARD = Color3.fromRGB(31, 34, 42)
+local DIM = Color3.fromRGB(64, 68, 80)
 
 local data = nil
 local activeTab = "weapons"
@@ -34,16 +34,16 @@ gui.Parent = playerGui
 
 local openBtn = Instance.new("TextButton")
 openBtn.Position = UDim2.fromOffset(16, 16); openBtn.Size = UDim2.fromOffset(150, 40)
-openBtn.BackgroundColor3 = Color3.fromRGB(40, 44, 60); openBtn.BorderSizePixel = 0
-openBtn.Font = Enum.Font.GothamBlack; openBtn.TextSize = 16; openBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
-openBtn.Text = "🎒 INVENTORY"; openBtn.Parent = gui; corner(openBtn, 10)
+openBtn.BackgroundColor3 = Color3.fromRGB(22, 24, 30); openBtn.BorderSizePixel = 0
+openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 14; openBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+openBtn.Text = "INVENTORY"; openBtn.Parent = gui; corner(openBtn, 10)
 local obStroke = Instance.new("UIStroke"); obStroke.Color = ACCENT; obStroke.Thickness = 1.3; obStroke.Transparency = 0.4; obStroke.Parent = openBtn
 
 -- Potion drop toast.
 local toast = Instance.new("TextLabel")
 toast.AnchorPoint = Vector2.new(0.5, 0); toast.Position = UDim2.new(0.5, 0, 0, 70); toast.Size = UDim2.fromOffset(320, 40)
-toast.BackgroundColor3 = Color3.fromRGB(20, 22, 30); toast.BackgroundTransparency = 0.1; toast.BorderSizePixel = 0
-toast.Font = Enum.Font.GothamBold; toast.TextSize = 16; toast.TextColor3 = Color3.fromRGB(255, 225, 120)
+toast.BackgroundColor3 = Color3.fromRGB(22, 24, 30); toast.BackgroundTransparency = 0.05; toast.BorderSizePixel = 0
+toast.Font = Enum.Font.GothamBold; toast.TextSize = 16; toast.TextColor3 = Color3.fromRGB(235, 190, 85)
 toast.Text = ""; toast.Visible = false; toast.Parent = gui; corner(toast, 8)
 
 local toastToken = 0
@@ -61,7 +61,7 @@ end
 
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.fromOffset(680, 440); panel.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
+panel.Size = UDim2.fromOffset(680, 440); panel.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
 panel.BackgroundTransparency = 0.03; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
 corner(panel, 16)
 local pStroke = Instance.new("UIStroke"); pStroke.Color = ACCENT; pStroke.Thickness = 2; pStroke.Transparency = 0.5; pStroke.Parent = panel
@@ -73,7 +73,7 @@ title.Text = "INVENTORY"; title.Parent = panel
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.AnchorPoint = Vector2.new(1, 0); closeBtn.Position = UDim2.new(1, -12, 0, 12); closeBtn.Size = UDim2.fromOffset(32, 32)
-closeBtn.BackgroundColor3 = Color3.fromRGB(210, 70, 70); closeBtn.Font = Enum.Font.GothamBlack; closeBtn.TextSize = 20
+closeBtn.BackgroundColor3 = Color3.fromRGB(224, 82, 82); closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16
 closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255); closeBtn.Text = "✕"; closeBtn.Parent = panel; corner(closeBtn, 8)
 
 local nav = Instance.new("Frame")
@@ -87,9 +87,9 @@ local function navButton(id, text)
 	corner(b, 8); navBtns[id] = b
 	return b
 end
-navButton("weapons", "🔫  Weapons")
-navButton("cases", "📦  Cases")
-navButton("potions", "🧪  Potions")
+navButton("weapons", "Weapons")
+navButton("cases", "Cases")
+navButton("potions", "Potions")
 
 local hint = Instance.new("TextLabel")
 hint.AnchorPoint = Vector2.new(0.5, 1); hint.Position = UDim2.new(0.5, 78, 1, -8); hint.Size = UDim2.fromOffset(480, 18)
@@ -98,7 +98,7 @@ hint.Text = "Equip weapons & open cases in the LOBBY. Potions are usable here.";
 
 local content = Instance.new("ScrollingFrame")
 content.Position = UDim2.fromOffset(178, 52); content.Size = UDim2.fromOffset(486, 350)
-content.BackgroundColor3 = Color3.fromRGB(12, 14, 22); content.BackgroundTransparency = 0.2; content.BorderSizePixel = 0
+content.BackgroundColor3 = Color3.fromRGB(17, 19, 24); content.BackgroundTransparency = 0.2; content.BorderSizePixel = 0
 content.ScrollBarThickness = 6; content.CanvasSize = UDim2.new(); content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 content.Parent = panel; corner(content, 12)
 local contentPad = Instance.new("UIPadding")
@@ -114,7 +114,7 @@ end
 
 local function rowCard(height)
 	local f = Instance.new("Frame")
-	f.Size = UDim2.new(1, 0, 0, height); f.BackgroundColor3 = Color3.fromRGB(26, 28, 40); f.BorderSizePixel = 0; f.Parent = content
+	f.Size = UDim2.new(1, 0, 0, height); f.BackgroundColor3 = Color3.fromRGB(31, 34, 42); f.BorderSizePixel = 0; f.Parent = content
 	corner(f, 8)
 	return f
 end
@@ -135,7 +135,7 @@ local function renderWeapons()
 		label(card, 12, 60, "Tier " .. slot, Color3.fromRGB(150, 160, 175), 13)
 		if id and id ~= "" and cat[id] then
 			local w = cat[id]
-			label(card, 78, 160, "🔫 " .. w.name, Color3.fromRGB(240, 240, 245), 16)
+			label(card, 78, 160, w.name, Color3.fromRGB(240, 240, 245), 16)
 			local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
 			label(card, 250, 230, ("DMG %s  ·  %s/s  ·  ~%d DPS"):format(tostring(w.damage), tostring(w.fireRate), math.floor(dps + 0.5)),
 				Color3.fromRGB(170, 190, 175), 13, Enum.Font.Gotham)
@@ -151,7 +151,7 @@ local function renderCases()
 		local count = data.cases[caseId] or 0
 		if count > 0 then any = true end
 		local card = rowCard(48)
-		label(card, 12, 260, "📦 " .. disp.name, Color3.fromRGB(240, 240, 245), 16)
+		label(card, 12, 260, disp.name, Color3.fromRGB(240, 240, 245), 16)
 		label(card, 300, 160, "Owned: " .. count, Color3.fromRGB(180, 190, 205), 14, Enum.Font.Gotham)
 	end
 	if not any then
@@ -166,7 +166,7 @@ local function renderPotions()
 		if count > 0 then
 			any = true
 			local card = rowCard(54)
-			label(card, 12, 200, "🧪 " .. disp.name, Color3.fromRGB(240, 240, 245), 16)
+			label(card, 12, 200, disp.name, Color3.fromRGB(240, 240, 245), 16)
 			label(card, 12, 440, disp.desc, Color3.fromRGB(160, 170, 185), 11, Enum.Font.Gotham).Position = UDim2.fromOffset(12, 30)
 			label(card, 220, 90, "x" .. count, Color3.fromRGB(200, 210, 225), 15)
 			local use = Instance.new("TextButton")
@@ -178,7 +178,7 @@ local function renderPotions()
 				local fx = (potId == "xp" and "2× run XP this run!")
 					or (potId == "luck" and "better buff odds this run!")
 					or "used!"
-				showToast("🧪 " .. disp.name .. " — " .. fx)
+				showToast(disp.name .. " — " .. fx)
 			end)
 		end
 	end
@@ -226,7 +226,7 @@ function GameInventoryController.Start()
 	end)
 	Remotes.Get("PotionDropped").OnClientEvent:Connect(function(potionId)
 		local name = data and data.catalog and data.catalog.potions[potionId] and data.catalog.potions[potionId].name or "a potion"
-		showToast("🧪 Elite drop: " .. name .. "!")
+		showToast("Elite drop: " .. name .. "!")
 	end)
 	Remotes.Get("InvSnapshot"):FireServer() -- ask for our snapshot on start
 	print("[GameInventoryController] started")
