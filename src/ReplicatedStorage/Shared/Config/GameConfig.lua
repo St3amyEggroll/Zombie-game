@@ -78,6 +78,12 @@ GameConfig.Difficulties = {
 GameConfig.DefaultDifficulty = "nightmare"  -- used in Studio / if the lobby didn't send one
 GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for completing (winning) a run
 
+-- Progression: difficulties unlock in ORDER (beat Easy → Medium unlocks, etc.); beating a world's LAST
+-- difficulty (nightmare) unlocks the next World. Only Forest exists so far.
+GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare" }
+GameConfig.Worlds          = { "forest" }
+GameConfig.DefaultMap      = "forest"
+
 -- ===== MATCH FLOW =====
 GameConfig.LobbyCountdown     = 5      -- seconds in lobby before a match auto-starts
 GameConfig.MinPlayersToStart  = 1      -- solo-playable

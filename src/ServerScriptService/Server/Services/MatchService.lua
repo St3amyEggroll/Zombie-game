@@ -50,6 +50,7 @@ local state = {
 	phase = "Lobby",       -- Lobby | Playing | RoundBreak
 	round = 0,             -- the current SHARED wave
 	difficulty = nil,      -- "easy" | "medium" | "hard" | "nightmare" (set when the run starts)
+	map = nil,             -- which world this run is (e.g. "forest")
 	maxWave = 0,           -- the difficulty's final wave — clearing it wins the run
 	zombiesRemaining = 0,
 	zombiesAlive = 0,
@@ -238,6 +239,7 @@ local function winRun()
 		if ps and ps.inMatch then
 			ps.inMatch = false
 			DataService.AddMoney(player, GameConfig.VictoryBonusCoins)
+			DataService.MarkCompleted(player, state.map or GameConfig.DefaultMap, state.difficulty) -- unlock the next difficulty/world
 			local summary = bankRun(player, ps)
 			summary.win = true
 			summary.money = (summary.money or 0) + GameConfig.VictoryBonusCoins
@@ -306,6 +308,7 @@ runMatch = function()
 	ZombieService.ClearAll()
 	state.round = 0
 	state.difficulty = nil
+	state.map = nil
 	state.maxWave = 0
 	state.zombiesAlive = 0
 	state.zombiesRemaining = 0
@@ -348,9 +351,12 @@ local function handleArrival(player: Player)
 	end)
 	if ok and typeof(joinData) == "table" and typeof(joinData.TeleportData) == "table" then
 		startRun = joinData.TeleportData.startRun == true
-		-- The lobby sends the chosen difficulty; the first player to start the run sets it for the server.
+		-- The lobby sends the chosen map + difficulty; the first player to start the run sets them.
 		if startRun and not state.difficulty and typeof(joinData.TeleportData.difficulty) == "string" then
 			state.difficulty = joinData.TeleportData.difficulty
+			if typeof(joinData.TeleportData.map) == "string" then
+				state.map = joinData.TeleportData.map
+			end
 		end
 	end
 	if startRun then

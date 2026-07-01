@@ -41,6 +41,7 @@ local TEMPLATE = {
 	loadout      = { "pistol" },      -- equipped, up to LOADOUT_SLOTS (slot 1 = your starter)
 	crates       = {},                -- unopened crate rarities, e.g. { "common", "rare" }
 	bestWave     = 0,
+	completed    = {},                -- ["forest:easy"] = true — difficulties beaten (drives unlocks)
 	stats        = { totalKills = 0, matchesPlayed = 0 },
 	cosmetics    = {},
 	settings     = { sfx = true, music = true, lowGfx = false },
@@ -294,6 +295,18 @@ function DataService.UpdateBestWave(player: Player, wave: number): boolean
 		return true
 	end
 	return false
+end
+
+-- Mark a (world, difficulty) as beaten — this is what unlocks the next difficulty / next world.
+function DataService.MarkCompleted(player: Player, world: string, difficulty: string)
+	local data = getData(player)
+	if data then
+		if typeof(data.completed) ~= "table" then
+			data.completed = {}
+		end
+		data.completed[world .. ":" .. difficulty] = true
+		markDirty(player)
+	end
 end
 
 function DataService.IncrementStat(player: Player, statKey: string, amount: number)
