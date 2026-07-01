@@ -62,9 +62,10 @@ local DEFINITIONS: { [string]: string } = {
 	ConsumePotion     = "RemoteEvent",     -- C->S: (potionId) use a potion (applies its run effect; once per type per run)
 	PotionDropped     = "RemoteEvent",     -- S->C: (potionId) an elite zombie dropped a potion (toast)
 
-	-- GunLadderService (in-run tier progression: start at tier 1, buy up your lobby loadout)
-	BuyNextGun        = "RemoteEvent",     -- C->S: buy the next gun on your ladder (replaces the current one)
-	GunLadder         = "RemoteEvent",     -- S->C: ({ name, price } for the next gun, or nil when maxed)
+	-- Down / Revive (co-op: at 0 HP with teammates up you go DOWNED instead of dying; they revive you)
+	Revive            = "RemoteEvent",     -- C->S: (targetUserId, holding: boolean) start/stop a revive hold
+	ReviveProgress    = "RemoteEvent",     -- S->C: (targetUserId, progress 0..1) — drives the revive bar
+	DownedChanged     = "RemoteEvent",     -- S->C broadcast: (userId, isDowned, bleedoutEndsAt)
 }
 
 local cache: { [string]: Instance } = {}

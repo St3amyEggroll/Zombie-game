@@ -89,7 +89,7 @@ GameConfig.FalloffMinMult = 0.45 -- damage multiplier at/after FalloffEnd
 
 -- ===== RATE LIMITS (token bucket, max requests/sec per player) =====
 GameConfig.RateLimits = {
-	Fire = 20, Buy = 6, Interact = 8, Sprint = 10,
+	Fire = 20, Buy = 6, Interact = 8, Sprint = 10, Revive = 10,
 }
 
 -- ===== ELITE (buffed) ZOMBIES ===== a small chance any spawned zombie is an "elite": tougher, glows
@@ -107,9 +107,13 @@ GameConfig.PotionEffects = {
 	regenBonus  = 0.5,  -- Regen Potion: +50% health regen speed for the rest of the run
 }
 
--- ===== GUN LADDER ===== you START every run with your TIER 1 gun and BUY your way up your equipped
--- lobby loadout with in-run cash ("NEXT GUN" button). Buying REPLACES your current gun — one gun at a
--- time. Price is keyed by the tier of the gun being bought.
-GameConfig.NextGunPrices = { [2] = 1500, [3] = 4000, [4] = 10000, [5] = 25000 }
+-- ===== DOWN / REVIVE (co-op) ===== at 0 HP with a teammate still UP you go DOWNED (crawl, untargetable)
+-- instead of dying; a teammate holds E next to you to revive. Solo death — or bleeding out, or the whole
+-- team being down — ends the run (back to the lobby).
+GameConfig.BleedoutSeconds = 30   -- seconds downed before you bleed out (run ends for you)
+GameConfig.ReviveSeconds   = 4    -- seconds a teammate must hold E to revive you
+GameConfig.ReviveRange     = 6    -- studs the reviver must stay within
+GameConfig.ReviveHealthPct = 0.5  -- revived players come back at this fraction of max health
+GameConfig.DownedWalkSpeed = 4    -- crawl speed while downed
 
 return GameConfig

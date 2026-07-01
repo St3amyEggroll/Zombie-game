@@ -82,10 +82,35 @@ local function safeTeleport(placeId: number, player: Player, options: TeleportOp
 	return false
 end
 
--- The weapons a player brings into a run = whatever they EQUIPPED in the lobby (their tierLoadout, slots
--- 1..5 in order). DebugUnlockAllWeapons overrides with every weapon. Always yields at least the pistol so
--- nobody spawns unarmed. Read from the persisted profile (DataService), which the lobby wrote before teleport.
-local function equippedLoadoutFor(player: Player): { string }
+-- THE ONE GUN a player brings into a run = whatever they SELECTED in the lobby (data.selectedWeapon).
+-- No in-run gun buying, no ladder — just the gun you picked. Migration: old saves without selectedWeapon
+-- fall back to the best gun in their legacy tierLoadout, then the pistol. Read from the persisted profile
+-- (DataService), which the lobby wrote before teleport.
+local function selectedWeaponFor(player: Player): string
+	-- Just teleported in: WAIT for the profile (DataService.WaitFor always resolves — on DataStore failure
+	-- it falls back to a template — so this can't hang).
+	local data = DataService.Get(player) or DataService.WaitFor(player)
+	if data then
+		local sel = data.selectedWeapon
+		if typeof(sel) == "string" and WeaponConfig[sel] then
+			return sel
+		end
+		-- Legacy migration: pick the highest-tier gun from the old tierLoadout.
+		if typeof(data.tierLoadout) == "table" then
+			for slot = 5, 1, -1 do
+				local id = data.tierLoadout[slot]
+				if typeof(id) == "string" and WeaponConfig[id] then
+					return id
+				end
+			end
+		end
+	end
+	return "pistol"
+end
+
+-- Debug: own every weapon (number keys switch) for Studio testing; otherwise exactly ONE gun — the
+-- lobby-selected one.
+local function runWeaponsFor(player: Player): { string }
 	if GameConfig.DebugUnlockAllWeapons then
 		local all = { "pistol" }
 		for id in WeaponConfig do
@@ -95,38 +120,20 @@ local function equippedLoadoutFor(player: Player): { string }
 		end
 		return all
 	end
-	-- Just teleported in: WAIT for the profile (DataService.WaitFor always resolves — on DataStore failure
-	-- it falls back to a template — so this can't hang, and a slow load can't strand them pistol-only).
-	local data = DataService.Get(player) or DataService.WaitFor(player)
-	local list, seen = {}, {}
-	if data and typeof(data.tierLoadout) == "table" then
-		for slot = 1, 5 do
-			local id = data.tierLoadout[slot]
-			if typeof(id) == "string" and id ~= "" and WeaponConfig[id] and not seen[id] then
-				seen[id] = true
-				table.insert(list, id)
-			end
-		end
-	end
-	if #list == 0 then
-		list = { "pistol" }
-	end
-	return list
+	return { selectedWeaponFor(player) }
 end
 
 local function makePlayerState(player: Player)
-	local ladder = equippedLoadoutFor(player) -- the lobby loadout in tier order (or all, if debug-unlocked)
+	local weapons = runWeaponsFor(player) -- ONE gun: whatever was selected in the lobby
 	return {
 		userId = player.UserId,
 		inMatch = false,                          -- false = lobby/menu; true = in the run
-		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run; guns + traps)
-		-- GUN LADDER: you start every run holding your TIER 1 gun and buy up the ladder with cash.
-		-- Exactly ONE gun is owned/equipped at a time; buying REPLACES it with the next ladder entry.
-		gunLadder = ladder,
-		ladderIndex = 1,
-		ownedWeapons = { ladder[1] or "pistol" },
-		equippedWeapon = ladder[1] or "pistol",
+		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral, reset every run; spent on traps)
+		ownedWeapons = weapons,
+		equippedWeapon = weapons[1] or "pistol",
 		isDead = false,
+		isDowned = false,                         -- at 0 HP with teammates up: crawling, waiting for a revive
+		downedUntil = 0,                          -- os.clock() the bleedout ends
 		health = GameConfig.PlayerMaxHealth,
 		maxHealth = GameConfig.PlayerMaxHealth,
 		kills = 0,
@@ -143,8 +150,8 @@ local function makePlayerState(player: Player)
 	}
 end
 
--- Reset a player's PER-RUN ephemeral state (the moment a run begins). The gun ladder restarts at TIER 1
--- (progress up the ladder is never saved); in-wave cash, kills, XP, buffs and potions all reset too.
+-- Reset a player's PER-RUN ephemeral state (the moment a run begins): in-wave cash, kills, XP, buffs and
+-- potions all reset; the gun is re-read from the lobby selection.
 local function resetRunState(player: Player, ps)
 	ps.points = GameConfig.StartingPoints
 	ps.kills = 0
@@ -158,11 +165,11 @@ local function resetRunState(player: Player, ps)
 	ps.usedPotions = {}
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
 	ps.isDead = false
+	ps.isDowned = false
+	ps.downedUntil = 0
 	ps.health = GameConfig.PlayerMaxHealth
 	ps.maxHealth = GameConfig.PlayerMaxHealth
-	ps.ladderIndex = 1
-	ps.ownedWeapons = { ps.gunLadder[1] or "pistol" }
-	ps.equippedWeapon = ps.gunLadder[1] or "pistol"
+	ps.equippedWeapon = ps.ownedWeapons[1] or "pistol"
 end
 
 -- Zombies owed this wave (CLAUDE.md §8) — scaled by how many players are in the run.
@@ -195,27 +202,39 @@ end
 -- count. Returns a small summary table for the lobby's end-of-run screen.
 bankRun = function(player: Player, ps)
 	local wave = state.round
-	-- Coins were already granted live (ProgressionService); here we just record best wave + match count and
-	-- report what this run earned. Save makes sure it all persists.
+	-- Coins were already granted live (ProgressionService); here we just record best wave + match count.
+	-- No async save here: the LIVE path does a BLOCKING SaveNow right before the teleport (an async save
+	-- here would just be an in-flight write that SaveNow has to wait out). Studio saves via autosave.
 	DataService.UpdateBestWave(player, wave)
 	DataService.IncrementStat(player, "matchesPlayed", 1)
-	DataService.Save(player)
+	if not LIVE then
+		DataService.Save(player)
+	end
 	return { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0 }
 end
 
 -- Send a player back to the lobby PLACE (published only): blocking-save so the bank lands first, then
 -- teleport carrying the run summary for the lobby menu to show.
 local function teleportToLobby(player: Player, summary)
-	DataService.SaveNow(player) -- truly blocking: the bank is written before we leave this server
+	DataService.SaveNow(player) -- blocking (10s-capped): the bank is written before we leave this server
 	local options = Instance.new("TeleportOptions")
 	options:SetTeleportData({ summary = summary })
-	if not safeTeleport(Places.Lobby, player, options) then
-		-- Teleport totally failed (throttle/outage): don't leave them character-less and soft-locked —
-		-- their run was already banked, so just drop them into a fresh run on this server.
-		warn(("[MatchService] lobby teleport failed for %s — restarting a run instead"):format(player.Name))
-		if player.Parent then
-			startRunFor(player)
+	-- Up to 3 ROUNDS of safeTeleport (each itself retries with backoff) before giving up — a transient
+	-- teleport outage must not quietly dump a dead player back into a run (that reads as "the lobby
+	-- return is broken"). Only after everything fails do we restart a run so they're never soft-locked.
+	for round = 1, 3 do
+		if not player.Parent then
+			return -- they left
 		end
+		if safeTeleport(Places.Lobby, player, options) then
+			return
+		end
+		warn(("[MatchService] lobby teleport round %d failed for %s"):format(round, player.Name))
+		task.wait(2)
+	end
+	warn(("[MatchService] ALL lobby teleports failed for %s — restarting a run as a last resort"):format(player.Name))
+	if player.Parent then
+		startRunFor(player)
 	end
 end
 
@@ -239,6 +258,7 @@ spawnCharacter = function(player: Player)
 				return -- already left the run (e.g. disconnected / teleporting)
 			end
 			p.isDead = true
+			p.isDowned = false
 			p.inMatch = false
 			local summary = bankRun(player, p)
 			if LIVE then
@@ -251,7 +271,62 @@ spawnCharacter = function(player: Player)
 					end
 				end)
 			end
+			-- If everyone left is DOWNED, nobody can revive them — end the run for them too.
+			MatchService.CheckTeamWipe()
 		end)
+	end
+end
+
+-- ===== DOWN / REVIVE SUPPORT ===== (the downed state itself lives in PlayerStateService)
+-- "Up" = in the run, alive, and not downed — i.e. capable of reviving someone.
+local function isUp(player: Player): boolean
+	local ps = state.players[player.UserId]
+	if not ps or not ps.inMatch or ps.isDowned then
+		return false
+	end
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	return hum ~= nil and hum.Health > 0
+end
+
+-- Does `player` have ANY other up teammate in the run? (Decides downed-vs-dead at 0 HP.)
+function MatchService.HasUpTeammate(player: Player): boolean
+	for _, other in Players:GetPlayers() do
+		if other ~= player and isUp(other) then
+			return true
+		end
+	end
+	return false
+end
+
+-- If NOBODY in the run is up (everyone downed/dead), nobody can revive anyone: force-kill the downed so
+-- their normal death path (bank + teleport to lobby) runs. Called when someone goes down or dies for real.
+function MatchService.CheckTeamWipe()
+	local anyInRun = false
+	for _, player in Players:GetPlayers() do
+		local ps = state.players[player.UserId]
+		if ps and ps.inMatch then
+			anyInRun = true
+			if isUp(player) then
+				return -- someone can still fight/revive; no wipe
+			end
+		end
+	end
+	if not anyInRun then
+		return
+	end
+	for _, player in Players:GetPlayers() do
+		local ps = state.players[player.UserId]
+		if ps and ps.inMatch then
+			ps.isDowned = false
+			local char = player.Character
+			if char then
+				char:SetAttribute("Downed", nil)
+			end
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if hum and hum.Health > 0 then
+				hum.Health = 0 -- Died fires -> banks the run + teleports them to the lobby
+			end
+		end
 	end
 end
 
@@ -361,7 +436,7 @@ startRunFor = function(player: Player)
 		return -- already in the run
 	end
 	ps.inMatch = true
-	ps.gunLadder = equippedLoadoutFor(player) -- re-read the lobby loadout (it may have changed between runs)
+	ps.ownedWeapons = runWeaponsFor(player) -- re-read the lobby selection (it may have changed between runs)
 	resetRunState(player, ps)
 	spawnCharacter(player)
 	startMatchIfNeeded()

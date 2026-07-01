@@ -229,13 +229,12 @@ end)
 local TweenService = game:GetService("TweenService")
 local InvRequest = remotes:WaitForChild("InvRequest")
 local InvSync    = remotes:WaitForChild("InvSync")
-local EquipTier  = remotes:WaitForChild("EquipTier")
+local SelectWeapon = remotes:WaitForChild("SelectWeapon")
 local OpenCase   = remotes:WaitForChild("OpenCase")
 local CaseResult = remotes:WaitForChild("CaseResult")
 
-local invData = nil          -- latest snapshot: { catalog, owned, tierLoadout, cases, potions, coins }
+local invData = nil          -- latest snapshot: { catalog, owned, selected, cases, potions, coins }
 local activeTab = "weapons"
-local selectedTier = 1
 local rolling = false
 
 local BLACK = Color3.fromRGB(12, 13, 18)
@@ -399,34 +398,18 @@ casesTab.Size = UDim2.fromScale(1, 1); casesTab.BackgroundTransparency = 1; case
 local potionsTab = Instance.new("Frame")
 potionsTab.Size = UDim2.fromScale(1, 1); potionsTab.BackgroundTransparency = 1; potionsTab.Visible = false; potionsTab.Parent = content
 
--- ---------- WEAPONS TAB ----------
-local tierHint = Instance.new("TextLabel")
-tierHint.Position = UDim2.fromOffset(14, 10); tierHint.Size = UDim2.new(1, -28, 0, 18); tierHint.BackgroundTransparency = 1
-tierHint.Font = Enum.Font.GothamBold; tierHint.TextSize = 13; tierHint.TextXAlignment = Enum.TextXAlignment.Left
-tierHint.TextColor3 = Color3.fromRGB(170, 180, 195); tierHint.Text = "YOUR LOADOUT — one weapon per tier"; tierHint.Parent = weaponsTab
+-- ---------- WEAPONS TAB ---------- (all your guns; click ONE to select it — that's what you take into runs)
+local gunsHint = Instance.new("TextLabel")
+gunsHint.Position = UDim2.fromOffset(14, 10); gunsHint.Size = UDim2.new(1, -28, 0, 18); gunsHint.BackgroundTransparency = 1
+gunsHint.Font = Enum.Font.GothamBold; gunsHint.TextSize = 13; gunsHint.TextXAlignment = Enum.TextXAlignment.Left
+gunsHint.TextColor3 = Color3.fromRGB(170, 180, 195); gunsHint.Text = "YOUR GUNS — click one to select it for runs"; gunsHint.Parent = weaponsTab
 
-local tierRow = Instance.new("Frame")
-tierRow.Position = UDim2.fromOffset(14, 32); tierRow.Size = UDim2.new(1, -28, 0, 96); tierRow.BackgroundTransparency = 1; tierRow.Parent = weaponsTab
-local tierRowList = Instance.new("UIListLayout")
-tierRowList.FillDirection = Enum.FillDirection.Horizontal; tierRowList.Padding = UDim.new(0, 8)
-tierRowList.HorizontalAlignment = Enum.HorizontalAlignment.Left; tierRowList.Parent = tierRow
-
-local eligibleHint = Instance.new("TextLabel")
-eligibleHint.Position = UDim2.fromOffset(14, 140); eligibleHint.Size = UDim2.new(1, -28, 0, 18); eligibleHint.BackgroundTransparency = 1
-eligibleHint.Font = Enum.Font.GothamBold; eligibleHint.TextSize = 13; eligibleHint.TextXAlignment = Enum.TextXAlignment.Left
-eligibleHint.TextColor3 = Color3.fromRGB(170, 180, 195); eligibleHint.Text = ""; eligibleHint.Parent = weaponsTab
-
-local eligibleScroll = Instance.new("ScrollingFrame")
-eligibleScroll.Position = UDim2.fromOffset(14, 162); eligibleScroll.Size = UDim2.new(1, -28, 1, -174)
-eligibleScroll.BackgroundTransparency = 1; eligibleScroll.BorderSizePixel = 0; eligibleScroll.ScrollBarThickness = 6
-eligibleScroll.CanvasSize = UDim2.new(); eligibleScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; eligibleScroll.Parent = weaponsTab
-local eligibleGrid = Instance.new("UIGridLayout")
-eligibleGrid.CellSize = UDim2.fromOffset(120, 84); eligibleGrid.CellPadding = UDim2.fromOffset(10, 10); eligibleGrid.Parent = eligibleScroll
-
-local eligibleEmpty = Instance.new("TextLabel") -- shown when the selected tier has no owned weapons
-eligibleEmpty.Position = UDim2.fromOffset(14, 168); eligibleEmpty.Size = UDim2.new(1, -28, 0, 40); eligibleEmpty.BackgroundTransparency = 1
-eligibleEmpty.Font = Enum.Font.GothamBold; eligibleEmpty.TextSize = 15; eligibleEmpty.TextXAlignment = Enum.TextXAlignment.Left
-eligibleEmpty.TextColor3 = Color3.fromRGB(150, 155, 170); eligibleEmpty.Text = ""; eligibleEmpty.Visible = false; eligibleEmpty.Parent = weaponsTab
+local gunsScroll = Instance.new("ScrollingFrame")
+gunsScroll.Position = UDim2.fromOffset(14, 36); gunsScroll.Size = UDim2.new(1, -28, 1, -48)
+gunsScroll.BackgroundTransparency = 1; gunsScroll.BorderSizePixel = 0; gunsScroll.ScrollBarThickness = 6
+gunsScroll.CanvasSize = UDim2.new(); gunsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; gunsScroll.Parent = weaponsTab
+local gunsGrid = Instance.new("UIGridLayout")
+gunsGrid.CellSize = UDim2.fromOffset(122, 92); gunsGrid.CellPadding = UDim2.fromOffset(10, 10); gunsGrid.Parent = gunsScroll
 
 local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
 	local info = weaponInfo(weaponId)
@@ -454,73 +437,27 @@ local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
 	return card
 end
 
-local tierSlotCards = {}
 local function renderWeaponsTab()
 	if not invData then return end
-	for _, c in tierSlotCards do c:Destroy() end
-	tierSlotCards = {}
-	for slot = 1, invData.catalog.tierCount do
-		local equipped = invData.tierLoadout[slot]
-		local holder = Instance.new("TextButton")
-		holder.Size = UDim2.fromOffset(96, 96); holder.AutoButtonColor = false; holder.Text = ""; holder.BorderSizePixel = 0
-		holder.LayoutOrder = slot; holder.Parent = tierRow
-		local selected = (selectedTier == slot)
-		holder.BackgroundColor3 = selected and Color3.fromRGB(40, 46, 64) or Color3.fromRGB(22, 25, 36)
-		corner(holder, 8)
-		local hs = Instance.new("UIStroke"); hs.Color = selected and ACCENT or Color3.fromRGB(60, 64, 80)
-		hs.Thickness = selected and 2.5 or 1; hs.Parent = holder
-		local tl = Instance.new("TextLabel")
-		tl.Position = UDim2.fromOffset(0, 4); tl.Size = UDim2.new(1, 0, 0, 14); tl.BackgroundTransparency = 1
-		tl.Font = Enum.Font.GothamBold; tl.TextSize = 11; tl.TextColor3 = Color3.fromRGB(150, 160, 175); tl.Text = "TIER " .. slot; tl.Parent = holder
-		if equipped ~= "" and weaponInfo(equipped) then
-			local info = weaponInfo(equipped)
-			local col = rarityColor(info.rarity)
-			local rbar = Instance.new("Frame")
-			rbar.AnchorPoint = Vector2.new(0.5, 0); rbar.Position = UDim2.new(0.5, 0, 0, 30); rbar.Size = UDim2.fromOffset(40, 5)
-			rbar.BackgroundColor3 = col; rbar.BorderSizePixel = 0; rbar.Parent = holder
-			local rc2 = Instance.new("UICorner"); rc2.CornerRadius = UDim.new(1, 0); rc2.Parent = rbar
-			local nm = Instance.new("TextLabel")
-			nm.Position = UDim2.fromOffset(4, 46); nm.Size = UDim2.new(1, -8, 0, 40); nm.BackgroundTransparency = 1
-			nm.Font = Enum.Font.GothamBold; nm.TextSize = 12; nm.TextColor3 = Color3.fromRGB(235, 235, 245)
-			nm.Text = info.name; nm.TextScaled = true; nm.Parent = holder
-			attachTip(holder, function() return weaponTipLines(equipped) end) -- hover a filled slot → weapon stats
-		else
-			local em = Instance.new("TextLabel")
-			em.Position = UDim2.fromOffset(0, 40); em.Size = UDim2.new(1, 0, 0, 20); em.BackgroundTransparency = 1
-			em.Font = Enum.Font.Gotham; em.TextSize = 12; em.TextColor3 = Color3.fromRGB(120, 125, 140); em.Text = "Empty"; em.Parent = holder
-		end
-		holder.Activated:Connect(function()
-			selectedTier = slot
-			renderWeaponsTab()
-		end)
-		table.insert(tierSlotCards, holder)
-	end
-
-	-- Eligible owned weapons for the selected tier.
-	for _, c in eligibleScroll:GetChildren() do
+	for _, c in gunsScroll:GetChildren() do
 		if c:IsA("GuiObject") then c:Destroy() end
 	end
-	eligibleHint.Text = ("TIER %d WEAPONS — click one to equip in this slot"):format(selectedTier)
-	local any = false
-	local equippedHere = invData.tierLoadout[selectedTier]
+	-- Owned guns sorted by tier, the selected one highlighted.
+	local ids = {}
 	for _, id in invData.owned do
-		local info = weaponInfo(id)
-		if info and info.tier == selectedTier then
-			any = true
-			local isOn = (id == equippedHere)
-			weaponCard(eligibleScroll, id, isOn and "EQUIPPED" or (invData.catalog.rarities[info.rarity].name),
-				function()
-					if isOn then
-						EquipTier:FireServer({ slot = selectedTier, weaponId = "" }) -- toggle off
-					else
-						EquipTier:FireServer({ slot = selectedTier, weaponId = id })
-					end
-				end, isOn)
-		end
+		if weaponInfo(id) then table.insert(ids, id) end
 	end
-	eligibleEmpty.Visible = not any
-	if not any then
-		eligibleEmpty.Text = "No Tier " .. selectedTier .. " weapons yet — open cases to find some!"
+	table.sort(ids, function(a, b)
+		return (weaponInfo(a).tier or 0) < (weaponInfo(b).tier or 0)
+	end)
+	for _, id in ids do
+		local isSelected = (id == invData.selected)
+		weaponCard(gunsScroll, id, isSelected and "SELECTED" or (invData.catalog.rarities[weaponInfo(id).rarity].name),
+			function()
+				if not isSelected then
+					SelectWeapon:FireServer({ weaponId = id })
+				end
+			end, isSelected)
 	end
 end
 

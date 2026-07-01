@@ -94,10 +94,10 @@ local function onHeartbeat()
 	end
 	local character = localPlayer.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
+	if not humanoid or humanoid.Health <= 0 or character:GetAttribute("Downed") then
 		pendingShot = false
 		wasFiring = false
-		return
+		return -- dead or downed: no shooting
 	end
 
 	local autoFiring = AutoShootController.IsOn() and AimController.GetTarget() ~= nil

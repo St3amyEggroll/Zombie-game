@@ -113,9 +113,63 @@ local function onCharacterAdded(player: Player, character: Model)
 	end)
 end
 
+-- ===== DOWN / REVIVE =====
+-- At 0 HP with a teammate still UP, a player goes DOWNED instead of dying: crawl speed, untargetable
+-- (zombies skip the character's "Downed" attribute), bleeding out over GameConfig.BleedoutSeconds unless
+-- a teammate holds E within ReviveRange for ReviveSeconds. Solo deaths (or bleedout / team wipe) die
+-- normally, which banks the run and teleports to the lobby (MatchService's Died handler).
+
+-- reviveHolds[reviverUserId] = { target = Player, progress = seconds held so far }
+local reviveHolds: { [number]: any } = {}
+
+local function setDowned(player: Player, downed: boolean, bleedSecs: number?)
+	local character = player.Character
+	if character then
+		character:SetAttribute("Downed", downed and true or nil)
+	end
+	Remotes.Get("DownedChanged"):FireAllClients(player.UserId, downed, bleedSecs or 0)
+end
+
+local function enterDowned(player: Player, ps, humanoid: Humanoid)
+	ps.isDowned = true
+	ps.downedUntil = os.clock() + GameConfig.BleedoutSeconds
+	humanoid.Health = 1
+	humanoid.JumpHeight = 0
+	humanoid.JumpPower = 0
+	getRuntime(player).lastWalkSpeed = -1 -- heartbeat re-applies at crawl speed
+	setDowned(player, true, GameConfig.BleedoutSeconds)
+	MatchService.CheckTeamWipe() -- if this down means nobody is up, the run ends for everyone
+end
+
+local function reviveNow(player: Player, ps)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	ps.isDowned = false
+	ps.downedUntil = 0
+	if humanoid then
+		humanoid.Health = math.max(1, humanoid.MaxHealth * GameConfig.ReviveHealthPct)
+		humanoid.JumpHeight = 7.2 -- Roblox defaults
+		humanoid.JumpPower = 50
+	end
+	getRuntime(player).lastWalkSpeed = -1
+	setDowned(player, false)
+end
+
+-- Bleed out (or team wipe): leave the downed state and die for real — MatchService's Died handler then
+-- banks the run and returns them to the lobby.
+local function bleedOut(player: Player, ps)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	ps.isDowned = false
+	setDowned(player, false)
+	if humanoid then
+		humanoid.Health = 0
+	end
+end
+
 -- ===== PUBLIC API =====
 
--- Apply `amount` damage to a player from a validated source (zombies use this in Phase 2).
+-- Apply `amount` damage to a player from a validated source (zombies use this).
 -- `sourcePos` (optional) is where the hit came from — sent to the client so it can draw a directional
 -- hurt indicator pointing at the attacker.
 function PlayerStateService.Damage(player: Player, amount: number, source: string?, sourcePos: Vector3?)
@@ -127,7 +181,20 @@ function PlayerStateService.Damage(player: Player, amount: number, source: strin
 	if not humanoid or humanoid.Health <= 0 then
 		return
 	end
+	local ps = MatchService.GetPlayerState(player)
+	if ps and ps.isDowned then
+		return -- downed players can't be hit (they're already out of the fight)
+	end
 	getRuntime(player).lastDamage = os.clock()
+
+	-- The killing blow with a teammate still up → go DOWNED instead of dying (co-op only).
+	if ps and ps.inMatch and (humanoid.Health - amount) <= 0 and MatchService.HasUpTeammate(player) then
+		Remotes.Get("DamageTaken"):FireClient(player, amount, sourcePos)
+		damagedEvent:Fire(player, amount, source)
+		enterDowned(player, ps, humanoid)
+		return
+	end
+
 	humanoid.Health = math.max(0, humanoid.Health - amount)
 	-- HealthChanged connection fires the remote + syncs match state.
 	Remotes.Get("DamageTaken"):FireClient(player, amount, sourcePos)
@@ -188,31 +255,106 @@ local function onHeartbeat(dt: number)
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if humanoid and humanoid.Health > 0 then
 			local r = getRuntime(player)
+			local ps = MatchService.GetPlayerState(player)
 
-			-- Health regen after a quiet period (Regen Potion multiplies the rate for the run).
-			if humanoid.Health < humanoid.MaxHealth and (now - r.lastDamage) >= GameConfig.HealthRegenDelay then
-				local ps = MatchService.GetPlayerState(player)
-				local regenMult = (ps and ps.regenMult) or 1
-				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + GameConfig.HealthRegenRate * regenMult * step)
-			end
-
-			-- Sprint stamina.
-			local moving = humanoid.MoveDirection.Magnitude > 0.05
-			local baseSpeed = computeMoveSpeed(player)
-			local sprinting = r.sprintWanted and moving and r.stamina > 0
-			if sprinting then
-				r.stamina = math.max(0, r.stamina - GameConfig.SprintDrainPerSec * step)
+			if ps and ps.isDowned then
+				-- Downed: crawl speed, no regen, bleeding out on a timer.
+				if math.abs(GameConfig.DownedWalkSpeed - r.lastWalkSpeed) > 0.01 then
+					humanoid.WalkSpeed = GameConfig.DownedWalkSpeed
+					r.lastWalkSpeed = GameConfig.DownedWalkSpeed
+				end
+				if now >= ps.downedUntil then
+					bleedOut(player, ps)
+				end
 			else
-				r.stamina = math.min(GameConfig.SprintStaminaMax, r.stamina + GameConfig.SprintRegenPerSec * step)
-			end
+				-- Health regen after a quiet period (Regen Potion multiplies the rate for the run).
+				if humanoid.Health < humanoid.MaxHealth and (now - r.lastDamage) >= GameConfig.HealthRegenDelay then
+					local regenMult = (ps and ps.regenMult) or 1
+					humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + GameConfig.HealthRegenRate * regenMult * step)
+				end
 
-			local targetSpeed = sprinting and (baseSpeed * GameConfig.SprintMultiplier) or baseSpeed
-			if math.abs(targetSpeed - r.lastWalkSpeed) > 0.01 then
-				humanoid.WalkSpeed = targetSpeed
-				r.lastWalkSpeed = targetSpeed
+				-- Sprint stamina.
+				local moving = humanoid.MoveDirection.Magnitude > 0.05
+				local baseSpeed = computeMoveSpeed(player)
+				local sprinting = r.sprintWanted and moving and r.stamina > 0
+				if sprinting then
+					r.stamina = math.max(0, r.stamina - GameConfig.SprintDrainPerSec * step)
+				else
+					r.stamina = math.min(GameConfig.SprintStaminaMax, r.stamina + GameConfig.SprintRegenPerSec * step)
+				end
+
+				local targetSpeed = sprinting and (baseSpeed * GameConfig.SprintMultiplier) or baseSpeed
+				if math.abs(targetSpeed - r.lastWalkSpeed) > 0.01 then
+					humanoid.WalkSpeed = targetSpeed
+					r.lastWalkSpeed = targetSpeed
+				end
 			end
 		end
 	end
+
+	-- Revive holds: advance each active hold; validate every tick (both alive, target still downed, range).
+	for reviverUserId, hold in reviveHolds do
+		local reviver = Players:GetPlayerByUserId(reviverUserId)
+		local target = hold.target
+		local targetPs = target and target.Parent and MatchService.GetPlayerState(target)
+		local rChar = reviver and reviver.Character
+		local tChar = target and target.Character
+		local rRoot = rChar and rChar:FindFirstChild("HumanoidRootPart")
+		local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+		local rHum = rChar and rChar:FindFirstChildOfClass("Humanoid")
+		local rPs = reviver and MatchService.GetPlayerState(reviver)
+
+		local valid = reviver and targetPs and targetPs.isDowned
+			and rHum and rHum.Health > 0 and rPs and not rPs.isDowned
+			and rRoot and tRoot and (rRoot.Position - tRoot.Position).Magnitude <= GameConfig.ReviveRange
+		if not valid then
+			reviveHolds[reviverUserId] = nil
+			if reviver then
+				Remotes.Get("ReviveProgress"):FireClient(reviver, target and target.UserId or 0, 0)
+			end
+			if target and target.Parent then
+				Remotes.Get("ReviveProgress"):FireClient(target, target.UserId, 0)
+			end
+		else
+			hold.progress += step
+			local frac = math.clamp(hold.progress / GameConfig.ReviveSeconds, 0, 1)
+			Remotes.Get("ReviveProgress"):FireClient(reviver, target.UserId, frac)
+			Remotes.Get("ReviveProgress"):FireClient(target, target.UserId, frac)
+			if hold.progress >= GameConfig.ReviveSeconds then
+				reviveHolds[reviverUserId] = nil
+				reviveNow(target, targetPs)
+			end
+		end
+	end
+end
+
+-- ===== REVIVE REMOTE ===== (targetUserId, holding) — start/stop holding E on a downed teammate.
+local function onRevive(player: Player, targetUserId: any, holding: any)
+	if not SecurityService.Allow(player, "Revive") then
+		return
+	end
+	if holding ~= true then
+		reviveHolds[player.UserId] = nil
+		return
+	end
+	if typeof(targetUserId) ~= "number" then
+		return
+	end
+	local target = Players:GetPlayerByUserId(targetUserId)
+	if not target or target == player then
+		return
+	end
+	local targetPs = MatchService.GetPlayerState(target)
+	local myPs = MatchService.GetPlayerState(player)
+	if not targetPs or not targetPs.isDowned or not myPs or myPs.isDowned then
+		return
+	end
+	local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local tRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+	if not myRoot or not tRoot or (myRoot.Position - tRoot.Position).Magnitude > GameConfig.ReviveRange then
+		return
+	end
+	reviveHolds[player.UserId] = { target = target, progress = 0 }
 end
 
 -- ===== SPRINT REMOTE =====
@@ -244,9 +386,14 @@ function PlayerStateService.Start()
 	end)
 
 	Remotes.Get("Sprint").OnServerEvent:Connect(onSprint)
+	Remotes.Get("Revive").OnServerEvent:Connect(onRevive)
 	RunService.Heartbeat:Connect(onHeartbeat)
 
-	print("[PlayerStateService] started")
+	Players.PlayerRemoving:Connect(function(player)
+		reviveHolds[player.UserId] = nil
+	end)
+
+	print("[PlayerStateService] started (down/revive enabled)")
 end
 
 return PlayerStateService

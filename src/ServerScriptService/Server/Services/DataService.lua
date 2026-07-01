@@ -41,9 +41,9 @@ local TEMPLATE = {
 	loadout      = { "pistol" },      -- equipped, up to LOADOUT_SLOTS (slot 1 = your starter)
 	crates       = {},                -- unopened crate rarities, e.g. { "common", "rare" }
 	-- ===== LOBBY INVENTORY (managed by the LOBBY place; the game just preserves these on save) =====
-	tierLoadout  = { "pistol", "", "", "", "" }, -- equipped weapon per TIER slot (index 1..5; "" = empty)
+	selectedWeapon = "pistol",       -- THE one gun you carry into runs (picked in the lobby inventory)
 	cases        = { standard = 3 }, -- unopened cases by id -> count (3 free Standard Cases to start)
-	potions      = {},               -- owned potions by id -> count (UI placeholder for now)
+	potions      = {},               -- owned potions by id -> count (usable in-run)
 	bestWave     = 0,
 	completed    = {},                -- ["forest:easy"] = true — difficulties beaten (drives unlocks)
 	stats        = { totalKills = 0, matchesPlayed = 0 },
@@ -111,7 +111,7 @@ local function loadAsync(player: Player): any
 end
 
 -- MERGE-style write: the GAME place only owns some fields; the LOBBY place owns the inventory fields
--- (tierLoadout/cases/ownedWeapons). Writing the whole cached blob with SetAsync could clobber a lobby
+-- (selectedWeapon/cases/ownedWeapons). Writing the whole cached blob with SetAsync could clobber a lobby
 -- write that landed while our save was still retrying (case dupes / lost weapons) — so we UpdateAsync
 -- and only assign the fields this place actually mutates. Shared fields the game adds to during a run
 -- (lobbyMoney, potions) are ours to write here because a player is only ever in ONE place at a time and
@@ -127,9 +127,12 @@ local function saveAsync(player: Player): boolean
 		return true
 	end
 	-- A save is already in flight: WAIT for it instead of silently doing nothing — callers like the
-	-- before-teleport SaveNow depend on the data actually being written when this returns.
-	while s.saving do
+	-- before-teleport SaveNow depend on the data actually being written when this returns. Capped at 10s
+	-- so a hung DataStore call can never indefinitely delay a death/victory teleport.
+	local waited = 0
+	while s.saving and waited < 10 do
 		task.wait(0.1)
+		waited += 0.1
 	end
 	if not s.dirty then
 		return true -- the in-flight save (or an earlier one) already wrote everything current

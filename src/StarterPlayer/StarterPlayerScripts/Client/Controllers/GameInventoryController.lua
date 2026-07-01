@@ -94,7 +94,7 @@ navButton("cases", "Cases")
 local hint = Instance.new("TextLabel")
 hint.AnchorPoint = Vector2.new(0.5, 1); hint.Position = UDim2.new(0.5, 78, 1, -8); hint.Size = UDim2.fromOffset(480, 18)
 hint.BackgroundTransparency = 1; hint.Font = Enum.Font.Gotham; hint.TextSize = 12; hint.TextColor3 = Color3.fromRGB(150, 155, 170)
-hint.Text = "Equip weapons & open cases in the LOBBY. Potions are usable here."; hint.Parent = panel
+hint.Text = "Select your gun & open cases in the LOBBY. Potions are usable here."; hint.Parent = panel
 
 local content = Instance.new("ScrollingFrame")
 content.Position = UDim2.fromOffset(178, 52); content.Size = UDim2.fromOffset(486, 350)
@@ -129,18 +129,21 @@ end
 
 local function renderWeapons()
 	local cat = data.catalog.weapons
-	for slot = 1, 5 do
-		local id = data.tierLoadout[slot]
-		local card = rowCard(52)
-		label(card, 12, 60, "Tier " .. slot, Color3.fromRGB(150, 160, 175), 13)
-		if id and id ~= "" and cat[id] then
-			local w = cat[id]
-			label(card, 78, 160, w.name, Color3.fromRGB(240, 240, 245), 16)
+	for _, id in data.owned do
+		local w = cat[id]
+		if w then
+			local isSelected = (id == data.selected)
+			local card = rowCard(52)
+			label(card, 12, 170, w.name, Color3.fromRGB(240, 240, 245), 16)
 			local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
-			label(card, 250, 230, ("DMG %s  ·  %s/s  ·  ~%d DPS"):format(tostring(w.damage), tostring(w.fireRate), math.floor(dps + 0.5)),
+			label(card, 190, 220, ("DMG %s  ·  %s/s  ·  ~%d DPS"):format(tostring(w.damage), tostring(w.fireRate), math.floor(dps + 0.5)),
 				Color3.fromRGB(170, 190, 175), 13, Enum.Font.Gotham)
-		else
-			label(card, 78, 200, "— empty —", Color3.fromRGB(120, 125, 140), 15, Enum.Font.Gotham)
+			if isSelected then
+				local tag = label(card, 0, 90, "SELECTED", ACCENT, 12)
+				tag.AnchorPoint = Vector2.new(1, 0)
+				tag.Position = UDim2.new(1, -14, 0, 0)
+				tag.TextXAlignment = Enum.TextXAlignment.Right
+			end
 		end
 	end
 end

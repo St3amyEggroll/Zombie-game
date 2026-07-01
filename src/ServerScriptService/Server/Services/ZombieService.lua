@@ -458,7 +458,8 @@ local function nearestAlivePlayer(fromPos: Vector3): (Player?, BasePart?)
 		local char = player.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if hum and root and hum.Health > 0 then
+		-- DOWNED players are out of the fight: zombies skip them (they can't be hit while downed anyway).
+		if hum and root and hum.Health > 0 and char:GetAttribute("Downed") ~= true then
 			local d = (root.Position - fromPos).Magnitude
 			if d < bestDist then
 				bestDist, bestPlayer, bestRoot = d, player, root

@@ -97,8 +97,8 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		return
 	end
 	local ps = MatchService.GetPlayerState(player)
-	if not ps then
-		return
+	if not ps or ps.isDowned then
+		return -- downed players can't shoot (they're crawling, waiting for a revive)
 	end
 	-- own the weapon AND actually be holding it — an exploiter must not fire every owned weapon in
 	-- parallel (each weapon would otherwise get its own independent fire-rate gate).

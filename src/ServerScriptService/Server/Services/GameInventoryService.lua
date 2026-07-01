@@ -56,7 +56,7 @@ local function snapshotFor(player: Player)
 	local ps = MatchService.GetPlayerState(player)
 	return {
 		catalog = CATALOG,
-		tierLoadout = (data and typeof(data.tierLoadout) == "table") and data.tierLoadout or { "pistol", "", "", "", "" },
+		selected = (data and typeof(data.selectedWeapon) == "string") and data.selectedWeapon or "pistol",
 		owned = (data and typeof(data.ownedWeapons) == "table") and data.ownedWeapons or { "pistol" },
 		cases = (data and typeof(data.cases) == "table") and data.cases or {},
 		potions = (data and typeof(data.potions) == "table") and data.potions or {},

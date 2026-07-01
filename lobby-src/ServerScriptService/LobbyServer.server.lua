@@ -140,7 +140,7 @@ local QueueStatus  = mk("QueueStatus")  -- S->C: {map, difficulty, size, count, 
 -- Inventory (weapons / cases / potions)
 local InvRequest   = mk("InvRequest")   -- C->S: (please send my inventory)
 local InvSync      = mk("InvSync")      -- S->C: full inventory snapshot + catalog
-local EquipTier    = mk("EquipTier")    -- C->S: {slot, weaponId} equip a weapon into a tier slot ("" clears)
+local SelectWeapon = mk("SelectWeapon") -- C->S: {weaponId} pick THE one gun you carry into runs
 local OpenCase     = mk("OpenCase")     -- C->S: {caseId} open a case
 local CaseResult   = mk("CaseResult")   -- S->C: {caseId, wonId, duplicate, coins} the roll outcome (drives the reel)
 
@@ -166,24 +166,25 @@ local function sanitizeOwned(v)
 	return owned
 end
 
-local function sanitizeTierLoadout(v, owned)
+-- THE one gun you carry into runs. Migration: old saves without selectedWeapon fall back to the best
+-- (highest-tier) gun in their legacy tierLoadout, then the pistol.
+local function sanitizeSelected(sel, legacyTierLoadout, owned)
 	local ownedSet = {}
 	for _, id in owned do
 		ownedSet[id] = true
 	end
-	local out = {}
-	for slot = 1, TIER_COUNT do
-		local id = (typeof(v) == "table") and v[slot] or nil
-		if typeof(id) == "string" and WEAPONS[id] and WEAPONS[id].tier == slot and ownedSet[id] then
-			out[slot] = id
-		else
-			out[slot] = ""
+	if typeof(sel) == "string" and WEAPONS[sel] and ownedSet[sel] then
+		return sel
+	end
+	if typeof(legacyTierLoadout) == "table" then
+		for slot = TIER_COUNT, 1, -1 do
+			local id = legacyTierLoadout[slot]
+			if typeof(id) == "string" and WEAPONS[id] and ownedSet[id] then
+				return id
+			end
 		end
 	end
-	if out[1] == "" and ownedSet.pistol then
-		out[1] = "pistol" -- keep the starter equipped by default
-	end
-	return out
+	return "pistol"
 end
 
 local function sanitizeCases(v)
@@ -238,7 +239,7 @@ local function readProfile(player)
 		bestWave = data.bestWave or 0,
 		completed = (typeof(data.completed) == "table") and data.completed or {},
 		ownedWeapons = owned,
-		tierLoadout = sanitizeTierLoadout(data.tierLoadout, owned),
+		selectedWeapon = sanitizeSelected(data.selectedWeapon, data.tierLoadout, owned),
 		cases = sanitizeCases(data.cases),
 		potions = sanitizePotions(data.potions),
 		noPersist = loadFailed, -- read failed → this is a fallback profile; NEVER write it back
@@ -256,7 +257,7 @@ local function persist(player)
 		store:UpdateAsync("Player_" .. player.UserId, function(old)
 			old = (typeof(old) == "table") and old or {}
 			old.ownedWeapons = prof.ownedWeapons
-			old.tierLoadout = prof.tierLoadout
+			old.selectedWeapon = prof.selectedWeapon
 			old.cases = prof.cases
 			old.potions = prof.potions
 			old.lobbyMoney = prof.lobbyMoney
@@ -270,7 +271,7 @@ local function invSnapshot(prof)
 	return {
 		catalog = CATALOG,
 		owned = prof.ownedWeapons,
-		tierLoadout = prof.tierLoadout,
+		selected = prof.selectedWeapon,
 		cases = prof.cases,
 		potions = prof.potions,
 		coins = prof.lobbyMoney,
@@ -282,6 +283,111 @@ local function pushInv(player)
 	if prof then
 		InvSync:FireClient(player, invSnapshot(prof))
 	end
+end
+
+-- ===== ON-BODY GUN (hub cosmetic) =====
+-- Your SELECTED gun rides on your character while you walk around the lobby: big guns across the BACK,
+-- small ones (CARRY_STYLE = "hip") on the hip. Models: put your gun Models in this place (tag them
+-- "WeaponModel", or drop them in an "Assets" folder in ReplicatedStorage/ServerStorage/Workspace), named
+-- after the weapon id or display name — same contract as the game place. Missing model = skipped quietly.
+local CollectionService = game:GetService("CollectionService")
+local ServerStorage = game:GetService("ServerStorage")
+
+local CARRY_NAME  = "CarriedWeapon"
+local CARRY_STYLE = { pistol = "hip" } -- anything not listed rides on the back
+local BACK_CF = CFrame.new(0, 0.2, 0.75) * CFrame.Angles(math.rad(-90), 0, math.rad(-40)) -- diagonal across the back
+local HIP_CF  = CFrame.new(1.1, -0.95, 0.05) * CFrame.Angles(math.rad(-90), 0, math.rad(90)) -- right hip
+
+local carryTemplates = nil -- weaponId -> Model (lazy first-use scan)
+
+local function sanitizeName(s)
+	return (s:lower():gsub("[%s%-_]", ""))
+end
+
+local function scanCarryTemplates()
+	carryTemplates = {}
+	local nameMap = {}
+	for id, w in WEAPONS do
+		nameMap[sanitizeName(id)] = id
+		nameMap[sanitizeName(w.name)] = id
+	end
+	local function consider(inst)
+		if inst:IsA("Model") then
+			local id = nameMap[sanitizeName(inst.Name)]
+			if id and not carryTemplates[id] then
+				carryTemplates[id] = inst
+			end
+		end
+	end
+	for _, inst in CollectionService:GetTagged("WeaponModel") do
+		consider(inst)
+	end
+	for _, container in { ReplicatedStorage, ServerStorage, Workspace } do
+		for _, child in container:GetChildren() do
+			if child.Name:lower() == "assets" then
+				for _, d in child:GetDescendants() do
+					consider(d)
+				end
+			end
+		end
+	end
+end
+
+local function refreshCarry(player)
+	local char = player.Character
+	local prof = profileCache[player.UserId]
+	if not char or not prof then
+		return
+	end
+	local old = char:FindFirstChild(CARRY_NAME)
+	if old then
+		old:Destroy()
+	end
+	if not carryTemplates then
+		scanCarryTemplates()
+	end
+	local template = carryTemplates[prof.selectedWeapon]
+	if not template then
+		return -- no model for this gun in the lobby place
+	end
+	local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+	if not torso then
+		return
+	end
+
+	local model = template:Clone()
+	model.Name = CARRY_NAME
+	local handle = model:FindFirstChild("Handle") or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	if not handle or not handle:IsA("BasePart") then
+		model:Destroy()
+		return
+	end
+	model.PrimaryPart = handle
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+			d.Massless = true
+			d.Anchored = false
+			if d ~= handle then
+				local wc = Instance.new("WeldConstraint")
+				wc.Part0 = handle
+				wc.Part1 = d
+				wc.Parent = handle
+			end
+		elseif d:IsA("Script") or d:IsA("LocalScript") then
+			d:Destroy() -- carried guns are pure decoration
+		end
+	end
+
+	local style = CARRY_STYLE[prof.selectedWeapon] or "back"
+	handle.CFrame = torso.CFrame * (style == "hip" and HIP_CF or BACK_CF)
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = torso
+	weld.Part1 = handle
+	weld.Parent = handle
+	model.Parent = char
 end
 
 local function indexOf(t, v)
@@ -430,7 +536,7 @@ InvRequest.OnServerEvent:Connect(function(player)
 	pushInv(player)
 end)
 
-EquipTier.OnServerEvent:Connect(function(player, req)
+SelectWeapon.OnServerEvent:Connect(function(player, req)
 	if typeof(req) ~= "table" then
 		return
 	end
@@ -438,22 +544,14 @@ EquipTier.OnServerEvent:Connect(function(player, req)
 	if not prof or prof.noPersist then
 		return -- fallback profile (load failed): don't let them mutate state that can never save
 	end
-	local slot = tonumber(req.slot)
 	local weaponId = tostring(req.weaponId or "")
-	if not slot or slot < 1 or slot > TIER_COUNT or slot ~= math.floor(slot) then
-		return
+	if not WEAPONS[weaponId] or not table.find(prof.ownedWeapons, weaponId) then
+		return -- not a real weapon / not owned
 	end
-	if weaponId == "" then
-		prof.tierLoadout[slot] = "" -- clear the slot
-	else
-		local w = WEAPONS[weaponId]
-		if not w or w.tier ~= slot or not table.find(prof.ownedWeapons, weaponId) then
-			return -- not a real weapon / wrong tier / not owned
-		end
-		prof.tierLoadout[slot] = weaponId
-	end
+	prof.selectedWeapon = weaponId
 	persist(player)
 	pushInv(player)
+	refreshCarry(player) -- update the gun on their back/hip
 end)
 
 OpenCase.OnServerEvent:Connect(function(player, req)
@@ -485,10 +583,10 @@ OpenCase.OnServerEvent:Connect(function(player, req)
 		prof.lobbyMoney += coins
 	else
 		table.insert(prof.ownedWeapons, wonId)
-		-- Auto-equip into its tier slot if that slot is empty (nice first-time-owned convenience).
-		local tier = WEAPONS[wonId].tier
-		if prof.tierLoadout[tier] == "" then
-			prof.tierLoadout[tier] = wonId
+		-- First real gun: auto-select it if they were still on the starter pistol.
+		if prof.selectedWeapon == "pistol" then
+			prof.selectedWeapon = wonId
+			refreshCarry(player)
 		end
 	end
 	persist(player)
@@ -563,11 +661,15 @@ end
 
 -- ===== LIFECYCLE =====
 local function onJoin(player)
+	player.CharacterAdded:Connect(function()
+		task.defer(refreshCarry, player) -- re-attach the on-body gun on every (re)spawn
+	end)
 	task.spawn(function()
 		local profile = readProfile(player)
 		profileCache[player.UserId] = profile
 		StatsRemote:FireClient(player, profile)
 		pushInv(player) -- seed the inventory UI so it's ready the moment they open it
+		refreshCarry(player) -- show the selected gun on their back/hip
 	end)
 end
 
