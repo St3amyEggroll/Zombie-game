@@ -20,13 +20,14 @@ local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
-local UpgradeConfig = require(Config.UpgradeConfig)
+local GunLevelConfig = require(Config.GunLevelConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
 local SecurityService = require(script.Parent.SecurityService)
 local MatchService = require(script.Parent.MatchService)
 local ZombieService = require(script.Parent.ZombieService)
+local DataService = require(script.Parent.DataService)
 
 local CombatService = {}
 
@@ -113,8 +114,11 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 
 	local c = getCombat(player)
 
-	-- Effective stats = base weapon stats + this run's upgrade levels (UpgradeConfig, per-run only).
-	local eff = UpgradeConfig.EffectiveStats(weapon, (ps.upgrades and ps.upgrades[weaponId]) or 0)
+	-- Effective stats = base weapon stats at the gun's PERSISTENT level (leveled up in the lobby with
+	-- case copies + Coins; saved on the profile, read-only during a run).
+	local data = DataService.Get(player)
+	local gunLevel = (data and typeof(data.gunLevels) == "table" and tonumber(data.gunLevels[weaponId])) or 1
+	local eff = GunLevelConfig.EffectiveStats(weapon, gunLevel)
 
 	-- 5) fire-rate gate — CONSTANT per weapon (+ its upgrades), enforced with a small token bucket instead
 	-- of a strict inter-arrival check: remotes drain per server frame, so two legit shots can arrive bunched

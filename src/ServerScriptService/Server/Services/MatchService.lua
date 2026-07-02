@@ -125,10 +125,9 @@ local function makePlayerState(player: Player)
 	return {
 		userId = player.UserId,
 		inMatch = false,                          -- false = lobby/menu; true = in the run
-		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral; spent on upgrades + traps)
+		points = GameConfig.StartingPoints,       -- in-wave "cash" (ephemeral; reserved for traps)
 		ownedWeapons = weapons,
 		equippedWeapon = weapons[1] or "pistol",
-		upgrades = {},                            -- [weaponId] = in-run upgrade level 0..5 (never saved)
 		isDead = false,
 		isDowned = false,                         -- at 0 HP with teammates up: crawling, waiting for a revive
 		downedUntil = 0,                          -- os.clock() the bleedout ends
@@ -161,7 +160,6 @@ local function resetRunState(player: Player, ps)
 	ps.pendingDraft = nil
 	ps.regenMult = 1
 	ps.usedPotions = {}
-	ps.upgrades = {} -- upgrades are per-run only
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
 	ps.isDead = false
 	ps.isDowned = false

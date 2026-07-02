@@ -17,7 +17,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local WeaponConfig = require(Config.WeaponConfig)
-local UpgradeConfig = require(Config.UpgradeConfig)
+local GunLevelConfig = require(Config.GunLevelConfig)
 local Remotes = require(Modules.Remotes)
 
 local CameraController = require(script.Parent.CameraController)
@@ -45,7 +45,7 @@ local localPlayer = Players.LocalPlayer
 -- ===== STATE =====
 local equipped = "pistol"
 local ownedWeapons: { string } = { "pistol" }
-local upgrades: { [string]: number } = {} -- this run's upgrade levels (from UpgradeState); drives cadence
+local gunLevels: { [string]: number } = {} -- persistent gun levels (from DataReady); mirrors server stats
 local wantManual = false   -- mouse/touch held (continuous fire for auto weapons)
 local pendingShot = false  -- a semi-auto click waiting for the fire gate to open (clicks are never eaten)
 local wasFiring = false    -- was the driver firing last frame (edge-detects a new burst for spin-up)
@@ -61,12 +61,13 @@ function InputController.GetEquipped(): string
 end
 
 -- ===== THE FIRE DRIVER =====
--- The equipped weapon's fire rate INCLUDING this run's upgrade levels (mirrors the server's math).
+-- The equipped weapon's fire rate at its PERSISTENT level (mirrors the server's math; levels only
+-- change damage today, but reading through GunLevelConfig keeps the cadence correct if that changes).
 local function effFireRate(weapon): number
-	return UpgradeConfig.EffectiveStats(weapon, upgrades[weapon.id] or 0).fireRate
+	return GunLevelConfig.EffectiveStats(weapon, gunLevels[weapon.id] or 1).fireRate
 end
 
--- Seconds between shots. Constant 1/fireRate (+ upgrades); spin-up weapons ramp from SPIN_START_FRAC over
+-- Seconds between shots. Constant 1/fireRate; spin-up weapons ramp from SPIN_START_FRAC over
 -- weapon.spinUp seconds of continuous firing (releasing resets the ramp).
 local function shotInterval(weapon): number
 	local rate = effFireRate(weapon)
@@ -193,10 +194,10 @@ function InputController.Start()
 		end
 	end)
 
-	-- This run's upgrade levels (drives the client-side cadence to match the server's upgraded fire rate).
-	Remotes.Get("UpgradeState").OnClientEvent:Connect(function(levels)
-		if type(levels) == "table" then
-			upgrades = levels
+	-- Persistent gun levels arrive with the profile snapshot (leveled up in the lobby, fixed for the run).
+	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
+		if type(data) == "table" and type(data.gunLevels) == "table" then
+			gunLevels = data.gunLevels
 		end
 	end)
 

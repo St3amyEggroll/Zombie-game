@@ -207,7 +207,8 @@ local weaponsScroll = tabScroll(weaponsTab, 160, 122, 92)
 local function weaponSub(id)
 	local w = data.catalog.weapons[id]
 	local r = data.catalog.rarities[w.rarity]
-	return r and r.name or ""
+	local lv = (data.gunLevels or {})[id] or 1
+	return ("Lv %d · %s"):format(lv, r and r.name or "")
 end
 
 local function renderWeapons()
@@ -221,7 +222,7 @@ local function renderWeapons()
 		local w = id and data.catalog.weapons[id]
 		local holder
 		if w then
-			holder = card(slotsRow, w.name, "SLOT " .. slot, rarityColor(w.rarity), true)
+			holder = card(slotsRow, w.name, ("SLOT %d · Lv %d"):format(slot, (data.gunLevels or {})[id] or 1), rarityColor(w.rarity), true)
 		else
 			holder = card(slotsRow, "Empty", "SLOT " .. slot, Color3.fromRGB(90, 95, 108), false)
 		end

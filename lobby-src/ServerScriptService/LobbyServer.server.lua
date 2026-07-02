@@ -90,19 +90,62 @@ local WEAPONS = {
 	raygun  = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80, fireRate = 4,   range = 250 },
 }
 
--- 7 rarity-tiered cases (wave rewards + starter grants). Higher case rarity = better guns + bigger
--- duplicate Coin refunds. Pools are { weaponId = weight }.
+-- 7 rarity-tiered cases (wave rewards + starter grants + the shop). Higher case rarity = better guns +
+-- bigger COPY payouts (see GUNLEVELS.CopyPayout). Pools are { weaponId = weight }.
 local CASES = {
-	common    = { dupValue = 25,  pool = { shotgun = 70, ak47 = 24, minigun = 5,  raygun = 1 } },
-	uncommon  = { dupValue = 40,  pool = { shotgun = 55, ak47 = 32, minigun = 10, raygun = 3 } },
-	rare      = { dupValue = 60,  pool = { shotgun = 35, ak47 = 40, minigun = 18, raygun = 7 } },
-	epic      = { dupValue = 90,  pool = { shotgun = 20, ak47 = 38, minigun = 30, raygun = 12 } },
-	legendary = { dupValue = 140, pool = { shotgun = 10, ak47 = 28, minigun = 38, raygun = 24 } },
-	mythic    = { dupValue = 220, pool = { shotgun = 5,  ak47 = 18, minigun = 40, raygun = 37 } },
-	divine    = { dupValue = 350, pool = { shotgun = 2,  ak47 = 10, minigun = 33, raygun = 55 } },
+	common    = { pool = { shotgun = 70, ak47 = 24, minigun = 5,  raygun = 1 } },
+	uncommon  = { pool = { shotgun = 55, ak47 = 32, minigun = 10, raygun = 3 } },
+	rare      = { pool = { shotgun = 35, ak47 = 40, minigun = 18, raygun = 7 } },
+	epic      = { pool = { shotgun = 20, ak47 = 38, minigun = 30, raygun = 12 } },
+	legendary = { pool = { shotgun = 10, ak47 = 28, minigun = 38, raygun = 24 } },
+	mythic    = { pool = { shotgun = 5,  ak47 = 18, minigun = 40, raygun = 37 } },
+	divine    = { pool = { shotgun = 2,  ak47 = 10, minigun = 33, raygun = 55 } },
 }
 for rarity, c in CASES do
 	c.name = RARITY[rarity].name .. " Case"
+end
+
+-- ===== GUN LEVELS (the Clash-Royale copies system) =====
+-- Cases pay out COPIES of the rolled gun. Stack enough copies + pay Coins to level the gun up (10 levels);
+-- upgrading CONSUMES the copies. The LEVEL is what the game place reads for combat stats — keep MaxLevel
+-- in sync with the game's GunLevelConfig (which owns the damage curve) BY HAND.
+-- >>> PLACEHOLDER BALANCE — tune Thresholds / CoinCosts / CopyPayout / Overflow in your balancing pass. <<<
+local GUNLEVELS = {
+	MaxLevel = 10,
+	-- Copies needed to go FROM level L to L+1, by GUN rarity (index 1 = Lv1→2 ... index 9 = Lv9→10).
+	Thresholds = {
+		common    = { 10, 20, 50, 100, 200, 350, 600, 1000, 1600 },
+		uncommon  = { 6, 12, 30, 60, 120, 220, 400, 700, 1100 },
+		rare      = { 4, 8, 20, 40, 80, 150, 280, 500, 800 },
+		epic      = { 2, 5, 12, 25, 50, 100, 180, 320, 550 },
+		legendary = { 1, 3, 8, 16, 32, 65, 120, 220, 400 },
+		mythic    = { 1, 2, 5, 10, 20, 40, 80, 150, 280 },
+		divine    = { 1, 2, 4, 8, 16, 32, 64, 120, 240 },
+	},
+	-- Coin cost of each level-up (index 1 = Lv1→2 ... index 9 = Lv9→10), same for every rarity.
+	CoinCosts = { 100, 250, 600, 1200, 2500, 5000, 9000, 15000, 25000 },
+	-- Copies a case pays out: [case rarity][gun rarity] — rarer guns come in smaller stacks.
+	CopyPayout = {
+		common    = { common = 20,  uncommon = 12,  rare = 6,   epic = 3,  legendary = 2,  mythic = 1,  divine = 1 },
+		uncommon  = { common = 30,  uncommon = 18,  rare = 9,   epic = 5,  legendary = 3,  mythic = 1,  divine = 1 },
+		rare      = { common = 45,  uncommon = 28,  rare = 14,  epic = 7,  legendary = 4,  mythic = 2,  divine = 1 },
+		epic      = { common = 70,  uncommon = 42,  rare = 20,  epic = 11, legendary = 6,  mythic = 3,  divine = 2 },
+		legendary = { common = 110, uncommon = 65,  rare = 32,  epic = 17, legendary = 9,  mythic = 4,  divine = 2 },
+		mythic    = { common = 200, uncommon = 120, rare = 60,  epic = 30, legendary = 15, mythic = 7,  divine = 3 },
+		divine    = { common = 340, uncommon = 200, rare = 100, epic = 50, legendary = 25, mythic = 12, divine = 6 },
+	},
+	-- Coins per copy once a gun is MAX level (by gun rarity) — overflow auto-converts.
+	Overflow = { common = 2, uncommon = 3, rare = 5, epic = 8, legendary = 12, mythic = 20, divine = 30 },
+}
+
+-- Copies needed to go from `level` to level+1 for this gun (nil = already max).
+local function thresholdFor(weaponId, level)
+	local w = WEAPONS[weaponId]
+	if not w or level >= GUNLEVELS.MaxLevel then
+		return nil
+	end
+	local t = GUNLEVELS.Thresholds[w.rarity] or GUNLEVELS.Thresholds.common
+	return t[level] or t[#t]
 end
 
 local POTIONS = {
@@ -200,10 +243,17 @@ local CATALOG = {
 					table.insert(odds, { rarity = wr, pct = (byRarity[wr] / total) * 100 })
 				end
 			end
-			t[rarity] = { name = c.name, rarity = rarity, dupValue = c.dupValue, poolIds = ids, odds = odds }
+			t[rarity] = { name = c.name, rarity = rarity, poolIds = ids, odds = odds }
 		end
 		return t
 	end)(),
+	-- Gun-leveling rules for the client's bars/buttons (thresholds indexed by gun rarity).
+	gunLevels = {
+		maxLevel = GUNLEVELS.MaxLevel,
+		thresholds = GUNLEVELS.Thresholds,
+		coinCosts = GUNLEVELS.CoinCosts,
+		overflow = GUNLEVELS.Overflow,
+	},
 }
 
 local function rollCase(caseId)
@@ -247,6 +297,7 @@ local PartyStatus   = mk("PartyStatus")   -- S->C: {map, difficulty, size, count
 local InvRequest    = mk("InvRequest")    -- C->S: (please send my inventory)
 local InvSync       = mk("InvSync")       -- S->C: full inventory snapshot + catalog
 local EquipSlot     = mk("EquipSlot")     -- C->S: {slot=1|2, weaponId} put a gun in a loadout slot
+local UpgradeGun    = mk("UpgradeGun")    -- C->S: {weaponId} spend copies + Coins to level the gun up
 local OpenCase      = mk("OpenCase")      -- C->S: {caseId} open a case (caseId = its rarity)
 local CaseResult    = mk("CaseResult")    -- S->C: {caseId, wonId, duplicate, coins} the roll (drives the reel)
                                           --       or {failed=true} — ALWAYS replied so the client never sticks
@@ -329,6 +380,37 @@ local function sanitizePotions(v)
 	return out
 end
 
+-- Persistent gun levels ([weaponId] = 1..MaxLevel). Migration: every owned gun is at least level 1.
+local function sanitizeGunLevels(v, owned)
+	local out = {}
+	if typeof(v) == "table" then
+		for id, n in v do
+			if WEAPONS[id] and typeof(n) == "number" then
+				out[id] = math.clamp(math.floor(n), 1, GUNLEVELS.MaxLevel)
+			end
+		end
+	end
+	for _, id in owned do
+		if not out[id] then
+			out[id] = 1
+		end
+	end
+	return out
+end
+
+-- Unspent gun copies ([weaponId] = count) — consumed by upgrades.
+local function sanitizeGunCopies(v)
+	local out = {}
+	if typeof(v) == "table" then
+		for id, n in v do
+			if WEAPONS[id] and typeof(n) == "number" and n > 0 then
+				out[id] = math.floor(n)
+			end
+		end
+	end
+	return out
+end
+
 -- Per-player shop state: which rotation window they last bought in + purchases per slot ("1".."6").
 -- LOBBY-OWNED field — the game place's save merge never touches it.
 local function sanitizeShop(v)
@@ -375,6 +457,8 @@ local function readProfile(player)
 		loadout = sanitizeLoadout(data.loadout, data.selectedWeapon, owned),
 		cases = sanitizeCases(data.cases),
 		potions = sanitizePotions(data.potions),
+		gunLevels = sanitizeGunLevels(data.gunLevels, owned),
+		gunCopies = sanitizeGunCopies(data.gunCopies),
 		shop = sanitizeShop(data.shop),
 		noPersist = loadFailed, -- fallback profile: NEVER write it back
 	}
@@ -401,6 +485,8 @@ local function persist(player)
 			old.selectedWeapon = prof.loadout[1] -- legacy field (older game builds read it)
 			old.cases = prof.cases
 			old.potions = prof.potions
+			old.gunLevels = prof.gunLevels
+			old.gunCopies = prof.gunCopies
 			old.lobbyMoney = prof.lobbyMoney
 			old.shop = prof.shop
 			return old
@@ -424,6 +510,8 @@ local function invSnapshot(prof)
 		loadout = prof.loadout,
 		cases = prof.cases,
 		potions = prof.potions,
+		gunLevels = prof.gunLevels,
+		gunCopies = prof.gunCopies,
 		coins = prof.lobbyMoney,
 	}
 end
@@ -595,7 +683,7 @@ end
 
 -- ===== RATE LIMITING (token buckets — the lobby's SecurityService-lite) =====
 -- Every C->S remote passes through allow() so a spamming client burns its bucket, not the DataStore.
-local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4 } -- refill per second (burst = 2s worth)
+local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Upgrade = 3 } -- refill/second (burst = 2s worth)
 local buckets = {} -- userId -> { [action] = { tokens, last } }
 
 local function allow(player, action)
@@ -659,28 +747,70 @@ EquipSlot.OnServerEvent:Connect(function(player, req)
 	refreshCarry(player)
 end)
 
--- Consume one case (caller has already verified the player HAS one), roll it, grant/dupe, and return
--- the CaseResult payload. Shared by OpenCase and the shop's BUY & OPEN.
+-- Level a gun up: consumes the copy threshold + the Coin cost (both validated here — the client button
+-- is just a hint). Levels are read by the GAME place for combat damage.
+UpgradeGun.OnServerEvent:Connect(function(player, req)
+	if not allow(player, "Upgrade") or typeof(req) ~= "table" then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return
+	end
+	local weaponId = tostring(req.weaponId or "")
+	if not WEAPONS[weaponId] or not table.find(prof.ownedWeapons, weaponId) then
+		return
+	end
+	local level = prof.gunLevels[weaponId] or 1
+	local need = thresholdFor(weaponId, level)
+	if not need then
+		return -- already max level
+	end
+	local cost = GUNLEVELS.CoinCosts[level] or GUNLEVELS.CoinCosts[#GUNLEVELS.CoinCosts]
+	if (prof.gunCopies[weaponId] or 0) < need or prof.lobbyMoney < cost then
+		return
+	end
+	prof.gunCopies[weaponId] -= need
+	if prof.gunCopies[weaponId] <= 0 then
+		prof.gunCopies[weaponId] = nil
+	end
+	prof.lobbyMoney -= cost
+	prof.gunLevels[weaponId] = level + 1
+	markDirty(player)
+	pushInv(player)
+	StatsRemote:FireClient(player, prof)
+end)
+
+-- Consume one case (caller has already verified the player HAS one), roll a gun, and pay out COPIES
+-- (the Clash-Royale system): first-ever pull also UNLOCKS the gun at level 1; a MAXED gun's copies
+-- auto-convert to Coins instead. Shared by OpenCase and the shop's BUY & OPEN.
 local function doOpenCase(player, prof, caseId)
 	prof.cases[caseId] = (prof.cases[caseId] or 0) - 1
 	if prof.cases[caseId] <= 0 then
 		prof.cases[caseId] = nil
 	end
 	local wonId = rollCase(caseId)
-	local duplicate = table.find(prof.ownedWeapons, wonId) ~= nil
-	local coins = 0
-	if duplicate then
-		coins = CASES[caseId].dupValue
-		prof.lobbyMoney += coins
-	else
+	local gunRarity = WEAPONS[wonId].rarity
+	local payout = (GUNLEVELS.CopyPayout[caseId] or {})[gunRarity] or 1
+	local unlocked = not table.find(prof.ownedWeapons, wonId)
+	if unlocked then
 		table.insert(prof.ownedWeapons, wonId)
+		prof.gunLevels[wonId] = prof.gunLevels[wonId] or 1
 		-- First real gun: drop it into the empty slot 2 automatically.
 		if not prof.loadout[2] and prof.loadout[1] ~= wonId then
 			prof.loadout[2] = wonId
 			refreshCarry(player)
 		end
 	end
-	return { caseId = caseId, wonId = wonId, duplicate = duplicate, coins = coins }
+	local coins = 0
+	local maxed = (prof.gunLevels[wonId] or 1) >= GUNLEVELS.MaxLevel
+	if maxed then
+		coins = payout * (GUNLEVELS.Overflow[gunRarity] or 1)
+		prof.lobbyMoney += coins
+	else
+		prof.gunCopies[wonId] = (prof.gunCopies[wonId] or 0) + payout
+	end
+	return { caseId = caseId, wonId = wonId, copies = payout, coins = coins, unlocked = unlocked, maxed = maxed }
 end
 
 OpenCase.OnServerEvent:Connect(function(player, req)

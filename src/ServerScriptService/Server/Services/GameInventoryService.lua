@@ -76,6 +76,7 @@ local function snapshotFor(player: Player)
 		owned = (data and typeof(data.ownedWeapons) == "table") and data.ownedWeapons or { "pistol" },
 		cases = (data and typeof(data.cases) == "table") and data.cases or {},
 		potions = (data and typeof(data.potions) == "table") and data.potions or {},
+		gunLevels = (data and typeof(data.gunLevels) == "table") and data.gunLevels or {},
 		used = (ps and ps.usedPotions) or {}, -- potion types already drunk THIS run (grays their Use button)
 	}
 end

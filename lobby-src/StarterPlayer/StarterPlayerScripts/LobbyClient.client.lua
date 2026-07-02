@@ -292,6 +292,7 @@ local TweenService = game:GetService("TweenService")
 local InvRequest = remotes:WaitForChild("InvRequest")
 local InvSync    = remotes:WaitForChild("InvSync")
 local EquipSlot = remotes:WaitForChild("EquipSlot")
+local UpgradeGun = remotes:WaitForChild("UpgradeGun")
 local OpenCase   = remotes:WaitForChild("OpenCase")
 local CaseResult = remotes:WaitForChild("CaseResult")
 
@@ -373,19 +374,47 @@ local function attachTip(guiObj, buildLines)
 	guiObj.MouseLeave:Connect(hideTip)
 end
 
+-- Level / copies / upgrade math for a gun, straight from the snapshot (nil-safe everywhere).
+-- Returns: level, maxLevel, copies, need (nil at max), cost (nil at max).
+local function gunLevelInfo(weaponId)
+	local info = weaponInfo(weaponId)
+	local gl = invData and invData.catalog.gunLevels
+	local level = (invData and invData.gunLevels and invData.gunLevels[weaponId]) or 1
+	local copies = (invData and invData.gunCopies and invData.gunCopies[weaponId]) or 0
+	local maxLevel = (gl and gl.maxLevel) or 10
+	if not info or not gl or level >= maxLevel then
+		return level, maxLevel, copies, nil, nil
+	end
+	local t = gl.thresholds[info.rarity] or gl.thresholds.common
+	local need = t[level] or t[#t]
+	local cost = gl.coinCosts[level] or gl.coinCosts[#gl.coinCosts]
+	return level, maxLevel, copies, need, cost
+end
+
 local function weaponTipLines(weaponId)
 	local w = weaponInfo(weaponId)
 	if not w then return {} end
 	local col = rarityColor(w.rarity)
 	local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
-	return {
+	local level, maxLevel, copies, need, cost = gunLevelInfo(weaponId)
+	local lines = {
 		{ text = w.name, color = col, size = 16, bold = true },
 		{ text = (invData.catalog.rarities[w.rarity].name) .. "  ·  Tier " .. tostring(w.tier), color = col, size = 12 },
+		{ text = ("Level %d / %d"):format(level, maxLevel), color = Color3.fromRGB(235, 190, 85), size = 13, bold = true },
 		{ text = ("Damage: %s%s"):format(tostring(w.damage or "?"), w.pellets and ("  ×" .. w.pellets) or ""), size = 14 },
 		{ text = ("Fire Rate: %s/s"):format(tostring(w.fireRate or "?")), size = 14 },
 		{ text = ("Range: %s"):format(tostring(w.range or "?")), size = 14 },
 		{ text = ("DPS: ~%d"):format(math.floor(dps + 0.5)), color = Color3.fromRGB(150, 220, 150), size = 14 },
 	}
+	if need then
+		table.insert(lines, {
+			text = ("Copies: %d / %d  ·  Upgrade: 🪙 %s"):format(copies, need, fmt(cost or 0)),
+			color = Color3.fromRGB(180, 190, 205), size = 13,
+		})
+	else
+		table.insert(lines, { text = "MAX LEVEL — extra copies become Coins", color = Color3.fromRGB(235, 190, 85), size = 13 })
+	end
+	return lines
 end
 
 local function caseTipLines(caseId)
@@ -470,27 +499,30 @@ slotsHint.Font = Enum.Font.GothamBold; slotsHint.TextSize = 13; slotsHint.TextXA
 slotsHint.TextColor3 = Color3.fromRGB(170, 180, 195); slotsHint.Text = "YOUR LOADOUT — equip any 2 guns"; slotsHint.Parent = weaponsTab
 
 local slotsRow = Instance.new("Frame")
-slotsRow.Position = UDim2.fromOffset(14, 32); slotsRow.Size = UDim2.new(1, -28, 0, 96); slotsRow.BackgroundTransparency = 1; slotsRow.Parent = weaponsTab
+slotsRow.Position = UDim2.fromOffset(14, 32); slotsRow.Size = UDim2.new(1, -28, 0, 128); slotsRow.BackgroundTransparency = 1; slotsRow.Parent = weaponsTab
 local slotsList = Instance.new("UIListLayout")
 slotsList.FillDirection = Enum.FillDirection.Horizontal; slotsList.Padding = UDim.new(0, 10); slotsList.Parent = slotsRow
 
 local gunsHint = Instance.new("TextLabel")
-gunsHint.Position = UDim2.fromOffset(14, 138); gunsHint.Size = UDim2.new(1, -28, 0, 18); gunsHint.BackgroundTransparency = 1
+gunsHint.Position = UDim2.fromOffset(14, 170); gunsHint.Size = UDim2.new(1, -28, 0, 18); gunsHint.BackgroundTransparency = 1
 gunsHint.Font = Enum.Font.GothamBold; gunsHint.TextSize = 13; gunsHint.TextXAlignment = Enum.TextXAlignment.Left
 gunsHint.TextColor3 = Color3.fromRGB(170, 180, 195); gunsHint.Text = ""; gunsHint.Parent = weaponsTab
 
 local gunsScroll = Instance.new("ScrollingFrame")
-gunsScroll.Position = UDim2.fromOffset(14, 160); gunsScroll.Size = UDim2.new(1, -28, 1, -172)
+gunsScroll.Position = UDim2.fromOffset(14, 192); gunsScroll.Size = UDim2.new(1, -28, 1, -204)
 gunsScroll.BackgroundTransparency = 1; gunsScroll.BorderSizePixel = 0; gunsScroll.ScrollBarThickness = 6
 gunsScroll.CanvasSize = UDim2.new(); gunsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; gunsScroll.Parent = weaponsTab
 local gunsGrid = Instance.new("UIGridLayout")
-gunsGrid.CellSize = UDim2.fromOffset(122, 92); gunsGrid.CellPadding = UDim2.fromOffset(10, 10); gunsGrid.Parent = gunsScroll
+gunsGrid.CellSize = UDim2.fromOffset(122, 128); gunsGrid.CellPadding = UDim2.fromOffset(10, 10); gunsGrid.Parent = gunsScroll
 
 local activeSlot = 1 -- which loadout slot a gun click assigns to
 
+-- A gun card: rarity bar, name, subtitle, "Lv N" badge, the copies progress bar (X/required), and — when
+-- the copies are stacked — an UPGRADE strip (gold when you can also afford the Coins). Cards are 128 tall.
 local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
 	local info = weaponInfo(weaponId)
 	local col = info and rarityColor(info.rarity) or Color3.fromRGB(150, 150, 160)
+	local level, maxLevel, copies, need, cost = gunLevelInfo(weaponId)
 	local card = Instance.new("TextButton")
 	card.BackgroundColor3 = col:Lerp(BLACK, 0.55); card.AutoButtonColor = onClick ~= nil; card.Text = ""
 	card.BorderSizePixel = 0; card.Parent = parent
@@ -501,12 +533,67 @@ local function weaponCard(parent, weaponId, subtitle, onClick, highlight)
 	bar.Position = UDim2.fromOffset(0, 0); bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = col
 	bar.BorderSizePixel = 0; bar.Parent = card
 	local name = Instance.new("TextLabel")
-	name.Position = UDim2.fromOffset(4, 22); name.Size = UDim2.new(1, -8, 0, 24); name.BackgroundTransparency = 1
+	name.Position = UDim2.fromOffset(4, 12); name.Size = UDim2.new(1, -8, 0, 20); name.BackgroundTransparency = 1
 	name.Font = Enum.Font.GothamBold; name.TextSize = 14; name.TextColor3 = Color3.fromRGB(240, 240, 245)
 	name.Text = info and info.name or weaponId; name.TextScaled = true; name.Parent = card
 	local sub = Instance.new("TextLabel")
-	sub.Position = UDim2.fromOffset(4, 56); sub.Size = UDim2.new(1, -8, 0, 16); sub.BackgroundTransparency = 1
-	sub.Font = Enum.Font.Gotham; sub.TextSize = 12; sub.TextColor3 = col; sub.Text = subtitle or ""; sub.TextScaled = true; sub.Parent = card
+	sub.Position = UDim2.fromOffset(4, 34); sub.Size = UDim2.new(1, -8, 0, 13); sub.BackgroundTransparency = 1
+	sub.Font = Enum.Font.Gotham; sub.TextSize = 11; sub.TextColor3 = col; sub.Text = subtitle or ""; sub.TextScaled = true; sub.Parent = card
+
+	if info then
+		-- "Lv N" + "X/Y" row above the copies progress bar.
+		local lvLbl = Instance.new("TextLabel")
+		lvLbl.Position = UDim2.fromOffset(8, 52); lvLbl.Size = UDim2.new(0.5, -8, 0, 13); lvLbl.BackgroundTransparency = 1
+		lvLbl.Font = Enum.Font.GothamBold; lvLbl.TextSize = 12; lvLbl.TextXAlignment = Enum.TextXAlignment.Left
+		lvLbl.TextColor3 = Color3.fromRGB(235, 190, 85); lvLbl.Text = "Lv " .. level; lvLbl.Parent = card
+		local cLbl = Instance.new("TextLabel")
+		cLbl.AnchorPoint = Vector2.new(1, 0); cLbl.Position = UDim2.new(1, -8, 0, 52); cLbl.Size = UDim2.new(0.6, 0, 0, 13)
+		cLbl.BackgroundTransparency = 1; cLbl.Font = Enum.Font.Gotham; cLbl.TextSize = 11
+		cLbl.TextXAlignment = Enum.TextXAlignment.Right; cLbl.TextColor3 = Color3.fromRGB(180, 190, 205)
+		cLbl.Text = need and ("%d/%d"):format(copies, need) or "MAX"; cLbl.Parent = card
+
+		-- The copies progress bar (X of the required stack; full gold at max level).
+		local track = Instance.new("Frame")
+		track.Position = UDim2.fromOffset(8, 68); track.Size = UDim2.new(1, -16, 0, 7)
+		track.BackgroundColor3 = Color3.fromRGB(15, 17, 24); track.BorderSizePixel = 0; track.Parent = card
+		corner(track, 3)
+		local fillFrac = need and math.clamp(copies / need, 0, 1) or 1
+		if fillFrac > 0 then
+			local fill = Instance.new("Frame")
+			fill.Size = UDim2.fromScale(fillFrac, 1)
+			fill.BackgroundColor3 = need and (copies >= need and Color3.fromRGB(235, 190, 85) or ACCENT)
+				or Color3.fromRGB(235, 190, 85)
+			fill.BorderSizePixel = 0; fill.Parent = track
+			corner(fill, 3)
+		end
+
+		-- UPGRADE strip: only when the copies are stacked. Gold = affordable, dark = missing Coins.
+		if need and copies >= need then
+			local afford = (invData and invData.coins or 0) >= (cost or 0)
+			local up = Instance.new("TextButton")
+			up.Position = UDim2.new(0, 8, 1, -34); up.Size = UDim2.new(1, -16, 0, 26); up.BorderSizePixel = 0
+			up.Font = Enum.Font.GothamBold; up.TextSize = 12; up.Parent = card
+			corner(up, 6)
+			if afford then
+				up.BackgroundColor3 = Color3.fromRGB(235, 190, 85); up.TextColor3 = Color3.fromRGB(40, 32, 8)
+			else
+				up.BackgroundColor3 = Color3.fromRGB(40, 44, 54); up.TextColor3 = Color3.fromRGB(150, 156, 168)
+				up.AutoButtonColor = false
+			end
+			up.Text = ("UPGRADE · 🪙 %s"):format(fmt(cost or 0))
+			if afford then
+				up.Activated:Connect(function()
+					UpgradeGun:FireServer({ weaponId = weaponId })
+				end)
+			end
+		elseif not need then
+			local maxLbl = Instance.new("TextLabel")
+			maxLbl.Position = UDim2.new(0, 8, 1, -30); maxLbl.Size = UDim2.new(1, -16, 0, 18); maxLbl.BackgroundTransparency = 1
+			maxLbl.Font = Enum.Font.GothamBlack; maxLbl.TextSize = 13; maxLbl.TextColor3 = Color3.fromRGB(235, 190, 85)
+			maxLbl.Text = "MAX LEVEL"; maxLbl.Parent = card
+		end
+	end
+
 	if onClick then
 		card.Activated:Connect(onClick)
 	end
@@ -540,15 +627,15 @@ local function renderWeaponsTab()
 			local hs = Instance.new("UIStroke"); hs.Color = isActive and ACCENT or Color3.fromRGB(60, 64, 80)
 			hs.Thickness = isActive and 2.5 or 1; hs.Parent = holder
 			local em = Instance.new("TextLabel")
-			em.Position = UDim2.fromOffset(0, 26); em.Size = UDim2.new(1, 0, 0, 20); em.BackgroundTransparency = 1
+			em.Position = UDim2.fromOffset(0, 44); em.Size = UDim2.new(1, 0, 0, 20); em.BackgroundTransparency = 1
 			em.Font = Enum.Font.Gotham; em.TextSize = 13; em.TextColor3 = Color3.fromRGB(120, 125, 140)
 			em.Text = "Empty"; em.Parent = holder
 			local sl = Instance.new("TextLabel")
-			sl.Position = UDim2.fromOffset(0, 56); sl.Size = UDim2.new(1, 0, 0, 16); sl.BackgroundTransparency = 1
+			sl.Position = UDim2.fromOffset(0, 84); sl.Size = UDim2.new(1, 0, 0, 16); sl.BackgroundTransparency = 1
 			sl.Font = Enum.Font.GothamBold; sl.TextSize = 12; sl.TextColor3 = Color3.fromRGB(150, 160, 175)
 			sl.Text = "SLOT " .. slot; sl.Parent = holder
 		end
-		holder.Size = UDim2.fromOffset(150, 92)
+		holder.Size = UDim2.fromOffset(150, 128)
 		holder.LayoutOrder = slot
 		holder.Activated:Connect(function()
 			activeSlot = slot
@@ -750,7 +837,7 @@ reelBtn.Text = "SKIP"; reelBtn.ZIndex = 7; reelBtn.Parent = reel; corner(reelBtn
 local activeTween = nil
 local finishReel = nil
 
-playReel = function(caseId, wonId, duplicate, coins)
+playReel = function(caseId, wonId, res)
 	local disp = invData.catalog.cases[caseId]
 	local poolIds = disp and disp.poolIds or { wonId }
 	for _, c in strip:GetChildren() do c:Destroy() end
@@ -795,12 +882,17 @@ playReel = function(caseId, wonId, duplicate, coins)
 		strip.Position = UDim2.fromOffset(target, 0)
 		local info = weaponInfo(wonId)
 		local col = info and rarityColor(info.rarity) or Color3.fromRGB(240, 240, 245)
-		if duplicate then
+		local gunName = info and info.name or wonId
+		local copies = tonumber(res.copies) or 1
+		if res.unlocked then
+			resultLabel.TextColor3 = col
+			resultLabel.Text = ("Unlocked %s!  (+%d copies)"):format(gunName, copies)
+		elseif res.maxed then
 			resultLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
-			resultLabel.Text = ("Duplicate %s — sold for 🪙 %d"):format(info and info.name or wonId, coins)
+			resultLabel.Text = ("+%d %s copies → 🪙 %d  (max level)"):format(copies, gunName, tonumber(res.coins) or 0)
 		else
 			resultLabel.TextColor3 = col
-			resultLabel.Text = ("Unlocked %s!"):format(info and info.name or wonId)
+			resultLabel.Text = ("+%d %s copies"):format(copies, gunName)
 		end
 		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = ACCENT; reelBtn.TextColor3 = Color3.fromRGB(15, 25, 15)
 	end
@@ -870,7 +962,7 @@ CaseResult.OnClientEvent:Connect(function(res)
 	if invPanel.Visible then
 		showTab("cases") -- make sure we're on the cases view behind the reel
 	end
-	playReel(res.caseId, res.wonId, res.duplicate == true, tonumber(res.coins) or 0)
+	playReel(res.caseId, res.wonId, res)
 end)
 
 -- =====================================================================================================

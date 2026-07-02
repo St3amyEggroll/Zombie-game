@@ -1,12 +1,12 @@
 --!nonstrict
--- HotbarController.lua — the bottom-center 2-slot gun hotbar + the UPGRADE button above it.
---   * Two buttons show your equipped guns (name + this run's upgrade level). Click to switch;
---     on PC the 1 / 2 keys also work (InputController handles the keys — both paths just fire EquipWeapon).
---   * The UPGRADE button shows the HELD gun's next level + price (press B or click). Hidden at max level.
--- Server-authoritative: UpgradeService validates every buy; this only renders + sends intent.
+-- HotbarController.lua — the bottom-center 2-slot gun hotbar.
+--   * Two buttons show your equipped guns (name + PERSISTENT gun level from the lobby's Clash-Royale
+--     copies system). Click to switch; on PC the 1 / 2 keys also work (InputController handles the keys —
+--     both paths just fire EquipWeapon).
+--   * Third button opens the in-game inventory.
+-- (The old in-run UPGRADE button is gone — guns level up in the LOBBY now, with case copies + Coins.)
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -14,8 +14,6 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local WeaponConfig = require(Config.WeaponConfig)
-local UpgradeConfig = require(Config.UpgradeConfig)
-local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
 -- The inventory panel (its INVENTORY button lives on this hotbar). GUARDED: a broken inventory
@@ -26,9 +24,6 @@ if not okInv or type(GameInventoryController) ~= "table" then
 end
 
 local HotbarController = {}
-
--- ===== TUNABLES =====
-local UPGRADE_KEY = Enum.KeyCode.B
 
 -- ===== STYLE (shared design system) =====
 local COL_PANEL    = Color3.fromRGB(22, 24, 30)
@@ -42,11 +37,9 @@ local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local owned: { string } = { "pistol" }
 local equipped = "pistol"
-local upgrades: { [string]: number } = {}
-local cash = 0
+local gunLevels: { [string]: number } = {} -- persistent levels (lobby-managed, from DataReady)
 
 local slotButtons = {}
-local upgradeBtn, upgradeName, upgradePrice
 
 local function corner(o, r)
 	local c = Instance.new("UICorner")
@@ -70,9 +63,8 @@ local function refresh()
 		local weapon = id and WeaponConfig[id]
 		if weapon then
 			b.frame.Visible = true
-			local level = upgrades[id] or 0
 			b.name.Text = weapon.name
-			b.level.Text = level > 0 and ("Lv " .. level) or ""
+			b.level.Text = "Lv " .. tostring(gunLevels[id] or 1)
 			local isHeld = (id == equipped)
 			b.stroke.Color = isHeld and COL_ACCENT or Color3.fromRGB(255, 255, 255)
 			b.stroke.Transparency = isHeld and 0.2 or 0.92
@@ -80,21 +72,6 @@ local function refresh()
 		else
 			b.frame.Visible = false
 		end
-	end
-
-	-- Upgrade button for the HELD gun.
-	local weapon = WeaponConfig[equipped]
-	local level = upgrades[equipped] or 0
-	local price = weapon and UpgradeConfig.NextPrice(equipped, level)
-	if weapon and price then
-		upgradeBtn.Visible = true
-		local affordable = cash >= price
-		upgradeName.Text = ("UPGRADE %s  ·  Lv %d → %d"):format(weapon.name, level, level + 1)
-		upgradeName.TextColor3 = affordable and COL_TEXT or COL_TEXT_DIM
-		upgradePrice.Text = "$" .. Util.FormatNumber(price)
-		upgradePrice.TextColor3 = affordable and COL_ACCENT or COL_TEXT_DIM
-	else
-		upgradeBtn.Visible = false -- maxed (or no weapon)
 	end
 end
 
@@ -197,55 +174,6 @@ local function build()
 	invBtn.Activated:Connect(function()
 		GameInventoryController.Toggle()
 	end)
-
-	-- UPGRADE button (above the hotbar).
-	upgradeBtn = Instance.new("TextButton")
-	upgradeBtn.Name = "UpgradeButton"
-	upgradeBtn.AnchorPoint = Vector2.new(0.5, 1)
-	upgradeBtn.Position = UDim2.new(0.5, 0, 1, -76)
-	upgradeBtn.Size = UDim2.fromOffset(280, 50)
-	upgradeBtn.BackgroundColor3 = COL_PANEL
-	upgradeBtn.BackgroundTransparency = 0.15
-	upgradeBtn.BorderSizePixel = 0
-	upgradeBtn.Text = ""
-	upgradeBtn.AutoButtonColor = true
-	upgradeBtn.Visible = false
-	upgradeBtn.Parent = gui
-	corner(upgradeBtn, 10)
-	hairline(upgradeBtn)
-
-	upgradeName = Instance.new("TextLabel")
-	upgradeName.Position = UDim2.fromOffset(0, 7)
-	upgradeName.Size = UDim2.new(1, 0, 0, 16)
-	upgradeName.BackgroundTransparency = 1
-	upgradeName.Font = Enum.Font.GothamBold
-	upgradeName.TextSize = 13
-	upgradeName.TextColor3 = COL_TEXT
-	upgradeName.Parent = upgradeBtn
-
-	upgradePrice = Instance.new("TextLabel")
-	upgradePrice.Position = UDim2.fromOffset(0, 25)
-	upgradePrice.Size = UDim2.new(1, 0, 0, 16)
-	upgradePrice.BackgroundTransparency = 1
-	upgradePrice.Font = Enum.Font.GothamBold
-	upgradePrice.TextSize = 14
-	upgradePrice.TextColor3 = COL_GOLD
-	upgradePrice.Parent = upgradeBtn
-
-	local hint = Instance.new("TextLabel")
-	hint.AnchorPoint = Vector2.new(1, 0)
-	hint.Position = UDim2.new(1, -10, 0, 6)
-	hint.Size = UDim2.fromOffset(16, 14)
-	hint.BackgroundTransparency = 1
-	hint.Font = Enum.Font.GothamBold
-	hint.TextSize = 11
-	hint.TextColor3 = COL_TEXT_DIM
-	hint.Text = "B"
-	hint.Parent = upgradeBtn
-
-	upgradeBtn.Activated:Connect(function()
-		Remotes.Get("BuyUpgrade"):FireServer()
-	end)
 end
 
 -- ===== LIFECYCLE =====
@@ -261,23 +189,23 @@ function HotbarController.Start()
 		end
 		refresh()
 	end)
-	Remotes.Get("UpgradeState").OnClientEvent:Connect(function(levels)
-		if type(levels) == "table" then
-			upgrades = levels
+
+	-- Persistent gun levels ride in with the profile snapshot (they can't change mid-run).
+	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
+		if type(data) == "table" and type(data.gunLevels) == "table" then
+			gunLevels = data.gunLevels
 			refresh()
 		end
 	end)
-	Remotes.Get("PointsChanged").OnClientEvent:Connect(function(points)
-		cash = tonumber(points) or 0
-		refresh()
-	end)
-
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then
-			return
-		end
-		if input.KeyCode == UPGRADE_KEY and upgradeBtn.Visible then
-			Remotes.Get("BuyUpgrade"):FireServer()
+	-- DataReady can fire before this controller was listening (it's a one-shot at profile load) —
+	-- pull the snapshot too so the level badges are right from the first frame.
+	task.spawn(function()
+		local ok, data = pcall(function()
+			return Remotes.Get("GetData"):InvokeServer()
+		end)
+		if ok and type(data) == "table" and type(data.gunLevels) == "table" then
+			gunLevels = data.gunLevels
+			refresh()
 		end
 	end)
 
@@ -286,7 +214,7 @@ function HotbarController.Start()
 	Remotes.Get("LoadoutChanged"):FireServer()
 
 	refresh()
-	print("[HotbarController] started (2-slot hotbar + upgrade button)")
+	print("[HotbarController] started (2-slot hotbar)")
 end
 
 return HotbarController

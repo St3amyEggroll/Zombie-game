@@ -41,6 +41,8 @@ local TEMPLATE = {
 	loadout      = { "pistol" },      -- the up-to-2 guns you carry into runs (picked in the lobby inventory)
 	cases        = { common = 3 },    -- unopened cases by RARITY id -> count (3 free Common Cases to start)
 	potions      = {},                -- owned potions by id -> count (usable in-run)
+	gunLevels    = { pistol = 1 },    -- [weaponId] = persistent level 1..10 (Clash-Royale copies system;
+	gunCopies    = {},                --   upgraded in the LOBBY — the game only READS these for combat stats)
 	bestWave     = 0,
 	completed    = {},                -- ["forest:easy"] = true — difficulties beaten (drives unlocks)
 	stats        = { totalKills = 0, matchesPlayed = 0 },

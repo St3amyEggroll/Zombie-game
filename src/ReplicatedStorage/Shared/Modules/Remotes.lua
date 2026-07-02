@@ -65,9 +65,8 @@ local DEFINITIONS: { [string]: string } = {
 	PotionDropped     = "RemoteEvent",     -- S->C: (potionId) an elite zombie dropped a potion (toast)
 	CaseDropped       = "RemoteEvent",     -- S->C: (rarity) you collected a wave-clear case (toast)
 
-	-- UpgradeService (in-run gun upgrades, 5 levels per gun, per-run only)
-	BuyUpgrade        = "RemoteEvent",     -- C->S: buy the next upgrade level for the HELD gun
-	UpgradeState      = "RemoteEvent",     -- S->C: ({ [weaponId] = level }) your run's upgrade levels
+	-- (In-run gun upgrades were REMOVED — guns now level up persistently in the LOBBY via case copies;
+	-- the level rides in on data.gunLevels and GunLevelConfig turns it into stats.)
 
 	-- Down / Revive (co-op: at 0 HP with teammates up you go DOWNED instead of dying; they revive you)
 	Revive            = "RemoteEvent",     -- C->S: (targetUserId, holding: boolean) start/stop a revive hold
