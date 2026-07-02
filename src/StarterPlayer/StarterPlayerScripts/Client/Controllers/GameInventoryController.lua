@@ -44,12 +44,7 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "GameInventory"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 8
 gui.Parent = playerGui
 
-local openBtn = Instance.new("TextButton")
-openBtn.Position = UDim2.fromOffset(16, 16); openBtn.Size = UDim2.fromOffset(150, 40)
-openBtn.BackgroundColor3 = Color3.fromRGB(22, 24, 30); openBtn.BorderSizePixel = 0
-openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 14; openBtn.TextColor3 = TEXT
-openBtn.Text = "INVENTORY"; openBtn.Parent = gui; corner(openBtn, 10)
-local obStroke = Instance.new("UIStroke"); obStroke.Color = ACCENT; obStroke.Thickness = 1.3; obStroke.Transparency = 0.4; obStroke.Parent = openBtn
+-- (Opened via the INVENTORY button on the hotbar — HotbarController calls GameInventoryController.Toggle().)
 
 -- Drop toast (potion/case pickups).
 local toast = Instance.new("TextLabel")
@@ -292,12 +287,16 @@ end
 closeBtn.Activated:Connect(function()
 	panel.Visible = false
 end)
-openBtn.Activated:Connect(function()
+
+-- Open/close the panel (called by the hotbar's INVENTORY button). Always lands on the Potions tab.
+function GameInventoryController.Toggle()
 	Remotes.Get("InvSnapshot"):FireServer() -- request a fresh snapshot
-	activeTab = "potions" -- always land on the interactive tab
+	activeTab = "potions"
 	panel.Visible = not panel.Visible
-	if panel.Visible then render() end
-end)
+	if panel.Visible then
+		render()
+	end
+end
 
 -- ===== LIFECYCLE =====
 function GameInventoryController.Start()

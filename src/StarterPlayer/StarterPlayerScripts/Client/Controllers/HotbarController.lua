@@ -18,6 +18,13 @@ local UpgradeConfig = require(Config.UpgradeConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
+-- The inventory panel (its INVENTORY button lives on this hotbar). GUARDED: a broken inventory
+-- controller must never brick the hotbar.
+local okInv, GameInventoryController = pcall(require, script.Parent.GameInventoryController)
+if not okInv or type(GameInventoryController) ~= "table" then
+	GameInventoryController = { Toggle = function() end }
+end
+
 local HotbarController = {}
 
 -- ===== TUNABLES =====
@@ -100,10 +107,11 @@ local function build()
 	gui.DisplayOrder = 6
 	gui.Parent = playerGui
 
+	-- The row holds slot 1, slot 2, and the INVENTORY button — all centered together.
 	local holder = Instance.new("Frame")
 	holder.AnchorPoint = Vector2.new(0.5, 1)
 	holder.Position = UDim2.new(0.5, 0, 1, -14)
-	holder.Size = UDim2.fromOffset(330, 54)
+	holder.Size = UDim2.fromOffset(470, 54)
 	holder.BackgroundTransparency = 1
 	holder.Parent = gui
 	local list = Instance.new("UIListLayout")
@@ -167,6 +175,28 @@ local function build()
 
 		slotButtons[i] = { frame = frame, name = name, level = level, stroke = stroke }
 	end
+
+	-- INVENTORY button (third in the row, right of the gun slots).
+	local invBtn = Instance.new("TextButton")
+	invBtn.Name = "InventoryButton"
+	invBtn.Size = UDim2.fromOffset(120, 54)
+	invBtn.BackgroundColor3 = COL_PANEL
+	invBtn.BackgroundTransparency = 0.15
+	invBtn.BorderSizePixel = 0
+	invBtn.Font = Enum.Font.GothamBold
+	invBtn.TextSize = 14
+	invBtn.TextColor3 = COL_TEXT
+	invBtn.Text = "INVENTORY"
+	invBtn.AutoButtonColor = true
+	invBtn.LayoutOrder = 3
+	invBtn.Parent = holder
+	corner(invBtn, 10)
+	local invStroke = hairline(invBtn)
+	invStroke.Color = COL_ACCENT
+	invStroke.Transparency = 0.5
+	invBtn.Activated:Connect(function()
+		GameInventoryController.Toggle()
+	end)
 
 	-- UPGRADE button (above the hotbar).
 	upgradeBtn = Instance.new("TextButton")
