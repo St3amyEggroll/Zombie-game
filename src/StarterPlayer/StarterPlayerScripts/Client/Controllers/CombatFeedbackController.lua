@@ -348,11 +348,11 @@ local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vec
 		return
 	end
 	dir = dir.Unit
-	-- Scatter endpoints in a small disc perpendicular to the travel direction (~4.5° spread).
+	-- Scatter endpoints in a disc perpendicular to the travel direction (~9° spread — a visible fan).
 	local up = (math.abs(dir.Y) > 0.99) and Vector3.xAxis or Vector3.yAxis
 	local right = dir:Cross(up).Unit
 	local upP = dir:Cross(right).Unit
-	local radius = dist * 0.08
+	local radius = dist * 0.16
 	for i = 1, count do
 		local ang = math.random() * math.pi * 2
 		local r = math.sqrt(math.random()) * radius

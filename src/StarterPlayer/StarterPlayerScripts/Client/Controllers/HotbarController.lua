@@ -281,6 +281,10 @@ function HotbarController.Start()
 		end
 	end)
 
+	-- The server's spawn-time loadout push can fire before this controller was listening (fresh teleport
+	-- in) — request a re-send so BOTH slots show immediately, not just after the first weapon switch.
+	Remotes.Get("LoadoutChanged"):FireServer()
+
 	refresh()
 	print("[HotbarController] started (2-slot hotbar + upgrade button)")
 end

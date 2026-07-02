@@ -147,7 +147,11 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	flatDir = (flatDir.Magnitude > 0.01) and flatDir.Unit or dir
 	local baseDamage = eff.damage * (1 + buffOf(ps, "damage")) -- upgraded damage × Damage buff
 	local arcRange = GameConfig.ArcRange
-	local dotThreshold = math.cos(math.rad(GameConfig.ArcDegrees * 0.5)) -- 180° -> 0 (forward hemisphere)
+	-- Pellet weapons can hit across a WIDER arc than the global cone (weapon.spreadArc — the shotgun
+	-- sprays the crowd, not one line). The client lock rule stays on the narrower global arc, which is
+	-- fine: a lock is only needed to fire; the pellets then find the wider crowd.
+	local arcDegrees = math.max(GameConfig.ArcDegrees, weapon.spreadArc or 0)
+	local dotThreshold = math.cos(math.rad(arcDegrees * 0.5)) -- 180° -> 0 (forward hemisphere)
 
 	-- LOS ray ignores zombies AND every player's character: there is no friendly fire, so a teammate
 	-- crossing your line must not silently absorb your shot (bodies are not cover).
@@ -305,6 +309,15 @@ function CombatService.Start()
 
 	Remotes.Get("FireWeapon").OnServerEvent:Connect(onFire)
 	Remotes.Get("EquipWeapon").OnServerEvent:Connect(onEquip)
+
+	-- Client fires LoadoutChanged (no args) to REQUEST a re-send — the spawn-time push can beat the
+	-- client's controllers loading (they'd show only slot 1 until the next equip otherwise).
+	Remotes.Get("LoadoutChanged").OnServerEvent:Connect(function(player)
+		local ps = MatchService.GetPlayerState(player)
+		if ps then
+			fireLoadout(player, ps)
+		end
+	end)
 
 	print("[CombatService] started (server-authoritative fire)")
 end

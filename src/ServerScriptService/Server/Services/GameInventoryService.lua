@@ -27,6 +27,7 @@ local DataService = require(script.Parent.DataService)
 local CombatService = require(script.Parent.CombatService)
 local MatchService = require(script.Parent.MatchService)
 local BuffService = require(script.Parent.BuffService)
+local ZombieService = require(script.Parent.ZombieService)
 
 local GameInventoryService = {}
 
@@ -295,16 +296,43 @@ local function rollCaseRarity(wave: number): string
 	return GameConfig.CaseRarities[1]
 end
 
-local function onWaveCleared(round: number)
-	if round % GameConfig.CaseDropEvery ~= 0 then
-		return
+-- Where this wave's cases burst from: the boss's corpse (boss waves ARE the every-10 waves), falling back
+-- to the centroid of the surviving players if no recent boss death is known.
+local function caseOrigin(): Vector3?
+	if ZombieService.LastBossDeathPos and os.clock() - (ZombieService.LastBossDeathTime or 0) < 120 then
+		return ZombieService.LastBossDeathPos + Vector3.new(0, 3, 0)
 	end
+	local sum, n = Vector3.zero, 0
 	for _, player in Players:GetPlayers() do
 		local ps = MatchService.GetPlayerState(player)
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if ps and ps.inMatch and root then
+			sum += root.Position
+			n += 1
+		end
+	end
+	return n > 0 and (sum / n + Vector3.new(0, 3, 0)) or nil
+end
+
+local function onWaveCleared(round: number)
+	if round % GameConfig.CaseDropEvery ~= 0 then
+		return
+	end
+	-- FINAL wave (victory): the teleport to the lobby happens immediately after this — a physical drop
+	-- would race it and get eaten. Grant the case DIRECTLY (with the toast) so it always lands.
+	local isFinal = round >= (MatchService.State.maxWave or math.huge)
+	local origin = caseOrigin()
+	for _, player in Players:GetPlayers() do
+		local ps = MatchService.GetPlayerState(player)
+		if ps and ps.inMatch then
 			local rarity = rollCaseRarity(round)
-			spawnDrop(root.Position + Vector3.new(0, 3, 0), { kind = "case", rarity = rarity, targetPlayer = player })
+			if isFinal or not origin then
+				DataService.AddCase(player, rarity, 1)
+				Remotes.Get("CaseDropped"):FireClient(player, rarity)
+				push(player)
+			else
+				spawnDrop(origin, { kind = "case", rarity = rarity, targetPlayer = player })
+			end
 		end
 	end
 end

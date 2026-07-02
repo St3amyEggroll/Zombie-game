@@ -162,11 +162,11 @@ local function build()
 	gui.DisplayOrder = 20
 	gui.Parent = playerGui
 
-	-- ----- Level bar (bottom center, always visible) -----
+	-- ----- Level bar (TOP center, always visible) -----
 	local barHolder = Instance.new("Frame")
 	barHolder.Name = "XPBar"
-	barHolder.AnchorPoint = Vector2.new(0.5, 1)
-	barHolder.Position = UDim2.new(0.5, 0, 1, -16)
+	barHolder.AnchorPoint = Vector2.new(0.5, 0)
+	barHolder.Position = UDim2.new(0.5, 0, 0, 12)
 	barHolder.Size = UDim2.fromOffset(560, 26)
 	barHolder.BackgroundColor3 = Color3.fromRGB(18, 22, 34)
 	barHolder.BackgroundTransparency = 0.1

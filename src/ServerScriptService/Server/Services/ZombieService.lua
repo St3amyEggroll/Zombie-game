@@ -45,12 +45,12 @@ local ATTACK_VERTICAL  = 6      -- studs of height difference allowed for a hit 
                                -- on a ramp/ledge can't tag you); paired with a line-of-sight check
 local ATTACK_COOLDOWN  = 1.0    -- seconds between a zombie's attacks
 -- ----- Leaper pounce (only zombies whose type has canLeap=true) -----
-local LEAP_COOLDOWN    = 2.0    -- seconds between pounces (low = leaps constantly)
+local LEAP_COOLDOWN    = 1.6    -- seconds between pounces (low = leaps constantly)
 local LEAP_MIN_DIST    = 6      -- pounce from as close as this (so it keeps pouncing, not just once from afar)
 local LEAP_MAX_DIST    = 55     -- and no farther than this (out of range = keep approaching)
-local LEAP_UP_SPEED    = 46     -- vertical launch velocity (sets arc height + air time)
-local LEAP_MAX_HSPEED  = 110    -- cap on the horizontal launch speed (studs/sec)
-local LEAP_REACH_FRAC  = 0.7    -- fraction of the gap each pounce covers (<1 lands SHORT so it keeps leaping
+local LEAP_UP_SPEED    = 30     -- vertical launch velocity — LOW arc = a fast flat dart, not a hop straight up
+local LEAP_MAX_HSPEED  = 140    -- cap on the horizontal launch speed (studs/sec)
+local LEAP_REACH_FRAC  = 0.95   -- fraction of the gap each pounce covers (≈1 lands basically ON you
                                -- in over several pounces instead of burying straight into melee on the first)
 -- ----- BombZombie (isBomb) -----
 local BOMB_TRIGGER     = 8      -- studs from a player that LIGHTS the fuse
@@ -738,6 +738,9 @@ local function onZombieDied(record)
 			record.bossHealthConn:Disconnect()
 			record.bossHealthConn = nil
 		end
+		-- Where the boss fell — the wave's case drops burst out of the corpse (GameInventoryService).
+		ZombieService.LastBossDeathPos = record.root and record.root.Position or nil
+		ZombieService.LastBossDeathTime = os.clock()
 		Remotes.Get("BossDefeated"):FireAllClients()
 	end
 	-- aliveCount is freed in release() (after the corpse linger), so corpses still count against the

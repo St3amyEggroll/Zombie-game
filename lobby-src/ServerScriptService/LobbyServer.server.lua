@@ -32,6 +32,8 @@ local STORE_NAME       = "PlayerData_v2"
 local DIFFS            = { "easy", "medium", "hard", "nightmare" }
 local WORLDS           = { "forest" }
 local PARTY_WAIT       = 30   -- seconds an OPEN party waits before launching with whoever joined
+local FULL_GRACE       = 5    -- once the party is FULL (incl. solo), the countdown drops to this — a short
+                              -- window to hit LEAVE before launch (nobody teleports instantly)
 local V_MARGIN         = 6
 local TICK             = 0.25
 local TELEPORT_RETRIES = 4
@@ -826,6 +828,12 @@ local function tick()
 				parties[zone] = nil
 				updateBillboard(zone, nil)
 			else
+				-- Full party (incl. solo): shorten the countdown to FULL_GRACE — never launch instantly,
+				-- so there's always a window to press LEAVE. If someone drops back out, the grace stays
+				-- (they chose to fill it once; the timer keeps things moving).
+				if #party.members >= party.size and (party.deadline - now) > FULL_GRACE then
+					party.deadline = now + FULL_GRACE
+				end
 				local secs = math.max(0, math.ceil(party.deadline - now))
 				for _, pl in party.members do
 					PartyStatus:FireClient(pl, {
@@ -834,7 +842,7 @@ local function tick()
 					})
 				end
 				updateBillboard(zone, party)
-				if #party.members >= party.size or now >= party.deadline then
+				if now >= party.deadline then
 					dissolveAndLaunch(party)
 				end
 			end

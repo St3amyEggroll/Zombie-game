@@ -16,13 +16,13 @@ local AnimationConfig = {}
 --   Speed = studs/sec         Life  = fade time once it lands
 AnimationConfig.Projectile = {
 	Enabled = true,
-	Default = { Color = Color3.fromRGB(255, 235, 170), Length = 3.5, Width = 0.1,  Speed = 420, Life = 0.05 },
+	Default = { Color = Color3.fromRGB(255, 235, 170), Length = 3.5, Width = 0.18, Speed = 420, Life = 0.05 },
 	PerWeapon = {
-		pistol  = { Color = Color3.fromRGB(255, 235, 170), Length = 3.5, Width = 0.1,  Speed = 420, Life = 0.05 },
-		shotgun = { Color = Color3.fromRGB(255, 205, 130), Length = 2.6, Width = 0.08, Speed = 380, Life = 0.04 },
-		ak47    = { Color = Color3.fromRGB(255, 242, 180), Length = 4.0, Width = 0.1,  Speed = 480, Life = 0.05 },
-		minigun = { Color = Color3.fromRGB(255, 180, 100), Length = 4.0, Width = 0.08, Speed = 520, Life = 0.04 },
-		raygun  = { Color = Color3.fromRGB(120, 255, 140), Length = 4.5, Width = 0.2,  Speed = 300, Life = 0.08 },
+		pistol  = { Color = Color3.fromRGB(255, 235, 170), Length = 3.5, Width = 0.18, Speed = 420, Life = 0.05 },
+		shotgun = { Color = Color3.fromRGB(255, 205, 130), Length = 2.6, Width = 0.14, Speed = 380, Life = 0.04 },
+		ak47    = { Color = Color3.fromRGB(255, 242, 180), Length = 4.0, Width = 0.18, Speed = 480, Life = 0.05 },
+		minigun = { Color = Color3.fromRGB(255, 180, 100), Length = 4.0, Width = 0.14, Speed = 520, Life = 0.04 },
+		raygun  = { Color = Color3.fromRGB(120, 255, 140), Length = 4.5, Width = 0.3,  Speed = 300, Life = 0.08 },
 	},
 }
 

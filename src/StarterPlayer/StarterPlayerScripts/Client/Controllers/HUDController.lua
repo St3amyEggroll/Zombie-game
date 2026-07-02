@@ -120,15 +120,17 @@ local function build()
 	healthFill.Parent = track
 	corner(healthFill, 8)
 
-	-- Wave pill (top-center).
-	local wave = panel(gui, "WavePanel")
-	wave.AnchorPoint = Vector2.new(0.5, 0)
-	wave.Position = UDim2.new(0.5, 0, 0, 12)
-	wave.Size = UDim2.fromOffset(150, 40)
-
-	roundLabel = text(wave, "RoundLabel", Enum.Font.GothamBlack, 19, COL_TEXT)
-	roundLabel.Size = UDim2.fromScale(1, 1)
+	-- Wave number (top-center, just below the run XP bar): plain large white text, no panel.
+	roundLabel = text(gui, "RoundLabel", Enum.Font.GothamBlack, 30, Color3.fromRGB(255, 255, 255))
+	roundLabel.AnchorPoint = Vector2.new(0.5, 0)
+	roundLabel.Position = UDim2.new(0.5, 0, 0, 44)
+	roundLabel.Size = UDim2.fromOffset(300, 36)
 	roundLabel.Text = "WAVE 0"
+	local waveStroke = Instance.new("UIStroke") -- thin dark outline so white text reads on bright skies
+	waveStroke.Color = Color3.fromRGB(0, 0, 0)
+	waveStroke.Transparency = 0.4
+	waveStroke.Thickness = 1.5
+	waveStroke.Parent = roundLabel
 
 	-- Currency (top-right): Coins over Cash.
 	local cur = panel(gui, "CurrencyPanel")
