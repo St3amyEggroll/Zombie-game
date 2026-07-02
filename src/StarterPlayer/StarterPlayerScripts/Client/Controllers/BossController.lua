@@ -11,6 +11,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules")
 local Remotes = require(Modules.Remotes)
 
+-- Screen shake for the boss entrance (GUARDED: a broken FX controller must never brick the boss bar).
+local okFx, CombatFeedbackController = pcall(require, script.Parent.CombatFeedbackController)
+if not okFx or type(CombatFeedbackController) ~= "table" then
+	CombatFeedbackController = { ShakeOnce = function() end }
+end
+
 local BossController = {}
 
 -- ===== TUNABLES =====
@@ -107,6 +113,7 @@ local function onSpawned(name: string?, maxHealth: number?)
 	fill.Size = UDim2.fromScale(1, 1)
 	barHolder.Visible = true
 	flashBanner("⚠  " .. title .. "  ⚠", BANNER_COLOR)
+	CombatFeedbackController.ShakeOnce(1.4, 0.5, 16, 0.4) -- the ground shakes when the boss arrives
 end
 
 local function onHealth(h: number, maxHealth: number?)

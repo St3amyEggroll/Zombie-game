@@ -41,6 +41,16 @@ local kickUp = 0              -- transient upward camera nudge, recovers each fr
 local lastOffset = Vector3.zero
 local lastHumanoid: Humanoid? = nil
 
+-- One-off screen shake for events (boss entrances etc.) — same Perlin rumble as gunfire, custom strength.
+function CombatFeedbackController.ShakeOnce(magnitude: number, duration: number, frequency: number?, kick: number?)
+	shakeElapsed = 0
+	shakeDuration = math.max(duration or 0.4, 0)
+	shakeMagnitude = math.max(magnitude or 0.8, 0)
+	shakeFrequency = math.max(frequency or 18, 1)
+	shakeSeed = (shakeSeed + 7.13) % 1000
+	kickUp = math.min(2, kickUp + (kick or 0))
+end
+
 local function addShake(weaponId: string)
 	local cfg = AnimationConfig.Shake
 	if not cfg.Enabled then
