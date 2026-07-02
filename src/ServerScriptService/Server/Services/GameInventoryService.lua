@@ -142,12 +142,13 @@ end
 
 local function grantDrop(player: Player, drop)
 	if drop.kind == "case" then
-		DataService.AddCase(player, drop.rarity, 1)
+		-- Boss cases are BANKED the moment the boss dies (see onBossDied) so a disconnect/despawn can
+		-- never lose one — the flying drop is pure show, and pickup just fires the toast.
 		Remotes.Get("CaseDropped"):FireClient(player, drop.rarity)
-	else
-		DataService.AddPotion(player, drop.potionId, 1)
-		Remotes.Get("PotionDropped"):FireClient(player, drop.potionId)
+		return
 	end
+	DataService.AddPotion(player, drop.potionId, 1)
+	Remotes.Get("PotionDropped"):FireClient(player, drop.potionId)
 	DataService.Save(player) -- persist soon so the lobby sees it (teleport-back also does a blocking save)
 	push(player)
 end
@@ -297,8 +298,9 @@ local function rollCaseRarity(wave: number): string
 end
 
 -- Cases drop the moment the BOSS DIES (not at wave end): everyone in the run gets one, bursting out of
--- the boss's corpse and homing to them. On the difficulty's FINAL wave the case is granted DIRECTLY
--- (with the toast) — the victory teleport follows the wave clear and a physical drop could race it.
+-- the boss's corpse and homing to them. The case is BANKED (saved) immediately at the kill — the flying
+-- drop is cosmetic and only fires the pickup toast — so leaving/dying mid-flight can never lose it. On
+-- the difficulty's FINAL wave there's no drop at all (the victory teleport would race it): toast now.
 local function onBossDied(deathPos)
 	local round = MatchService.State.round
 	local isFinal = round >= (MatchService.State.maxWave or math.huge)
@@ -307,11 +309,11 @@ local function onBossDied(deathPos)
 		local ps = MatchService.GetPlayerState(player)
 		if ps and ps.inMatch then
 			local rarity = rollCaseRarity(math.max(round, GameConfig.CaseDropEvery))
+			DataService.AddCase(player, rarity, 1)
+			DataService.Save(player)
+			push(player)
 			if isFinal or not origin then
-				DataService.AddCase(player, rarity, 1)
-				DataService.Save(player)
 				Remotes.Get("CaseDropped"):FireClient(player, rarity)
-				push(player)
 			else
 				spawnDrop(origin, { kind = "case", rarity = rarity, targetPlayer = player })
 			end

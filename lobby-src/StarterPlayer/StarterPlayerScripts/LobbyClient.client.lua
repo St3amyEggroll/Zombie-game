@@ -218,10 +218,28 @@ local function setPanelMode(mode)
 end
 
 -- ===== EVENTS =====
+local saveWarn = nil -- the profile-failed-to-load banner (built once, stays up all session)
 StatsRemote.OnClientEvent:Connect(function(s)
 	if typeof(s) ~= "table" then return end
 	moneyLabel.Text = fmt(s.lobbyMoney or 0) .. " Coins"
 	bestLabel.Text = "Best: Wave " .. tostring(s.bestWave or 0)
+	-- All profile-load retries failed: this session runs on a fallback that will NEVER be saved
+	-- (opening cases / buying is blocked server-side). Tell the player instead of failing silently.
+	if s.noPersist and not saveWarn then
+		saveWarn = Instance.new("TextLabel")
+		saveWarn.AnchorPoint = Vector2.new(0.5, 0)
+		saveWarn.Position = UDim2.new(0.5, 0, 0, 8)
+		saveWarn.Size = UDim2.fromOffset(620, 36)
+		saveWarn.BackgroundColor3 = Color3.fromRGB(224, 82, 82)
+		saveWarn.BorderSizePixel = 0
+		saveWarn.Font = Enum.Font.GothamBold
+		saveWarn.TextSize = 15
+		saveWarn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		saveWarn.Text = "⚠  Your save data couldn't load — progress will NOT save. Please rejoin."
+		saveWarn.ZIndex = 50
+		saveWarn.Parent = gui
+		corner(saveWarn, 8)
+	end
 end)
 
 ZoneEnter.OnClientEvent:Connect(function(p)
@@ -280,6 +298,8 @@ local CaseResult = remotes:WaitForChild("CaseResult")
 local invData = nil          -- latest snapshot: { catalog, owned, selected, cases, potions, coins }
 local activeTab = "weapons"
 local rolling = false
+local rollToken = 0          -- watchdog id: if the server never answers an open, unstick `rolling`
+local armRollTimeout         -- assigned after the reel exists (needs its upvalues)
 
 local BLACK = Color3.fromRGB(12, 13, 18)
 
@@ -580,7 +600,8 @@ local function renderCasesTab()
 		local disp = invData.catalog.cases[caseId]
 		if not disp then continue end
 		local count = invData.cases[caseId] or 0
-		any = any or count > 0
+		if count < 1 then continue end -- 0 of a case = it doesn't appear at all
+		any = true
 		local card = Instance.new("Frame")
 		card.BackgroundColor3 = Color3.fromRGB(26, 30, 44); card.BorderSizePixel = 0; card.Parent = casesScroll
 		corner(card, 10)
@@ -598,17 +619,14 @@ local function renderCasesTab()
 		local open = Instance.new("TextButton")
 		open.AnchorPoint = Vector2.new(0.5, 1); open.Position = UDim2.new(0.5, 0, 1, -10); open.Size = UDim2.new(1, -20, 0, 36)
 		open.Font = Enum.Font.GothamBlack; open.TextSize = 16; open.BorderSizePixel = 0; open.Parent = card; corner(open, 8)
-		if count > 0 then
-			open.BackgroundColor3 = ACCENT; open.TextColor3 = Color3.fromRGB(15, 25, 15); open.Text = "OPEN"
-			open.Activated:Connect(function()
-				if rolling then return end
-				rolling = true
-				open.Text = "..."; open.BackgroundColor3 = DIM
-				OpenCase:FireServer({ caseId = caseId })
-			end)
-		else
-			open.BackgroundColor3 = DIM; open.TextColor3 = Color3.fromRGB(160, 165, 180); open.Text = "NONE"; open.AutoButtonColor = false
-		end
+		open.BackgroundColor3 = ACCENT; open.TextColor3 = Color3.fromRGB(15, 25, 15); open.Text = "OPEN"
+		open.Activated:Connect(function()
+			if rolling then return end
+			rolling = true
+			armRollTimeout()
+			open.Text = "..."; open.BackgroundColor3 = DIM
+			OpenCase:FireServer({ caseId = caseId })
+		end)
 	end
 	if not any then
 		local msg = Instance.new("TextLabel")
@@ -696,9 +714,17 @@ local WIN_INDEX = 44
 local REEL_W = 540
 local REEL_H = 120
 
-local reel = Instance.new("Frame") -- full overlay while opening
-reel.Size = UDim2.fromScale(1, 1); reel.BackgroundColor3 = Color3.fromRGB(8, 9, 14); reel.BackgroundTransparency = 0.08
-reel.BorderSizePixel = 0; reel.Visible = false; reel.ZIndex = 5; reel.Parent = invPanel; corner(reel, 16)
+-- The reel lives on its OWN top layer (not inside the inventory panel) so BUY & OPEN can spin it from
+-- the shop too — it draws over whichever panel launched it.
+local reelGui = Instance.new("ScreenGui")
+reelGui.Name = "LobbyCaseReel"; reelGui.ResetOnSpawn = false; reelGui.IgnoreGuiInset = true; reelGui.DisplayOrder = 13
+reelGui.Parent = playerGui
+
+local reel = Instance.new("Frame") -- overlay while opening
+reel.AnchorPoint = Vector2.new(0.5, 0.5); reel.Position = UDim2.fromScale(0.5, 0.5)
+reel.Size = UDim2.fromOffset(760, 480); reel.BackgroundColor3 = Color3.fromRGB(8, 9, 14); reel.BackgroundTransparency = 0.08
+reel.BorderSizePixel = 0; reel.Visible = false; reel.ZIndex = 5; reel.Parent = reelGui; corner(reel, 16)
+local reelStroke = Instance.new("UIStroke"); reelStroke.Color = ACCENT; reelStroke.Thickness = 2; reelStroke.Transparency = 0.5; reelStroke.Parent = reel
 local reelTitle = Instance.new("TextLabel")
 reelTitle.Position = UDim2.new(0, 0, 0, 40); reelTitle.Size = UDim2.new(1, 0, 0, 30); reelTitle.BackgroundTransparency = 1
 reelTitle.Font = Enum.Font.GothamBlack; reelTitle.TextSize = 24; reelTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
@@ -797,6 +823,19 @@ reelBtn.Activated:Connect(function()
 	end
 end)
 
+-- Watchdog: `rolling` is set the moment an open is requested; if no CaseResult ever arrives (server
+-- rejected silently, remote lost), unlock the UI instead of soft-locking the panels until rejoin.
+armRollTimeout = function()
+	rollToken += 1
+	local myToken = rollToken
+	task.delay(6, function()
+		if rolling and myToken == rollToken and not reel.Visible then
+			rolling = false
+			renderActive()
+		end
+	end)
+end
+
 -- ===== OPEN / CLOSE + REMOTE WIRING =====
 local function openInventory()
 	InvRequest:FireServer()
@@ -820,12 +859,246 @@ InvSync.OnClientEvent:Connect(function(snap)
 end)
 
 CaseResult.OnClientEvent:Connect(function(res)
-	if typeof(res) ~= "table" or not res.caseId then
+	rollToken += 1 -- a reply arrived; disarm the watchdog
+	if typeof(res) ~= "table" or res.failed or not res.caseId then
 		rolling = false
+		if invPanel.Visible then
+			renderActive() -- restore any "..." button state
+		end
 		return
 	end
-	showTab("cases") -- make sure we're on the cases view behind the reel
+	if invPanel.Visible then
+		showTab("cases") -- make sure we're on the cases view behind the reel
+	end
 	playReel(res.caseId, res.wonId, res.duplicate == true, tonumber(res.coins) or 0)
+end)
+
+-- =====================================================================================================
+-- ===== SHOP (rotating case storefront — walk onto the ShopZone part) =================================
+-- =====================================================================================================
+local ShopSync  = remotes:WaitForChild("ShopSync")
+local ShopClose = remotes:WaitForChild("ShopClose")
+local ShopBuy   = remotes:WaitForChild("ShopBuy")
+
+local GOLD = Color3.fromRGB(235, 190, 85)
+local DANGER = Color3.fromRGB(224, 82, 82)
+
+local shopData = nil     -- latest ShopSync payload
+local shopDeadline = 0   -- os.clock() when the current rotation restocks
+
+-- Its own layer UNDER the inventory (11) so the shared tooltip — which lives in invGui — draws on top.
+local shopGui = Instance.new("ScreenGui")
+shopGui.Name = "LobbyShop"; shopGui.ResetOnSpawn = false; shopGui.IgnoreGuiInset = true; shopGui.DisplayOrder = 10
+shopGui.Parent = playerGui
+
+local shopPanel = Instance.new("Frame")
+shopPanel.AnchorPoint = Vector2.new(0.5, 0.5); shopPanel.Position = UDim2.fromScale(0.5, 0.5)
+shopPanel.Size = UDim2.fromOffset(740, 468); shopPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
+shopPanel.BackgroundTransparency = 0.03; shopPanel.BorderSizePixel = 0; shopPanel.Visible = false; shopPanel.Parent = shopGui
+corner(shopPanel, 16)
+local shStroke = Instance.new("UIStroke"); shStroke.Color = GOLD; shStroke.Thickness = 2; shStroke.Transparency = 0.5; shStroke.Parent = shopPanel
+
+local shopTitle = Instance.new("TextLabel")
+shopTitle.Position = UDim2.new(0, 0, 0, 12); shopTitle.Size = UDim2.new(1, 0, 0, 30); shopTitle.BackgroundTransparency = 1
+shopTitle.Font = Enum.Font.GothamBlack; shopTitle.TextSize = 24; shopTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
+shopTitle.Text = "SHOP"; shopTitle.Parent = shopPanel
+
+local shopRestock = Instance.new("TextLabel")
+shopRestock.Position = UDim2.new(0, 0, 0, 44); shopRestock.Size = UDim2.new(1, 0, 0, 18); shopRestock.BackgroundTransparency = 1
+shopRestock.Font = Enum.Font.GothamBold; shopRestock.TextSize = 14; shopRestock.TextColor3 = Color3.fromRGB(150, 156, 168)
+shopRestock.Text = ""; shopRestock.Parent = shopPanel
+
+local shopCoins = Instance.new("TextLabel")
+shopCoins.Position = UDim2.new(1, -200, 0, 16); shopCoins.Size = UDim2.fromOffset(150, 24); shopCoins.BackgroundTransparency = 1
+shopCoins.Font = Enum.Font.GothamBold; shopCoins.TextSize = 16; shopCoins.TextXAlignment = Enum.TextXAlignment.Right
+shopCoins.TextColor3 = GOLD; shopCoins.Text = ""; shopCoins.Parent = shopPanel
+
+local shopX = Instance.new("TextButton")
+shopX.AnchorPoint = Vector2.new(1, 0); shopX.Position = UDim2.new(1, -12, 0, 12); shopX.Size = UDim2.fromOffset(32, 32)
+shopX.BackgroundColor3 = DANGER; shopX.Font = Enum.Font.GothamBold; shopX.TextSize = 16
+shopX.TextColor3 = Color3.fromRGB(255, 255, 255); shopX.Text = "✕"; shopX.Parent = shopPanel; corner(shopX, 8)
+
+local shopGridFrame = Instance.new("Frame")
+shopGridFrame.Position = UDim2.fromOffset(20, 70); shopGridFrame.Size = UDim2.new(1, -40, 1, -86)
+shopGridFrame.BackgroundTransparency = 1; shopGridFrame.Parent = shopPanel
+local shopGrid = Instance.new("UIGridLayout")
+shopGrid.CellSize = UDim2.fromOffset(226, 184); shopGrid.CellPadding = UDim2.fromOffset(11, 12)
+shopGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center; shopGrid.Parent = shopGridFrame
+
+-- Restock flash overlay (the "new stock just landed" blink).
+local shopFlash = Instance.new("Frame")
+shopFlash.Size = UDim2.fromScale(1, 1); shopFlash.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+shopFlash.BackgroundTransparency = 1; shopFlash.BorderSizePixel = 0; shopFlash.ZIndex = 20; shopFlash.Parent = shopPanel
+corner(shopFlash, 16)
+local function flashShop()
+	shopFlash.BackgroundTransparency = 0.8
+	TweenService:Create(shopFlash, TweenInfo.new(0.45), { BackgroundTransparency = 1 }):Play()
+end
+
+local function renderShop()
+	if not shopData then return end
+	shopCoins.Text = "🪙 " .. fmt(shopData.coins or 0)
+	for _, c in shopGridFrame:GetChildren() do
+		if c:IsA("GuiObject") then c:Destroy() end
+	end
+	for i, s in ipairs(shopData.slots) do
+		local col = rarityColor(s.caseId)
+		local soldOut = (s.left or 0) < 1
+		local afford = (shopData.coins or 0) >= (s.price or 0)
+
+		local card = Instance.new("Frame")
+		card.LayoutOrder = i
+		card.BackgroundColor3 = soldOut and Color3.fromRGB(25, 27, 33) or col:Lerp(BLACK, 0.6)
+		card.BorderSizePixel = 0; card.Parent = shopGridFrame
+		corner(card, 10)
+		local st = Instance.new("UIStroke")
+		st.Color = soldOut and Color3.fromRGB(70, 74, 86) or col
+		st.Thickness = s.dealPct and 2 or 1.4; st.Transparency = soldOut and 0.4 or 0.3; st.Parent = card
+		attachTip(card, function()
+			return invData and caseTipLines(s.caseId) or { { text = s.name or "Case", size = 15, bold = true } }
+		end)
+
+		local bar = Instance.new("Frame")
+		bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = soldOut and Color3.fromRGB(70, 74, 86) or col
+		bar.BorderSizePixel = 0; bar.Parent = card
+
+		local nm = Instance.new("TextLabel")
+		nm.Position = UDim2.fromOffset(10, 12); nm.Size = UDim2.new(1, -64, 0, 22); nm.BackgroundTransparency = 1
+		nm.Font = Enum.Font.GothamBold; nm.TextSize = 16; nm.TextXAlignment = Enum.TextXAlignment.Left
+		nm.TextColor3 = soldOut and Color3.fromRGB(150, 155, 168) or Color3.fromRGB(240, 240, 245)
+		nm.Text = s.name or "Case"; nm.Parent = card
+
+		local rr = Instance.new("TextLabel")
+		rr.Position = UDim2.fromOffset(10, 34); rr.Size = UDim2.new(1, -20, 0, 16); rr.BackgroundTransparency = 1
+		rr.Font = Enum.Font.Gotham; rr.TextSize = 12; rr.TextXAlignment = Enum.TextXAlignment.Left
+		rr.TextColor3 = soldOut and Color3.fromRGB(120, 125, 140) or col
+		rr.Text = (invData and invData.catalog.rarities[s.caseId] and invData.catalog.rarities[s.caseId].name or s.caseId):upper()
+		rr.Parent = card
+
+		-- Deal badge (top-right corner, gold).
+		if s.dealPct then
+			local badge = Instance.new("TextLabel")
+			badge.AnchorPoint = Vector2.new(1, 0); badge.Position = UDim2.new(1, -8, 0, 10)
+			badge.Size = UDim2.fromOffset(48, 20); badge.BackgroundColor3 = GOLD; badge.BorderSizePixel = 0
+			badge.Font = Enum.Font.GothamBlack; badge.TextSize = 12; badge.TextColor3 = Color3.fromRGB(40, 32, 8)
+			badge.Text = ("-%d%%"):format(s.dealPct); badge.Parent = card
+			corner(badge, 6)
+		end
+
+		-- Price (deal slot: old price struck through in gray, new price in gold).
+		local price = Instance.new("TextLabel")
+		price.Position = UDim2.fromOffset(10, 58); price.Size = UDim2.new(1, -20, 0, 20); price.BackgroundTransparency = 1
+		price.Font = Enum.Font.GothamBold; price.TextSize = 16; price.TextXAlignment = Enum.TextXAlignment.Left
+		price.TextColor3 = soldOut and Color3.fromRGB(120, 125, 140) or GOLD
+		if s.basePrice and s.basePrice ~= s.price then
+			price.RichText = true
+			price.Text = ('<font color="#8a8f9c"><s>%s</s></font>  🪙 %s'):format(fmt(s.basePrice), fmt(s.price or 0))
+		else
+			price.Text = "🪙 " .. fmt(s.price or 0)
+		end
+		price.Parent = card
+
+		-- Stock pips: one dot per stock, filled = still buyable this rotation.
+		local pipRow = Instance.new("Frame")
+		pipRow.Position = UDim2.fromOffset(10, 86); pipRow.Size = UDim2.new(1, -20, 0, 10); pipRow.BackgroundTransparency = 1
+		pipRow.Parent = card
+		local pipList = Instance.new("UIListLayout")
+		pipList.FillDirection = Enum.FillDirection.Horizontal; pipList.Padding = UDim.new(0, 4); pipList.Parent = pipRow
+		for p = 1, math.min(s.stock or 1, 8) do
+			local pip = Instance.new("Frame")
+			pip.Size = UDim2.fromOffset(10, 10)
+			pip.BackgroundColor3 = (p <= (s.left or 0)) and col or Color3.fromRGB(45, 49, 60)
+			pip.BorderSizePixel = 0; pip.LayoutOrder = p; pip.Parent = pipRow
+			corner(pip, 5)
+		end
+		local leftLbl = Instance.new("TextLabel")
+		leftLbl.Position = UDim2.fromOffset(10, 100); leftLbl.Size = UDim2.new(1, -20, 0, 14); leftLbl.BackgroundTransparency = 1
+		leftLbl.Font = Enum.Font.Gotham; leftLbl.TextSize = 11; leftLbl.TextXAlignment = Enum.TextXAlignment.Left
+		leftLbl.TextColor3 = Color3.fromRGB(150, 156, 168)
+		leftLbl.Text = soldOut and "Restocks with the next rotation" or ("%d of %d left for you"):format(s.left or 0, s.stock or 0)
+		leftLbl.Parent = card
+
+		if soldOut then
+			-- Grayed card + red stamp across it.
+			local stamp = Instance.new("TextLabel")
+			stamp.AnchorPoint = Vector2.new(0.5, 0.5); stamp.Position = UDim2.new(0.5, 0, 0.5, 20)
+			stamp.Size = UDim2.fromOffset(190, 40); stamp.BackgroundTransparency = 1
+			stamp.Font = Enum.Font.GothamBlack; stamp.TextSize = 24; stamp.TextColor3 = DANGER
+			stamp.Text = "SOLD OUT"; stamp.Rotation = -12; stamp.ZIndex = 3; stamp.Parent = card
+			local ss = Instance.new("UIStroke"); ss.Color = DANGER; ss.Thickness = 1; ss.Transparency = 0.55; ss.Parent = stamp
+		else
+			local function buyButton(x, w, label, primary)
+				local b = Instance.new("TextButton")
+				b.Position = UDim2.new(0, x, 1, -40); b.Size = UDim2.fromOffset(w, 30); b.BorderSizePixel = 0
+				b.Font = Enum.Font.GothamBold; b.TextSize = 13; b.Parent = card
+				corner(b, 8)
+				if not afford then
+					b.BackgroundColor3 = Color3.fromRGB(40, 44, 54); b.TextColor3 = Color3.fromRGB(130, 135, 150)
+					b.AutoButtonColor = false
+				elseif primary then
+					b.BackgroundColor3 = ACCENT; b.TextColor3 = Color3.fromRGB(15, 25, 15)
+				else
+					b.BackgroundColor3 = CARD; b.TextColor3 = Color3.fromRGB(235, 235, 245)
+					local bs = Instance.new("UIStroke"); bs.Color = ACCENT; bs.Thickness = 1; bs.Transparency = 0.5; bs.Parent = b
+				end
+				b.Text = label
+				return b
+			end
+			local buy = buyButton(10, 96, "BUY", true)
+			local buyOpen = buyButton(112, 104, "BUY & OPEN", false)
+			if afford then
+				buy.Activated:Connect(function()
+					ShopBuy:FireServer({ slot = i, open = false })
+				end)
+				buyOpen.Activated:Connect(function()
+					if rolling then return end
+					rolling = true
+					armRollTimeout()
+					ShopBuy:FireServer({ slot = i, open = true })
+				end)
+			end
+		end
+	end
+end
+
+-- Live countdown + the "RESTOCKING..." beat while we wait for the server's new-window push.
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		if shopPanel.Visible then
+			local left = shopDeadline - os.clock()
+			if left > 0 then
+				shopRestock.Text = ("NEW STOCK IN %d:%02d"):format(math.floor(left / 60), math.floor(left) % 60)
+			else
+				shopRestock.Text = "RESTOCKING..."
+			end
+		end
+	end
+end)
+
+ShopSync.OnClientEvent:Connect(function(p)
+	if typeof(p) ~= "table" or typeof(p.slots) ~= "table" then return end
+	local prevWindow = shopData and shopData.window
+	shopData = p
+	shopDeadline = os.clock() + (tonumber(p.endsIn) or 0)
+	if p.enter then
+		shopPanel.Visible = true
+	end
+	if shopPanel.Visible then
+		renderShop()
+		if prevWindow and p.window and p.window ~= prevWindow then
+			flashShop() -- instant swap: the rotation rolled over while browsing
+		end
+	end
+end)
+
+ShopClose.OnClientEvent:Connect(function()
+	hideTip()
+	shopPanel.Visible = false
+end)
+shopX.Activated:Connect(function()
+	hideTip()
+	shopPanel.Visible = false -- walk off + back on to reopen
 end)
 
 -- =====================================================================================================

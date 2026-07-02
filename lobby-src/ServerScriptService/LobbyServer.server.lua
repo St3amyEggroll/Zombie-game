@@ -13,8 +13,13 @@
 -- INVENTORY: 2-slot gun loadout (equip any 2 owned guns), 7 rarity-tiered cases (Common..Divine) opened
 -- with the CS:GO reel, potions display. Your loadout guns show ON your character (slot 1 back, slot 2 hip).
 --
+-- SHOP: a rotating case storefront (the Coin sink). Global stock reroll every 30 minutes (seeded from the
+-- clock, identical on every server), 6 slots, per-player stock limits, one discounted "deal" slot. Walk
+-- onto the ShopZone part to browse; BUY banks the case, BUY & OPEN spins the reel right there.
+--
 -- BUILD (you): a SpawnLocation + one or more Parts named "LoadingZone..." (each is one party pad; its size
--- is the trigger volume). Gun models must also be in THIS place (tag "WeaponModel" or an Assets folder).
+-- is the trigger volume) + a Part named "ShopZone" in front of your shop stall (its size is the browse
+-- area). Gun models must also be in THIS place (tag "WeaponModel" or an Assets folder).
 -- Sync with `rojo serve lobby.project.json`.
 
 local Players = game:GetService("Players")
@@ -105,6 +110,74 @@ local POTIONS = {
 	regen  = { name = "Regen Potion",  rarity = "uncommon", desc = "Use in a run: +50% health regen (once per run)" },
 }
 
+-- ===== SHOP (rotating case storefront — the Coin sink) =====
+-- GLOBAL rotation: stock is rolled from a seed derived from the clock window, so every server on Earth
+-- shows the same 6 slots and rerolls at the same moment. Stock counts are PER PLAYER (in their profile).
+-- >>> PLACEHOLDER BALANCE — tune Prices / Stock / Weights in your balancing pass. <<<
+local SHOP = {
+	RestockSeconds = 1800, -- 30 minutes per rotation
+	Slots = 6,
+	-- Coin price per case rarity (placeholder: ~4x the dupe refund).
+	Prices = { common = 100, uncommon = 160, rare = 240, epic = 360, legendary = 560, mythic = 880, divine = 1400 },
+	-- Per-PLAYER purchasable stock per slot per rotation (commons plentiful, top rarities scarce).
+	Stock = { common = 5, uncommon = 4, rare = 3, epic = 2, legendary = 2, mythic = 1, divine = 1 },
+	-- Per-slot rarity weights. Tuned so across 6 slots a MYTHIC appears in ~1 of 20 rotations and a
+	-- DIVINE in ~1 of 120.
+	Weights = { common = 100, uncommon = 60, rare = 35, epic = 18, legendary = 8, mythic = 1.9, divine = 0.31 },
+	DealMinPct = 10, -- one seeded "Deal" slot per rotation gets a discount in this range
+	DealMaxPct = 25,
+	-- Robux-ready: map a rarity to a developer product id later and the buy path can branch to Robux
+	-- without a rework (ids ride along in every ShopSync slot).
+	RobuxProducts = {},
+}
+
+local shopCache = nil -- { window, slots } for the current rotation
+
+local function shopWindow()
+	return math.floor(os.time() / SHOP.RestockSeconds)
+end
+
+-- The 6 slots for the current rotation — deterministic for a given window (same on all servers).
+local function currentShop()
+	local window = shopWindow()
+	if shopCache and shopCache.window == window then
+		return shopCache
+	end
+	local r = Random.new(window)
+	local weightTotal = 0
+	for _, rid in RARITY_ORDER do
+		weightTotal += SHOP.Weights[rid] or 0
+	end
+	local dealIndex = r:NextInteger(1, SHOP.Slots)
+	local dealPct = r:NextInteger(SHOP.DealMinPct, SHOP.DealMaxPct)
+	local slots = {}
+	for i = 1, SHOP.Slots do
+		local roll = r:NextNumber(0, weightTotal)
+		local acc, rarity = 0, RARITY_ORDER[1]
+		for _, rid in RARITY_ORDER do
+			acc += SHOP.Weights[rid] or 0
+			if roll <= acc then
+				rarity = rid
+				break
+			end
+		end
+		local slot = {
+			caseId = rarity,
+			price = SHOP.Prices[rarity] or 100,
+			stock = SHOP.Stock[rarity] or 1,
+			robuxProductId = SHOP.RobuxProducts[rarity],
+		}
+		if i == dealIndex then
+			slot.basePrice = slot.price
+			slot.dealPct = dealPct
+			slot.price = math.max(1, math.floor(slot.price * (100 - dealPct) / 100 + 0.5))
+		end
+		slots[i] = slot
+	end
+	shopCache = { window = window, slots = slots }
+	return shopCache
+end
+
 -- Display catalog the client renders from.
 local CATALOG = {
 	rarities = RARITY,
@@ -176,6 +249,11 @@ local InvSync       = mk("InvSync")       -- S->C: full inventory snapshot + cat
 local EquipSlot     = mk("EquipSlot")     -- C->S: {slot=1|2, weaponId} put a gun in a loadout slot
 local OpenCase      = mk("OpenCase")      -- C->S: {caseId} open a case (caseId = its rarity)
 local CaseResult    = mk("CaseResult")    -- S->C: {caseId, wonId, duplicate, coins} the roll (drives the reel)
+                                          --       or {failed=true} — ALWAYS replied so the client never sticks
+-- Shop
+local ShopSync      = mk("ShopSync")      -- S->C: {enter?, window, endsIn, coins, slots} storefront snapshot
+local ShopClose     = mk("ShopClose")     -- S->C: you left the shop zone; close the panel
+local ShopBuy       = mk("ShopBuy")       -- C->S: {slot=1..6, open=bool} buy (and optionally reel-open) a case
 
 -- ===== PROFILE =====
 local store = DataStoreService:GetDataStore(STORE_NAME)
@@ -251,6 +329,24 @@ local function sanitizePotions(v)
 	return out
 end
 
+-- Per-player shop state: which rotation window they last bought in + purchases per slot ("1".."6").
+-- LOBBY-OWNED field — the game place's save merge never touches it.
+local function sanitizeShop(v)
+	local out = { window = 0, bought = {} }
+	if typeof(v) == "table" then
+		out.window = tonumber(v.window) or 0
+		if typeof(v.bought) == "table" then
+			for k, n in v.bought do
+				local idx = tonumber(k)
+				if idx and idx >= 1 and idx <= SHOP.Slots and typeof(n) == "number" and n > 0 then
+					out.bought[tostring(math.floor(idx))] = math.floor(n)
+				end
+			end
+		end
+	end
+	return out
+end
+
 local function readProfile(player)
 	-- Retry with backoff: a transient DataStore error must NOT make a veteran look brand-new (persisting
 	-- that fallback would wipe their profile).
@@ -279,17 +375,25 @@ local function readProfile(player)
 		loadout = sanitizeLoadout(data.loadout, data.selectedWeapon, owned),
 		cases = sanitizeCases(data.cases),
 		potions = sanitizePotions(data.potions),
+		shop = sanitizeShop(data.shop),
 		noPersist = loadFailed, -- fallback profile: NEVER write it back
 	}
 end
 
 -- Merge the lobby-owned fields back into the shared profile WITHOUT clobbering game-owned fields.
+-- IMMEDIATE write — call this only at must-not-lose moments (leave, teleport, shutdown). Everything
+-- else goes through markDirty(); a background loop batches those writes so a case-opening spree doesn't
+-- hammer the same DataStore key (Roblox throttles same-key writes to ~1 per 6s).
+local dirty = {} -- userId -> true (profile changed since the last write)
+local PERSIST_FLUSH_SECONDS = 30
+
 local function persist(player)
 	local prof = profileCache[player.UserId]
 	if not prof or prof.noPersist then
+		dirty[player.UserId] = nil
 		return
 	end
-	pcall(function()
+	local ok = pcall(function()
 		store:UpdateAsync("Player_" .. player.UserId, function(old)
 			old = (typeof(old) == "table") and old or {}
 			old.ownedWeapons = prof.ownedWeapons
@@ -298,9 +402,19 @@ local function persist(player)
 			old.cases = prof.cases
 			old.potions = prof.potions
 			old.lobbyMoney = prof.lobbyMoney
+			old.shop = prof.shop
 			return old
 		end)
 	end)
+	if ok then
+		dirty[player.UserId] = nil
+	end -- on failure the dirty flag stays; the flush loop retries
+end
+
+local function markDirty(player)
+	if profileCache[player.UserId] then
+		dirty[player.UserId] = true
+	end
 end
 
 local function invSnapshot(prof)
@@ -479,13 +593,42 @@ local function unlockPayload(profile)
 	return { worldOrder = WORLDS, order = DIFFS, worlds = worlds }
 end
 
+-- ===== RATE LIMITING (token buckets — the lobby's SecurityService-lite) =====
+-- Every C->S remote passes through allow() so a spamming client burns its bucket, not the DataStore.
+local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4 } -- refill per second (burst = 2s worth)
+local buckets = {} -- userId -> { [action] = { tokens, last } }
+
+local function allow(player, action)
+	local rate = RATE[action] or 2
+	local b = buckets[player.UserId]
+	if not b then
+		b = {}
+		buckets[player.UserId] = b
+	end
+	local s = b[action]
+	local now = os.clock()
+	if not s then
+		s = { tokens = rate * 2, last = now }
+		b[action] = s
+	end
+	s.tokens = math.min(rate * 2, s.tokens + (now - s.last) * rate)
+	s.last = now
+	if s.tokens < 1 then
+		return false
+	end
+	s.tokens -= 1
+	return true
+end
+
 -- ===== INVENTORY HANDLERS =====
 InvRequest.OnServerEvent:Connect(function(player)
-	pushInv(player)
+	if allow(player, "Inv") then
+		pushInv(player)
+	end
 end)
 
 EquipSlot.OnServerEvent:Connect(function(player, req)
-	if typeof(req) ~= "table" then
+	if not allow(player, "Equip") or typeof(req) ~= "table" then
 		return
 	end
 	local prof = profileCache[player.UserId]
@@ -511,28 +654,15 @@ EquipSlot.OnServerEvent:Connect(function(player, req)
 		prof.loadout[1] = prof.loadout[2]
 		prof.loadout[2] = nil
 	end
-	persist(player)
+	markDirty(player)
 	pushInv(player)
 	refreshCarry(player)
 end)
 
-OpenCase.OnServerEvent:Connect(function(player, req)
-	if typeof(req) ~= "table" then
-		return
-	end
-	local prof = profileCache[player.UserId]
-	if not prof or prof.noPersist then
-		return
-	end
-	local caseId = tostring(req.caseId or "")
-	if not CASES[caseId] then
-		return
-	end
-	local have = prof.cases[caseId] or 0
-	if have < 1 then
-		return
-	end
-	prof.cases[caseId] = have - 1
+-- Consume one case (caller has already verified the player HAS one), roll it, grant/dupe, and return
+-- the CaseResult payload. Shared by OpenCase and the shop's BUY & OPEN.
+local function doOpenCase(player, prof, caseId)
+	prof.cases[caseId] = (prof.cases[caseId] or 0) - 1
 	if prof.cases[caseId] <= 0 then
 		prof.cases[caseId] = nil
 	end
@@ -550,8 +680,129 @@ OpenCase.OnServerEvent:Connect(function(player, req)
 			refreshCarry(player)
 		end
 	end
-	persist(player)
-	CaseResult:FireClient(player, { caseId = caseId, wonId = wonId, duplicate = duplicate, coins = coins })
+	return { caseId = caseId, wonId = wonId, duplicate = duplicate, coins = coins }
+end
+
+OpenCase.OnServerEvent:Connect(function(player, req)
+	-- EVERY exit replies: the client sets `rolling` the moment it asks, and only a CaseResult (success
+	-- OR {failed=true}) clears it — a silent drop here used to lock the whole inventory until rejoin.
+	local function fail()
+		CaseResult:FireClient(player, { failed = true })
+	end
+	if not allow(player, "Case") then
+		return fail()
+	end
+	if typeof(req) ~= "table" then
+		return fail()
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return fail()
+	end
+	local caseId = tostring(req.caseId or "")
+	if not CASES[caseId] or (prof.cases[caseId] or 0) < 1 then
+		return fail()
+	end
+	local result = doOpenCase(player, prof, caseId)
+	markDirty(player)
+	CaseResult:FireClient(player, result)
+	pushInv(player)
+	StatsRemote:FireClient(player, prof)
+end)
+
+-- ===== SHOP HANDLERS =====
+-- Reset the player's per-rotation purchases when a new window starts, and hand back the live rotation.
+local function ensureShopState(prof)
+	local shop = currentShop()
+	if prof.shop.window ~= shop.window then
+		prof.shop.window = shop.window
+		prof.shop.bought = {}
+	end
+	return shop
+end
+
+local function shopSnapshot(prof, enter)
+	local shop = ensureShopState(prof)
+	local slots = {}
+	for i, s in shop.slots do
+		local boughtCount = prof.shop.bought[tostring(i)] or 0
+		slots[i] = {
+			caseId = s.caseId,
+			name = CASES[s.caseId].name,
+			price = s.price,
+			basePrice = s.basePrice, -- only on the deal slot
+			dealPct = s.dealPct,     -- only on the deal slot
+			stock = s.stock,
+			left = math.max(0, s.stock - boughtCount),
+			robuxProductId = s.robuxProductId,
+		}
+	end
+	return {
+		enter = enter or nil,
+		window = shop.window,
+		endsIn = SHOP.RestockSeconds - (os.time() % SHOP.RestockSeconds),
+		coins = prof.lobbyMoney,
+		slots = slots,
+	}
+end
+
+local function pushShop(player, enter)
+	local prof = profileCache[player.UserId]
+	if prof then
+		ShopSync:FireClient(player, shopSnapshot(prof, enter))
+	end
+end
+
+ShopBuy.OnServerEvent:Connect(function(player, req)
+	if typeof(req) ~= "table" then
+		return
+	end
+	local wantOpen = req.open == true
+	if not allow(player, "Shop") then
+		if wantOpen then
+			CaseResult:FireClient(player, { failed = true }) -- unstick the reel lock, but no resync spam
+		end
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof then
+		return
+	end
+	local function fail()
+		if wantOpen then
+			CaseResult:FireClient(player, { failed = true }) -- unstick the client's reel lock
+		end
+		pushShop(player) -- resync whatever made the buy invalid (sold out / not enough Coins)
+	end
+	if prof.noPersist then
+		return fail()
+	end
+	local idx = tonumber(req.slot)
+	if not idx or idx % 1 ~= 0 or idx < 1 or idx > SHOP.Slots then
+		return fail()
+	end
+	local shop = ensureShopState(prof)
+	local slot = shop.slots[idx]
+	local key = tostring(idx)
+	local boughtCount = prof.shop.bought[key] or 0
+	if boughtCount >= slot.stock then
+		return fail()
+	end
+	if prof.lobbyMoney < slot.price then
+		return fail()
+	end
+	prof.lobbyMoney -= slot.price
+	prof.shop.bought[key] = boughtCount + 1
+	prof.cases[slot.caseId] = (prof.cases[slot.caseId] or 0) + 1
+	local result = nil
+	if wantOpen then
+		result = doOpenCase(player, prof, slot.caseId)
+	end
+	markDirty(player)
+	if result then
+		CaseResult:FireClient(player, result)
+	end
+	pushShop(player)
 	pushInv(player)
 	StatsRemote:FireClient(player, prof)
 end)
@@ -564,15 +815,22 @@ local inZonePart = {}   -- userId -> zone Part they're standing in
 local lastMode = {}     -- userId -> last ZoneEnter signature sent (avoids respamming the client)
 
 local zoneParts = {}
+local shopZoneParts = {} -- Parts named "ShopZone..." — walk on one to browse the shop
 local lastZoneScan = -math.huge
 local function refreshZones()
-	local list = {}
+	local list, shopList = {}, {}
 	for _, d in Workspace:GetDescendants() do
-		if d:IsA("BasePart") and d.Name:lower():match("^loadingzone") then
-			table.insert(list, d)
+		if d:IsA("BasePart") then
+			local n = d.Name:lower()
+			if n:match("^loadingzone") then
+				table.insert(list, d)
+			elseif n:match("^shopzone") then
+				table.insert(shopList, d)
+			end
 		end
 	end
 	zoneParts = list
+	shopZoneParts = shopList
 end
 
 local function inPart(pos, part)
@@ -758,7 +1016,7 @@ local function evaluateZone(player, zone)
 end
 
 FinalizeParty.OnServerEvent:Connect(function(player, sel)
-	if typeof(sel) ~= "table" then
+	if not allow(player, "Party") or typeof(sel) ~= "table" then
 		return
 	end
 	local party = playerParty[player.UserId]
@@ -783,6 +1041,9 @@ FinalizeParty.OnServerEvent:Connect(function(player, sel)
 end)
 
 LeaveParty.OnServerEvent:Connect(function(player)
+	if not allow(player, "Party") then
+		return
+	end
 	local party = playerParty[player.UserId]
 	removeFromParty(player)
 	lastMode[player.UserId] = nil
@@ -798,11 +1059,77 @@ LeaveParty.OnServerEvent:Connect(function(player)
 	end
 end)
 
+-- ===== SHOP ZONE + BILLBOARD =====
+local inShopZone = {} -- userId -> shop zone Part they're standing in
+local lastShopWindow = shopWindow()
+
+local function updateShopBillboard(part)
+	local bb = part:FindFirstChild("ShopBillboard")
+	local label
+	if not bb then
+		bb = Instance.new("BillboardGui")
+		bb.Name = "ShopBillboard"
+		bb.Size = UDim2.fromOffset(240, 62)
+		bb.StudsOffsetWorldSpace = Vector3.new(0, 7, 0)
+		bb.AlwaysOnTop = true
+		bb.Parent = part
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.Size = UDim2.new(1, 0, 0, 32)
+		title.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
+		title.BackgroundTransparency = 0.25
+		title.Font = Enum.Font.GothamBlack
+		title.TextSize = 20
+		title.TextColor3 = Color3.fromRGB(235, 190, 85)
+		title.Text = "SHOP"
+		title.Parent = bb
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, 8)
+		c.Parent = title
+		label = Instance.new("TextLabel")
+		label.Name = "Timer"
+		label.Position = UDim2.new(0, 0, 0, 34)
+		label.Size = UDim2.new(1, 0, 0, 26)
+		label.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
+		label.BackgroundTransparency = 0.25
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 15
+		label.TextColor3 = Color3.fromRGB(238, 240, 245)
+		label.Parent = bb
+		local c2 = Instance.new("UICorner")
+		c2.CornerRadius = UDim.new(0, 8)
+		c2.Parent = label
+	else
+		label = bb:FindFirstChild("Timer")
+	end
+	if label then
+		local remaining = SHOP.RestockSeconds - (os.time() % SHOP.RestockSeconds)
+		label.Text = ("New stock in %d:%02d"):format(math.floor(remaining / 60), remaining % 60)
+	end
+end
+
 -- ===== TICK =====
 local function tick()
 	if os.clock() - lastZoneScan > 3 then
 		lastZoneScan = os.clock()
 		refreshZones()
+	end
+
+	-- Restock rollover: reroll the stock and live-swap it for everyone browsing.
+	local window = shopWindow()
+	if window ~= lastShopWindow then
+		lastShopWindow = window
+		shopCache = nil
+		for _, player in Players:GetPlayers() do
+			if inShopZone[player.UserId] then
+				pushShop(player)
+			end
+		end
+	end
+	for _, part in shopZoneParts do
+		if part.Parent then
+			updateShopBillboard(part)
+		end
 	end
 
 	-- Zone presence.
@@ -828,6 +1155,26 @@ local function tick()
 		end
 		if currentZone then
 			evaluateZone(player, currentZone)
+		end
+
+		-- Shop zone presence (independent of the party pads).
+		local currentShopZone = nil
+		if hrp then
+			for _, part in shopZoneParts do
+				if part.Parent and inPart(hrp.Position, part) then
+					currentShopZone = part
+					break
+				end
+			end
+		end
+		local prevShopZone = inShopZone[player.UserId]
+		if currentShopZone ~= prevShopZone then
+			inShopZone[player.UserId] = currentShopZone
+			if currentShopZone then
+				pushShop(player, true) -- enter -> open the storefront
+			else
+				ShopClose:FireClient(player)
+			end
 		end
 	end
 
@@ -894,10 +1241,31 @@ for _, pl in Players:GetPlayers() do
 end
 Players.PlayerRemoving:Connect(function(pl)
 	removeFromParty(pl)
-	persist(pl)
+	persist(pl) -- immediate write on leave (flushes anything the batch loop hasn't gotten to)
 	profileCache[pl.UserId] = nil
+	dirty[pl.UserId] = nil
+	buckets[pl.UserId] = nil
 	inZonePart[pl.UserId] = nil
+	inShopZone[pl.UserId] = nil
 	lastMode[pl.UserId] = nil
+end)
+
+-- Batched persistence: dirty profiles get written every PERSIST_FLUSH_SECONDS instead of per action.
+task.spawn(function()
+	while true do
+		task.wait(PERSIST_FLUSH_SECONDS)
+		for _, pl in Players:GetPlayers() do
+			if dirty[pl.UserId] then
+				task.spawn(persist, pl)
+			end
+		end
+	end
+end)
+
+game:BindToClose(function()
+	for _, pl in Players:GetPlayers() do
+		persist(pl)
+	end
 end)
 
 local acc = 0
@@ -909,4 +1277,4 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
-print(("[LobbyServer] started (party pads + 2-slot loadout%s)"):format(RunService:IsStudio() and " — Studio: teleports won't fire until published" or ""))
+print(("[LobbyServer] started (party pads + 2-slot loadout + shop%s)"):format(RunService:IsStudio() and " — Studio: teleports won't fire until published" or ""))
