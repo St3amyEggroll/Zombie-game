@@ -579,6 +579,11 @@ local function attachCarry(char, torso, weaponId, mountCF, name)
 		return
 	end
 	model.PrimaryPart = handle
+	-- Move the WHOLE model into its mount pose FIRST (PivotTo shifts every part together), and only THEN
+	-- create the welds. WeldConstraints capture their offsets when they activate — welding while the parts
+	-- still sit at the template's position froze those faraway offsets in, which is why multi-part guns
+	-- floated way off the player's back.
+	model:PivotTo(torso.CFrame * mountCF)
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.CanCollide = false
@@ -596,7 +601,6 @@ local function attachCarry(char, torso, weaponId, mountCF, name)
 			d:Destroy()
 		end
 	end
-	handle.CFrame = torso.CFrame * mountCF
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = torso
 	weld.Part1 = handle
