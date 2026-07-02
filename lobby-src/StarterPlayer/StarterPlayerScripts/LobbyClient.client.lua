@@ -43,7 +43,7 @@ gui.Parent = playerGui
 
 -- stats card
 local stats = Instance.new("Frame")
-stats.Position = UDim2.fromOffset(16, 16); stats.Size = UDim2.fromOffset(220, 96)
+stats.Position = UDim2.fromOffset(16, 64); stats.Size = UDim2.fromOffset(220, 96)
 stats.BackgroundColor3 = Color3.fromRGB(22, 24, 30); stats.BackgroundTransparency = 0.05; stats.BorderSizePixel = 0
 stats.Parent = gui; corner(stats, 12)
 local sp = Instance.new("UIPadding"); sp.PaddingLeft = UDim.new(0, 12); sp.PaddingTop = UDim.new(0, 8); sp.Parent = stats
@@ -432,7 +432,7 @@ end
 
 -- Left-side Inventory button (opens the panel).
 local invBtn = Instance.new("TextButton")
-invBtn.Position = UDim2.fromOffset(16, 124); invBtn.Size = UDim2.fromOffset(220, 46)
+invBtn.Position = UDim2.fromOffset(16, 172); invBtn.Size = UDim2.fromOffset(220, 46)
 invBtn.BackgroundColor3 = Color3.fromRGB(22, 24, 30); invBtn.BorderSizePixel = 0
 invBtn.Font = Enum.Font.GothamBold; invBtn.TextSize = 15; invBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
 invBtn.Text = "INVENTORY"; invBtn.Parent = invGui; corner(invBtn, 10)
