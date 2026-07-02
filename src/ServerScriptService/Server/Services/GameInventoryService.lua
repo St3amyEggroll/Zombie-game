@@ -296,38 +296,20 @@ local function rollCaseRarity(wave: number): string
 	return GameConfig.CaseRarities[1]
 end
 
--- Where this wave's cases burst from: the boss's corpse (boss waves ARE the every-10 waves), falling back
--- to the centroid of the surviving players if no recent boss death is known.
-local function caseOrigin(): Vector3?
-	if ZombieService.LastBossDeathPos and os.clock() - (ZombieService.LastBossDeathTime or 0) < 120 then
-		return ZombieService.LastBossDeathPos + Vector3.new(0, 3, 0)
-	end
-	local sum, n = Vector3.zero, 0
-	for _, player in Players:GetPlayers() do
-		local ps = MatchService.GetPlayerState(player)
-		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-		if ps and ps.inMatch and root then
-			sum += root.Position
-			n += 1
-		end
-	end
-	return n > 0 and (sum / n + Vector3.new(0, 3, 0)) or nil
-end
-
-local function onWaveCleared(round: number)
-	if round % GameConfig.CaseDropEvery ~= 0 then
-		return
-	end
-	-- FINAL wave (victory): the teleport to the lobby happens immediately after this — a physical drop
-	-- would race it and get eaten. Grant the case DIRECTLY (with the toast) so it always lands.
+-- Cases drop the moment the BOSS DIES (not at wave end): everyone in the run gets one, bursting out of
+-- the boss's corpse and homing to them. On the difficulty's FINAL wave the case is granted DIRECTLY
+-- (with the toast) — the victory teleport follows the wave clear and a physical drop could race it.
+local function onBossDied(deathPos)
+	local round = MatchService.State.round
 	local isFinal = round >= (MatchService.State.maxWave or math.huge)
-	local origin = caseOrigin()
+	local origin = deathPos and (deathPos + Vector3.new(0, 3, 0)) or nil
 	for _, player in Players:GetPlayers() do
 		local ps = MatchService.GetPlayerState(player)
 		if ps and ps.inMatch then
-			local rarity = rollCaseRarity(round)
+			local rarity = rollCaseRarity(math.max(round, GameConfig.CaseDropEvery))
 			if isFinal or not origin then
 				DataService.AddCase(player, rarity, 1)
+				DataService.Save(player)
 				Remotes.Get("CaseDropped"):FireClient(player, rarity)
 				push(player)
 			else
@@ -379,8 +361,8 @@ function GameInventoryService.Start()
 	end)
 	Remotes.Get("ConsumePotion").OnServerEvent:Connect(onConsume)
 
-	CombatService.Kill:Connect(onKill)              -- elite zombies drop potions
-	MatchService.WaveCleared:Connect(onWaveCleared) -- every 10th wave drops a case for every player
+	CombatService.Kill:Connect(onKill)     -- elite zombies drop potions
+	ZombieService.BossDied:Connect(onBossDied) -- killing a boss drops a case for every player
 
 	print("[GameInventoryService] started (inventory view + potion/case drops)")
 end

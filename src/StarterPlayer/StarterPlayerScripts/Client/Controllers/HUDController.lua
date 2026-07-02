@@ -8,6 +8,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -34,8 +35,10 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel
+local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, incomingLabel
 local healthPct = 1
+local breakEndsAt = 0   -- os.clock() the wave break ends (drives the NEXT WAVE countdown)
+local incomingToken = 0 -- invalidates stale INCOMING hide timers
 
 -- ===== BUILD HELPERS =====
 local function corner(o, r)
@@ -132,6 +135,26 @@ local function build()
 	waveStroke.Thickness = 1.5
 	waveStroke.Parent = roundLabel
 
+	-- NEXT WAVE countdown (under the wave number, only during the wave break).
+	breakLabel = text(gui, "BreakLabel", Enum.Font.GothamBold, 16, COL_TEXT_DIM)
+	breakLabel.AnchorPoint = Vector2.new(0.5, 0)
+	breakLabel.Position = UDim2.new(0.5, 0, 0, 80)
+	breakLabel.Size = UDim2.fromOffset(300, 20)
+	breakLabel.Text = ""
+
+	-- INCOMING! banner (below the wave counter, above the kill-streak flair).
+	incomingLabel = text(gui, "IncomingLabel", Enum.Font.GothamBlack, 20, Color3.fromRGB(255, 120, 90))
+	incomingLabel.AnchorPoint = Vector2.new(0.5, 0)
+	incomingLabel.Position = UDim2.new(0.5, 0, 0, 102)
+	incomingLabel.Size = UDim2.fromOffset(520, 26)
+	incomingLabel.Text = ""
+	incomingLabel.Visible = false
+	local incStroke = Instance.new("UIStroke")
+	incStroke.Color = Color3.fromRGB(0, 0, 0)
+	incStroke.Transparency = 0.4
+	incStroke.Thickness = 1.5
+	incStroke.Parent = incomingLabel
+
 	-- Currency (top-right): Coins over Cash.
 	local cur = panel(gui, "CurrencyPanel")
 	cur.AnchorPoint = Vector2.new(1, 0)
@@ -184,6 +207,44 @@ function HUDController.Start()
 	Remotes.Get("HealthChanged").OnClientEvent:Connect(setHealth)
 	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
 		roundLabel.Text = "WAVE " .. tostring(round)
+		breakEndsAt = 0
+	end)
+
+	-- Pre-run countdown (waiting for the party to load in): shown in the wave slot until the run starts.
+	Remotes.Get("StartCountdown").OnClientEvent:Connect(function(secs)
+		secs = tonumber(secs) or 0
+		if secs > 0 then
+			roundLabel.Text = ("STARTING IN %d"):format(secs)
+		end
+	end)
+
+	-- Between waves: run the NEXT WAVE countdown under the wave number.
+	Remotes.Get("MatchStateChanged").OnClientEvent:Connect(function(phase)
+		if phase == "RoundBreak" then
+			breakEndsAt = os.clock() + GameConfig.RoundBreakSeconds
+		else
+			breakEndsAt = 0
+		end
+	end)
+	RunService.RenderStepped:Connect(function()
+		if breakEndsAt > 0 and os.clock() < breakEndsAt then
+			breakLabel.Text = ("NEXT WAVE IN %d"):format(math.ceil(breakEndsAt - os.clock()))
+		elseif breakLabel.Text ~= "" then
+			breakLabel.Text = ""
+		end
+	end)
+
+	-- "INCOMING!" — a NEW enemy type just spawned for the first time this run.
+	Remotes.Get("EnemyIncoming").OnClientEvent:Connect(function(typeName)
+		incomingLabel.Text = ("INCOMING!  New enemy: %s"):format(tostring(typeName))
+		incomingLabel.Visible = true
+		incomingToken += 1
+		local myToken = incomingToken
+		task.delay(4, function()
+			if incomingToken == myToken then
+				incomingLabel.Visible = false
+			end
+		end)
 	end)
 	Remotes.Get("PointsChanged").OnClientEvent:Connect(function(points)
 		pointsLabel.Text = "$" .. Util.FormatNumber(points)

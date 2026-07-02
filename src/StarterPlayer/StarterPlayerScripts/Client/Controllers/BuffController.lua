@@ -45,6 +45,11 @@ function BuffController.GetStat(key: string): number
 end
 
 local gui, panel, fill, levelLabel, xpLabel, autopick
+
+-- Is the 3-card buff draft currently on screen? (CrosshairController frees the mouse while any UI is up.)
+function BuffController.IsDraftOpen(): boolean
+	return panel ~= nil and panel.Visible
+end
 local cards = {}
 local rolling = false
 local queue = {}

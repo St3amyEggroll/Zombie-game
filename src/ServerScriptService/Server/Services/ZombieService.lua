@@ -39,7 +39,9 @@ local PlayerStateService = require(script.Parent.PlayerStateService)
 local ZombieService = {}
 
 -- ===== TUNABLES (most live in GameConfig; these are local feel knobs) =====
-local SPAWN_INTERVAL   = 0.6    -- seconds between spawns while a round still owes zombies
+local SPAWN_INTERVAL      = 0.35 -- seconds between spawns at wave 1 (while a round still owes zombies)
+local SPAWN_INTERVAL_MIN  = 0.15 -- floor for the per-wave speedup below
+local SPAWN_INTERVAL_STEP = 0.01 -- interval shrinks this much per wave (deep waves flood in faster)
 local ATTACK_RANGE     = 3.5    -- studs of CONTACT — a zombie damages you when its body touches yours
 local ATTACK_VERTICAL  = 6      -- studs of height difference allowed for a hit (so a zombie far below/above
                                -- on a ramp/ledge can't tag you); paired with a line-of-sight check
@@ -108,6 +110,13 @@ local remaining = 0                   -- zombies still owed this round
 local currentRound = 0
 local roundToken = 0                  -- bumped to cancel in-flight spawn loops / rounds
 local bossRecord: any = nil           -- the one live boss, if any (drives the boss health bar)
+
+-- Fired with (deathPosition?) the moment a boss dies — GameInventoryService drops the wave's cases off it.
+local bossDiedEvent = Instance.new("BindableEvent")
+ZombieService.BossDied = bossDiedEvent.Event
+
+-- Enemy types announced this run ("INCOMING! New enemy: X" — once per type per run; reset in ClearAll).
+local announcedTypes: { [string]: boolean } = {}
 
 local pool: { [string]: { Model } } = {}  -- typeId -> reusable models
 local graveTemplates: { Model } = {}      -- regular Grave models from Assets/Graves (normal enemies)
@@ -742,6 +751,7 @@ local function onZombieDied(record)
 		ZombieService.LastBossDeathPos = record.root and record.root.Position or nil
 		ZombieService.LastBossDeathTime = os.clock()
 		Remotes.Get("BossDefeated"):FireAllClients()
+		bossDiedEvent:Fire(ZombieService.LastBossDeathPos) -- case drops ride on this (boss KILL, not wave end)
 	end
 	-- aliveCount is freed in release() (after the corpse linger), so corpses still count against the
 	-- MaxAliveZombies cap until they're actually pooled — keeping true simultaneous bodies under the cap.
@@ -1154,6 +1164,13 @@ local function spawnOne(round: number, forcedType: string?)
 	aliveCount += 1
 	loadZombieTracks(record)
 
+	-- First appearance of a NEW enemy type this run → "INCOMING!" banner for everyone. Starters
+	-- (minRound 1) and bosses (spawnWeight 0 — they get their own entrance banner) are skipped.
+	if not announcedTypes[typeId] and t.spawnWeight > 0 and (t.minRound or 1) > 1 then
+		announcedTypes[typeId] = true
+		Remotes.Get("EnemyIncoming"):FireAllClients(t.name or typeId)
+	end
+
 	-- Rise up out of the ground (under a grave headstone) before the AI kicks in.
 	startEmergence(record, spawnCF)
 
@@ -1526,6 +1543,7 @@ function ZombieService.BeginRound(round: number, count: number)
 	roundToken += 1
 	local myToken = roundToken
 
+	local interval = math.max(SPAWN_INTERVAL_MIN, SPAWN_INTERVAL - SPAWN_INTERVAL_STEP * (round - 1))
 	task.spawn(function()
 		while remaining > 0 and myToken == roundToken do
 			if aliveCount < GameConfig.MaxAliveZombies then
@@ -1533,14 +1551,15 @@ function ZombieService.BeginRound(round: number, count: number)
 					remaining -= 1
 				end
 			end
-			task.wait(SPAWN_INTERVAL)
+			task.wait(interval)
 		end
 	end)
 end
 
 -- Spawn exactly ONE boss for this wave: broadcasts an entrance, then streams its health to the boss bar
 -- until it dies. The boss counts toward aliveCount, so the wave won't clear until it's dead.
-function ZombieService.SpawnBoss(round: number, bossId: string?)
+-- Boss HP scales with the party: × the number of players in the run (2p = 2x, 3p = 3x, ...).
+function ZombieService.SpawnBoss(round: number, bossId: string?, playerCount: number?)
 	task.spawn(function()
 		local id = bossId or "boss"
 		local record
@@ -1557,6 +1576,11 @@ function ZombieService.SpawnBoss(round: number, bossId: string?)
 		bossRecord = record
 		record.isBoss = true
 		local hum = record.hum
+		local mult = math.max(1, math.floor(playerCount or 1))
+		if mult > 1 then
+			hum.MaxHealth = hum.MaxHealth * mult
+			hum.Health = hum.MaxHealth
+		end
 		Remotes.Get("BossSpawned"):FireAllClients(record.type.name, hum.MaxHealth)
 		record.bossHealthConn = hum.HealthChanged:Connect(function(h)
 			Remotes.Get("BossHealth"):FireAllClients(h, hum.MaxHealth)
@@ -1621,6 +1645,7 @@ function ZombieService.ClearAll()
 	roundToken += 1
 	remaining = 0
 	bossRecord = nil
+	announcedTypes = {} -- next run re-announces each enemy type's first appearance
 	for model, record in active do
 		record.dead = true
 		if record.diedConn then

@@ -212,10 +212,24 @@ function ReviveController.Start()
 	build()
 
 	Remotes.Get("DownedChanged").OnClientEvent:Connect(function(userId, isDowned, bleedSecs)
+		local wasDowned = downed[userId] == true
 		downed[userId] = isDowned or nil
 		if userId == localPlayer.UserId then
 			selfReviveFrac = 0
 			selfDownedEndsAt = isDowned and (os.clock() + (tonumber(bleedSecs) or GameConfig.BleedoutSeconds)) or 0
+		end
+		-- Chat callout on the DOWN transition (re-sync events while already downed stay quiet).
+		if isDowned and not wasDowned then
+			local pl = Players:GetPlayerByUserId(userId)
+			if pl then
+				pcall(function()
+					local TextChatService = game:GetService("TextChatService")
+					local channel = TextChatService.TextChannels and TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+					if channel then
+						channel:DisplaySystemMessage(('<font color="#e05252">%s is downed!</font>'):format(pl.DisplayName))
+					end
+				end)
+			end
 		end
 	end)
 

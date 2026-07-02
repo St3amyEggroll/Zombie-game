@@ -288,6 +288,11 @@ closeBtn.Activated:Connect(function()
 	panel.Visible = false
 end)
 
+-- Is the inventory panel currently open? (CrosshairController frees the mouse while any UI is up.)
+function GameInventoryController.IsOpen(): boolean
+	return panel.Visible
+end
+
 -- Open/close the panel (called by the hotbar's INVENTORY button). Always lands on the Potions tab.
 function GameInventoryController.Toggle()
 	Remotes.Get("InvSnapshot"):FireServer() -- request a fresh snapshot

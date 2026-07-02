@@ -115,7 +115,7 @@ end
 -- the lobby saves them before teleporting the player to us.
 local GAME_OWNED_FIELDS = {
 	"dataVersion", "xp", "level", "bestWave", "completed", "stats", "cosmetics", "settings",
-	"lobbyMoney", "potions",
+	"lobbyMoney", "potions", "cases", -- cases: wave/boss case drops earned in-run must reach the lobby
 }
 
 local function saveAsync(player: Player): boolean

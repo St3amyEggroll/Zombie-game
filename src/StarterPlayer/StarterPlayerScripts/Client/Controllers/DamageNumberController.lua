@@ -58,13 +58,17 @@ local function spawnNumber(pos: Vector3, text: string, color: Color3, scale: num
 	Debris:AddItem(part, LIFE)
 end
 
-local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean, damage: number?)
+local CRIT_COLOR = Color3.fromRGB(255, 150, 40) -- critical hits pop ORANGE
+
+local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean, damage: number?, isCrit: boolean?)
 	if not hitHumanoid or not damage or damage <= 0 then
 		return
 	end
 	local color, scale = HIT_COLOR, 1
 	if killed then
 		color, scale = KILL_COLOR, 1.4
+	elseif isCrit then
+		color, scale = CRIT_COLOR, 1.3
 	elseif isHeadshot then
 		color, scale = HEAD_COLOR, 1.25
 	end

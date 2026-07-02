@@ -29,6 +29,8 @@ local DEFINITIONS: { [string]: string } = {
 	BossSpawned       = "RemoteEvent",     -- S->C: (name, maxHealth) — boss entrance + show health bar
 	BossHealth        = "RemoteEvent",     -- S->C: (health, maxHealth) — update the boss bar
 	BossDefeated      = "RemoteEvent",     -- S->C: hide the bar + "boss defeated" banner
+	EnemyIncoming     = "RemoteEvent",     -- S->C: (typeName) — a NEW enemy type just spawned for the first time
+	StartCountdown    = "RemoteEvent",     -- S->C: (seconds) — pre-run countdown while the party loads in (0 = clear)
 
 	-- CombatService (THE exploit surface — server validates everything)
 	FireWeapon        = "RemoteEvent",     -- C->S: intent (weaponId, origin, direction)

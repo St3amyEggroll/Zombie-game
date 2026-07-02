@@ -7,11 +7,11 @@ local GameConfig = {}
 -- ===== ROUNDS =====
 GameConfig.BaseZombiesPerRound = 6
 GameConfig.PlayerCountScale    = 0.5   -- +50% zombies per extra player
-GameConfig.RoundZombieGrowth   = 1.15  -- zombie COUNT ×= this per round
-GameConfig.RoundBreakSeconds   = 4     -- prep time between rounds
+GameConfig.RoundZombieGrowth   = 1.20  -- zombie COUNT ×= this per round
+GameConfig.RoundBreakSeconds   = 5     -- prep time between rounds (clients show a NEXT WAVE countdown)
 
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
-GameConfig.MaxAliveZombies   = 75      -- HARD cap on simultaneous zombies (owed extras wait for a kill,
+GameConfig.MaxAliveZombies   = 90      -- HARD cap on simultaneous zombies (owed extras wait for a kill,
                                        -- then spawn in — they don't despawn to make room)
 GameConfig.ZombieAITickRate  = 0.2     -- seconds between AI re-targets (staggered across zombies)
 GameConfig.PathRecompute     = 1.5     -- seconds between a zombie's path recomputes
@@ -75,6 +75,11 @@ GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for comp
 GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare" }
 GameConfig.Worlds          = { "forest" }
 GameConfig.DefaultMap      = "forest"
+
+-- ===== PRE-RUN COUNTDOWN ===== waves don't start until the whole party has loaded in (or the timer
+-- runs out). Once everyone expected is present, the countdown snaps down to the quick value.
+GameConfig.StartCountdownSeconds = 30  -- max wait for the party to load in
+GameConfig.StartCountdownQuick   = 3   -- countdown once everyone is in
 
 -- ===== AUTO-AIM SHOOTING =====
 GameConfig.ArcDegrees = 60    -- a shot auto-targets the CLOSEST zombie within this arc in front of your aim

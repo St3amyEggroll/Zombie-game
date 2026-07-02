@@ -6,6 +6,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PhysicsService = game:GetService("PhysicsService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
@@ -79,8 +80,31 @@ local function fireHealth(player: Player, humanoid: Humanoid)
 	Remotes.Get("HealthChanged"):FireClient(player, humanoid.Health, humanoid.MaxHealth)
 end
 
+-- ===== PLAYER-PLAYER COLLISION OFF =====
+-- All player parts share a collision group that doesn't collide with itself (you can't be body-blocked
+-- by a teammate). Zombies/world still collide normally.
+local PLAYER_GROUP = "Players"
+pcall(function()
+	PhysicsService:RegisterCollisionGroup(PLAYER_GROUP)
+	PhysicsService:CollisionGroupSetCollidable(PLAYER_GROUP, PLAYER_GROUP, false)
+end)
+
+local function setCollisionGroup(character: Model)
+	for _, d in character:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CollisionGroup = PLAYER_GROUP
+		end
+	end
+	character.DescendantAdded:Connect(function(d)
+		if d:IsA("BasePart") then
+			d.CollisionGroup = PLAYER_GROUP
+		end
+	end)
+end
+
 -- ===== CHARACTER SETUP =====
 local function onCharacterAdded(player: Player, character: Model)
+	setCollisionGroup(character)
 	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
 	if not humanoid then
 		return
@@ -130,6 +154,14 @@ local function setDowned(player: Player, downed: boolean, bleedSecs: number?)
 	Remotes.Get("DownedChanged"):FireAllClients(player.UserId, downed, bleedSecs or 0)
 end
 
+local function clearDownedHighlight(player: Player)
+	local char = player.Character
+	local hl = char and char:FindFirstChild("DownedHighlight")
+	if hl then
+		hl:Destroy()
+	end
+end
+
 local function enterDowned(player: Player, ps, humanoid: Humanoid)
 	ps.isDowned = true
 	ps.downedUntil = os.clock() + GameConfig.BleedoutSeconds
@@ -137,6 +169,19 @@ local function enterDowned(player: Player, ps, humanoid: Humanoid)
 	humanoid.JumpHeight = 0
 	humanoid.JumpPower = 0
 	getRuntime(player).lastWalkSpeed = -1 -- heartbeat re-applies at crawl speed
+	-- Red glow so teammates can find them through the horde.
+	local char = player.Character
+	if char then
+		clearDownedHighlight(player)
+		local hl = Instance.new("Highlight")
+		hl.Name = "DownedHighlight"
+		hl.FillColor = Color3.fromRGB(230, 60, 60)
+		hl.OutlineColor = Color3.fromRGB(255, 90, 90)
+		hl.FillTransparency = 0.55
+		hl.OutlineTransparency = 0
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.Parent = char
+	end
 	setDowned(player, true, GameConfig.BleedoutSeconds)
 	MatchService.CheckTeamWipe() -- if this down means nobody is up, the run ends for everyone
 end
@@ -152,6 +197,7 @@ local function reviveNow(player: Player, ps)
 		humanoid.JumpPower = 50
 	end
 	getRuntime(player).lastWalkSpeed = -1
+	clearDownedHighlight(player)
 	setDowned(player, false)
 end
 
@@ -161,6 +207,7 @@ local function bleedOut(player: Player, ps)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	ps.isDowned = false
+	clearDownedHighlight(player)
 	setDowned(player, false)
 	if humanoid then
 		humanoid.Health = 0
@@ -250,6 +297,15 @@ local function onHeartbeat(dt: number)
 	accum = 0
 
 	local now = os.clock()
+
+	-- Players currently being revived: their bleedout timer is PAUSED while a teammate holds E on them.
+	local beingRevived: { [number]: boolean } = {}
+	for _, hold in reviveHolds do
+		if hold.target then
+			beingRevived[hold.target.UserId] = true
+		end
+	end
+
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -258,12 +314,14 @@ local function onHeartbeat(dt: number)
 			local ps = MatchService.GetPlayerState(player)
 
 			if ps and ps.isDowned then
-				-- Downed: crawl speed, no regen, bleeding out on a timer.
+				-- Downed: crawl speed, no regen, bleeding out on a timer (frozen while being revived).
 				if math.abs(GameConfig.DownedWalkSpeed - r.lastWalkSpeed) > 0.01 then
 					humanoid.WalkSpeed = GameConfig.DownedWalkSpeed
 					r.lastWalkSpeed = GameConfig.DownedWalkSpeed
 				end
-				if now >= ps.downedUntil then
+				if beingRevived[player.UserId] then
+					ps.downedUntil += step -- pause: push the deadline forward by exactly the elapsed time
+				elseif now >= ps.downedUntil then
 					bleedOut(player, ps)
 				end
 			else
@@ -314,6 +372,10 @@ local function onHeartbeat(dt: number)
 			end
 			if target and target.Parent then
 				Remotes.Get("ReviveProgress"):FireClient(target, target.UserId, 0)
+				-- The bleedout was paused during the hold — resync the target's countdown display.
+				if targetPs and targetPs.isDowned then
+					Remotes.Get("DownedChanged"):FireAllClients(target.UserId, true, math.max(0, targetPs.downedUntil - os.clock()))
+				end
 			end
 		else
 			hold.progress += step

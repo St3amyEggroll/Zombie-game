@@ -42,6 +42,26 @@ Players.CharacterAutoLoads = true
 
 local rng = Random.new()
 
+-- ===== PLAYER-PLAYER COLLISION OFF ===== (same group setup as the game place)
+local PhysicsService = game:GetService("PhysicsService")
+local PLAYER_GROUP = "Players"
+pcall(function()
+	PhysicsService:RegisterCollisionGroup(PLAYER_GROUP)
+	PhysicsService:CollisionGroupSetCollidable(PLAYER_GROUP, PLAYER_GROUP, false)
+end)
+local function setCollisionGroup(character)
+	for _, d in character:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CollisionGroup = PLAYER_GROUP
+		end
+	end
+	character.DescendantAdded:Connect(function(d)
+		if d:IsA("BasePart") then
+			d.CollisionGroup = PLAYER_GROUP
+		end
+	end)
+end
+
 -- ===== INVENTORY CATALOG =====
 -- The lobby is self-contained (it can't require the game's Shared config), so the catalog lives here and
 -- is SENT to the client for display. Add a weapon = add a WEAPONS entry (+ case pool weights below).
@@ -661,7 +681,7 @@ local function dissolveAndLaunch(party)
 		if ok and code then
 			options.ReservedServerAccessCode = code
 		end
-		options:SetTeleportData({ startRun = true, map = party.map, difficulty = party.difficulty })
+		options:SetTeleportData({ startRun = true, map = party.map, difficulty = party.difficulty, partySize = #list })
 		for attempt = 1, TELEPORT_RETRIES do
 			local alive = {}
 			for _, pl in list do
@@ -852,9 +872,13 @@ end
 
 -- ===== LIFECYCLE =====
 local function onJoin(player)
-	player.CharacterAdded:Connect(function()
+	player.CharacterAdded:Connect(function(character)
+		setCollisionGroup(character)
 		task.defer(refreshCarry, player)
 	end)
+	if player.Character then
+		setCollisionGroup(player.Character)
+	end
 	task.spawn(function()
 		local profile = readProfile(player)
 		profileCache[player.UserId] = profile

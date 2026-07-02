@@ -214,7 +214,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			local c = targets[idx]
 			local humanoid = c.record.hum
 			local damage = baseDamage * falloffMult(c.dist) * count
-				if math.random() < buffOf(ps, "critchance") then damage *= (1 + GameConfig.CritBaseBonus + buffOf(ps, "critdamage")) end -- Crit buffs
+			local isCrit = math.random() < buffOf(ps, "critchance")
+			if isCrit then
+				damage *= (1 + GameConfig.CritBaseBonus + buffOf(ps, "critdamage")) -- Crit buffs
+			end
 			humanoid.Health = math.max(0, humanoid.Health - damage)
 			local killed = humanoid.Health <= 0
 			ZombieService.NoteHit(c.record, origin) -- so a kill launches the ragdoll away from the shooter
@@ -224,7 +227,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			else
 				ZombieService.Hit(c.record, origin, eff.knockback) -- upgraded knockback + white flash
 			end
-			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5))
+			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5), isCrit)
 			-- A tracer per zombie hit, carrying how many pellets landed there (the client fans that many bolts).
 			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, c.root.Position, weaponId, count)
 		end

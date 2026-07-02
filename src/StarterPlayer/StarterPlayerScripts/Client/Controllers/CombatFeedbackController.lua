@@ -215,6 +215,7 @@ local function muzzleFlash(cf: CFrame)
 	if not cfg.Enabled then
 		return
 	end
+	-- Just the small neon flash — NO PointLight (the per-shot light burst on the player was distracting).
 	local ball = Instance.new("Part")
 	ball.Shape = Enum.PartType.Ball
 	ball.Size = Vector3.new(0.5, 0.5, 0.5)
@@ -225,11 +226,6 @@ local function muzzleFlash(cf: CFrame)
 	ball.Material = Enum.Material.Neon
 	ball.Color = cfg.Color
 	ball.CFrame = cf
-	local light = Instance.new("PointLight")
-	light.Color = cfg.Color
-	light.Brightness = cfg.Brightness
-	light.Range = cfg.Range
-	light.Parent = ball
 	ball.Parent = fxFolder
 	TweenService:Create(ball, TweenInfo.new(cfg.Life), { Transparency = 1, Size = Vector3.new(0.1, 0.1, 0.1) }):Play()
 	Debris:AddItem(ball, cfg.Life)

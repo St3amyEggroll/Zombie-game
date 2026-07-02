@@ -364,6 +364,30 @@ runMatch = function()
 	-- TEST: jump straight to GameConfig.DebugStartWave (0 = normal start at wave 1).
 	state.round = (GameConfig.DebugStartWave and GameConfig.DebugStartWave > 0) and GameConfig.DebugStartWave or 1
 	state.startedAt = os.clock()
+
+	-- PRE-RUN COUNTDOWN: wait for the whole party to load in (up to StartCountdownSeconds); the moment
+	-- everyone expected is present, the countdown snaps down to StartCountdownQuick. No zombies until zero.
+	local expected = state.expectedPlayers or 1
+	local deadline = os.clock() + GameConfig.StartCountdownSeconds
+	local snapped = false
+	local lastSent = -1
+	while os.clock() < deadline do
+		if not anyInMatch() then
+			break
+		end
+		if not snapped and inMatchCount() >= expected then
+			snapped = true
+			deadline = math.min(deadline, os.clock() + GameConfig.StartCountdownQuick)
+		end
+		local secs = math.ceil(deadline - os.clock())
+		if secs ~= lastSent then
+			lastSent = secs
+			Remotes.Get("StartCountdown"):FireAllClients(secs)
+		end
+		task.wait(0.2)
+	end
+	Remotes.Get("StartCountdown"):FireAllClients(0) -- clear the banner
+
 	setPhase("Playing")
 	Remotes.Get("RoundChanged"):FireAllClients(state.round)
 
@@ -373,9 +397,10 @@ runMatch = function()
 		ZombieService.BeginRound(state.round, count)
 
 		-- Boss waves (10 = Boss, 20 = Lumberjack, 30 = Necromancer) — the boss counts toward the clear.
+		-- Boss HP scales × the number of players in the run (2p = 2x, 3p = 3x, ...).
 		local bossId = ZombieConfig.BossWaves[state.round]
 		if bossId then
-			ZombieService.SpawnBoss(state.round, bossId)
+			ZombieService.SpawnBoss(state.round, bossId, inMatchCount())
 		end
 
 		while not ZombieService.IsRoundCleared() do
@@ -411,6 +436,7 @@ runMatch = function()
 	state.difficulty = nil
 	state.map = nil
 	state.maxWave = 0
+	state.expectedPlayers = nil
 	state.zombiesAlive = 0
 	state.zombiesRemaining = 0
 	matchRunning = false
@@ -459,6 +485,10 @@ local function handleArrival(player: Player)
 			if typeof(joinData.TeleportData.map) == "string" then
 				state.map = joinData.TeleportData.map
 			end
+		end
+		-- How many players the lobby teleported together — the pre-run countdown waits for all of them.
+		if startRun and typeof(joinData.TeleportData.partySize) == "number" then
+			state.expectedPlayers = math.max(state.expectedPlayers or 1, math.floor(joinData.TeleportData.partySize))
 		end
 	end
 	if startRun then
