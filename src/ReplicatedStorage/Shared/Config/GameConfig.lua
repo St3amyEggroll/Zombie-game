@@ -11,10 +11,10 @@ GameConfig.RoundZombieGrowth   = 1.20  -- zombie COUNT ×= this per round
 GameConfig.RoundBreakSeconds   = 5     -- prep time between rounds (clients show a NEXT WAVE countdown)
 
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
-GameConfig.MaxAliveZombies   = 90      -- HARD cap on simultaneous zombies (owed extras wait for a kill,
+GameConfig.MaxAliveZombies   = 200     -- HARD cap on simultaneous zombies (owed extras wait for a kill,
                                        -- then spawn in — they don't despawn to make room)
-GameConfig.ZombieAITickRate  = 0.2     -- seconds between AI re-targets (staggered across zombies)
-GameConfig.PathRecompute     = 1.5     -- seconds between a zombie's path recomputes
+GameConfig.ZombieAITickRate  = 0.35    -- seconds between AI re-targets (staggered across zombies)
+GameConfig.PathRecompute     = 2.5    -- seconds between a zombie's path recomputes
 
 -- ===== ZOMBIE SCALING =====
 GameConfig.ZombieBaseHealth    = 50
@@ -24,16 +24,16 @@ GameConfig.ZombieSpeedPerRound = 0.15
 GameConfig.ZombieMaxSpeed      = 22
 
 -- ===== POINTS — the IN-WAVE cash from kills (resets every run; spent on TRAPS for now) =====
-GameConfig.PointsPerHit       = 10
-GameConfig.PointsPerKill      = 60
-GameConfig.PointsHeadshotKill = 100    -- replaces PointsPerKill on a headshot kill
+GameConfig.PointsPerHit       = 1      -- per-PELLET: shotguns land 6 of these per shell
+GameConfig.PointsPerKill      = 15
+GameConfig.PointsHeadshotKill = 25     -- replaces PointsPerKill on a headshot kill
 GameConfig.StartingPoints     = 500
 
 -- ===== LOBBY MONEY (the PERSISTENT currency — "Coins" — earned during a run, spent in the lobby) =====
 -- Earned live as you play (so it ticks up on the HUD) and saved to your profile; the lobby menu shows the
 -- total. This is separate from the in-wave cash above.
-GameConfig.LobbyMoneyPerKill = 1
-GameConfig.LobbyMoneyPerWave = 25
+GameConfig.LobbyMoneyPerKill = 2
+GameConfig.LobbyMoneyPerWave = 50
 
 -- ===== CRIT ===== (crit chance/damage come from the in-run buff draft; this is the base a crit adds)
 GameConfig.CritBaseBonus = 0.5   -- a crit does +50% damage baseline; the Crit Damage buff adds on top

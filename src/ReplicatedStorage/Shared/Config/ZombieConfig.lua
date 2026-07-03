@@ -4,7 +4,7 @@
 --
 -- World 1 (Forest) roster + when each first appears (minRound):
 --   default 1 · speedy 3 · lead 6 · leaper 11 · tank 15 · bombzombie 21 · ghost 26
---   Tank variants (Speedy/Lead/Leaper Tank) unlock RELATIVE to Tank + their counterpart (rule below).
+--   Tank variants: speedytank 17 · leapertank 18 · leadtank 22
 -- Bosses (BossWaves): 10 = Boss · 20 = Lumberjack · 30 = Necromancer  (wave 25 has NO boss).
 
 export type ZombieType = {
@@ -36,30 +36,22 @@ local ZombieConfig: { [string]: any } = {
 	leaper     = { id="leaper",     name="Leaper",      healthMult=0.8,  speedMult=1.15, damage=18, pointsMult=1.7, isSpecial=false, minRound=11, spawnWeight=30,  tint=Color3.fromRGB(150,90,170), canLeap=true },
 	-- Rare, huge HP, slow, devastating melee.
 	tank       = { id="tank",       name="Tank",        healthMult=7,    speedMult=0.5,  damage=55, pointsMult=3.5, isSpecial=true,  minRound=15, spawnWeight=8,   tint=Color3.fromRGB(60,70,60) },
-	-- Runs at you, lights a 2s fuse when close, then explodes for AoE.
-	bombzombie = { id="bombzombie", name="Bomb Zombie", healthMult=1.2,  speedMult=1.0,  damage=10, pointsMult=2.2, isSpecial=false, minRound=21, spawnWeight=16,  tint=Color3.fromRGB(200,80,50),  isBomb=true },
+	-- Runs at you, lights a short fuse when close, then explodes for AoE. damage=0: it NEVER bites —
+	-- the creeper-style explosion (ZombieService BOMB_DAMAGE) is its only attack.
+	bombzombie = { id="bombzombie", name="Bomb Zombie", healthMult=1.2,  speedMult=1.0,  damage=0,  pointsMult=2.2, isSpecial=false, minRound=21, spawnWeight=16,  tint=Color3.fromRGB(200,80,50),  isBomb=true },
 	-- Hovers above and dive-bombs; as fast as a Speedy.
 	ghost      = { id="ghost",      name="Ghost",       healthMult=0.7,  speedMult=2.1,  damage=16, pointsMult=2.0, isSpecial=false, minRound=26, spawnWeight=20,  tint=Color3.fromRGB(190,210,235), canFly=true },
 
-	-- ===== TANK VARIANTS ===== tank-ified versions of smaller enemies. Their minRound is DERIVED below
-	-- (at least 2 waves after Tank, at least 3 waves after their smaller counterpart) — the 0 here is a
-	-- placeholder that the rule overwrites.
-	speedytank = { id="speedytank", name="Speedy Tank", healthMult=3.5, speedMult=1.5,  damage=30, pointsMult=3.0, isSpecial=true, minRound=0, spawnWeight=10, tint=Color3.fromRGB(160,140,40) },
-	leadtank   = { id="leadtank",   name="Lead Tank",   healthMult=9,   speedMult=0.45, damage=65, pointsMult=4.5, isSpecial=true, minRound=0, spawnWeight=6,  tint=Color3.fromRGB(70,75,85) },
-	leapertank = { id="leapertank", name="Leaper Tank", healthMult=4,   speedMult=1.05, damage=40, pointsMult=3.5, isSpecial=true, minRound=0, spawnWeight=8,  tint=Color3.fromRGB(100,50,120), canLeap=true },
+	-- ===== TANK VARIANTS ===== tank-ified versions of smaller enemies.
+	speedytank = { id="speedytank", name="Speedy Tank", healthMult=3.5, speedMult=1.5,  damage=30, pointsMult=3.0, isSpecial=true, minRound=17, spawnWeight=10, tint=Color3.fromRGB(160,140,40) },
+	leapertank = { id="leapertank", name="Leaper Tank", healthMult=6,   speedMult=1.05, damage=40, pointsMult=3.5, isSpecial=true, minRound=18, spawnWeight=8,  tint=Color3.fromRGB(100,50,120), canLeap=true },
+	leadtank   = { id="leadtank",   name="Lead Tank",   healthMult=9,   speedMult=0.45, damage=65, pointsMult=4.5, isSpecial=true, minRound=22, spawnWeight=6,  tint=Color3.fromRGB(70,75,85) },
 
 	-- ===== BOSSES (spawnWeight 0 — only spawned by BossWaves) =====
-	boss        = { id="boss",        name="Boss",        healthMult=25, speedMult=0.7,  damage=75, pointsMult=10, isSpecial=true, minRound=10, spawnWeight=0, tint=Color3.fromRGB(40,10,50) },
-	lumberjack  = { id="lumberjack",  name="Lumberjack",  healthMult=32, speedMult=0.95, damage=80, pointsMult=12, isSpecial=true, minRound=20, spawnWeight=0, tint=Color3.fromRGB(120,70,40) },
-	necromancer = { id="necromancer", name="Necromancer", healthMult=40, speedMult=0.7,  damage=60, pointsMult=18, isSpecial=true, minRound=30, spawnWeight=0, tint=Color3.fromRGB(70,20,90), summons=true },
+	boss        = { id="boss",        name="Boss",        healthMult=100, speedMult=0.7,  damage=75, pointsMult=10, isSpecial=true, minRound=10, spawnWeight=0, tint=Color3.fromRGB(40,10,50) },
+	lumberjack  = { id="lumberjack",  name="Lumberjack",  healthMult=140, speedMult=0.95, damage=80, pointsMult=12, isSpecial=true, minRound=20, spawnWeight=0, tint=Color3.fromRGB(120,70,40) },
+	necromancer = { id="necromancer", name="Necromancer", healthMult=200, speedMult=0.7,  damage=60, pointsMult=18, isSpecial=true, minRound=30, spawnWeight=0, tint=Color3.fromRGB(70,20,90), summons=true },
 }
-
--- Tank variants unlock RELATIVE to their parents: at least 2 waves after Tank first appears, and at
--- least 3 waves after their smaller counterpart. Retune tank/speedy/lead/leaper minRounds and these follow
--- automatically (e.g. leaper 11 + tank <=12 -> Leaper Tank at wave 14).
-for variantId, baseId in { speedytank = "speedy", leadtank = "lead", leapertank = "leaper" } :: { [string]: string } do
-	ZombieConfig[variantId].minRound = math.max(ZombieConfig.tank.minRound + 2, ZombieConfig[baseId].minRound + 3)
-end
 
 -- ===== BOSS SCHEDULE ===== (wave -> boss id). Wave 25 intentionally has none.
 ZombieConfig.BossWaves = {

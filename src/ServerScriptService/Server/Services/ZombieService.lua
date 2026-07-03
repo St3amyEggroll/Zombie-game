@@ -56,9 +56,9 @@ local LEAP_REACH_FRAC  = 0.95   -- fraction of the gap each pounce covers (≈1 
                                -- in over several pounces instead of burying straight into melee on the first)
 -- ----- BombZombie (isBomb) -----
 local BOMB_TRIGGER     = 8      -- studs from a player that LIGHTS the fuse
-local BOMB_FUSE        = 2.0    -- seconds after the fuse lights before it detonates
+local BOMB_FUSE        = 1.1    -- seconds after the fuse lights before it detonates
 local BOMB_RADIUS      = 14     -- explosion radius (players inside take damage, falling off to 0 at the edge)
-local BOMB_DAMAGE      = 60     -- explosion damage at the centre
+local BOMB_DAMAGE      = 90     -- explosion damage at the centre
 -- ----- Ghost (canFly) -----
 local GHOST_HEIGHT     = 12     -- studs above the player the ghost hovers
 local GHOST_DIVE_CD    = 3.0    -- seconds between dive-bombs
@@ -1484,7 +1484,7 @@ local function steer(record, now: number)
 		local vy = math.clamp((aimY - root.Position.Y) * 6, -60, 60)
 		root.AssemblyLinearVelocity = Vector3.new(horiz.X, vy, horiz.Z)
 		-- Bite on contact (mostly lands during a dive).
-		if record.target and (pPos - root.Position).Magnitude <= ATTACK_RANGE + 1.5
+		if record.target and record.damage > 0 and (pPos - root.Position).Magnitude <= ATTACK_RANGE + 1.5
 			and (now - record.lastAttack) >= ATTACK_COOLDOWN then
 			record.lastAttack = now
 			PlayerStateService.Damage(record.target, record.damage, "zombie", root.Position)
@@ -1511,7 +1511,8 @@ local function steer(record, now: number)
 	if dist <= ATTACK_RANGE then
 		hum:Move(Vector3.zero) -- in contact: stop shoving the player around
 		-- Damage on TOUCH: while its body is against yours, it bites once per cooldown.
-		if record.target and (now - record.lastAttack) >= ATTACK_COOLDOWN then
+		-- (damage <= 0 = no melee at all: the Bomb Zombie only threatens with its explosion.)
+		if record.target and record.damage > 0 and (now - record.lastAttack) >= ATTACK_COOLDOWN then
 			record.lastAttack = now
 			PlayerStateService.Damage(record.target, record.damage, "zombie", root.Position)
 			if record.attackTrack then
@@ -1547,6 +1548,12 @@ local function steer(record, now: number)
 end
 
 local lastDebug = 0
+-- ===== PERF (the 200-zombie horde) ===== close zombies steer EVERY frame (attacks/leaps need the
+-- precision); distant ones only need to march, so they steer at STEER_FAR_HZ. Halves-plus the per-frame
+-- work of a packed horde without changing anything a player can see up close.
+local STEER_NEAR_DIST = 60 -- studs from their target under which zombies steer every frame
+local STEER_FAR_HZ    = 10 -- steering rate for everyone farther away
+
 local function onHeartbeat()
 	local now = os.clock()
 	for _, record in active do
@@ -1554,7 +1561,16 @@ local function onHeartbeat()
 			if now >= record.nextThink then
 				think(record, now) -- sparse planning
 			end
-			steer(record, now)     -- per-frame real-time steering
+			local near = true
+			local tr = record.targetRoot
+			local root = record.root
+			if tr and tr.Parent and root then
+				near = (root.Position - tr.Position).Magnitude <= STEER_NEAR_DIST
+			end
+			if near or now >= (record.nextSteer or 0) then
+				record.nextSteer = now + (near and 0 or 1 / STEER_FAR_HZ)
+				steer(record, now) -- real-time steering (LOD-throttled when far)
+			end
 		end
 	end
 
