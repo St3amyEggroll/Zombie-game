@@ -90,8 +90,11 @@ AnimationConfig.Shake = {
 -- ===== ANIMATION IDS ===== (paste the rbxassetid number; "" = none)
 -- Played on the CHARACTER. "Hold" makes the character pose with the gun. (No reload — ammo is infinite.)
 AnimationConfig.Weapons = {
-	pistol = { Hold = "", Reload = "" },
-	ak47   = { Hold = "", Reload = "" },
+	pistol  = { Hold = "", Reload = "" },
+	shotgun = { Hold = "", Reload = "" },
+	ak47    = { Hold = "", Reload = "" },
+	minigun = { Hold = "", Reload = "" },
+	raygun  = { Hold = "", Reload = "" },
 }
 
 -- Played on each ZOMBIE rig, SERVER-SIDE. Walk loops while chasing (defaults to the engine's walk
