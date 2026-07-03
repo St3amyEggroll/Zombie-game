@@ -733,34 +733,49 @@ potionsGrid.CellSize = UDim2.fromOffset(160, 130); potionsGrid.CellPadding = UDi
 local potionsHint = Instance.new("TextLabel")
 potionsHint.Position = UDim2.fromOffset(14, 12); potionsHint.Size = UDim2.new(1, -28, 0, 20); potionsHint.BackgroundTransparency = 1
 potionsHint.Font = Enum.Font.GothamBold; potionsHint.TextSize = 13; potionsHint.TextXAlignment = Enum.TextXAlignment.Left
-potionsHint.TextColor3 = Color3.fromRGB(170, 180, 195); potionsHint.Text = "POTIONS — consumable boosts (coming soon)"; potionsHint.Parent = potionsTab
+potionsHint.TextColor3 = Color3.fromRGB(170, 180, 195); potionsHint.Text = "POTIONS — take them into runs and drink for a TIMED buff"; potionsHint.Parent = potionsTab
 
 local function renderPotionsTab()
 	if not invData then return end
 	for _, c in potionsScroll:GetChildren() do
 		if c:IsA("GuiObject") then c:Destroy() end
 	end
-	for potId, disp in invData.catalog.potions do
-		local count = invData.potions[potId] or 0
-		local col = rarityColor(disp.rarity)
-		local card = Instance.new("Frame")
-		card.BackgroundColor3 = col:Lerp(BLACK, 0.6); card.BorderSizePixel = 0; card.Parent = potionsScroll
-		corner(card, 10)
-		local st = Instance.new("UIStroke"); st.Color = col; st.Thickness = 1.4; st.Transparency = 0.3; st.Parent = card
-		local icon = Instance.new("TextLabel")
-		icon.Position = UDim2.fromOffset(0, 10); icon.Size = UDim2.new(1, 0, 0, 36); icon.BackgroundTransparency = 1
-		icon.Font = Enum.Font.GothamBlack; icon.TextSize = 18; icon.Text = "POTION"; icon.TextColor3 = col; icon.Parent = card
-		local nm = Instance.new("TextLabel")
-		nm.Position = UDim2.fromOffset(4, 48); nm.Size = UDim2.new(1, -8, 0, 20); nm.BackgroundTransparency = 1
-		nm.Font = Enum.Font.GothamBold; nm.TextSize = 15; nm.TextColor3 = Color3.fromRGB(240, 240, 245); nm.Text = disp.name; nm.TextScaled = true; nm.Parent = card
-		local ds = Instance.new("TextLabel")
-		ds.Position = UDim2.fromOffset(6, 70); ds.Size = UDim2.new(1, -12, 0, 30); ds.BackgroundTransparency = 1
-		ds.Font = Enum.Font.Gotham; ds.TextSize = 12; ds.TextColor3 = Color3.fromRGB(190, 195, 210); ds.Text = disp.desc; ds.TextWrapped = true; ds.Parent = card
-		local use = Instance.new("TextButton")
-		use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 30)
-		use.Font = Enum.Font.GothamBold; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = card; corner(use, 8)
-		use.BackgroundColor3 = DIM; use.TextColor3 = Color3.fromRGB(160, 165, 180); use.AutoButtonColor = false
-		use.Text = "x" .. count .. "  (Soon)"
+	local any = false
+	-- Rarity-major order (common → divine); zero-count potions don't appear at all.
+	for _, rarity in invData.catalog.rarityOrder do
+		for _, ptype in { "damage", "regen" } do
+			local potId = ptype .. "_" .. rarity
+			local disp = invData.catalog.potions[potId]
+			local count = disp and (invData.potions[potId] or 0) or 0
+			if disp and count > 0 then
+				any = true
+				local col = rarityColor(disp.rarity)
+				local card = Instance.new("Frame")
+				card.BackgroundColor3 = col:Lerp(BLACK, 0.6); card.BorderSizePixel = 0; card.Parent = potionsScroll
+				corner(card, 10)
+				local st = Instance.new("UIStroke"); st.Color = col; st.Thickness = 1.4; st.Transparency = 0.3; st.Parent = card
+				local icon = Instance.new("TextLabel")
+				icon.Position = UDim2.fromOffset(0, 10); icon.Size = UDim2.new(1, 0, 0, 36); icon.BackgroundTransparency = 1
+				icon.Font = Enum.Font.GothamBlack; icon.TextSize = 18; icon.Text = "POTION"; icon.TextColor3 = col; icon.Parent = card
+				local nm = Instance.new("TextLabel")
+				nm.Position = UDim2.fromOffset(4, 48); nm.Size = UDim2.new(1, -8, 0, 20); nm.BackgroundTransparency = 1
+				nm.Font = Enum.Font.GothamBold; nm.TextSize = 15; nm.TextColor3 = Color3.fromRGB(240, 240, 245); nm.Text = disp.name; nm.TextScaled = true; nm.Parent = card
+				local ds = Instance.new("TextLabel")
+				ds.Position = UDim2.fromOffset(6, 70); ds.Size = UDim2.new(1, -12, 0, 30); ds.BackgroundTransparency = 1
+				ds.Font = Enum.Font.Gotham; ds.TextSize = 12; ds.TextColor3 = Color3.fromRGB(190, 195, 210); ds.Text = disp.desc; ds.TextWrapped = true; ds.Parent = card
+				local use = Instance.new("TextButton")
+				use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 30)
+				use.Font = Enum.Font.GothamBold; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = card; corner(use, 8)
+				use.BackgroundColor3 = DIM; use.TextColor3 = Color3.fromRGB(160, 165, 180); use.AutoButtonColor = false
+				use.Text = "x" .. count .. "  ·  use in a run"
+			end
+		end
+	end
+	if not any then
+		local msg = Instance.new("TextLabel")
+		msg.Size = UDim2.fromOffset(540, 40); msg.BackgroundTransparency = 1; msg.Font = Enum.Font.GothamBold
+		msg.TextSize = 15; msg.TextColor3 = Color3.fromRGB(150, 155, 170)
+		msg.Text = "No potions yet — kill glowing ELITE zombies in runs to earn them!"; msg.Parent = potionsScroll
 	end
 end
 

@@ -16,6 +16,8 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
+local BuffConfig = require(Config.BuffConfig)     -- rarity colors for the potion buff chips
+local PotionConfig = require(Config.PotionConfig) -- potion type labels (DMG / REGEN)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
@@ -36,7 +38,14 @@ local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, incomingLabel
+local potionRow        -- chip row ABOVE the health bar: one chip per ACTIVE potion buff
+local potionChips = {} -- { {timeLabel, endsAt, base} } (countdowns tick client-side)
 local healthPct = 1
+
+local RARITY_COLOR = {}
+for _, r in BuffConfig.Rarities do
+	RARITY_COLOR[r.id] = r.color
+end
 local breakEndsAt = 0   -- os.clock() the wave break ends (drives the NEXT WAVE countdown)
 local incomingToken = 0 -- invalidates stale INCOMING hide timers
 
@@ -122,6 +131,20 @@ local function build()
 	healthFill.BorderSizePixel = 0
 	healthFill.Parent = track
 	corner(healthFill, 8)
+
+	-- Active potion buffs (chips right above the health bar): "DMG +30% - 42s" tinted by the potion's rarity.
+	potionRow = Instance.new("Frame")
+	potionRow.Name = "PotionBuffs"
+	potionRow.AnchorPoint = Vector2.new(0, 1)
+	potionRow.Position = UDim2.new(0, 16, 1, -84) -- sits on top of the HealthPanel
+	potionRow.Size = UDim2.fromOffset(420, 24)
+	potionRow.BackgroundTransparency = 1
+	potionRow.Parent = gui
+	local rowList = Instance.new("UIListLayout")
+	rowList.FillDirection = Enum.FillDirection.Horizontal
+	rowList.Padding = UDim.new(0, 6)
+	rowList.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	rowList.Parent = potionRow
 
 	-- Wave number (top-center, just below the run XP bar): plain large white text, no panel.
 	roundLabel = text(gui, "RoundLabel", Enum.Font.GothamBlack, 30, Color3.fromRGB(255, 255, 255))
@@ -231,6 +254,56 @@ function HUDController.Start()
 			breakLabel.Text = ("NEXT WAVE IN %d"):format(math.ceil(breakEndsAt - os.clock()))
 		elseif breakLabel.Text ~= "" then
 			breakLabel.Text = ""
+		end
+		-- Tick the potion chip countdowns (the server also re-pushes when a buff actually expires).
+		local now = os.clock()
+		for _, chip in potionChips do
+			local left = chip.endsAt - now
+			if left > 0 then
+				chip.timeLabel.Text = ("%s · %ds"):format(chip.base, math.ceil(left))
+			elseif chip.frame.Visible then
+				chip.frame.Visible = false
+			end
+		end
+	end)
+
+	-- Active potion buffs strip: rebuild the chips on every server push.
+	Remotes.Get("PotionBuffsChanged").OnClientEvent:Connect(function(list)
+		for _, chip in potionChips do
+			chip.frame:Destroy()
+		end
+		potionChips = {}
+		if typeof(list) ~= "table" then
+			return
+		end
+		for _, b in list do
+			if typeof(b) == "table" and b.type then
+				local tinfo = PotionConfig.Types[b.type]
+				local col = RARITY_COLOR[b.rarity] or COL_TEXT
+				local base = ("%s +%d%%"):format(tinfo and tinfo.hud or tostring(b.type):upper(),
+					math.floor((tonumber(b.pct) or 0) * 100 + 0.5))
+				local chip = Instance.new("Frame")
+				chip.Size = UDim2.fromOffset(118, 24)
+				chip.BackgroundColor3 = COL_PANEL
+				chip.BackgroundTransparency = PANEL_ALPHA
+				chip.BorderSizePixel = 0
+				chip.Parent = potionRow
+				corner(chip, 6)
+				local cs = Instance.new("UIStroke")
+				cs.Color = col
+				cs.Transparency = 0.35
+				cs.Thickness = 1.2
+				cs.Parent = chip
+				local lbl = text(chip, "Label", Enum.Font.GothamBold, 12, col)
+				lbl.Size = UDim2.fromScale(1, 1)
+				lbl.Text = base
+				table.insert(potionChips, {
+					frame = chip,
+					timeLabel = lbl,
+					base = base,
+					endsAt = os.clock() + (tonumber(b.remaining) or 0),
+				})
+			end
 		end
 	end)
 

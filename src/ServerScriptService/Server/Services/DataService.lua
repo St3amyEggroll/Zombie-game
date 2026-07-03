@@ -77,6 +77,16 @@ local function reconcile(data: any)
 			end
 		end
 	end
+	-- Legacy potion ids (pre-tier era) migrate to the common tier.
+	if typeof(data.potions) == "table" then
+		for old, new in { damage = "damage_common", regen = "regen_common" } do
+			local n = tonumber(data.potions[old])
+			if n and n > 0 then
+				data.potions[new] = (tonumber(data.potions[new]) or 0) + math.floor(n)
+			end
+			data.potions[old] = nil
+		end
+	end
 	return data
 end
 

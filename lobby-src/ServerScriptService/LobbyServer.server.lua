@@ -148,10 +148,35 @@ local function thresholdFor(weaponId, level)
 	return t[level] or t[#t]
 end
 
-local POTIONS = {
-	damage = { name = "Damage Potion", rarity = "rare",     desc = "Use in a run: +15% damage (once per run)" },
-	regen  = { name = "Regen Potion",  rarity = "uncommon", desc = "Use in a run: +50% health regen (once per run)" },
+-- ===== POTIONS (tiered: 2 types × 7 rarities = 14, drunk IN-RUN for a TIMED buff) =====
+-- KEEP IN SYNC (by hand) with the game place's PotionConfig — that file owns the real effect values;
+-- these numbers only drive the lobby's display text.
+local POTION_TYPES = {
+	damage = { label = "Damage", what = "damage" },
+	regen  = { label = "Regen",  what = "health regen" },
 }
+local POTION_TIERS = { -- per rarity: buff fraction per type + buff duration (seconds)
+	common    = { damage = 0.10, regen = 0.25, duration = 30 },
+	uncommon  = { damage = 0.15, regen = 0.40, duration = 40 },
+	rare      = { damage = 0.20, regen = 0.60, duration = 55 },
+	epic      = { damage = 0.30, regen = 0.85, duration = 75 },
+	legendary = { damage = 0.40, regen = 1.20, duration = 100 },
+	mythic    = { damage = 0.55, regen = 1.75, duration = 130 },
+	divine    = { damage = 0.75, regen = 2.50, duration = 180 },
+}
+local POTIONS = {}
+for ptype, tinfo in POTION_TYPES do
+	for _, r in RARITY_ORDER do
+		local tier = POTION_TIERS[r]
+		POTIONS[ptype .. "_" .. r] = {
+			name = RARITY[r].name .. " " .. tinfo.label .. " Potion",
+			rarity = r,
+			type = ptype,
+			desc = ("Use in a run: +%d%% %s for %ds"):format(
+				math.floor(tier[ptype] * 100 + 0.5), tinfo.what, tier.duration),
+		}
+	end
+end
 
 -- ===== SHOP (rotating case storefront — the Coin sink) =====
 -- GLOBAL rotation: stock is rolled from a seed derived from the clock window, so every server on Earth
@@ -370,10 +395,14 @@ end
 
 local function sanitizePotions(v)
 	local out = {}
+	local LEGACY = { damage = "damage_common", regen = "regen_common" } -- pre-tier ids -> common tier
 	if typeof(v) == "table" then
 		for id, n in v do
-			if POTIONS[id] and typeof(n) == "number" and n > 0 then
-				out[id] = math.floor(n)
+			if typeof(n) == "number" and n > 0 then
+				local mapped = POTIONS[id] and id or LEGACY[id]
+				if mapped then
+					out[mapped] = (out[mapped] or 0) + math.floor(n)
+				end
 			end
 		end
 	end

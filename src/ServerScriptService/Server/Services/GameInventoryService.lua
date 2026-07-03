@@ -21,6 +21,7 @@ local Modules = Shared:WaitForChild("Modules")
 local WeaponConfig = require(Config.WeaponConfig)
 local GameConfig = require(Config.GameConfig)
 local BuffConfig = require(Config.BuffConfig)
+local PotionConfig = require(Config.PotionConfig)
 local Remotes = require(Modules.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -45,10 +46,17 @@ for _, rarity in GameConfig.CaseRarities do
 	CASES[rarity] = { name = (RARITIES[rarity] and RARITIES[rarity].name or rarity) .. " Case", rarity = rarity }
 end
 
-local POTIONS = {
-	damage = { name = "Damage Potion", desc = "+15% damage for the rest of the run (once per run)" },
-	regen  = { name = "Regen Potion",  desc = "+50% health regen speed for the rest of the run (once per run)" },
-}
+-- 14 tiered potions (2 types × 7 rarities) straight from PotionConfig — name/desc/rarity per id.
+local POTIONS = {}
+for _, id in PotionConfig.AllIds() do
+	local stats = PotionConfig.Stats(id)
+	POTIONS[id] = {
+		name = PotionConfig.DisplayName(id),
+		desc = PotionConfig.Desc(id),
+		rarity = stats.rarity,
+		type = stats.type,
+	}
+end
 
 local CATALOG = {
 	weapons = (function()
@@ -77,7 +85,17 @@ local function snapshotFor(player: Player)
 		cases = (data and typeof(data.cases) == "table") and data.cases or {},
 		potions = (data and typeof(data.potions) == "table") and data.potions or {},
 		gunLevels = (data and typeof(data.gunLevels) == "table") and data.gunLevels or {},
-		used = (ps and ps.usedPotions) or {}, -- potion types already drunk THIS run (grays their Use button)
+		-- ACTIVE potion buffs by TYPE -> seconds remaining (grays the Use button for that type).
+		active = (function()
+			local out = {}
+			local now = os.clock()
+			for ptype, b in (ps and ps.potionBuffs) or {} do
+				if b.expiresAt > now then
+					out[ptype] = b.expiresAt - now
+				end
+			end
+			return out
+		end)(),
 	}
 end
 
@@ -89,10 +107,7 @@ end
 GameInventoryService.Push = push
 
 -- ===== PHYSICAL DROPS ===== (potions home to the NEAREST player; cases home to a SPECIFIC player)
-local POTION_COLOR = {
-	damage = Color3.fromRGB(235, 100, 90),  -- red = damage
-	regen  = Color3.fromRGB(110, 225, 130), -- green = regen
-}
+-- Physical potion drops glow with their RARITY color (the rarer the pull, the flashier the orb).
 local POP_TIME      = 0.45  -- seconds a drop arcs upward before the magnet kicks in
 local POP_UP        = 24    -- initial upward pop speed
 local POP_OUT       = 9     -- initial sideways scatter speed
@@ -162,7 +177,8 @@ local function spawnDrop(pos: Vector3, opts)
 		color = (RARITIES[opts.rarity] and RARITIES[opts.rarity].color) or Color3.fromRGB(220, 220, 230)
 		labelText = "CASE"
 	else
-		color = POTION_COLOR[opts.potionId] or Color3.fromRGB(220, 220, 230)
+		local pstats = PotionConfig.Stats(opts.potionId or "")
+		color = (pstats and RARITIES[pstats.rarity] and RARITIES[pstats.rarity].color) or Color3.fromRGB(220, 220, 230)
 		labelText = "POTION"
 	end
 
@@ -263,11 +279,8 @@ local function onKill(_player: Player, humanoid: Instance)
 	if not model or not model:GetAttribute("IsElite") then
 		return
 	end
-	local pool = GameConfig.PotionDrops
-	if not pool or #pool == 0 then
-		return
-	end
-	local potionId = pool[math.random(1, #pool)]
+	-- Random type, wave-weighted rarity — deeper waves drop better potions (PotionConfig).
+	local potionId = PotionConfig.RollDropId(MatchService.State.round or 1)
 	local ok, pivot = pcall(function()
 		return model:GetPivot()
 	end)
@@ -327,10 +340,14 @@ local function onConsume(player: Player, potionId: any)
 	if typeof(potionId) ~= "string" or not POTIONS[potionId] then
 		return
 	end
-	-- Potions take effect DURING a run, and each TYPE only works once per run. Check eligibility BEFORE
-	-- consuming so an ineligible click never burns a potion from the inventory.
+	-- Potions take effect DURING a run; one ACTIVE buff per TYPE — you can drink again after it expires.
+	-- Check eligibility BEFORE consuming so an ineligible click never burns a potion from the inventory.
 	local ps = MatchService.GetPlayerState(player)
-	if not ps or not ps.inMatch or (ps.usedPotions and ps.usedPotions[potionId]) then
+	if not ps or not ps.inMatch then
+		return
+	end
+	local ptype = PotionConfig.Parse(potionId)
+	if not ptype or BuffService.IsPotionTypeActive(player, ptype) then
 		return
 	end
 	if DataService.TryConsumePotion(player, potionId) then

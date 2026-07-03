@@ -160,29 +160,45 @@ local function card(parent, name, subtitle, color, highlight)
 end
 
 -- ---------- POTIONS TAB (interactive) ----------
-tabHint(potionsTab, "POTIONS — drink to buff THIS run (one of each type per run)")
-local potionsScroll = tabScroll(potionsTab, 36, 160, 130)
+tabHint(potionsTab, "POTIONS — drink for a TIMED buff. One active buff per type; drink again after it ends.")
+local potionsScroll = tabScroll(potionsTab, 36, 160, 152)
+
+-- Live "active buff" state: seeded by the snapshot, kept exact by PotionBuffsChanged pushes.
+local activeUntil = {} -- [type] = os.clock() when that type's buff ends
+
+local function typeActive(ptype)
+	return ptype and activeUntil[ptype] ~= nil and activeUntil[ptype] > os.clock()
+end
 
 local function renderPotions()
 	clearScroll(potionsScroll)
 	local any = false
-	for potId, disp in data.catalog.potions do
-		local count = data.potions[potId] or 0
-		if count > 0 then
-			any = true
-			local usedThisRun = (data.used or {})[potId] == true
-			local col = potId == "damage" and Color3.fromRGB(235, 100, 90) or Color3.fromRGB(110, 225, 130)
-			local f = card(potionsScroll, disp.name, "x" .. count, col, false)
-			local use = Instance.new("TextButton")
-			use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 32)
-			use.Font = Enum.Font.GothamBold; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = f; corner(use, 8)
-			if usedThisRun then
-				use.BackgroundColor3 = DIM; use.TextColor3 = TEXT_DIM; use.Text = "USED"; use.AutoButtonColor = false
-			else
-				use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15); use.Text = "USE"
-				use.Activated:Connect(function()
-					Remotes.Get("ConsumePotion"):FireServer(potId)
-				end)
+	-- Rarity-major order (common → divine), damage before regen inside each tier.
+	for _, rarity in data.catalog.rarityOrder do
+		for _, ptype in { "damage", "regen" } do
+			local potId = ptype .. "_" .. rarity
+			local disp = data.catalog.potions[potId]
+			local count = disp and (data.potions[potId] or 0) or 0
+			if disp and count > 0 then
+				any = true
+				local col = rarityColor(disp.rarity)
+				local f = card(potionsScroll, disp.name, "x" .. count, col, false)
+				-- The effect line — what this potion actually gives you.
+				local desc = Instance.new("TextLabel")
+				desc.Position = UDim2.fromOffset(6, 72); desc.Size = UDim2.new(1, -12, 0, 30); desc.BackgroundTransparency = 1
+				desc.Font = Enum.Font.Gotham; desc.TextSize = 12; desc.TextColor3 = Color3.fromRGB(190, 195, 210)
+				desc.Text = disp.desc or ""; desc.TextWrapped = true; desc.Parent = f
+				local use = Instance.new("TextButton")
+				use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 32)
+				use.Font = Enum.Font.GothamBold; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = f; corner(use, 8)
+				if typeActive(disp.type) then
+					use.BackgroundColor3 = DIM; use.TextColor3 = TEXT_DIM; use.Text = "ACTIVE"; use.AutoButtonColor = false
+				else
+					use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15); use.Text = "USE"
+					use.Activated:Connect(function()
+						Remotes.Get("ConsumePotion"):FireServer(potId)
+					end)
+				end
 			end
 		end
 	end
@@ -309,12 +325,33 @@ function GameInventoryController.Start()
 	Remotes.Get("InvSnapshot").OnClientEvent:Connect(function(snap)
 		if typeof(snap) == "table" then
 			data = snap
+			-- Seed the active-buff clocks from the snapshot (PotionBuffsChanged keeps them exact after).
+			activeUntil = {}
+			if typeof(snap.active) == "table" then
+				for ptype, remaining in snap.active do
+					activeUntil[ptype] = os.clock() + (tonumber(remaining) or 0)
+				end
+			end
 			if panel.Visible then render() end
 		end
 	end)
+	-- Live buff pushes: re-render the potions tab so USE/ACTIVE flips the moment a buff starts or ends.
+	Remotes.Get("PotionBuffsChanged").OnClientEvent:Connect(function(list)
+		activeUntil = {}
+		if typeof(list) == "table" then
+			for _, b in list do
+				if typeof(b) == "table" and b.type then
+					activeUntil[b.type] = os.clock() + (tonumber(b.remaining) or 0)
+				end
+			end
+		end
+		if panel.Visible and activeTab == "potions" and data then
+			render()
+		end
+	end)
 	Remotes.Get("PotionDropped").OnClientEvent:Connect(function(potionId)
-		local name = data and data.catalog.potions[potionId] and data.catalog.potions[potionId].name or "a potion"
-		showToast("Elite drop: " .. name .. "!")
+		local disp = data and data.catalog.potions[potionId]
+		showToast("Elite drop: " .. (disp and disp.name or "a potion") .. "!", disp and rarityColor(disp.rarity) or nil)
 	end)
 	Remotes.Get("CaseDropped").OnClientEvent:Connect(function(rarity)
 		local disp = data and data.catalog.cases[rarity]

@@ -149,7 +149,13 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- to AimController's lock rule, so what locks is exactly what hits. Distance/falloff stay 3D.
 	local flatDir = Vector3.new(dir.X, 0, dir.Z)
 	flatDir = (flatDir.Magnitude > 0.01) and flatDir.Unit or dir
-	local baseDamage = eff.damage * (1 + buffOf(ps, "damage")) -- upgraded damage × Damage buff
+	-- Damage = leveled gun damage × (1 + buff draft Damage + ACTIVE damage potion).
+	local potionDamage = 0
+	local dmgPotion = ps.potionBuffs and ps.potionBuffs.damage
+	if dmgPotion and dmgPotion.expiresAt > os.clock() then
+		potionDamage = dmgPotion.pct
+	end
+	local baseDamage = eff.damage * (1 + buffOf(ps, "damage") + potionDamage)
 	local arcRange = GameConfig.ArcRange
 	-- Pellet weapons can hit across a WIDER arc than the global cone (weapon.spreadArc — the shotgun
 	-- sprays the crowd, not one line). The client lock rule stays on the narrower global arc, which is
@@ -205,7 +211,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		end
 	end
 
-	local endpoint = origin + dir * effRange -- where the tracer lands on a miss (straight ahead)
+	-- Bullets fly at GUN level: a miss goes straight ahead HORIZONTALLY — the cursor can't pitch shots
+	-- into the sky or the floor. Only a real target above/below angles a shot (the hit path below sends
+	-- its tracer at the zombie itself).
+	local endpoint = origin + flatDir * effRange
 	if #targets > 0 then
 		-- Distribute pellets round-robin across the targets (nearest get the extras): all pellets dump into
 		-- one zombie up close, but spread across a crowd. For a 1-pellet gun this is just "hit the closest".

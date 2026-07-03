@@ -111,14 +111,8 @@ GameConfig.CaseWeightGrowth = 1.5                            -- higher = deeper 
 GameConfig.EliteChance         = 0.05                 -- 5% of normal spawns become elites
 GameConfig.EliteHealthMult     = 4                    -- elites have 4× a normal same-type zombie's health
 GameConfig.EliteHighlightColor = Color3.fromRGB(255, 225, 40) -- yellow test highlight
-GameConfig.PotionDrops         = { "damage", "regen" } -- potion ids an elite can drop (match the lobby POTIONS)
-
--- ===== POTION EFFECTS ===== consumed IN A RUN (in-game inventory → Use). Effects last the rest of the
--- run; each potion TYPE can only be used ONCE per run.
-GameConfig.PotionEffects = {
-	damageBonus = 0.15, -- Damage Potion: +15% damage for the rest of the run
-	regenBonus  = 0.5,  -- Regen Potion: +50% health regen speed for the rest of the run
-}
+-- (Potion drops + effects moved to PotionConfig.lua — tiered potions with TIMED buffs; elites roll a
+-- wave-weighted rarity there.)
 
 -- ===== DOWN / REVIVE (co-op) ===== at 0 HP with a teammate still UP you go DOWNED (crawl, untargetable)
 -- instead of dying; a teammate holds E next to you to revive. Solo death — or bleeding out, or the whole
