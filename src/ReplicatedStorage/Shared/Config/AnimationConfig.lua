@@ -93,7 +93,7 @@ AnimationConfig.Weapons = {
 	pistol  = { Hold = "", Reload = "" },
 	shotgun = { Hold = "", Reload = "" },
 	ak47    = { Hold = "", Reload = "" },
-	minigun = { Hold = "", Reload = "" },
+	minigun = { Hold = "128207655721600", Reload = "" },
 	raygun  = { Hold = "", Reload = "" },
 }
 
