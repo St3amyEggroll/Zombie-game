@@ -66,11 +66,13 @@ panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H); panel.Visible = false
 
 UITheme.Header(panel, "Inventory", 46)
 
+-- Big naked red X (no button plate) — the game's close-anything glyph.
 local closeBtn = Instance.new("TextButton")
-closeBtn.AnchorPoint = Vector2.new(1, 0); closeBtn.Position = UDim2.new(1, -10, 0, 8); closeBtn.Size = UDim2.fromOffset(32, 32)
-closeBtn.BackgroundColor3 = UITheme.ORANGE; closeBtn.FontFace = UITheme.BodyBoldFace; closeBtn.TextSize = 16
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255); closeBtn.Text = "✕"; closeBtn.Parent = panel
-UITheme.Corner(closeBtn, 6); UITheme.Edge(closeBtn)
+closeBtn.AnchorPoint = Vector2.new(1, 0); closeBtn.Position = UDim2.new(1, -6, 0, 2); closeBtn.Size = UDim2.fromOffset(46, 46)
+closeBtn.BackgroundTransparency = 1; closeBtn.FontFace = UITheme.TitleFace; closeBtn.TextSize = 32
+closeBtn.TextColor3 = Color3.fromRGB(235, 55, 45); closeBtn.Text = "✕"; closeBtn.Parent = panel
+local cbStroke = Instance.new("UIStroke")
+cbStroke.Color = UITheme.BLACK; cbStroke.Thickness = 1.6; cbStroke.Parent = closeBtn
 
 -- Top tab strip: three wide tabs with a toxic underline on the active one.
 local tabs = Instance.new("Frame")
@@ -201,9 +203,9 @@ local function renderDetail()
 	local kind, id = selected.kind, selected.id
 
 	local dClose = Instance.new("TextButton")
-	dClose.AnchorPoint = Vector2.new(1, 0); dClose.Position = UDim2.new(1, -6, 0, 6); dClose.Size = UDim2.fromOffset(24, 24)
-	dClose.BackgroundTransparency = 1; dClose.FontFace = UITheme.BodyBoldFace; dClose.TextSize = 14
-	dClose.TextColor3 = UITheme.DIM; dClose.Text = "✕"; dClose.Parent = detail
+	dClose.AnchorPoint = Vector2.new(1, 0); dClose.Position = UDim2.new(1, -4, 0, 2); dClose.Size = UDim2.fromOffset(36, 36)
+	dClose.BackgroundTransparency = 1; dClose.FontFace = UITheme.TitleFace; dClose.TextSize = 24
+	dClose.TextColor3 = Color3.fromRGB(235, 55, 45); dClose.Text = "✕"; dClose.Parent = detail
 	dClose.Activated:Connect(function()
 		selected = nil
 		render()

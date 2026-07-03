@@ -75,6 +75,7 @@ end
 -- Designed at 1920×1080. scale = min(vw/1920, vh/1080) clamped [0.55, 1.3]; touch devices get a small
 -- bump so targets stay finger-sized. One UIScale per ScreenGui, updated live on viewport changes.
 local BASE_W, BASE_H = 1920, 1080
+UITheme.UIScaleMult = 1.5 -- GLOBAL in-game size dial: every attached ScreenGui renders this much bigger
 
 local function computeScale(): number
 	local cam = Workspace.CurrentCamera
@@ -83,7 +84,7 @@ local function computeScale(): number
 	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
 		s *= 1.12 -- phones: slightly larger for touch targets
 	end
-	return math.clamp(s, 0.55, 1.3)
+	return math.clamp(s, 0.55, 1.3) * UITheme.UIScaleMult
 end
 
 function UITheme.Attach(gui: ScreenGui): UIScale
@@ -248,7 +249,8 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 		primary = { UITheme.TOXIC, UITheme.TOXIC_DK, Color3.fromRGB(14, 26, 4) },
 		danger = { UITheme.ORANGE, UITheme.ORANGE_DK, Color3.fromRGB(30, 10, 3) },
 		gold = { UITheme.GOLD, UITheme.Darker(UITheme.GOLD, 0.45), Color3.fromRGB(34, 24, 6) },
-		ghost = { UITheme.PANEL2, UITheme.Darker(UITheme.PANEL2, 0.35), UITheme.TEXT },
+		-- ghost buttons sit ON PANEL2 panes — they need a visibly lighter fill or they read as black
+		ghost = { Color3.fromRGB(54, 60, 42), Color3.fromRGB(42, 47, 33), UITheme.TEXT },
 	}
 	local fill = fills[variant or "primary"] or fills.primary
 	local b = Instance.new("TextButton")
