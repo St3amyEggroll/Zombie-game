@@ -54,6 +54,8 @@ local state = {
 	maxWave = 0,           -- the difficulty's final wave — clearing it wins the run
 	zombiesRemaining = 0,
 	zombiesAlive = 0,
+	waveDowned = false,    -- did ANYONE go down during the current wave (breaks the flawless streak)
+	flawlessStreak = 0,    -- consecutive waves cleared with nobody downed (drives the Coin multiplier)
 	players = {},          -- [userId] = PlayerMatchState
 	startedAt = 0,
 }
@@ -172,7 +174,13 @@ local function computeCount(round: number, playerCount: number): number
 	local c = GameConfig.BaseZombiesPerRound
 		* (GameConfig.RoundZombieGrowth ^ (round - 1))
 		* (1 + (math.max(1, playerCount) - 1) * GameConfig.PlayerCountScale)
-	return math.max(1, math.floor(c))
+	-- Deep Endless waves would otherwise owe thousands of zombies and never clear.
+	return math.clamp(math.floor(c), 1, GameConfig.MaxZombiesPerWave or math.huge)
+end
+
+-- PlayerStateService calls this the moment anyone goes down — it breaks the wave's flawless streak.
+function MatchService.MarkWaveDowned()
+	state.waveDowned = true
 end
 
 -- Forward declarations (mutual references between the run helpers below).
@@ -357,6 +365,9 @@ runMatch = function()
 	local diff = GameConfig.Difficulties[state.difficulty] or GameConfig.Difficulties[GameConfig.DefaultDifficulty]
 	state.maxWave = diff.maxWave
 
+	state.waveDowned = false
+	state.flawlessStreak = 0
+
 	-- TEST: jump straight to GameConfig.DebugStartWave (0 = normal start at wave 1).
 	state.round = (GameConfig.DebugStartWave and GameConfig.DebugStartWave > 0) and GameConfig.DebugStartWave or 1
 	state.startedAt = os.clock()
@@ -393,8 +404,13 @@ runMatch = function()
 		ZombieService.BeginRound(state.round, count)
 
 		-- Boss waves (10 = Boss, 20 = Lumberjack, 30 = Necromancer) — the boss counts toward the clear.
-		-- Boss HP scales × the number of players in the run (2p = 2x, 3p = 3x, ...).
+		-- Past the scheduled list (Endless depth), every 10th wave cycles the roster so the boss-kill
+		-- case drops keep flowing forever. Boss HP scales × the number of players in the run.
 		local bossId = ZombieConfig.BossWaves[state.round]
+		if not bossId and state.round % 10 == 0 then
+			local roster = { "boss", "lumberjack", "necromancer" }
+			bossId = roster[math.floor(state.round / 10 - 1) % #roster + 1]
+		end
 		if bossId then
 			ZombieService.SpawnBoss(state.round, bossId, inMatchCount())
 		end
@@ -410,6 +426,18 @@ runMatch = function()
 		if not anyInMatch() then
 			break
 		end
+
+		-- Flawless accounting: nobody downed all wave -> the streak (and the team's wave Coin payout
+		-- multiplier in ProgressionService) climbs; any down resets it. Updated BEFORE WaveCleared fires
+		-- so the payout uses this wave's streak.
+		if state.waveDowned then
+			state.flawlessStreak = 0
+		else
+			state.flawlessStreak += 1
+			local mult = math.min(1 + state.flawlessStreak * GameConfig.FlawlessBonusPerWave, GameConfig.FlawlessMaxMult)
+			Remotes.Get("FlawlessWave"):FireAllClients(state.flawlessStreak, mult)
+		end
+		state.waveDowned = false
 
 		waveClearedEvent:Fire(state.round) -- GameInventoryService drops wave-clear cases off this
 

@@ -163,6 +163,7 @@ local function clearDownedHighlight(player: Player)
 end
 
 local function enterDowned(player: Player, ps, humanoid: Humanoid)
+	MatchService.MarkWaveDowned() -- any down breaks the team's flawless-wave streak
 	ps.isDowned = true
 	ps.downedUntil = os.clock() + GameConfig.BleedoutSeconds
 	humanoid.Health = 1

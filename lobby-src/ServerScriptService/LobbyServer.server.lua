@@ -34,7 +34,8 @@ local CollectionService = game:GetService("CollectionService")
 -- ===== CONFIG (keep in sync with the game's GameConfig) =====
 local GAME_PLACE_ID    = 140566663451993 -- the gameplay place (PLAY teleports here; the lobby is the START place)
 local STORE_NAME       = "PlayerData_v2"
-local DIFFS            = { "easy", "medium", "hard", "nightmare" }
+local DIFFS            = { "easy", "medium", "hard", "nightmare", "endless" } -- endless: beat Nightmare to unlock
+local FINAL_DIFF       = "nightmare" -- beating THIS unlocks the next world (Endless is a bonus mode, not a gate)
 local WORLDS           = { "forest" }
 local PARTY_WAIT       = 30   -- seconds an OPEN party waits before launching with whoever joined
 local FULL_GRACE       = 5    -- once the party is FULL (incl. solo), the countdown drops to this — a short
@@ -689,7 +690,7 @@ local function worldUnlocked(completed, world)
 	if i <= 1 then
 		return true
 	end
-	return completed[WORLDS[i - 1] .. ":" .. DIFFS[#DIFFS]] == true
+	return completed[WORLDS[i - 1] .. ":" .. FINAL_DIFF] == true
 end
 
 local function diffUnlocked(completed, world, difficulty)

@@ -15,6 +15,8 @@ GameConfig.MaxAliveZombies   = 200     -- HARD cap on simultaneous zombies (owed
                                        -- then spawn in — they don't despawn to make room)
 GameConfig.ZombieAITickRate  = 0.35    -- seconds between AI re-targets (staggered across zombies)
 GameConfig.PathRecompute     = 2.5    -- seconds between a zombie's path recomputes
+GameConfig.MaxZombiesPerWave = 300    -- cap on a single wave's OWED count (deep Endless waves would
+                                      -- otherwise owe thousands and never end)
 
 -- ===== ZOMBIE SCALING =====
 GameConfig.ZombieBaseHealth    = 50
@@ -44,6 +46,11 @@ GameConfig.HealthRegenDelay = 5        -- seconds undamaged before regen
 GameConfig.HealthRegenRate  = 25       -- HP/sec once regenerating
 GameConfig.LowHealthPct     = 0.4      -- at/below this fraction of max HP the red vignette + heartbeat kick in
 
+-- ===== FLAWLESS WAVES ===== (co-op care pays: clear a wave with NOBODY downed and the whole team's
+-- per-wave Coin payout climbs; any down resets the streak)
+GameConfig.FlawlessBonusPerWave = 0.25 -- +25% wave Coins per consecutive flawless wave
+GameConfig.FlawlessMaxMult      = 2.0  -- the flawless multiplier caps here
+
 -- ===== KILL STREAK ===== (chain kills WITHOUT taking damage for escalating cash)
 GameConfig.KillStreakBonusPerKill = 0.08  -- +8% cash per kill in the current streak
 GameConfig.KillStreakMaxMult      = 2.0   -- streak cash multiplier caps here
@@ -66,13 +73,16 @@ GameConfig.Difficulties = {
 	medium    = { name = "Medium",    maxWave = 20 },
 	hard      = { name = "Hard",      maxWave = 25 },
 	nightmare = { name = "Nightmare", maxWave = 30 },
+	-- Unlocked by BEATING Nightmare: no final wave, no victory — the run only ends on a wipe. Bosses
+	-- keep coming every 10th wave (the roster cycles), so case drops keep flowing at depth.
+	endless   = { name = "Endless",   maxWave = math.huge },
 }
 GameConfig.DefaultDifficulty = "nightmare"  -- used in Studio / if the lobby didn't send one
 GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for completing (winning) a run
 
 -- Progression: difficulties unlock in ORDER (beat Easy → Medium unlocks, etc.); beating a world's LAST
 -- difficulty (nightmare) unlocks the next World. Only Forest exists so far.
-GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare" }
+GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare", "endless" }
 GameConfig.Worlds          = { "forest" }
 GameConfig.DefaultMap      = "forest"
 

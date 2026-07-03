@@ -153,7 +153,7 @@ local function refresh()
 	local worldInfo = unlocks.worlds[sel.map]
 	for _, d in unlocks.order do
 		local unlocked = worldInfo and worldInfo.diffs[d]
-		local b = button(diffRow, 120, 44, unlocked and cap(d) or (cap(d) .. " 🔒"))
+		local b = button(diffRow, 94, 44, unlocked and cap(d) or (cap(d) .. " 🔒")) -- 94px: five fit (incl. Endless)
 		b.LayoutOrder = #diffBtns + 1
 		if not unlocked then
 			b.AutoButtonColor = false; b.BackgroundColor3 = DIM; b.TextColor3 = Color3.fromRGB(150, 150, 160)

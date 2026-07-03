@@ -48,6 +48,7 @@ local DEFINITIONS: { [string]: string } = {
 	-- PointsService
 	PointsChanged     = "RemoteEvent",     -- S->C: (points)
 	KillStreak        = "RemoteEvent",     -- S->C: (streak, multiplier) — chain-kill flair + cash bonus
+	FlawlessWave      = "RemoteEvent",     -- S->C all: (streak, mult) — wave cleared with NOBODY downed
 
 	-- TrapService (buyable map hazards)
 	TrapActivated     = "RemoteEvent",     -- S->C: (trapPart, trapType, duration) — turn trap VFX on

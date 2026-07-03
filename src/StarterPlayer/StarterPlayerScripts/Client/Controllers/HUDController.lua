@@ -37,7 +37,7 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, incomingLabel
+local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, incomingLabel, flawlessLabel
 local potionRow        -- chip row ABOVE the health bar: one chip per ACTIVE potion buff
 local potionChips = {} -- { {timeLabel, endsAt, base} } (countdowns tick client-side)
 local healthPct = 1
@@ -48,6 +48,7 @@ for _, r in BuffConfig.Rarities do
 end
 local breakEndsAt = 0   -- os.clock() the wave break ends (drives the NEXT WAVE countdown)
 local incomingToken = 0 -- invalidates stale INCOMING hide timers
+local flawlessToken = 0 -- invalidates stale FLAWLESS hide timers
 
 -- ===== BUILD HELPERS =====
 local function corner(o, r)
@@ -177,6 +178,19 @@ local function build()
 	incStroke.Transparency = 0.4
 	incStroke.Thickness = 1.5
 	incStroke.Parent = incomingLabel
+
+	-- FLAWLESS WAVE banner (gold, below the incoming line) — nobody downed all wave.
+	flawlessLabel = text(gui, "FlawlessLabel", Enum.Font.GothamBlack, 20, COL_GOLD)
+	flawlessLabel.AnchorPoint = Vector2.new(0.5, 0)
+	flawlessLabel.Position = UDim2.new(0.5, 0, 0, 126)
+	flawlessLabel.Size = UDim2.fromOffset(520, 26)
+	flawlessLabel.Text = ""
+	flawlessLabel.Visible = false
+	local flStroke = Instance.new("UIStroke")
+	flStroke.Color = Color3.fromRGB(0, 0, 0)
+	flStroke.Transparency = 0.4
+	flStroke.Thickness = 1.5
+	flStroke.Parent = flawlessLabel
 
 	-- Currency (top-right): Coins over Cash.
 	local cur = panel(gui, "CurrencyPanel")
@@ -319,6 +333,23 @@ function HUDController.Start()
 			end
 		end)
 	end)
+	-- FLAWLESS WAVE: cleared with nobody downed — show the streak + boosted Coin payout.
+	Remotes.Get("FlawlessWave").OnClientEvent:Connect(function(streak, mult)
+		streak = tonumber(streak) or 1
+		mult = tonumber(mult) or 1
+		flawlessLabel.Text = (streak > 1)
+			and ("FLAWLESS WAVE ×%d  —  Coins ×%.2f"):format(streak, mult)
+			or "FLAWLESS WAVE!"
+		flawlessLabel.Visible = true
+		flawlessToken += 1
+		local myToken = flawlessToken
+		task.delay(3.5, function()
+			if flawlessToken == myToken then
+				flawlessLabel.Visible = false
+			end
+		end)
+	end)
+
 	Remotes.Get("PointsChanged").OnClientEvent:Connect(function(points)
 		pointsLabel.Text = "$" .. Util.FormatNumber(points)
 	end)
