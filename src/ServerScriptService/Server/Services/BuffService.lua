@@ -143,18 +143,21 @@ local function onKill(player: Player, humanoid: Humanoid, _isHead: boolean, _wea
 	addXP(player, special and BuffConfig.XPPerSpecialKill or BuffConfig.XPPerKill)
 end
 
--- ===== POTIONS (tiered, TIMED buffs — PotionConfig) =====
--- One ACTIVE buff per TYPE (damage / regen); when it expires you can drink another of any tier.
--- CombatService/PlayerStateService read ps.potionBuffs directly; this pushes the HUD's active list.
+-- ===== POTIONS (tiered, TIMED, STACKING buffs — PotionConfig) =====
+-- ps.potionBuffs is keyed by POTION ID (one entry per tier):
+--   * drinking the SAME potion again EXTENDS its timer (2x common damage = 60s of +10%)
+--   * DIFFERENT tiers of one type run side by side and their effects ADD (divine 75% + common 10% = 85%
+--     until one of them runs out). No cap — drop rates are the balance lever.
+-- CombatService/PlayerStateService SUM the active entries; this pushes the HUD's chip list.
 
 -- Sync the client's "active potion buffs" strip (above the HP bar): { {id, type, rarity, pct, remaining} }.
 local function pushPotionBuffs(player: Player, ps)
 	local now = os.clock()
 	local list = {}
-	for ptype, b in ps.potionBuffs or {} do
+	for id, b in ps.potionBuffs or {} do
 		if b.expiresAt > now then
 			table.insert(list, {
-				id = b.id, type = ptype, rarity = b.rarity, pct = b.pct,
+				id = id, type = b.type, rarity = b.rarity, pct = b.pct,
 				remaining = b.expiresAt - now,
 			})
 		end
@@ -162,6 +165,20 @@ local function pushPotionBuffs(player: Player, ps)
 	Remotes.Get("PotionBuffsChanged"):FireClient(player, list)
 end
 BuffService.PushPotionBuffs = pushPotionBuffs
+
+-- The summed bonus of every ACTIVE buff of a type ("damage" / "regen").
+function BuffService.PotionBonus(ps, ptype: string): number
+	local total = 0
+	if ps and ps.potionBuffs then
+		local now = os.clock()
+		for _, b in ps.potionBuffs do
+			if b.type == ptype and b.expiresAt > now then
+				total += b.pct
+			end
+		end
+	end
+	return total
+end
 
 function BuffService.ApplyPotion(player: Player, potionId: string): boolean
 	local ps = MatchService.GetPlayerState(player)
@@ -173,25 +190,20 @@ function BuffService.ApplyPotion(player: Player, potionId: string): boolean
 		return false
 	end
 	ps.potionBuffs = ps.potionBuffs or {}
-	local active = ps.potionBuffs[stats.type]
-	if active and active.expiresAt > os.clock() then
-		return false -- that TYPE is already running; wait it out
+	local now = os.clock()
+	local cur = ps.potionBuffs[potionId]
+	if cur and cur.expiresAt > now then
+		cur.expiresAt += stats.duration -- same potion while running: EXTEND the timer
+	else
+		ps.potionBuffs[potionId] = {
+			type = stats.type,
+			rarity = stats.rarity,
+			pct = stats.pct,
+			expiresAt = now + stats.duration,
+		}
 	end
-	ps.potionBuffs[stats.type] = {
-		id = potionId,
-		rarity = stats.rarity,
-		pct = stats.pct,
-		expiresAt = os.clock() + stats.duration,
-	}
 	pushPotionBuffs(player, ps)
 	return true
-end
-
--- Is this potion TYPE currently active for the player? (Used by the consume gate.)
-function BuffService.IsPotionTypeActive(player: Player, ptype: string): boolean
-	local ps = MatchService.GetPlayerState(player)
-	local b = ps and ps.potionBuffs and ps.potionBuffs[ptype]
-	return (b and b.expiresAt > os.clock()) == true
 end
 
 local function onPick(player: Player, index)
@@ -246,9 +258,9 @@ function BuffService.Start()
 				local ps = MatchService.GetPlayerState(p)
 				if ps and ps.potionBuffs then
 					local changed = false
-					for ptype, b in ps.potionBuffs do
+					for id, b in ps.potionBuffs do
 						if b.expiresAt <= now then
-							ps.potionBuffs[ptype] = nil
+							ps.potionBuffs[id] = nil
 							changed = true
 						end
 					end

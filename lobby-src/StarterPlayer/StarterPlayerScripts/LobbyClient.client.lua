@@ -395,20 +395,27 @@ local function weaponTipLines(weaponId)
 	local w = weaponInfo(weaponId)
 	if not w then return {} end
 	local col = rarityColor(w.rarity)
-	local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
 	local level, maxLevel, copies, need, cost = gunLevelInfo(weaponId)
+	-- Stats AT the gun's current level (each level adds damagePerLevel × base damage, linear).
+	local dpl = (invData.catalog.gunLevels and invData.catalog.gunLevels.damagePerLevel) or 0
+	local lvMult = 1 + dpl * (level - 1)
+	local lvDamage = (w.damage or 0) * lvMult
+	local dps = lvDamage * (w.fireRate or 0) * (w.pellets or 1)
+	local nextDps = (w.damage or 0) * (1 + dpl * level) * (w.fireRate or 0) * (w.pellets or 1)
 	local lines = {
 		{ text = w.name, color = col, size = 16, bold = true },
 		{ text = (invData.catalog.rarities[w.rarity].name) .. "  ·  Tier " .. tostring(w.tier), color = col, size = 12 },
-		{ text = ("Level %d / %d"):format(level, maxLevel), color = Color3.fromRGB(235, 190, 85), size = 13, bold = true },
-		{ text = ("Damage: %s%s"):format(tostring(w.damage or "?"), w.pellets and ("  ×" .. w.pellets) or ""), size = 14 },
+		{ text = ("Level %d / %d  (+%d%% damage)"):format(level, maxLevel, math.floor(dpl * (level - 1) * 100 + 0.5)),
+			color = Color3.fromRGB(235, 190, 85), size = 13, bold = true },
+		{ text = ("Damage: %.0f%s"):format(lvDamage, w.pellets and ("  ×" .. w.pellets) or ""), size = 14 },
 		{ text = ("Fire Rate: %s/s"):format(tostring(w.fireRate or "?")), size = 14 },
 		{ text = ("Range: %s"):format(tostring(w.range or "?")), size = 14 },
 		{ text = ("DPS: ~%d"):format(math.floor(dps + 0.5)), color = Color3.fromRGB(150, 220, 150), size = 14 },
 	}
 	if need then
 		table.insert(lines, {
-			text = ("Copies: %d / %d  ·  Upgrade: 🪙 %s"):format(copies, need, fmt(cost or 0)),
+			text = ("Next level: DPS ~%d  ·  needs %d/%d copies + 🪙 %s"):format(
+				math.floor(nextDps + 0.5), copies, need, fmt(cost or 0)),
 			color = Color3.fromRGB(180, 190, 205), size = 13,
 		})
 	else

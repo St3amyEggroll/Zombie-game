@@ -1,8 +1,8 @@
 --!nonstrict
 -- GameInventoryController.lua — the IN-GAME inventory window, mirroring the LOBBY inventory's look:
 -- left nav (Potions / Weapons / Cases), card grids with rarity color bars. Differences from the lobby:
---   * opens on the POTIONS tab — the only interactive one here (drink Damage/Regen potions, once per type
---     per run; a used type shows a grayed USED button)
+--   * opens on the POTIONS tab — the only interactive one here (drink potions for TIMED buffs; the same
+--     potion extends its timer, different tiers stack)
 --   * Weapons shows your 2 equip slots + all owned guns, VIEW-ONLY (equip back in the lobby)
 --   * Cases shows your case counts by rarity, VIEW-ONLY (open them back in the lobby)
 -- Data comes from GameInventoryService via InvSnapshot; drop toasts ride PotionDropped/CaseDropped.
@@ -160,14 +160,14 @@ local function card(parent, name, subtitle, color, highlight)
 end
 
 -- ---------- POTIONS TAB (interactive) ----------
-tabHint(potionsTab, "POTIONS — drink for a TIMED buff. One active buff per type; drink again after it ends.")
+tabHint(potionsTab, "POTIONS — timed buffs that STACK: same potion extends its timer, tiers add together.")
 local potionsScroll = tabScroll(potionsTab, 36, 160, 152)
 
 -- Live "active buff" state: seeded by the snapshot, kept exact by PotionBuffsChanged pushes.
-local activeUntil = {} -- [type] = os.clock() when that type's buff ends
+local activeUntil = {} -- [potionId] = os.clock() when that potion's own buff ends
 
-local function typeActive(ptype)
-	return ptype and activeUntil[ptype] ~= nil and activeUntil[ptype] > os.clock()
+local function idActive(potId)
+	return potId and activeUntil[potId] ~= nil and activeUntil[potId] > os.clock()
 end
 
 local function renderPotions()
@@ -191,14 +191,12 @@ local function renderPotions()
 				local use = Instance.new("TextButton")
 				use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 32)
 				use.Font = Enum.Font.GothamBold; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = f; corner(use, 8)
-				if typeActive(disp.type) then
-					use.BackgroundColor3 = DIM; use.TextColor3 = TEXT_DIM; use.Text = "ACTIVE"; use.AutoButtonColor = false
-				else
-					use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15); use.Text = "USE"
-					use.Activated:Connect(function()
-						Remotes.Get("ConsumePotion"):FireServer(potId)
-					end)
-				end
+				-- Always drinkable: a running one EXTENDS its own timer, other tiers stack on top.
+				use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15)
+				use.Text = idActive(potId) and "EXTEND" or "USE"
+				use.Activated:Connect(function()
+					Remotes.Get("ConsumePotion"):FireServer(potId)
+				end)
 			end
 		end
 	end
@@ -328,8 +326,8 @@ function GameInventoryController.Start()
 			-- Seed the active-buff clocks from the snapshot (PotionBuffsChanged keeps them exact after).
 			activeUntil = {}
 			if typeof(snap.active) == "table" then
-				for ptype, remaining in snap.active do
-					activeUntil[ptype] = os.clock() + (tonumber(remaining) or 0)
+				for potId, remaining in snap.active do
+					activeUntil[potId] = os.clock() + (tonumber(remaining) or 0)
 				end
 			end
 			if panel.Visible then render() end
@@ -340,8 +338,8 @@ function GameInventoryController.Start()
 		activeUntil = {}
 		if typeof(list) == "table" then
 			for _, b in list do
-				if typeof(b) == "table" and b.type then
-					activeUntil[b.type] = os.clock() + (tonumber(b.remaining) or 0)
+				if typeof(b) == "table" and b.id then
+					activeUntil[b.id] = os.clock() + (tonumber(b.remaining) or 0)
 				end
 			end
 		end

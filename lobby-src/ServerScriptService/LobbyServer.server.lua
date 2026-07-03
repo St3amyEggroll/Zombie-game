@@ -136,6 +136,9 @@ local GUNLEVELS = {
 	},
 	-- Coins per copy once a gun is MAX level (by gun rarity) — overflow auto-converts.
 	Overflow = { common = 2, uncommon = 3, rare = 5, epic = 8, legendary = 12, mythic = 20, divine = 30 },
+	-- Display-only: damage gained per level as a fraction of BASE (linear; keep in sync with the game's
+	-- GunLevelConfig curves — Lv N = 1 + DamagePerLevel × (N-1)).
+	DamagePerLevel = 0.10,
 }
 
 -- Copies needed to go from `level` to level+1 for this gun (nil = already max).
@@ -278,6 +281,7 @@ local CATALOG = {
 		thresholds = GUNLEVELS.Thresholds,
 		coinCosts = GUNLEVELS.CoinCosts,
 		overflow = GUNLEVELS.Overflow,
+		damagePerLevel = GUNLEVELS.DamagePerLevel,
 	},
 }
 

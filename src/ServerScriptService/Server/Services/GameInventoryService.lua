@@ -85,13 +85,13 @@ local function snapshotFor(player: Player)
 		cases = (data and typeof(data.cases) == "table") and data.cases or {},
 		potions = (data and typeof(data.potions) == "table") and data.potions or {},
 		gunLevels = (data and typeof(data.gunLevels) == "table") and data.gunLevels or {},
-		-- ACTIVE potion buffs by TYPE -> seconds remaining (grays the Use button for that type).
+		-- ACTIVE potion buffs by POTION ID -> seconds remaining (the client shows EXTEND on a running one).
 		active = (function()
 			local out = {}
 			local now = os.clock()
-			for ptype, b in (ps and ps.potionBuffs) or {} do
+			for id, b in (ps and ps.potionBuffs) or {} do
 				if b.expiresAt > now then
-					out[ptype] = b.expiresAt - now
+					out[id] = b.expiresAt - now
 				end
 			end
 			return out
@@ -340,14 +340,10 @@ local function onConsume(player: Player, potionId: any)
 	if typeof(potionId) ~= "string" or not POTIONS[potionId] then
 		return
 	end
-	-- Potions take effect DURING a run; one ACTIVE buff per TYPE — you can drink again after it expires.
-	-- Check eligibility BEFORE consuming so an ineligible click never burns a potion from the inventory.
+	-- Potions take effect DURING a run. Stacking is ALLOWED: the same potion extends its own timer,
+	-- different tiers of a type run together and their effects add.
 	local ps = MatchService.GetPlayerState(player)
 	if not ps or not ps.inMatch then
-		return
-	end
-	local ptype = PotionConfig.Parse(potionId)
-	if not ptype or BuffService.IsPotionTypeActive(player, ptype) then
 		return
 	end
 	if DataService.TryConsumePotion(player, potionId) then

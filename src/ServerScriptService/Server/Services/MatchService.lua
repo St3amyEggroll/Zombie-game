@@ -141,7 +141,7 @@ local function makePlayerState(player: Player)
 		runLevel = 1,
 		draftsOwed = 0,
 		pendingDraft = nil,
-		potionBuffs = {},  -- [type] = { id, rarity, pct, expiresAt } — ACTIVE timed potion buffs (one per type)
+		potionBuffs = {},  -- [potionId] = { type, rarity, pct, expiresAt } — ACTIVE timed buffs (tiers STACK)
 		buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 },
 	}
 end
