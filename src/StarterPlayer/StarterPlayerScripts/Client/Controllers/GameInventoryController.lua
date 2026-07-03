@@ -13,19 +13,20 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Modules = Shared:WaitForChild("Modules")
 local Remotes = require(Modules.Remotes)
+local UITheme = require(Modules.UITheme)
 
 local GameInventoryController = {}
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
--- ===== STYLE (shared design system) =====
-local ACCENT = Color3.fromRGB(87, 196, 116)
-local CARD = Color3.fromRGB(31, 34, 42)
-local DIM = Color3.fromRGB(64, 68, 80)
-local BLACK = Color3.fromRGB(12, 13, 18)
-local TEXT = Color3.fromRGB(238, 240, 245)
-local TEXT_DIM = Color3.fromRGB(150, 156, 168)
+-- ===== STYLE (UITheme — gritty apocalypse) =====
+local ACCENT = UITheme.TOXIC
+local CARD = UITheme.PANEL2
+local DIM = UITheme.TRACK
+local BLACK = UITheme.BG
+local TEXT = UITheme.TEXT
+local TEXT_DIM = UITheme.DIM
 
 local data = nil
 local activeTab = "potions" -- potions FIRST: the one tab you can interact with in-run
@@ -43,14 +44,15 @@ end
 local gui = Instance.new("ScreenGui")
 gui.Name = "GameInventory"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 8
 gui.Parent = playerGui
+UITheme.Attach(gui)
 
 -- (Opened via the INVENTORY button on the hotbar — HotbarController calls GameInventoryController.Toggle().)
 
 -- Drop toast (potion/case pickups).
 local toast = Instance.new("TextLabel")
 toast.AnchorPoint = Vector2.new(0.5, 0); toast.Position = UDim2.new(0.5, 0, 0, 70); toast.Size = UDim2.fromOffset(340, 40)
-toast.BackgroundColor3 = Color3.fromRGB(22, 24, 30); toast.BackgroundTransparency = 0.05; toast.BorderSizePixel = 0
-toast.Font = Enum.Font.GothamBold; toast.TextSize = 16; toast.TextColor3 = Color3.fromRGB(235, 190, 85)
+toast.BackgroundColor3 = UITheme.PANEL; toast.BackgroundTransparency = 0.02; toast.BorderSizePixel = 0
+toast.FontFace = UITheme.BodyBoldFace; toast.TextSize = 16; toast.TextColor3 = Color3.fromRGB(235, 190, 85)
 toast.Text = ""; toast.Visible = false; toast.Parent = gui; corner(toast, 8)
 
 local toastToken = 0
@@ -69,19 +71,22 @@ end
 
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.fromOffset(760, 480); panel.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
-panel.BackgroundTransparency = 0.03; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
-corner(panel, 16)
-local pStroke = Instance.new("UIStroke"); pStroke.Color = ACCENT; pStroke.Thickness = 2; pStroke.Transparency = 0.5; pStroke.Parent = panel
+panel.Size = UDim2.fromOffset(760, 480); panel.BackgroundColor3 = UITheme.PANEL
+panel.BackgroundTransparency = 0; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
+corner(panel, 8)
+UITheme.Studs(panel)
+UITheme.Depth(panel)
+UITheme.Edge(panel, UITheme.BLACK, 3)
+UITheme.Edge(panel, ACCENT, 1, 0.45)
 
 local title = Instance.new("TextLabel")
 title.Position = UDim2.new(0, 0, 0, 12); title.Size = UDim2.new(1, 0, 0, 30); title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBlack; title.TextSize = 22; title.TextColor3 = TEXT
+title.FontFace = UITheme.TitleFace; title.TextSize = 22; title.TextColor3 = TEXT
 title.Text = "INVENTORY"; title.Parent = panel
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.AnchorPoint = Vector2.new(1, 0); closeBtn.Position = UDim2.new(1, -12, 0, 12); closeBtn.Size = UDim2.fromOffset(32, 32)
-closeBtn.BackgroundColor3 = Color3.fromRGB(224, 82, 82); closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16
+closeBtn.BackgroundColor3 = UITheme.ORANGE; closeBtn.FontFace = UITheme.BodyBoldFace; closeBtn.TextSize = 16
 closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255); closeBtn.Text = "✕"; closeBtn.Parent = panel; corner(closeBtn, 8)
 
 local nav = Instance.new("Frame")
@@ -91,7 +96,7 @@ local navBtns = {}
 local function navButton(id, text)
 	local b = Instance.new("TextButton")
 	b.Size = UDim2.new(1, 0, 0, 44); b.BackgroundColor3 = CARD; b.BorderSizePixel = 0
-	b.Font = Enum.Font.GothamBold; b.TextSize = 16; b.TextColor3 = TEXT; b.Text = text; b.Parent = nav
+	b.FontFace = UITheme.BodyBoldFace; b.TextSize = 16; b.TextColor3 = TEXT; b.Text = text; b.Parent = nav
 	corner(b, 8); navBtns[id] = b
 	return b
 end
@@ -101,12 +106,12 @@ navButton("cases", "Cases")
 
 local hint = Instance.new("TextLabel")
 hint.AnchorPoint = Vector2.new(0.5, 1); hint.Position = UDim2.new(0.5, 78, 1, -8); hint.Size = UDim2.fromOffset(520, 18)
-hint.BackgroundTransparency = 1; hint.Font = Enum.Font.Gotham; hint.TextSize = 12; hint.TextColor3 = TEXT_DIM
+hint.BackgroundTransparency = 1; hint.FontFace = UITheme.BodyFace; hint.TextSize = 12; hint.TextColor3 = TEXT_DIM
 hint.Text = "Equip guns & open cases in the LOBBY. Potions are usable here."; hint.Parent = panel
 
 local content = Instance.new("Frame")
 content.Position = UDim2.fromOffset(178, 52); content.Size = UDim2.fromOffset(566, 400)
-content.BackgroundColor3 = Color3.fromRGB(17, 19, 24); content.BackgroundTransparency = 0.2; content.BorderSizePixel = 0
+content.BackgroundColor3 = UITheme.Darker(UITheme.PANEL, 0.3); content.BackgroundTransparency = 0.15; content.BorderSizePixel = 0
 content.Parent = panel; corner(content, 12)
 
 local potionsTab = Instance.new("Frame")
@@ -119,7 +124,7 @@ casesTab.Size = UDim2.fromScale(1, 1); casesTab.BackgroundTransparency = 1; case
 local function tabHint(parent, text)
 	local l = Instance.new("TextLabel")
 	l.Position = UDim2.fromOffset(14, 10); l.Size = UDim2.new(1, -28, 0, 18); l.BackgroundTransparency = 1
-	l.Font = Enum.Font.GothamBold; l.TextSize = 13; l.TextXAlignment = Enum.TextXAlignment.Left
+	l.FontFace = UITheme.BodyBoldFace; l.TextSize = 13; l.TextXAlignment = Enum.TextXAlignment.Left
 	l.TextColor3 = Color3.fromRGB(170, 180, 195); l.Text = text; l.Parent = parent
 	return l
 end
@@ -152,10 +157,10 @@ local function card(parent, name, subtitle, color, highlight)
 	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = color; bar.BorderSizePixel = 0; bar.Parent = f
 	local nm = Instance.new("TextLabel")
 	nm.Position = UDim2.fromOffset(4, 22); nm.Size = UDim2.new(1, -8, 0, 24); nm.BackgroundTransparency = 1
-	nm.Font = Enum.Font.GothamBold; nm.TextSize = 14; nm.TextColor3 = TEXT; nm.Text = name; nm.TextScaled = true; nm.Parent = f
+	nm.FontFace = UITheme.BodyBoldFace; nm.TextSize = 14; nm.TextColor3 = TEXT; nm.Text = name; nm.TextScaled = true; nm.Parent = f
 	local sub = Instance.new("TextLabel")
 	sub.Position = UDim2.fromOffset(4, 52); sub.Size = UDim2.new(1, -8, 0, 16); sub.BackgroundTransparency = 1
-	sub.Font = Enum.Font.Gotham; sub.TextSize = 12; sub.TextColor3 = color; sub.Text = subtitle or ""; sub.TextScaled = true; sub.Parent = f
+	sub.FontFace = UITheme.BodyFace; sub.TextSize = 12; sub.TextColor3 = color; sub.Text = subtitle or ""; sub.TextScaled = true; sub.Parent = f
 	return f
 end
 
@@ -186,11 +191,11 @@ local function renderPotions()
 				-- The effect line — what this potion actually gives you.
 				local desc = Instance.new("TextLabel")
 				desc.Position = UDim2.fromOffset(6, 72); desc.Size = UDim2.new(1, -12, 0, 30); desc.BackgroundTransparency = 1
-				desc.Font = Enum.Font.Gotham; desc.TextSize = 12; desc.TextColor3 = Color3.fromRGB(190, 195, 210)
+				desc.FontFace = UITheme.BodyFace; desc.TextSize = 12; desc.TextColor3 = Color3.fromRGB(190, 195, 210)
 				desc.Text = disp.desc or ""; desc.TextWrapped = true; desc.Parent = f
 				local use = Instance.new("TextButton")
 				use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 32)
-				use.Font = Enum.Font.GothamBold; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = f; corner(use, 8)
+				use.FontFace = UITheme.BodyBoldFace; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = f; corner(use, 8)
 				-- Always drinkable: a running one EXTENDS its own timer, other tiers stack on top.
 				use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15)
 				use.Text = idActive(potId) and "EXTEND" or "USE"
@@ -202,7 +207,7 @@ local function renderPotions()
 	end
 	if not any then
 		local msg = Instance.new("TextLabel")
-		msg.Size = UDim2.fromOffset(520, 40); msg.BackgroundTransparency = 1; msg.Font = Enum.Font.GothamBold
+		msg.Size = UDim2.fromOffset(520, 40); msg.BackgroundTransparency = 1; msg.FontFace = UITheme.BodyBoldFace
 		msg.TextSize = 15; msg.TextColor3 = TEXT_DIM
 		msg.Text = "No potions yet — kill glowing ELITE zombies to earn them."; msg.Parent = potionsScroll
 	end
@@ -270,7 +275,7 @@ local function renderCases()
 	end
 	if not any then
 		local msg = Instance.new("TextLabel")
-		msg.Size = UDim2.fromOffset(520, 40); msg.BackgroundTransparency = 1; msg.Font = Enum.Font.GothamBold
+		msg.Size = UDim2.fromOffset(520, 40); msg.BackgroundTransparency = 1; msg.FontFace = UITheme.BodyBoldFace
 		msg.TextSize = 15; msg.TextColor3 = TEXT_DIM
 		msg.Text = "No cases yet — clear wave 10 and beyond to earn them!"; msg.Parent = casesScroll
 	end

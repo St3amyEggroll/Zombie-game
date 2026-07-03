@@ -9,6 +9,8 @@ local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local UITheme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("UITheme"))
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Modules = Shared:WaitForChild("Modules")
 local Remotes = require(Modules.Remotes)
@@ -46,7 +48,7 @@ local function spawnNumber(pos: Vector3, text: string, color: Color3, scale: num
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
 	label.Rotation = math.random(-MAX_TILT, MAX_TILT) -- random tilt so each number pops out cocked
-	label.Font = Enum.Font.GothamBlack
+	label.FontFace = UITheme.TitleFace
 	label.TextScaled = true
 	label.TextColor3 = color
 	label.TextStrokeTransparency = 0.4

@@ -10,6 +10,8 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local UITheme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("UITheme"))
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
@@ -66,7 +68,7 @@ local function ensureLabel()
 	l.Position = UDim2.fromScale(0.5, 0.12)
 	l.Size = UDim2.fromOffset(440, 56)
 	l.BackgroundTransparency = 1
-	l.Font = Enum.Font.GothamBlack
+	l.FontFace = UITheme.TitleFace
 	l.TextScaled = true
 	l.TextStrokeTransparency = 0.4
 	l.TextTransparency = 1

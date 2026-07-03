@@ -5,18 +5,21 @@
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local UITheme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("UITheme"))
 
 local AutoShootController = {}
 
 -- ===== TUNABLES =====
 local TOGGLE_KEY = Enum.KeyCode.T
 
--- ===== STYLE (shared design system) =====
-local COL_PANEL    = Color3.fromRGB(22, 24, 30)
-local COL_TEXT     = Color3.fromRGB(238, 240, 245)
-local COL_TEXT_DIM = Color3.fromRGB(150, 156, 168)
-local COL_ACCENT   = Color3.fromRGB(87, 196, 116)
-local COL_OFF      = Color3.fromRGB(110, 115, 128)
+-- ===== STYLE (UITheme — gritty apocalypse) =====
+local COL_PANEL    = UITheme.PANEL
+local COL_TEXT     = UITheme.TEXT
+local COL_TEXT_DIM = UITheme.DIM
+local COL_ACCENT   = UITheme.TOXIC
+local COL_OFF      = UITheme.DIM
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -48,6 +51,7 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 6
 	gui.Parent = playerGui
+	UITheme.Attach(gui)
 
 	button = Instance.new("TextButton")
 	button.Name = "AutoShootButton"
@@ -55,18 +59,17 @@ local function build()
 	button.Position = UDim2.new(1, -16, 1, -16)
 	button.Size = UDim2.fromOffset(170, 38)
 	button.BackgroundColor3 = COL_PANEL
-	button.BackgroundTransparency = 0.15
+	button.BackgroundTransparency = 0.06
 	button.BorderSizePixel = 0
 	button.Text = ""
 	button.AutoButtonColor = true
 	button.Parent = gui
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 10)
+	c.CornerRadius = UDim.new(0, 6)
 	c.Parent = button
-	local s = Instance.new("UIStroke")
-	s.Color = Color3.fromRGB(255, 255, 255)
-	s.Transparency = 0.92
-	s.Parent = button
+	UITheme.Studs(button)
+	UITheme.Depth(button)
+	UITheme.Edge(button)
 
 	dot = Instance.new("Frame")
 	dot.Name = "Dot"
@@ -84,7 +87,7 @@ local function build()
 	label.Position = UDim2.fromOffset(32, 0)
 	label.Size = UDim2.new(1, -40, 1, 0)
 	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBold
+	label.FontFace = UITheme.BodyBoldFace
 	label.TextSize = 13
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Parent = button
@@ -95,7 +98,7 @@ local function build()
 	hint.Position = UDim2.new(1, -12, 0.5, 0)
 	hint.Size = UDim2.fromOffset(20, 16)
 	hint.BackgroundTransparency = 1
-	hint.Font = Enum.Font.GothamBold
+	hint.FontFace = UITheme.BodyBoldFace
 	hint.TextSize = 11
 	hint.TextColor3 = COL_TEXT_DIM
 	hint.Text = "T"

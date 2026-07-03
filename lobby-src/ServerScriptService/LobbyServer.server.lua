@@ -48,6 +48,26 @@ Players.CharacterAutoLoads = true
 
 local rng = Random.new()
 
+-- ===== BILLBOARD THEME (mirrors the client's gritty-apocalypse kit) =====
+-- Paste the same Creator Store font ids as the client's FONT_IDS when you have them.
+local BB_FONT_IDS = { Title = "", Body = "" } -- Black Ops One / Orbitron
+local function bbFace(id, weight, fallbackEnum)
+	if id and id ~= "" then
+		local ok, face = pcall(function()
+			return Font.new("rbxassetid://" .. id, weight)
+		end)
+		if ok and face then
+			return face
+		end
+	end
+	return Font.new(Font.fromEnum(fallbackEnum).Family, weight)
+end
+local BB_TITLE = bbFace(BB_FONT_IDS.Title, Enum.FontWeight.Regular, Enum.Font.Sarpanch)
+local BB_BODY = bbFace(BB_FONT_IDS.Body, Enum.FontWeight.Bold, Enum.Font.Michroma)
+local BB_PANEL = Color3.fromRGB(21, 24, 17)
+local BB_TEXT = Color3.fromRGB(222, 227, 209)
+local BB_GOLD = Color3.fromRGB(230, 180, 76)
+
 -- ===== PLAYER-PLAYER COLLISION OFF ===== (same group setup as the game place)
 local PhysicsService = game:GetService("PhysicsService")
 local PLAYER_GROUP = "Players"
@@ -1030,11 +1050,11 @@ local function updateBillboard(zone, party)
 		label = Instance.new("TextLabel")
 		label.Name = "Label"
 		label.Size = UDim2.fromScale(1, 1)
-		label.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
-		label.BackgroundTransparency = 0.25
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 16
-		label.TextColor3 = Color3.fromRGB(238, 240, 245)
+		label.BackgroundColor3 = BB_PANEL
+		label.BackgroundTransparency = 0.12
+		label.FontFace = BB_BODY
+		label.TextSize = 15
+		label.TextColor3 = BB_TEXT
 		label.Parent = bb
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(0, 8)
@@ -1244,11 +1264,11 @@ local function updateShopBillboard(part)
 		local title = Instance.new("TextLabel")
 		title.Name = "Title"
 		title.Size = UDim2.new(1, 0, 0, 32)
-		title.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
-		title.BackgroundTransparency = 0.25
-		title.Font = Enum.Font.GothamBlack
+		title.BackgroundColor3 = BB_PANEL
+		title.BackgroundTransparency = 0.12
+		title.FontFace = BB_TITLE
 		title.TextSize = 20
-		title.TextColor3 = Color3.fromRGB(235, 190, 85)
+		title.TextColor3 = BB_GOLD
 		title.Text = "SHOP"
 		title.Parent = bb
 		local c = Instance.new("UICorner")
@@ -1258,11 +1278,11 @@ local function updateShopBillboard(part)
 		label.Name = "Timer"
 		label.Position = UDim2.new(0, 0, 0, 34)
 		label.Size = UDim2.new(1, 0, 0, 26)
-		label.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
-		label.BackgroundTransparency = 0.25
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 15
-		label.TextColor3 = Color3.fromRGB(238, 240, 245)
+		label.BackgroundColor3 = BB_PANEL
+		label.BackgroundTransparency = 0.12
+		label.FontFace = BB_BODY
+		label.TextSize = 14
+		label.TextColor3 = BB_TEXT
 		label.Parent = bb
 		local c2 = Instance.new("UICorner")
 		c2.CornerRadius = UDim.new(0, 8)

@@ -20,18 +20,19 @@ local BuffConfig = require(Config.BuffConfig)     -- rarity colors for the potio
 local PotionConfig = require(Config.PotionConfig) -- potion type labels (DMG / REGEN)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
+local UITheme = require(Modules.UITheme)
 
 local HUDController = {}
 
--- ===== STYLE (shared design system) =====
-local COL_PANEL     = Color3.fromRGB(22, 24, 30)
-local COL_TEXT      = Color3.fromRGB(238, 240, 245)
-local COL_TEXT_DIM  = Color3.fromRGB(150, 156, 168)
-local COL_ACCENT    = Color3.fromRGB(87, 196, 116)
-local COL_DANGER    = Color3.fromRGB(224, 82, 82)
-local COL_GOLD      = Color3.fromRGB(235, 190, 85)
-local COL_TRACK     = Color3.fromRGB(40, 44, 54)
-local PANEL_ALPHA   = 0.15
+-- ===== STYLE (UITheme — gritty apocalypse) =====
+local COL_PANEL     = UITheme.PANEL
+local COL_TEXT      = UITheme.TEXT
+local COL_TEXT_DIM  = UITheme.DIM
+local COL_ACCENT    = UITheme.TOXIC
+local COL_DANGER    = UITheme.ORANGE
+local COL_GOLD      = UITheme.GOLD
+local COL_TRACK     = UITheme.TRACK
+local PANEL_ALPHA   = 0.06
 local LOW_HP_PCT    = 0.4
 
 local localPlayer = Players.LocalPlayer
@@ -57,23 +58,8 @@ local function corner(o, r)
 	c.Parent = o
 end
 
-local function hairline(o)
-	local s = Instance.new("UIStroke")
-	s.Color = Color3.fromRGB(255, 255, 255)
-	s.Transparency = 0.92
-	s.Thickness = 1
-	s.Parent = o
-end
-
 local function panel(parent, name)
-	local f = Instance.new("Frame")
-	f.Name = name
-	f.BackgroundColor3 = COL_PANEL
-	f.BackgroundTransparency = PANEL_ALPHA
-	f.BorderSizePixel = 0
-	f.Parent = parent
-	corner(f, 10)
-	hairline(f)
+	local f = UITheme.Panel(parent, name, { alpha = PANEL_ALPHA, radius = 6 })
 	return f
 end
 
@@ -81,7 +67,7 @@ local function text(parent, name, font, size, color)
 	local l = Instance.new("TextLabel")
 	l.Name = name
 	l.BackgroundTransparency = 1
-	l.Font = font
+	l.FontFace = font
 	l.TextSize = size
 	l.TextColor3 = color
 	l.Text = ""
@@ -97,41 +83,30 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 4
 	gui.Parent = playerGui
+	UITheme.Attach(gui)
 
 	-- Health (bottom-left): "HEALTH" caption, bar, HP number.
 	local hp = panel(gui, "HealthPanel")
 	hp.Position = UDim2.new(0, 16, 1, -78)
 	hp.Size = UDim2.fromOffset(260, 62)
 
-	local hpCaption = text(hp, "Caption", Enum.Font.GothamBold, 11, COL_TEXT_DIM)
+	local hpCaption = text(hp, "Caption", UITheme.BodyBoldFace, 11, COL_TEXT_DIM)
 	hpCaption.Position = UDim2.fromOffset(14, 8)
 	hpCaption.Size = UDim2.fromOffset(120, 12)
 	hpCaption.TextXAlignment = Enum.TextXAlignment.Left
 	hpCaption.Text = "HEALTH"
 
-	healthLabel = text(hp, "HealthLabel", Enum.Font.GothamBold, 14, COL_TEXT)
+	healthLabel = text(hp, "HealthLabel", UITheme.BodyBoldFace, 14, COL_TEXT)
 	healthLabel.AnchorPoint = Vector2.new(1, 0)
 	healthLabel.Position = UDim2.new(1, -14, 0, 6)
 	healthLabel.Size = UDim2.fromOffset(120, 16)
 	healthLabel.TextXAlignment = Enum.TextXAlignment.Right
 	healthLabel.Text = "100 / 100"
 
-	local track = Instance.new("Frame")
-	track.Name = "Track"
+	local track
+	track, healthFill = UITheme.Bar(hp, "Track", COL_ACCENT)
 	track.Position = UDim2.fromOffset(14, 30)
 	track.Size = UDim2.new(1, -28, 0, 16)
-	track.BackgroundColor3 = COL_TRACK
-	track.BorderSizePixel = 0
-	track.Parent = hp
-	corner(track, 8)
-
-	healthFill = Instance.new("Frame")
-	healthFill.Name = "Fill"
-	healthFill.Size = UDim2.fromScale(1, 1)
-	healthFill.BackgroundColor3 = COL_ACCENT
-	healthFill.BorderSizePixel = 0
-	healthFill.Parent = track
-	corner(healthFill, 8)
 
 	-- Active potion buffs (chips right above the health bar): "DMG +30% - 42s" tinted by the potion's rarity.
 	potionRow = Instance.new("Frame")
@@ -148,7 +123,7 @@ local function build()
 	rowList.Parent = potionRow
 
 	-- Wave number (top-center, just below the run XP bar): plain large white text, no panel.
-	roundLabel = text(gui, "RoundLabel", Enum.Font.GothamBlack, 30, Color3.fromRGB(255, 255, 255))
+	roundLabel = text(gui, "RoundLabel", UITheme.TitleFace, 34, COL_TEXT)
 	roundLabel.AnchorPoint = Vector2.new(0.5, 0)
 	roundLabel.Position = UDim2.new(0.5, 0, 0, 44)
 	roundLabel.Size = UDim2.fromOffset(300, 36)
@@ -160,14 +135,14 @@ local function build()
 	waveStroke.Parent = roundLabel
 
 	-- NEXT WAVE countdown (under the wave number, only during the wave break).
-	breakLabel = text(gui, "BreakLabel", Enum.Font.GothamBold, 16, COL_TEXT_DIM)
+	breakLabel = text(gui, "BreakLabel", UITheme.BodyBoldFace, 16, COL_TEXT_DIM)
 	breakLabel.AnchorPoint = Vector2.new(0.5, 0)
 	breakLabel.Position = UDim2.new(0.5, 0, 0, 80)
 	breakLabel.Size = UDim2.fromOffset(300, 20)
 	breakLabel.Text = ""
 
 	-- INCOMING! banner (below the wave counter, above the kill-streak flair).
-	incomingLabel = text(gui, "IncomingLabel", Enum.Font.GothamBlack, 20, Color3.fromRGB(255, 120, 90))
+	incomingLabel = text(gui, "IncomingLabel", UITheme.TitleFace, 20, COL_DANGER)
 	incomingLabel.AnchorPoint = Vector2.new(0.5, 0)
 	incomingLabel.Position = UDim2.new(0.5, 0, 0, 102)
 	incomingLabel.Size = UDim2.fromOffset(520, 26)
@@ -180,7 +155,7 @@ local function build()
 	incStroke.Parent = incomingLabel
 
 	-- FLAWLESS WAVE banner (gold, below the incoming line) — nobody downed all wave.
-	flawlessLabel = text(gui, "FlawlessLabel", Enum.Font.GothamBlack, 20, COL_GOLD)
+	flawlessLabel = text(gui, "FlawlessLabel", UITheme.TitleFace, 20, COL_GOLD)
 	flawlessLabel.AnchorPoint = Vector2.new(0.5, 0)
 	flawlessLabel.Position = UDim2.new(0.5, 0, 0, 126)
 	flawlessLabel.Size = UDim2.fromOffset(520, 26)
@@ -198,26 +173,26 @@ local function build()
 	cur.Position = UDim2.new(1, -16, 0, 12)
 	cur.Size = UDim2.fromOffset(190, 66)
 
-	local coinsCaption = text(cur, "CoinsCaption", Enum.Font.GothamBold, 11, COL_TEXT_DIM)
+	local coinsCaption = text(cur, "CoinsCaption", UITheme.BodyBoldFace, 11, COL_TEXT_DIM)
 	coinsCaption.Position = UDim2.fromOffset(14, 8)
 	coinsCaption.Size = UDim2.fromOffset(90, 14)
 	coinsCaption.TextXAlignment = Enum.TextXAlignment.Left
 	coinsCaption.Text = "COINS"
 
-	coinsLabel = text(cur, "LobbyMoneyLabel", Enum.Font.GothamBold, 15, COL_GOLD)
+	coinsLabel = text(cur, "LobbyMoneyLabel", UITheme.BodyBoldFace, 15, COL_GOLD)
 	coinsLabel.AnchorPoint = Vector2.new(1, 0)
 	coinsLabel.Position = UDim2.new(1, -14, 0, 7)
 	coinsLabel.Size = UDim2.fromOffset(110, 16)
 	coinsLabel.TextXAlignment = Enum.TextXAlignment.Right
 	coinsLabel.Text = "0"
 
-	local cashCaption = text(cur, "CashCaption", Enum.Font.GothamBold, 11, COL_TEXT_DIM)
+	local cashCaption = text(cur, "CashCaption", UITheme.BodyBoldFace, 11, COL_TEXT_DIM)
 	cashCaption.Position = UDim2.fromOffset(14, 36)
 	cashCaption.Size = UDim2.fromOffset(90, 14)
 	cashCaption.TextXAlignment = Enum.TextXAlignment.Left
 	cashCaption.Text = "CASH"
 
-	pointsLabel = text(cur, "PointsLabel", Enum.Font.GothamBold, 15, COL_ACCENT)
+	pointsLabel = text(cur, "PointsLabel", UITheme.BodyBoldFace, 15, COL_ACCENT)
 	pointsLabel.AnchorPoint = Vector2.new(1, 0)
 	pointsLabel.Position = UDim2.new(1, -14, 0, 35)
 	pointsLabel.Size = UDim2.fromOffset(110, 16)
@@ -308,7 +283,7 @@ function HUDController.Start()
 				cs.Transparency = 0.35
 				cs.Thickness = 1.2
 				cs.Parent = chip
-				local lbl = text(chip, "Label", Enum.Font.GothamBold, 12, col)
+				local lbl = text(chip, "Label", UITheme.BodyBoldFace, 12, col)
 				lbl.Size = UDim2.fromScale(1, 1)
 				lbl.Text = base
 				table.insert(potionChips, {

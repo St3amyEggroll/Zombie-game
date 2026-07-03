@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules")
 local Remotes = require(Modules.Remotes)
+local UITheme = require(Modules.UITheme)
 
 -- Screen shake for the boss entrance (GUARDED: a broken FX controller must never brick the boss bar).
 local okFx, CombatFeedbackController = pcall(require, script.Parent.CombatFeedbackController)
@@ -19,10 +20,10 @@ end
 
 local BossController = {}
 
--- ===== TUNABLES =====
-local FILL_COLOR   = Color3.fromRGB(200, 40, 40)
-local BANNER_COLOR = Color3.fromRGB(255, 60, 60)
-local WIN_COLOR    = Color3.fromRGB(255, 220, 80)
+-- ===== TUNABLES (UITheme — gritty apocalypse) =====
+local FILL_COLOR   = UITheme.ORANGE
+local BANNER_COLOR = UITheme.ORANGE
+local WIN_COLOR    = UITheme.GOLD
 local BAR_W, BAR_H = 620, 26
 
 local localPlayer = Players.LocalPlayer
@@ -35,21 +36,20 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 8
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
+	UITheme.Attach(gui)
 
 	barHolder = Instance.new("Frame")
 	barHolder.Name = "BossBar"
 	barHolder.AnchorPoint = Vector2.new(0.5, 0)
 	barHolder.Position = UDim2.fromScale(0.5, 0.06)
 	barHolder.Size = UDim2.fromOffset(BAR_W, BAR_H)
-	barHolder.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-	barHolder.BackgroundTransparency = 0.25
+	barHolder.BackgroundColor3 = UITheme.Darker(UITheme.TRACK, 0.3)
+	barHolder.BackgroundTransparency = 0.08
 	barHolder.BorderSizePixel = 0
 	barHolder.Visible = false
 	barHolder.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 2
-	stroke.Parent = barHolder
+	UITheme.Corner(barHolder, 4)
+	UITheme.Edge(barHolder, UITheme.BLACK, 2)
 
 	fill = Instance.new("Frame")
 	fill.Name = "BossBarFill"
@@ -59,6 +59,11 @@ local function build()
 	fill.BackgroundColor3 = FILL_COLOR
 	fill.BorderSizePixel = 0
 	fill.Parent = barHolder
+	UITheme.Corner(fill, 4)
+	local fg = Instance.new("UIGradient")
+	fg.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(140, 140, 140))
+	fg.Rotation = 90
+	fg.Parent = fill
 
 	nameLabel = Instance.new("TextLabel")
 	nameLabel.Name = "BossName"
@@ -66,7 +71,7 @@ local function build()
 	nameLabel.Position = UDim2.fromScale(0.5, 0.5)
 	nameLabel.Size = UDim2.fromScale(1, 1)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Font = Enum.Font.GothamBlack
+	nameLabel.FontFace = UITheme.TitleFace
 	nameLabel.TextScaled = true
 	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	nameLabel.TextStrokeTransparency = 0.4
@@ -83,7 +88,7 @@ local function build()
 	banner.Position = UDim2.fromScale(0.5, 0.3)
 	banner.Size = UDim2.fromOffset(760, 84)
 	banner.BackgroundTransparency = 1
-	banner.Font = Enum.Font.GothamBlack
+	banner.FontFace = UITheme.TitleFace
 	banner.TextScaled = true
 	banner.TextColor3 = BANNER_COLOR
 	banner.TextStrokeTransparency = 0.3
@@ -112,7 +117,7 @@ local function onSpawned(name: string?, maxHealth: number?)
 	nameLabel.Text = title
 	fill.Size = UDim2.fromScale(1, 1)
 	barHolder.Visible = true
-	flashBanner("⚠  " .. title .. "  ⚠", BANNER_COLOR)
+	flashBanner("- " .. title .. " -", BANNER_COLOR)
 	CombatFeedbackController.ShakeOnce(1.4, 0.5, 16, 0.4) -- the ground shakes when the boss arrives
 end
 

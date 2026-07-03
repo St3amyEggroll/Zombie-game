@@ -17,6 +17,7 @@ local Modules = Shared:WaitForChild("Modules")
 
 local BuffConfig = require(Config.BuffConfig)
 local Remotes = require(Modules.Remotes)
+local UITheme = require(Modules.UITheme)
 
 local BuffController = {}
 
@@ -25,9 +26,9 @@ local ROLL_TIME = 1.1
 local CARD_W    = 230
 local CARD_H    = 380
 local CARD_GAP  = 26
-local NAVY      = Color3.fromRGB(26, 32, 58)
-local ICON_BG   = Color3.fromRGB(238, 242, 250)
-local GREEN     = Color3.fromRGB(90, 220, 110)
+local NAVY      = UITheme.PANEL2                     -- card body (name kept: every card usage reads it)
+local ICON_BG   = UITheme.Darker(UITheme.PANEL, 0.35) -- dark icon well (was a white square)
+local GREEN     = UITheme.TOXIC
 
 -- Placeholder icons per buff (swap for real images later).
 local ICONS = {
@@ -74,10 +75,13 @@ local function makeCard(order: number)
 	card.AutoButtonColor = false
 	card.Text = ""
 	card.LayoutOrder = order
-	makeCorner(card, 16)
+	makeCorner(card, 8)
+	UITheme.Studs(card)
+	UITheme.Depth(card)
+	UITheme.Edge(card, UITheme.BLACK, 3)
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
-	stroke.Color = Color3.fromRGB(200, 220, 255)
+	stroke.Thickness = 2
+	stroke.Color = UITheme.LINE
 	stroke.Parent = card
 
 	-- rarity pill (straddles the top edge)
@@ -86,7 +90,7 @@ local function makeCard(order: number)
 	pill.Position = UDim2.new(0.5, 0, 0, 2)
 	pill.Size = UDim2.fromOffset(120, 30)
 	pill.BackgroundColor3 = Color3.fromRGB(80, 145, 255)
-	pill.Font = Enum.Font.GothamBold
+	pill.FontFace = UITheme.BodyBoldFace
 	pill.TextSize = 16
 	pill.TextColor3 = Color3.fromRGB(255, 255, 255)
 	pill.Text = "Rare"
@@ -100,7 +104,7 @@ local function makeCard(order: number)
 	header.Position = UDim2.new(0.5, 0, 0, 30)
 	header.Size = UDim2.fromOffset(CARD_W - 26, 46)
 	header.BackgroundColor3 = Color3.fromRGB(80, 145, 255)
-	header.Font = Enum.Font.GothamBlack
+	header.FontFace = UITheme.TitleFace
 	header.TextSize = 24
 	header.TextColor3 = Color3.fromRGB(255, 255, 255)
 	header.Text = "Buff"
@@ -114,11 +118,13 @@ local function makeCard(order: number)
 	iconBox.Size = UDim2.fromOffset(150, 150)
 	iconBox.BackgroundColor3 = ICON_BG
 	iconBox.Parent = card
-	makeCorner(iconBox, 14)
+	makeCorner(iconBox, 8)
+	UITheme.Edge(iconBox, UITheme.BLACK, 2)
+	UITheme.Edge(iconBox, UITheme.LINE, 1, 0.55)
 	local icon = Instance.new("TextLabel")
 	icon.Size = UDim2.fromScale(1, 1)
 	icon.BackgroundTransparency = 1
-	icon.Font = Enum.Font.GothamBold
+	icon.FontFace = UITheme.BodyBoldFace
 	icon.TextSize = 72
 	icon.Text = "?"
 	icon.Parent = iconBox
@@ -129,7 +135,7 @@ local function makeCard(order: number)
 	effect.Position = UDim2.new(0.5, 0, 0, 258)
 	effect.Size = UDim2.fromOffset(CARD_W - 20, 40)
 	effect.BackgroundTransparency = 1
-	effect.Font = Enum.Font.GothamBlack
+	effect.FontFace = UITheme.TitleFace
 	effect.TextSize = 22
 	effect.TextColor3 = GREEN
 	effect.Text = "+0%"
@@ -142,7 +148,7 @@ local function makeCard(order: number)
 	total.Position = UDim2.new(0.5, 0, 1, -16)
 	total.Size = UDim2.fromOffset(CARD_W - 20, 24)
 	total.BackgroundTransparency = 1
-	total.Font = Enum.Font.GothamBold
+	total.FontFace = UITheme.BodyBoldFace
 	total.TextSize = 16
 	total.TextColor3 = Color3.fromRGB(180, 190, 210)
 	total.Text = ""
@@ -166,6 +172,7 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 20
 	gui.Parent = playerGui
+	UITheme.Attach(gui)
 
 	-- ----- Level bar (TOP center, always visible) -----
 	local barHolder = Instance.new("Frame")
@@ -173,25 +180,30 @@ local function build()
 	barHolder.AnchorPoint = Vector2.new(0.5, 0)
 	barHolder.Position = UDim2.new(0.5, 0, 0, 12)
 	barHolder.Size = UDim2.fromOffset(560, 26)
-	barHolder.BackgroundColor3 = Color3.fromRGB(18, 22, 34)
-	barHolder.BackgroundTransparency = 0.1
+	barHolder.BackgroundColor3 = UITheme.Darker(UITheme.TRACK, 0.25)
+	barHolder.BackgroundTransparency = 0.05
 	barHolder.BorderSizePixel = 0
 	barHolder.Parent = gui
-	makeCorner(barHolder, 13)
+	makeCorner(barHolder, 5)
+	UITheme.Edge(barHolder, UITheme.BLACK, 2)
 
 	fill = Instance.new("Frame")
 	fill.Size = UDim2.new(0, 0, 1, 0)
-	fill.BackgroundColor3 = Color3.fromRGB(120, 210, 90)
+	fill.BackgroundColor3 = UITheme.TOXIC
 	fill.BorderSizePixel = 0
 	fill.Parent = barHolder
-	makeCorner(fill, 13)
+	makeCorner(fill, 5)
+	local fillGrad = Instance.new("UIGradient")
+	fillGrad.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150))
+	fillGrad.Rotation = 90
+	fillGrad.Parent = fill
 
 	xpLabel = Instance.new("TextLabel")
 	xpLabel.AnchorPoint = Vector2.new(0, 0.5)
 	xpLabel.Position = UDim2.new(0, 14, 0.5, 0)
 	xpLabel.Size = UDim2.fromOffset(120, 22)
 	xpLabel.BackgroundTransparency = 1
-	xpLabel.Font = Enum.Font.GothamBold
+	xpLabel.FontFace = UITheme.BodyBoldFace
 	xpLabel.TextSize = 16
 	xpLabel.TextXAlignment = Enum.TextXAlignment.Left
 	xpLabel.TextColor3 = Color3.fromRGB(235, 240, 250)
@@ -204,7 +216,7 @@ local function build()
 	levelLabel.Position = UDim2.new(1, -14, 0.5, 0)
 	levelLabel.Size = UDim2.fromOffset(120, 22)
 	levelLabel.BackgroundTransparency = 1
-	levelLabel.Font = Enum.Font.GothamBlack
+	levelLabel.FontFace = UITheme.TitleFace
 	levelLabel.TextSize = 16
 	levelLabel.TextXAlignment = Enum.TextXAlignment.Right
 	levelLabel.TextColor3 = Color3.fromRGB(235, 240, 250)
@@ -218,20 +230,20 @@ local function build()
 	autopick.AnchorPoint = Vector2.new(0.5, 1)
 	autopick.Position = UDim2.new(0.5, 0, 1, -8)
 	autopick.Size = UDim2.fromOffset(220, 58)
-	autopick.BackgroundColor3 = Color3.fromRGB(230, 65, 70)
-	autopick.Font = Enum.Font.GothamBlack
-	autopick.TextSize = 26
-	autopick.TextColor3 = Color3.fromRGB(255, 255, 255)
+	autopick.BackgroundColor3 = UITheme.ORANGE
+	autopick.FontFace = UITheme.TitleFace
+	autopick.TextSize = 24
+	autopick.TextColor3 = Color3.fromRGB(30, 10, 3)
 	autopick.Text = "AUTOPICK"
 	autopick.Visible = false
 	autopick.ZIndex = 5
 	autopick.Parent = gui
-	makeCorner(autopick, 12)
-	local aps = Instance.new("UIStroke")
-	aps.Thickness = 3
-	aps.Color = Color3.fromRGB(255, 255, 255)
-	aps.Transparency = 0.3
-	aps.Parent = autopick
+	makeCorner(autopick, 6)
+	UITheme.Edge(autopick, UITheme.BLACK, 3)
+	local apGrad = Instance.new("UIGradient")
+	apGrad.Color = ColorSequence.new(UITheme.ORANGE, UITheme.ORANGE_DK)
+	apGrad.Rotation = 90
+	apGrad.Parent = autopick
 	autopick.Activated:Connect(function()
 		if rolling or not panel.Visible then
 			return
@@ -277,8 +289,8 @@ local function paintCard(ref, rarity, buffDef, amount)
 	-- readable header text on light rarities
 	local lum = (rarity.color.R * 0.3 + rarity.color.G * 0.59 + rarity.color.B * 0.11)
 	local dark = lum > 0.6
-	ref.header.TextColor3 = dark and Color3.fromRGB(25, 30, 45) or Color3.fromRGB(255, 255, 255)
-	ref.pill.TextColor3 = dark and Color3.fromRGB(25, 30, 45) or Color3.fromRGB(255, 255, 255)
+	ref.header.TextColor3 = dark and Color3.fromRGB(18, 22, 12) or Color3.fromRGB(255, 255, 255)
+	ref.pill.TextColor3 = dark and Color3.fromRGB(18, 22, 12) or Color3.fromRGB(255, 255, 255)
 end
 
 -- ===== DRAFT FLOW =====

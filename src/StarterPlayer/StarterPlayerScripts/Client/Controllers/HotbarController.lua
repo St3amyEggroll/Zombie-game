@@ -15,6 +15,7 @@ local Modules = Shared:WaitForChild("Modules")
 
 local WeaponConfig = require(Config.WeaponConfig)
 local Remotes = require(Modules.Remotes)
+local UITheme = require(Modules.UITheme)
 
 -- The inventory panel (its INVENTORY button lives on this hotbar). GUARDED: a broken inventory
 -- controller must never brick the hotbar.
@@ -25,12 +26,12 @@ end
 
 local HotbarController = {}
 
--- ===== STYLE (shared design system) =====
-local COL_PANEL    = Color3.fromRGB(22, 24, 30)
-local COL_TEXT     = Color3.fromRGB(238, 240, 245)
-local COL_TEXT_DIM = Color3.fromRGB(150, 156, 168)
-local COL_ACCENT   = Color3.fromRGB(87, 196, 116)
-local COL_GOLD     = Color3.fromRGB(235, 190, 85)
+-- ===== STYLE (UITheme — gritty apocalypse) =====
+local COL_PANEL    = UITheme.PANEL
+local COL_TEXT     = UITheme.TEXT
+local COL_TEXT_DIM = UITheme.DIM
+local COL_ACCENT   = UITheme.TOXIC
+local COL_GOLD     = UITheme.GOLD
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -48,11 +49,7 @@ local function corner(o, r)
 end
 
 local function hairline(o)
-	local s = Instance.new("UIStroke")
-	s.Color = Color3.fromRGB(255, 255, 255)
-	s.Transparency = 0.92
-	s.Parent = o
-	return s
+	return UITheme.Edge(o, UITheme.BLACK, 2, 0)
 end
 
 -- ===== RENDER =====
@@ -66,8 +63,8 @@ local function refresh()
 			b.name.Text = weapon.name
 			b.level.Text = "Lv " .. tostring(gunLevels[id] or 1)
 			local isHeld = (id == equipped)
-			b.stroke.Color = isHeld and COL_ACCENT or Color3.fromRGB(255, 255, 255)
-			b.stroke.Transparency = isHeld and 0.2 or 0.92
+			b.stroke.Color = isHeld and COL_ACCENT or UITheme.BLACK
+			b.stroke.Transparency = isHeld and 0 or 0
 			b.name.TextColor3 = isHeld and COL_TEXT or COL_TEXT_DIM
 		else
 			b.frame.Visible = false
@@ -83,6 +80,7 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 6
 	gui.Parent = playerGui
+	UITheme.Attach(gui)
 
 	-- The row holds slot 1, slot 2, and the INVENTORY button — all centered together.
 	local holder = Instance.new("Frame")
@@ -102,20 +100,22 @@ local function build()
 		frame.Name = "Slot" .. i
 		frame.Size = UDim2.fromOffset(160, 54)
 		frame.BackgroundColor3 = COL_PANEL
-		frame.BackgroundTransparency = 0.15
+		frame.BackgroundTransparency = 0.06
 		frame.BorderSizePixel = 0
 		frame.Text = ""
 		frame.AutoButtonColor = true
 		frame.LayoutOrder = i
 		frame.Parent = holder
-		corner(frame, 10)
+		corner(frame, 6)
+		UITheme.Studs(frame)
+		UITheme.Depth(frame)
 		local stroke = hairline(frame)
 
 		local key = Instance.new("TextLabel")
 		key.Position = UDim2.fromOffset(10, 0)
 		key.Size = UDim2.fromOffset(16, 54)
 		key.BackgroundTransparency = 1
-		key.Font = Enum.Font.GothamBlack
+		key.FontFace = UITheme.TitleFace
 		key.TextSize = 14
 		key.TextColor3 = COL_TEXT_DIM
 		key.Text = tostring(i)
@@ -125,7 +125,7 @@ local function build()
 		name.Position = UDim2.fromOffset(32, 9)
 		name.Size = UDim2.new(1, -42, 0, 18)
 		name.BackgroundTransparency = 1
-		name.Font = Enum.Font.GothamBold
+		name.FontFace = UITheme.BodyBoldFace
 		name.TextSize = 14
 		name.TextXAlignment = Enum.TextXAlignment.Left
 		name.TextColor3 = COL_TEXT
@@ -136,7 +136,7 @@ local function build()
 		level.Position = UDim2.fromOffset(32, 29)
 		level.Size = UDim2.new(1, -42, 0, 14)
 		level.BackgroundTransparency = 1
-		level.Font = Enum.Font.GothamBold
+		level.FontFace = UITheme.BodyBoldFace
 		level.TextSize = 12
 		level.TextXAlignment = Enum.TextXAlignment.Left
 		level.TextColor3 = COL_GOLD
@@ -158,19 +158,20 @@ local function build()
 	invBtn.Name = "InventoryButton"
 	invBtn.Size = UDim2.fromOffset(120, 54)
 	invBtn.BackgroundColor3 = COL_PANEL
-	invBtn.BackgroundTransparency = 0.15
+	invBtn.BackgroundTransparency = 0.06
 	invBtn.BorderSizePixel = 0
-	invBtn.Font = Enum.Font.GothamBold
+	invBtn.FontFace = UITheme.TitleFace
 	invBtn.TextSize = 14
 	invBtn.TextColor3 = COL_TEXT
 	invBtn.Text = "INVENTORY"
 	invBtn.AutoButtonColor = true
 	invBtn.LayoutOrder = 3
 	invBtn.Parent = holder
-	corner(invBtn, 10)
-	local invStroke = hairline(invBtn)
-	invStroke.Color = COL_ACCENT
-	invStroke.Transparency = 0.5
+	corner(invBtn, 6)
+	UITheme.Studs(invBtn)
+	UITheme.Depth(invBtn)
+	hairline(invBtn)
+	UITheme.Edge(invBtn, COL_ACCENT, 1, 0.35)
 	invBtn.Activated:Connect(function()
 		GameInventoryController.Toggle()
 	end)

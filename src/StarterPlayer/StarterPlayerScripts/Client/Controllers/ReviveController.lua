@@ -14,16 +14,17 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 local GameConfig = require(Config.GameConfig)
 local Remotes = require(Modules.Remotes)
+local UITheme = require(Modules.UITheme)
 
 local ReviveController = {}
 
--- ===== STYLE (shared design system) =====
-local COL_PANEL    = Color3.fromRGB(22, 24, 30)
-local COL_TEXT     = Color3.fromRGB(238, 240, 245)
-local COL_TEXT_DIM = Color3.fromRGB(150, 156, 168)
-local COL_ACCENT   = Color3.fromRGB(87, 196, 116)
-local COL_DANGER   = Color3.fromRGB(224, 82, 82)
-local COL_TRACK    = Color3.fromRGB(40, 44, 54)
+-- ===== STYLE (UITheme — gritty apocalypse) =====
+local COL_PANEL    = UITheme.PANEL
+local COL_TEXT     = UITheme.TEXT
+local COL_TEXT_DIM = UITheme.DIM
+local COL_ACCENT   = UITheme.TOXIC
+local COL_DANGER   = UITheme.ORANGE
+local COL_TRACK    = UITheme.TRACK
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -51,6 +52,7 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 9
 	gui.Parent = playerGui
+	UITheme.Attach(gui)
 
 	-- "YOU'RE DOWN" banner (center, above the middle).
 	selfBanner = Instance.new("Frame")
@@ -58,22 +60,21 @@ local function build()
 	selfBanner.Position = UDim2.new(0.5, 0, 0.32, 0)
 	selfBanner.Size = UDim2.fromOffset(340, 86)
 	selfBanner.BackgroundColor3 = COL_PANEL
-	selfBanner.BackgroundTransparency = 0.08
+	selfBanner.BackgroundTransparency = 0.04
 	selfBanner.BorderSizePixel = 0
 	selfBanner.Visible = false
 	selfBanner.Parent = gui
-	corner(selfBanner, 12)
-	local bs = Instance.new("UIStroke")
-	bs.Color = COL_DANGER
-	bs.Transparency = 0.35
-	bs.Thickness = 1.5
-	bs.Parent = selfBanner
+	corner(selfBanner, 6)
+	UITheme.Studs(selfBanner)
+	UITheme.Depth(selfBanner)
+	UITheme.Edge(selfBanner, UITheme.BLACK, 2)
+	UITheme.Edge(selfBanner, COL_DANGER, 1, 0.3)
 
 	selfTitle = Instance.new("TextLabel")
 	selfTitle.Position = UDim2.fromOffset(0, 10)
 	selfTitle.Size = UDim2.new(1, 0, 0, 24)
 	selfTitle.BackgroundTransparency = 1
-	selfTitle.Font = Enum.Font.GothamBlack
+	selfTitle.FontFace = UITheme.TitleFace
 	selfTitle.TextSize = 20
 	selfTitle.TextColor3 = COL_DANGER
 	selfTitle.Text = "YOU'RE DOWN"
@@ -83,7 +84,7 @@ local function build()
 	selfSub.Position = UDim2.fromOffset(0, 36)
 	selfSub.Size = UDim2.new(1, 0, 0, 18)
 	selfSub.BackgroundTransparency = 1
-	selfSub.Font = Enum.Font.GothamBold
+	selfSub.FontFace = UITheme.BodyBoldFace
 	selfSub.TextSize = 13
 	selfSub.TextColor3 = COL_TEXT_DIM
 	selfSub.Text = ""
@@ -109,21 +110,21 @@ local function build()
 	prompt.Position = UDim2.new(0.5, 0, 1, -140) -- above the hotbar + upgrade button
 	prompt.Size = UDim2.fromOffset(280, 52)
 	prompt.BackgroundColor3 = COL_PANEL
-	prompt.BackgroundTransparency = 0.1
+	prompt.BackgroundTransparency = 0.06
 	prompt.BorderSizePixel = 0
 	prompt.Visible = false
 	prompt.Parent = gui
-	corner(prompt, 10)
-	local pStroke = Instance.new("UIStroke")
-	pStroke.Color = Color3.fromRGB(255, 255, 255)
-	pStroke.Transparency = 0.92
-	pStroke.Parent = prompt
+	corner(prompt, 6)
+	UITheme.Studs(prompt)
+	UITheme.Depth(prompt)
+	UITheme.Edge(prompt, UITheme.BLACK, 2)
+	UITheme.Edge(prompt, COL_ACCENT, 1, 0.4)
 
 	promptText = Instance.new("TextLabel")
 	promptText.Position = UDim2.fromOffset(0, 7)
 	promptText.Size = UDim2.new(1, 0, 0, 18)
 	promptText.BackgroundTransparency = 1
-	promptText.Font = Enum.Font.GothamBold
+	promptText.FontFace = UITheme.BodyBoldFace
 	promptText.TextSize = 14
 	promptText.TextColor3 = COL_TEXT
 	promptText.Text = ""

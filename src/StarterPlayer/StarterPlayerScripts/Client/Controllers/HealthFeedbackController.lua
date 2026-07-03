@@ -13,6 +13,8 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local UITheme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("UITheme"))
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
@@ -127,7 +129,7 @@ local function spawnArrow(sourcePos: Vector3)
 	arrow.Position = UDim2.fromScale(0.5, 0.03)
 	arrow.Size = UDim2.fromOffset(54, 54)
 	arrow.BackgroundTransparency = 1
-	arrow.Font = Enum.Font.GothamBlack
+	arrow.FontFace = UITheme.TitleFace
 	arrow.Text = "▲"
 	arrow.TextScaled = true
 	arrow.TextColor3 = Color3.fromRGB(255, 60, 60)
