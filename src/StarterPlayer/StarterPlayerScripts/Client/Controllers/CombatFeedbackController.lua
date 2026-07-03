@@ -268,7 +268,9 @@ local function buildHitmarker()
 	hitmarkerGui = Instance.new("ScreenGui")
 	hitmarkerGui.Name = "Hitmarker"
 	hitmarkerGui.ResetOnSpawn = false
-	hitmarkerGui.IgnoreGuiInset = true
+	-- Inset NOT ignored: WorldToScreenPoint returns inset-relative coordinates, so the X lands exactly
+	-- on the hit point.
+	hitmarkerGui.IgnoreGuiInset = false
 	hitmarkerGui.Enabled = false
 	hitmarkerGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
@@ -296,11 +298,23 @@ local function buildHitmarker()
 	dash(-45)
 end
 
-local function showHitmarker(killed: boolean, headshot: boolean)
+local function showHitmarker(killed: boolean, headshot: boolean, position: Vector3?)
 	local cfg = AnimationConfig.Hitmarker
 	if not cfg.Enabled or not hitmarkerGui then
 		return
 	end
+	-- Pop the X where the shot actually LANDED (screen-projected); center only as the off-screen fallback.
+	local holderPos = UDim2.fromScale(0.5, 0.5)
+	if position then
+		local cam = Workspace.CurrentCamera
+		if cam then
+			local sp, onScreen = cam:WorldToScreenPoint(position)
+			if onScreen then
+				holderPos = UDim2.fromOffset(sp.X, sp.Y)
+			end
+		end
+	end
+	hitmarkerGui.Holder.Position = holderPos
 	local color = killed and cfg.KillColor or cfg.Color
 	for _, d in hitmarkerGui.Holder:GetChildren() do
 		if d:IsA("Frame") then
@@ -369,7 +383,7 @@ end
 
 local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean)
 	if hitHumanoid then
-		showHitmarker(killed, isHeadshot) -- just the hitmarker; no green splat on the zombie
+		showHitmarker(killed, isHeadshot, position) -- the X pops right where the zombie was hit
 	else
 		impact(position, false) -- world/miss impact only
 	end

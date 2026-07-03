@@ -122,11 +122,25 @@ local function playHold(player: Player, weaponId: string)
 	if not animator then
 		return
 	end
-	local track = animator:LoadAnimation(getAnim(id))
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(getAnim(id))
+	end)
+	if not ok or not track then
+		warn(("[WeaponModelService] hold animation %s failed to load: %s"):format(tostring(id), tostring(track)))
+		return
+	end
 	track.Looped = true
 	track.Priority = Enum.AnimationPriority.Action
 	track:Play(0.1)
 	charHoldTrack[player.UserId] = track
+	-- Diagnose the silent-failure cases: an animation made on the WRONG RIG TYPE (R6 pose on an R15
+	-- character, or a custom rig) loads fine but has nothing it can move — Length stays 0.
+	task.delay(1, function()
+		if charHoldTrack[player.UserId] == track and track.Length <= 0 then
+			warn(("[WeaponModelService] hold animation %s loaded but moves nothing — was it animated on "
+				.. "the same rig type as the players (R15 vs R6)?"):format(tostring(id)))
+		end
+	end)
 end
 
 -- Procedural gun recoil: kick the hand→handle weld and tween it back. Server-side so everyone sees it.

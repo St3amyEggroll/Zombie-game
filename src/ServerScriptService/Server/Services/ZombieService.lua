@@ -135,10 +135,20 @@ local templatesFolder: Folder
 -- The spawnable archetypes (ZombieConfig also holds non-type tables like BossWaves — filter them out).
 local ZOMBIE_TYPES: { [string]: any } = {}
 local ALL_WEIGHTS: { [string]: number } = {}
+-- Model names match type ids LOOSELY: case/space/dash-insensitive, by id OR display name — so a model
+-- named "Leaper Tank" (or "leaper_tank", or "LeaperTank") registers as leapertank.
+local function sanitizeName(n: string): string
+	return (n:lower():gsub("[%s%-_]", ""))
+end
+local zombieNameToId: { [string]: string } = {}
 for id, t in ZombieConfig do
 	if type(t) == "table" and t.id then
 		ZOMBIE_TYPES[id] = t
 		ALL_WEIGHTS[id] = t.spawnWeight
+		zombieNameToId[sanitizeName(id)] = id
+		if type(t.name) == "string" then
+			zombieNameToId[sanitizeName(t.name)] = id
+		end
 	end
 end
 
@@ -241,23 +251,53 @@ local function asModel(inst: Instance?): Model?
 end
 
 local function findAsset(typeId: string): Model?
-	-- 1) a tagged "ZombieTemplate" matching this type, else the default tagged template
+	-- 1) a tagged "ZombieTemplate" matching this type
 	if templates[typeId] then
 		return templates[typeId]
 	end
-	if defaultTemplate then
-		return defaultTemplate
+	-- A child whose (sanitized) name resolves to this type — matches "Leaper Tank" for leapertank etc.
+	local function matchIn(parent: Instance?): Instance?
+		if not parent then
+			return nil
+		end
+		for _, c in parent:GetChildren() do
+			if zombieNameToId[sanitizeName(c.Name)] == typeId then
+				return c
+			end
+		end
+		return nil
 	end
-	-- 2) a model in an "Assets" folder (case-insensitive) in ReplicatedStorage OR ServerStorage. Any of:
-	--    Assets/Zombies/{typeId|Default}, or Assets/{typeId|Zombie|Default}.
+	-- 2) a TYPE-SPECIFIC model in an "Assets" folder (case-insensitive) in ReplicatedStorage OR
+	--    ServerStorage — checked BEFORE the generic default template, so a new enemy's model is used
+	--    whether it's tagged or just dropped into Assets/Zombies.
 	for _, container in { ReplicatedStorage, ServerStorage } do
 		local assets = ciFind(container, "Assets")
 		if assets then
 			local zf = ciFind(assets, "Zombies")
 			local candidates = {
 				zf and ciFind(zf, typeId) or nil,
-				zf and ciFind(zf, "Default") or nil,
+				zf and matchIn(zf) or nil,
 				ciFind(assets, typeId),
+				matchIn(assets),
+			}
+			for _, c in candidates do
+				local m = asModel(c)
+				if m then
+					return m
+				end
+			end
+		end
+	end
+	-- 3) the default tagged template, else the generic Assets fallbacks
+	if defaultTemplate then
+		return defaultTemplate
+	end
+	for _, container in { ReplicatedStorage, ServerStorage } do
+		local assets = ciFind(container, "Assets")
+		if assets then
+			local zf = ciFind(assets, "Zombies")
+			local candidates = {
+				zf and ciFind(zf, "Default") or nil,
 				ciFind(assets, "Zombie"),
 				ciFind(assets, "Default"),
 			}
@@ -316,11 +356,13 @@ local function registerTemplate(inst: Instance)
 	end
 	inst.Parent = templatesFolder
 	prepModel(inst)
-	templates[inst.Name] = inst
+	local typeId = zombieNameToId[sanitizeName(inst.Name)]
+	templates[typeId or inst.Name] = inst
 	if not defaultTemplate then
 		defaultTemplate = inst
 	end
-	print(("[ZombieService] registered zombie template '%s'"):format(inst.Name))
+	print(("[ZombieService] registered zombie template '%s'%s"):format(
+		inst.Name, typeId and (" as " .. typeId) or ""))
 end
 
 local function loadTaggedTemplates()
