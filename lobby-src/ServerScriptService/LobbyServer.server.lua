@@ -113,6 +113,8 @@ local WEAPONS = {
 
 -- 7 rarity-tiered cases (wave rewards + starter grants + the shop). Higher case rarity = better guns +
 -- bigger COPY payouts (see GUNLEVELS.CopyPayout). Pools are { weaponId = weight }.
+-- PHOTOS: add image = "rbxassetid://..." to any CASES entry (and to WEAPONS/POTIONS entries) and the
+-- inventory/shop UI shows the picture on cards + detail panes automatically.
 local CASES = {
 	common    = { pool = { shotgun = 70, ak47 = 24, minigun = 5,  raygun = 1 } },
 	uncommon  = { pool = { shotgun = 55, ak47 = 32, minigun = 10, raygun = 3 } },
@@ -292,7 +294,7 @@ local CATALOG = {
 					table.insert(odds, { rarity = wr, pct = (byRarity[wr] / total) * 100 })
 				end
 			end
-			t[rarity] = { name = c.name, rarity = rarity, poolIds = ids, odds = odds }
+			t[rarity] = { name = c.name, rarity = rarity, poolIds = ids, odds = odds, image = c.image }
 		end
 		return t
 	end)(),

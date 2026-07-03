@@ -1,14 +1,13 @@
 --!nonstrict
--- GameInventoryController.lua — the IN-GAME inventory window, mirroring the LOBBY inventory's look:
--- left nav (Potions / Weapons / Cases), card grids with rarity color bars. Differences from the lobby:
---   * opens on the POTIONS tab — the only interactive one here (drink potions for TIMED buffs; the same
---     potion extends its timer, different tiers stack)
---   * Weapons shows your 2 equip slots + all owned guns, VIEW-ONLY (equip back in the lobby)
---   * Cases shows your case counts by rarity, VIEW-ONLY (open them back in the lobby)
+-- GameInventoryController.lua — the IN-GAME inventory: top tab strip (POTIONS / WEAPONS / CASES) over a
+-- full-width card grid. Clicking a card slides in a DETAIL PANE on the right (40%) with the big info +
+-- the action (USE for potions; weapons/cases are managed in the lobby). Click the card again — or the
+-- pane's ✕ — and the grid takes the full width back.
 -- Data comes from GameInventoryService via InvSnapshot; drop toasts ride PotionDropped/CaseDropped.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Modules = Shared:WaitForChild("Modules")
@@ -20,20 +19,13 @@ local GameInventoryController = {}
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
--- ===== STYLE (UITheme — gritty apocalypse) =====
-local ACCENT = UITheme.TOXIC
-local CARD = UITheme.PANEL2
-local DIM = UITheme.TRACK
-local BLACK = UITheme.BG
-local TEXT = UITheme.TEXT
-local TEXT_DIM = UITheme.DIM
+-- ===== LAYOUT TUNABLES =====
+local PANEL_W, PANEL_H = 780, 500
+local DETAIL_W = 280 -- the click-to-reveal hero pane (≈40%)
 
 local data = nil
 local activeTab = "potions" -- potions FIRST: the one tab you can interact with in-run
-
-local function corner(o, r)
-	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = o
-end
+local selected = nil        -- { kind = "potion"|"weapon"|"case", id = string } — drives the detail pane
 
 local function rarityColor(rarityId)
 	local r = data and data.catalog.rarities[rarityId]
@@ -46,19 +38,18 @@ gui.Name = "GameInventory"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true;
 gui.Parent = playerGui
 UITheme.Attach(gui)
 
--- (Opened via the INVENTORY button on the hotbar — HotbarController calls GameInventoryController.Toggle().)
-
 -- Drop toast (potion/case pickups).
 local toast = Instance.new("TextLabel")
 toast.AnchorPoint = Vector2.new(0.5, 0); toast.Position = UDim2.new(0.5, 0, 0, 70); toast.Size = UDim2.fromOffset(340, 40)
 toast.BackgroundColor3 = UITheme.PANEL; toast.BackgroundTransparency = 0.02; toast.BorderSizePixel = 0
-toast.FontFace = UITheme.BodyBoldFace; toast.TextSize = 16; toast.TextColor3 = Color3.fromRGB(235, 190, 85)
-toast.Text = ""; toast.Visible = false; toast.Parent = gui; corner(toast, 8)
+toast.FontFace = UITheme.BodyBoldFace; toast.TextSize = 15; toast.TextColor3 = UITheme.GOLD
+toast.Text = ""; toast.Visible = false; toast.Parent = gui
+UITheme.Corner(toast, 6); UITheme.Edge(toast)
 
 local toastToken = 0
 local function showToast(text, color)
 	toast.Text = text
-	toast.TextColor3 = color or Color3.fromRGB(235, 190, 85)
+	toast.TextColor3 = color or UITheme.GOLD
 	toast.Visible = true
 	toastToken += 1
 	local myToken = toastToken
@@ -69,116 +60,220 @@ local function showToast(text, color)
 	end)
 end
 
-local panel = Instance.new("Frame")
+local panel = UITheme.Panel(gui, "InventoryPanel", { radius = 8, accent = UITheme.TOXIC, edgeThickness = 3 })
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.fromOffset(760, 480); panel.BackgroundColor3 = UITheme.PANEL
-panel.BackgroundTransparency = 0; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
-corner(panel, 8)
-UITheme.Studs(panel)
-UITheme.Depth(panel)
-UITheme.Edge(panel, UITheme.BLACK, 3)
-UITheme.Edge(panel, ACCENT, 1, 0.45)
+panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H); panel.Visible = false
 
-local title = Instance.new("TextLabel")
-title.Position = UDim2.new(0, 0, 0, 12); title.Size = UDim2.new(1, 0, 0, 30); title.BackgroundTransparency = 1
-title.FontFace = UITheme.TitleFace; title.TextSize = 22; title.TextColor3 = TEXT
-title.Text = "INVENTORY"; title.Parent = panel
+UITheme.Header(panel, "Inventory", 46)
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.AnchorPoint = Vector2.new(1, 0); closeBtn.Position = UDim2.new(1, -12, 0, 12); closeBtn.Size = UDim2.fromOffset(32, 32)
+closeBtn.AnchorPoint = Vector2.new(1, 0); closeBtn.Position = UDim2.new(1, -10, 0, 8); closeBtn.Size = UDim2.fromOffset(32, 32)
 closeBtn.BackgroundColor3 = UITheme.ORANGE; closeBtn.FontFace = UITheme.BodyBoldFace; closeBtn.TextSize = 16
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255); closeBtn.Text = "✕"; closeBtn.Parent = panel; corner(closeBtn, 8)
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255); closeBtn.Text = "✕"; closeBtn.Parent = panel
+UITheme.Corner(closeBtn, 6); UITheme.Edge(closeBtn)
 
-local nav = Instance.new("Frame")
-nav.Position = UDim2.fromOffset(16, 52); nav.Size = UDim2.fromOffset(150, 400); nav.BackgroundTransparency = 1; nav.Parent = panel
-local navList = Instance.new("UIListLayout"); navList.Padding = UDim.new(0, 8); navList.Parent = nav
-local navBtns = {}
-local function navButton(id, text)
+-- Top tab strip: three wide tabs with a toxic underline on the active one.
+local tabs = Instance.new("Frame")
+tabs.Position = UDim2.fromOffset(14, 54); tabs.Size = UDim2.new(1, -28, 0, 38); tabs.BackgroundTransparency = 1; tabs.Parent = panel
+local tabList = Instance.new("UIListLayout")
+tabList.FillDirection = Enum.FillDirection.Horizontal; tabList.Padding = UDim.new(0, 8); tabList.Parent = tabs
+local tabBtns = {}
+local function tabButton(id, textStr)
 	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(1, 0, 0, 44); b.BackgroundColor3 = CARD; b.BorderSizePixel = 0
-	b.FontFace = UITheme.BodyBoldFace; b.TextSize = 16; b.TextColor3 = TEXT; b.Text = text; b.Parent = nav
-	corner(b, 8); navBtns[id] = b
+	b.Size = UDim2.fromOffset(150, 38); b.BackgroundColor3 = UITheme.PANEL2; b.BorderSizePixel = 0
+	b.FontFace = UITheme.TitleFace; b.TextSize = 15; b.TextColor3 = UITheme.DIM; b.Text = textStr; b.Parent = tabs
+	UITheme.Corner(b, 5); UITheme.Edge(b, UITheme.BLACK, 2)
+	local under = Instance.new("Frame")
+	under.Name = "Under"
+	under.AnchorPoint = Vector2.new(0.5, 1); under.Position = UDim2.new(0.5, 0, 1, -3)
+	under.Size = UDim2.new(1, -16, 0, 3); under.BackgroundColor3 = UITheme.TOXIC; under.BorderSizePixel = 0
+	under.Visible = false; under.Parent = b
+	tabBtns[id] = b
 	return b
 end
-navButton("potions", "Potions")
-navButton("weapons", "Weapons")
-navButton("cases", "Cases")
+tabButton("potions", "POTIONS")
+tabButton("weapons", "WEAPONS")
+tabButton("cases", "CASES")
 
-local hint = Instance.new("TextLabel")
-hint.AnchorPoint = Vector2.new(0.5, 1); hint.Position = UDim2.new(0.5, 78, 1, -8); hint.Size = UDim2.fromOffset(520, 18)
-hint.BackgroundTransparency = 1; hint.FontFace = UITheme.BodyFace; hint.TextSize = 12; hint.TextColor3 = TEXT_DIM
-hint.Text = "Equip guns & open cases in the LOBBY. Potions are usable here."; hint.Parent = panel
+-- Grid (full width; shrinks when the detail pane is open) + the detail pane itself.
+local CONTENT_Y = 100
+local grid = Instance.new("ScrollingFrame")
+grid.Position = UDim2.fromOffset(14, CONTENT_Y); grid.Size = UDim2.new(1, -28, 1, -(CONTENT_Y + 14))
+grid.BackgroundTransparency = 1; grid.BorderSizePixel = 0; grid.ScrollBarThickness = 6
+grid.CanvasSize = UDim2.new(); grid.AutomaticCanvasSize = Enum.AutomaticSize.Y; grid.Parent = panel
+local gridLayout = Instance.new("UIGridLayout")
+gridLayout.CellSize = UDim2.fromOffset(112, 104); gridLayout.CellPadding = UDim2.fromOffset(10, 10); gridLayout.Parent = grid
 
-local content = Instance.new("Frame")
-content.Position = UDim2.fromOffset(178, 52); content.Size = UDim2.fromOffset(566, 400)
-content.BackgroundColor3 = UITheme.Darker(UITheme.PANEL, 0.3); content.BackgroundTransparency = 0.15; content.BorderSizePixel = 0
-content.Parent = panel; corner(content, 12)
+local detail = UITheme.Panel(panel, "Detail", { color = UITheme.PANEL2, radius = 6, studsAlpha = 0.75 })
+detail.AnchorPoint = Vector2.new(1, 0)
+detail.Position = UDim2.new(1, -14, 0, CONTENT_Y)
+detail.Size = UDim2.fromOffset(DETAIL_W, PANEL_H - CONTENT_Y - 14)
+detail.Visible = false
 
-local potionsTab = Instance.new("Frame")
-potionsTab.Size = UDim2.fromScale(1, 1); potionsTab.BackgroundTransparency = 1; potionsTab.Parent = content
-local weaponsTab = Instance.new("Frame")
-weaponsTab.Size = UDim2.fromScale(1, 1); weaponsTab.BackgroundTransparency = 1; weaponsTab.Visible = false; weaponsTab.Parent = content
-local casesTab = Instance.new("Frame")
-casesTab.Size = UDim2.fromScale(1, 1); casesTab.BackgroundTransparency = 1; casesTab.Visible = false; casesTab.Parent = content
-
-local function tabHint(parent, text)
-	local l = Instance.new("TextLabel")
-	l.Position = UDim2.fromOffset(14, 10); l.Size = UDim2.new(1, -28, 0, 18); l.BackgroundTransparency = 1
-	l.FontFace = UITheme.BodyBoldFace; l.TextSize = 13; l.TextXAlignment = Enum.TextXAlignment.Left
-	l.TextColor3 = Color3.fromRGB(170, 180, 195); l.Text = text; l.Parent = parent
-	return l
-end
-
-local function tabScroll(parent, y, cellW, cellH)
-	local scroll = Instance.new("ScrollingFrame")
-	scroll.Position = UDim2.fromOffset(14, y); scroll.Size = UDim2.new(1, -28, 1, -(y + 12))
-	scroll.BackgroundTransparency = 1; scroll.BorderSizePixel = 0; scroll.ScrollBarThickness = 6
-	scroll.CanvasSize = UDim2.new(); scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; scroll.Parent = parent
-	local grid = Instance.new("UIGridLayout")
-	grid.CellSize = UDim2.fromOffset(cellW, cellH); grid.CellPadding = UDim2.fromOffset(10, 10); grid.Parent = scroll
-	return scroll
-end
-
-local function clearScroll(scroll)
-	for _, c in scroll:GetChildren() do
-		if c:IsA("GuiObject") then c:Destroy() end
+local function layoutContent()
+	if selected then
+		grid.Size = UDim2.new(1, -(28 + DETAIL_W + 10), 1, -(CONTENT_Y + 14))
+		detail.Visible = true
+	else
+		grid.Size = UDim2.new(1, -28, 1, -(CONTENT_Y + 14))
+		detail.Visible = false
 	end
 end
 
--- Rarity-bar card (same look as the lobby's weapon cards).
-local function card(parent, name, subtitle, color, highlight)
-	local f = Instance.new("TextButton")
-	f.BackgroundColor3 = color:Lerp(BLACK, 0.55); f.AutoButtonColor = false; f.Text = ""
-	f.BorderSizePixel = 0; f.Parent = parent
-	corner(f, 8)
-	local st = Instance.new("UIStroke"); st.Color = highlight and ACCENT or color
-	st.Thickness = highlight and 2.5 or 1.2; st.Transparency = highlight and 0 or 0.35; st.Parent = f
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = color; bar.BorderSizePixel = 0; bar.Parent = f
-	local nm = Instance.new("TextLabel")
-	nm.Position = UDim2.fromOffset(4, 22); nm.Size = UDim2.new(1, -8, 0, 24); nm.BackgroundTransparency = 1
-	nm.FontFace = UITheme.BodyBoldFace; nm.TextSize = 14; nm.TextColor3 = TEXT; nm.Text = name; nm.TextScaled = true; nm.Parent = f
-	local sub = Instance.new("TextLabel")
-	sub.Position = UDim2.fromOffset(4, 52); sub.Size = UDim2.new(1, -8, 0, 16); sub.BackgroundTransparency = 1
-	sub.FontFace = UITheme.BodyFace; sub.TextSize = 12; sub.TextColor3 = color; sub.Text = subtitle or ""; sub.TextScaled = true; sub.Parent = f
-	return f
-end
-
--- ---------- POTIONS TAB (interactive) ----------
-tabHint(potionsTab, "POTIONS — timed buffs that STACK: same potion extends its timer, tiers add together.")
-local potionsScroll = tabScroll(potionsTab, 36, 160, 152)
-
--- Live "active buff" state: seeded by the snapshot, kept exact by PotionBuffsChanged pushes.
+-- ===== LIVE POTION-BUFF STATE =====
 local activeUntil = {} -- [potionId] = os.clock() when that potion's own buff ends
-
 local function idActive(potId)
 	return potId and activeUntil[potId] ~= nil and activeUntil[potId] > os.clock()
 end
 
+-- ===== CARDS =====
+local function clearChildren(container)
+	for _, c in container:GetChildren() do
+		if c:IsA("GuiObject") then c:Destroy() end
+	end
+end
+
+local render -- forward decl
+
+local function select(kind, id)
+	if selected and selected.kind == kind and selected.id == id then
+		selected = nil -- clicking the selected card closes the pane
+	else
+		selected = { kind = kind, id = id }
+	end
+	render()
+end
+
+-- A compact square card: rarity bar, name, corner count/level chip. Click = select.
+local function card(parent, opts)
+	local col = opts.color
+	local isSel = selected and selected.kind == opts.kind and selected.id == opts.id
+	local f = Instance.new("TextButton")
+	f.BackgroundColor3 = col:Lerp(UITheme.BG, 0.62); f.AutoButtonColor = true; f.Text = ""
+	f.BorderSizePixel = 0; f.LayoutOrder = opts.order or 0; f.Parent = parent
+	UITheme.Corner(f, 6)
+	UITheme.Edge(f, isSel and UITheme.TOXIC or UITheme.BLACK, 2)
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; bar.Parent = f
+	local nm = Instance.new("TextLabel")
+	nm.Position = UDim2.fromOffset(6, 14); nm.Size = UDim2.new(1, -12, 0, 40); nm.BackgroundTransparency = 1
+	nm.FontFace = UITheme.BodyBoldFace; nm.TextSize = 12; nm.TextWrapped = true
+	nm.TextColor3 = UITheme.TEXT; nm.Text = opts.name; nm.Parent = f
+	-- PHOTO SLOT: catalog entries with an `image` id show it on the card.
+	if typeof(opts.image) == "string" and opts.image ~= "" then
+		local img = Instance.new("ImageLabel")
+		img.AnchorPoint = Vector2.new(0.5, 1); img.Position = UDim2.new(0.5, 0, 1, -24)
+		img.Size = UDim2.fromOffset(64, 44); img.BackgroundTransparency = 1
+		img.Image = opts.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = f
+	end
+	if opts.chip then
+		local chip = Instance.new("TextLabel")
+		chip.AnchorPoint = Vector2.new(1, 1); chip.Position = UDim2.new(1, -6, 1, -6)
+		chip.Size = UDim2.fromOffset(44, 16); chip.BackgroundColor3 = UITheme.Darker(col, 0.7); chip.BorderSizePixel = 0
+		chip.FontFace = UITheme.BodyBoldFace; chip.TextSize = 10; chip.TextColor3 = col; chip.Text = opts.chip; chip.Parent = f
+		UITheme.Corner(chip, 3)
+	end
+	if opts.tag then -- e.g. EQUIPPED
+		local tag = Instance.new("TextLabel")
+		tag.Position = UDim2.fromOffset(6, 58); tag.Size = UDim2.new(1, -12, 0, 14); tag.BackgroundTransparency = 1
+		tag.FontFace = UITheme.TitleFace; tag.TextSize = 10; tag.TextXAlignment = Enum.TextXAlignment.Left
+		tag.TextColor3 = UITheme.TOXIC; tag.Text = opts.tag; tag.Parent = f
+	end
+	f.Activated:Connect(function()
+		select(opts.kind, opts.id)
+	end)
+	return f
+end
+
+local function emptyNote(textStr)
+	local msg = Instance.new("TextLabel")
+	msg.Size = UDim2.fromOffset(480, 40); msg.BackgroundTransparency = 1; msg.FontFace = UITheme.BodyBoldFace
+	msg.TextSize = 14; msg.TextColor3 = UITheme.DIM
+	msg.Text = textStr; msg.Parent = grid
+end
+
+-- ===== DETAIL PANE =====
+local function renderDetail()
+	clearChildren(detail)
+	if not selected or not data then
+		return
+	end
+	local kind, id = selected.kind, selected.id
+
+	local dClose = Instance.new("TextButton")
+	dClose.AnchorPoint = Vector2.new(1, 0); dClose.Position = UDim2.new(1, -6, 0, 6); dClose.Size = UDim2.fromOffset(24, 24)
+	dClose.BackgroundTransparency = 1; dClose.FontFace = UITheme.BodyBoldFace; dClose.TextSize = 14
+	dClose.TextColor3 = UITheme.DIM; dClose.Text = "✕"; dClose.Parent = detail
+	dClose.Activated:Connect(function()
+		selected = nil
+		render()
+	end)
+
+	local function bigTitle(textStr, col)
+		local t = Instance.new("TextLabel")
+		t.Position = UDim2.fromOffset(14, 14); t.Size = UDim2.new(1, -44, 0, 44); t.BackgroundTransparency = 1
+		t.FontFace = UITheme.TitleFace; t.TextSize = 19; t.TextWrapped = true
+		t.TextXAlignment = Enum.TextXAlignment.Left; t.TextColor3 = col or UITheme.TEXT; t.Text = textStr; t.Parent = detail
+		return t
+	end
+	local function line(y, textStr, col, size)
+		local l = Instance.new("TextLabel")
+		l.Position = UDim2.fromOffset(14, y); l.Size = UDim2.new(1, -28, 0, 40); l.BackgroundTransparency = 1
+		l.FontFace = UITheme.BodyFace; l.TextSize = size or 12; l.TextWrapped = true
+		l.TextXAlignment = Enum.TextXAlignment.Left; l.TextYAlignment = Enum.TextYAlignment.Top
+		l.TextColor3 = col or UITheme.TEXT; l.Text = textStr; l.Parent = detail
+		return l
+	end
+
+	if kind == "potion" then
+		local disp = data.catalog.potions[id]
+		if not disp then return end
+		local col = rarityColor(disp.rarity)
+		bigTitle(disp.name, col)
+		line(62, disp.desc or "", UITheme.TEXT, 13)
+		line(108, ("You have: x%d"):format(data.potions[id] or 0), UITheme.DIM)
+		line(134, "Same potion again = EXTENDS its timer.\nOther tiers stack on top.", UITheme.DIM, 11)
+		local use = UITheme.Button(detail, idActive(id) and "EXTEND" or "USE", "primary")
+		use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -12); use.Size = UDim2.new(1, -28, 0, 40)
+		use.Activated:Connect(function()
+			Remotes.Get("ConsumePotion"):FireServer(id)
+		end)
+	elseif kind == "weapon" then
+		local w = data.catalog.weapons[id]
+		if not w then return end
+		local col = rarityColor(w.rarity)
+		local lv = (data.gunLevels or {})[id] or 1
+		bigTitle(w.name, col)
+		line(62, ((data.catalog.rarities[w.rarity] or {}).name or "") .. "  ·  LV " .. lv, col, 13)
+		line(88, ("Damage %s%s\nFire rate %s/s\nRange %s"):format(
+			tostring(w.damage or "?"), w.pellets and (" ×" .. w.pellets) or "",
+			tostring(w.fireRate or "?"), tostring(w.range or "?")), UITheme.TEXT, 12)
+		local inLoadout = (id == data.loadout[1]) or (id == data.loadout[2])
+		if inLoadout then
+			line(150, "EQUIPPED", UITheme.TOXIC, 13)
+		end
+		local note = UITheme.Button(detail, "EQUIP + UPGRADE IN LOBBY", "ghost")
+		note.AnchorPoint = Vector2.new(0.5, 1); note.Position = UDim2.new(0.5, 0, 1, -12); note.Size = UDim2.new(1, -28, 0, 36)
+		note.AutoButtonColor = false
+		note.TextSize = 11
+	elseif kind == "case" then
+		local disp = data.catalog.cases[id]
+		if not disp then return end
+		local col = rarityColor(id)
+		bigTitle(disp.name, col)
+		line(62, ("You have: x%d"):format(data.cases[id] or 0), UITheme.TEXT, 13)
+		line(90, "Cases hold GUN COPIES — stack copies to\nlevel your guns up.", UITheme.DIM, 11)
+		local note = UITheme.Button(detail, "OPEN IN THE LOBBY", "ghost")
+		note.AnchorPoint = Vector2.new(0.5, 1); note.Position = UDim2.new(0.5, 0, 1, -12); note.Size = UDim2.new(1, -28, 0, 36)
+		note.AutoButtonColor = false
+		note.TextSize = 11
+	end
+end
+
+-- ===== GRID RENDERS =====
 local function renderPotions()
-	clearScroll(potionsScroll)
 	local any = false
-	-- Rarity-major order (common → divine), damage before regen inside each tier.
+	local order = 0
 	for _, rarity in data.catalog.rarityOrder do
 		for _, ptype in { "damage", "regen" } do
 			local potId = ptype .. "_" .. rarity
@@ -186,120 +281,73 @@ local function renderPotions()
 			local count = disp and (data.potions[potId] or 0) or 0
 			if disp and count > 0 then
 				any = true
-				local col = rarityColor(disp.rarity)
-				local f = card(potionsScroll, disp.name, "x" .. count, col, false)
-				-- The effect line — what this potion actually gives you.
-				local desc = Instance.new("TextLabel")
-				desc.Position = UDim2.fromOffset(6, 72); desc.Size = UDim2.new(1, -12, 0, 30); desc.BackgroundTransparency = 1
-				desc.FontFace = UITheme.BodyFace; desc.TextSize = 12; desc.TextColor3 = Color3.fromRGB(190, 195, 210)
-				desc.Text = disp.desc or ""; desc.TextWrapped = true; desc.Parent = f
-				local use = Instance.new("TextButton")
-				use.AnchorPoint = Vector2.new(0.5, 1); use.Position = UDim2.new(0.5, 0, 1, -8); use.Size = UDim2.new(1, -20, 0, 32)
-				use.FontFace = UITheme.BodyBoldFace; use.TextSize = 14; use.BorderSizePixel = 0; use.Parent = f; corner(use, 8)
-				-- Always drinkable: a running one EXTENDS its own timer, other tiers stack on top.
-				use.BackgroundColor3 = ACCENT; use.TextColor3 = Color3.fromRGB(15, 25, 15)
-				use.Text = idActive(potId) and "EXTEND" or "USE"
-				use.Activated:Connect(function()
-					Remotes.Get("ConsumePotion"):FireServer(potId)
-				end)
+				order += 1
+				card(grid, {
+					kind = "potion", id = potId, name = disp.name, color = rarityColor(disp.rarity),
+					chip = "x" .. count, order = order,
+					tag = idActive(potId) and "ACTIVE" or nil, image = disp.image,
+				})
 			end
 		end
 	end
 	if not any then
-		local msg = Instance.new("TextLabel")
-		msg.Size = UDim2.fromOffset(520, 40); msg.BackgroundTransparency = 1; msg.FontFace = UITheme.BodyBoldFace
-		msg.TextSize = 15; msg.TextColor3 = TEXT_DIM
-		msg.Text = "No potions yet — kill glowing ELITE zombies to earn them."; msg.Parent = potionsScroll
+		emptyNote("No potions yet — kill glowing ELITE zombies to earn them.")
 	end
-end
-
--- ---------- WEAPONS TAB (view-only: 2 equip slots on top + owned guns below) ----------
-tabHint(weaponsTab, "YOUR LOADOUT — change it in the lobby")
-local slotsRow = Instance.new("Frame")
-slotsRow.Position = UDim2.fromOffset(14, 34); slotsRow.Size = UDim2.new(1, -28, 0, 92); slotsRow.BackgroundTransparency = 1; slotsRow.Parent = weaponsTab
-local slotsList = Instance.new("UIListLayout")
-slotsList.FillDirection = Enum.FillDirection.Horizontal; slotsList.Padding = UDim.new(0, 10); slotsList.Parent = slotsRow
-local ownedHintW = tabHint(weaponsTab, "ALL YOUR GUNS")
-ownedHintW.Position = UDim2.fromOffset(14, 136)
-local weaponsScroll = tabScroll(weaponsTab, 160, 122, 92)
-
-local function weaponSub(id)
-	local w = data.catalog.weapons[id]
-	local r = data.catalog.rarities[w.rarity]
-	local lv = (data.gunLevels or {})[id] or 1
-	return ("Lv %d · %s"):format(lv, r and r.name or "")
 end
 
 local function renderWeapons()
-	for _, c in slotsRow:GetChildren() do
-		if c:IsA("GuiObject") then c:Destroy() end
-	end
-	clearScroll(weaponsScroll)
-
-	for slot = 1, 2 do
-		local id = data.loadout[slot]
-		local w = id and data.catalog.weapons[id]
-		local holder
-		if w then
-			holder = card(slotsRow, w.name, ("SLOT %d · Lv %d"):format(slot, (data.gunLevels or {})[id] or 1), rarityColor(w.rarity), true)
-		else
-			holder = card(slotsRow, "Empty", "SLOT " .. slot, Color3.fromRGB(90, 95, 108), false)
-		end
-		holder.Size = UDim2.fromOffset(150, 92)
-		holder.LayoutOrder = slot
-	end
-
+	local order = 0
 	for _, id in data.owned do
 		local w = data.catalog.weapons[id]
 		if w then
+			order += 1
 			local inLoadout = (id == data.loadout[1]) or (id == data.loadout[2])
-			card(weaponsScroll, w.name, inLoadout and "EQUIPPED" or weaponSub(id), rarityColor(w.rarity), inLoadout)
+			card(grid, {
+				kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity),
+				chip = "LV " .. ((data.gunLevels or {})[id] or 1), order = order,
+				tag = inLoadout and "EQUIPPED" or nil, image = w.image,
+			})
 		end
 	end
 end
 
--- ---------- CASES TAB (view-only) ----------
-tabHint(casesTab, "YOUR CASES — open them in the lobby. A case drops for everyone every 10 waves!")
-local casesScroll = tabScroll(casesTab, 36, 160, 110)
-
 local function renderCases()
-	clearScroll(casesScroll)
 	local any = false
+	local order = 0
 	for _, rarity in data.catalog.rarityOrder do
 		local disp = data.catalog.cases[rarity]
 		local count = data.cases[rarity] or 0
 		if disp and count > 0 then
 			any = true
-			card(casesScroll, disp.name, "x" .. count, rarityColor(rarity), false)
+			order += 1
+			card(grid, { kind = "case", id = rarity, name = disp.name, color = rarityColor(rarity), chip = "x" .. count, order = order, image = disp.image })
 		end
 	end
 	if not any then
-		local msg = Instance.new("TextLabel")
-		msg.Size = UDim2.fromOffset(520, 40); msg.BackgroundTransparency = 1; msg.FontFace = UITheme.BodyBoldFace
-		msg.TextSize = 15; msg.TextColor3 = TEXT_DIM
-		msg.Text = "No cases yet — clear wave 10 and beyond to earn them!"; msg.Parent = casesScroll
+		emptyNote("No cases yet — kill BOSSES (every 10th wave) to earn them!")
 	end
 end
 
--- ===== TABS =====
-local function render()
+-- ===== RENDER =====
+render = function()
 	if not data then return end
-	for id, b in navBtns do
+	for id, b in tabBtns do
 		local on = (id == activeTab)
-		b.BackgroundColor3 = on and ACCENT or CARD
-		b.TextColor3 = on and Color3.fromRGB(15, 25, 15) or TEXT
+		b.TextColor3 = on and UITheme.TEXT or UITheme.DIM
+		b.Under.Visible = on
 	end
-	potionsTab.Visible = (activeTab == "potions")
-	weaponsTab.Visible = (activeTab == "weapons")
-	casesTab.Visible = (activeTab == "cases")
+	clearChildren(grid)
+	layoutContent()
 	if activeTab == "potions" then renderPotions()
 	elseif activeTab == "weapons" then renderWeapons()
 	else renderCases() end
+	renderDetail()
 end
 
-for id, b in navBtns do
+for id, b in tabBtns do
 	b.Activated:Connect(function()
 		activeTab = id
+		selected = nil -- switching tabs closes the pane
 		render()
 	end)
 end
@@ -313,10 +361,11 @@ function GameInventoryController.IsOpen(): boolean
 	return panel.Visible
 end
 
--- Open/close the panel (called by the hotbar's INVENTORY button). Always lands on the Potions tab.
+-- Open/close the panel (called by the hotbar's ITEMS button). Always lands on the Potions tab.
 function GameInventoryController.Toggle()
 	Remotes.Get("InvSnapshot"):FireServer() -- request a fresh snapshot
 	activeTab = "potions"
+	selected = nil
 	panel.Visible = not panel.Visible
 	if panel.Visible then
 		render()
@@ -338,7 +387,7 @@ function GameInventoryController.Start()
 			if panel.Visible then render() end
 		end
 	end)
-	-- Live buff pushes: re-render the potions tab so USE/ACTIVE flips the moment a buff starts or ends.
+	-- Live buff pushes: re-render so USE/EXTEND and the ACTIVE tags flip the moment a buff starts or ends.
 	Remotes.Get("PotionBuffsChanged").OnClientEvent:Connect(function(list)
 		activeUntil = {}
 		if typeof(list) == "table" then
@@ -358,10 +407,10 @@ function GameInventoryController.Start()
 	end)
 	Remotes.Get("CaseDropped").OnClientEvent:Connect(function(rarity)
 		local disp = data and data.catalog.cases[rarity]
-		showToast("Wave reward: " .. (disp and disp.name or "a case") .. "!", rarityColor(rarity))
+		showToast("Boss reward: " .. (disp and disp.name or "a case") .. "!", rarityColor(rarity))
 	end)
 	Remotes.Get("InvSnapshot"):FireServer() -- ask for our snapshot on start
-	print("[GameInventoryController] started (potions-first inventory)")
+	print("[GameInventoryController] started (tabbed inventory + detail pane)")
 end
 
 return GameInventoryController

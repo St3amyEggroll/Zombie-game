@@ -65,6 +65,7 @@ local CATALOG = {
 			t[id] = {
 				name = w.name, tier = w.tier, rarity = WEAPON_RARITY[id] or "common",
 				damage = w.damage, fireRate = w.fireRate, range = w.range, pellets = w.pellets,
+				image = w.image, -- photo slot: set image = "rbxassetid://..." in WeaponConfig to show it
 			}
 		end
 		return t
