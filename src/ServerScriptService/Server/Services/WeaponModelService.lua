@@ -49,10 +49,8 @@ local HELD_NAME = "HeldWeapon"
 local templates: { [string]: Model } = {}  -- weaponId -> Model
 local templatesFolder: Folder
 
--- Per-player held-weapon state for recoil + animations.
+-- Per-player held-weapon state for recoil.
 local held: { [number]: any } = {}              -- userId -> { weld, baseC0 }
-local charHoldTrack: { [number]: AnimationTrack } = {}  -- userId -> looping hold pose
-local animCache: { [string]: Animation } = {}   -- animId -> Animation instance
 
 -- Resolve a model name to a weaponId by matching either the id ("pistol") OR the display name ("m1911"
 -- for the M1911, "ak47"/"ak-47" for the AK-47), case/space/dash-insensitive. So you can name a gun model
@@ -85,63 +83,17 @@ local function clearHeld(character: Model)
 end
 
 -- ===== ANIMATION / RECOIL =====
-local function getAnim(id: string): Animation
-	local a = animCache[id]
-	if not a then
-		a = Instance.new("Animation")
-		a.AnimationId = id
-		animCache[id] = a
-	end
-	return a
-end
-
-local function getAnimator(character: Model): Animator?
-	local hum = character:FindFirstChildOfClass("Humanoid")
-	if not hum then
-		return nil
-	end
-	local animator = hum:FindFirstChildOfClass("Animator")
-	if not animator then
-		animator = Instance.new("Animator")
-		animator.Parent = hum
-	end
-	return animator
-end
-
--- Loop the weapon's "hold" pose on the character (ID-gated; no-op if not configured).
+-- The hold pose is PLAYED BY EACH CLIENT (CharacterAnimController): the server only stamps WHAT to
+-- play as an attribute on the character. Local playback has no replication rules to satisfy — it shows
+-- for everyone no matter who created the Animator, which server-side playback silently depends on.
 local function playHold(player: Player, weaponId: string)
-	local prev = charHoldTrack[player.UserId]
-	if prev then
-		prev:Stop(0.1)
-		charHoldTrack[player.UserId] = nil
+	local character = player.Character
+	if not character then
+		return
 	end
 	local cfg = AnimationConfig.Weapons[weaponId]
 	local id = cfg and AnimationConfig.Resolve(cfg.Hold)
-	local character = player.Character
-	local animator = id and character and getAnimator(character)
-	if not animator then
-		return
-	end
-	local ok, track = pcall(function()
-		return animator:LoadAnimation(getAnim(id))
-	end)
-	if not ok or not track then
-		warn(("[WeaponModelService] hold animation %s failed to load: %s"):format(tostring(id), tostring(track)))
-		return
-	end
-	track.Looped = true
-	track.Priority = Enum.AnimationPriority.Action
-	track:Play(0.1)
-	charHoldTrack[player.UserId] = track
-	print(("[WeaponModelService] playing hold %s for %s (%s)"):format(id, player.Name, weaponId))
-	-- Diagnose the silent-failure cases: an animation made on the WRONG RIG TYPE (R6 pose on an R15
-	-- character, or a custom rig) loads fine but has nothing it can move — Length stays 0.
-	task.delay(1, function()
-		if charHoldTrack[player.UserId] == track and track.Length <= 0 then
-			warn(("[WeaponModelService] hold animation %s loaded but moves nothing — was it animated on "
-				.. "the same rig type as the players (R15 vs R6)?"):format(tostring(id)))
-		end
-	end)
+	character:SetAttribute("HoldAnimId", id) -- nil clears the pose
 end
 
 -- Procedural gun recoil: kick the hand→handle weld and tween it back. Server-side so everyone sees it.
@@ -359,7 +311,6 @@ function WeaponModelService.Start()
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		held[player.UserId] = nil
-		charHoldTrack[player.UserId] = nil
 	end)
 	for _, player in Players:GetPlayers() do
 		if player.Character then
