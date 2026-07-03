@@ -133,6 +133,7 @@ local function playHold(player: Player, weaponId: string)
 	track.Priority = Enum.AnimationPriority.Action
 	track:Play(0.1)
 	charHoldTrack[player.UserId] = track
+	print(("[WeaponModelService] playing hold %s for %s (%s)"):format(id, player.Name, weaponId))
 	-- Diagnose the silent-failure cases: an animation made on the WRONG RIG TYPE (R6 pose on an R15
 	-- character, or a custom rig) loads fine but has nothing it can move — Length stays 0.
 	task.delay(1, function()
@@ -335,11 +336,24 @@ function WeaponModelService.Start()
 	scanAssets()
 	CollectionService:GetInstanceAddedSignal("WeaponModel"):Connect(registerTemplate)
 
+	-- ANIMATOR REPLICATION RULE: a track played on the server only replicates to clients if its
+	-- Animator was created ON THE SERVER before the client's Animate script spun up its own. Creating
+	-- it lazily at equip time (what we did before) silently plays hold poses into the void — so make
+	-- one the instant every character spawns.
+	local function ensureAnimator(character: Model)
+		local hum = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
+		if hum and not hum:FindFirstChildOfClass("Animator") then
+			local animator = Instance.new("Animator")
+			animator.Parent = hum
+		end
+	end
+
 	-- Re-attach on equip changes and on (re)spawn.
 	CombatService.Equipped:Connect(attach)
 	CombatService.Fired:Connect(recoil)
 	Players.PlayerAdded:Connect(function(player)
-		player.CharacterAdded:Connect(function()
+		player.CharacterAdded:Connect(function(character)
+			ensureAnimator(character)
 			task.defer(attach, player)
 		end)
 	end)
@@ -349,6 +363,7 @@ function WeaponModelService.Start()
 	end)
 	for _, player in Players:GetPlayers() do
 		if player.Character then
+			ensureAnimator(player.Character)
 			task.defer(attach, player)
 		end
 	end
