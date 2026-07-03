@@ -23,6 +23,7 @@ local Remotes = require(Modules.Remotes)
 local CameraController = require(script.Parent.CameraController)
 local AimController = require(script.Parent.AimController)
 local AutoShootController = require(script.Parent.AutoShootController)
+local SoundController = require(script.Parent.SoundController)
 
 local InputController = {}
 
@@ -85,6 +86,7 @@ local function fireShot(weapon)
 		return false
 	end
 	Remotes.Get("FireWeapon"):FireServer(equipped, origin, direction)
+	SoundController.Play("Fire_" .. equipped) -- instant local gunshot (others hear it via ShotFired)
 	firedEvent:Fire(equipped)
 	-- Even spacing with no drift: extend from the previous slot unless we've fallen behind a full interval.
 	local interval = shotInterval(weapon)

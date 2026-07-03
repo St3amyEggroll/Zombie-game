@@ -5,6 +5,9 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -16,6 +19,7 @@ local ZoneLeave = remotes:WaitForChild("ZoneLeave")
 local FinalizeParty = remotes:WaitForChild("FinalizeParty")
 local LeaveParty = remotes:WaitForChild("LeaveParty")
 local PartyStatus = remotes:WaitForChild("PartyStatus")
+local SetSoundSettings = remotes:WaitForChild("SetSoundSettings")
 
 -- ===== THEME (synced copy of the game's UITheme — gritty apocalypse; change there, mirror here) =====
 -- FONTS: paste the same Creator Store family ids as src/.../UITheme.lua FONT_IDS. Blank = fallbacks.
@@ -119,6 +123,84 @@ local function cap(s)
 end
 local function corner(o, r)
 	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = o
+end
+
+-- =====================================================================================================
+-- ===== SOUND ===== paste asset ids below ("123" or "rbxassetid://123"). Blank = that slot is silent.
+-- The game place has its own (bigger) list in ReplicatedStorage/Shared/Config/SoundConfig.lua.
+-- =====================================================================================================
+local SOUND_IDS = {
+	Music         = "", -- lobby background loop [chill dark ambient loop]
+	Click         = "", -- any button [ui click]
+	Open          = "", -- panel opens [ui whoosh open]
+	Close         = "", -- panel closes [ui whoosh close]
+	Error         = "", -- failed action [error buzz]
+	Buy           = "", -- shop purchase [cash register / coin spend]
+	Upgrade       = "", -- gun level-up [upgrade success / power up]
+	Equip         = "", -- weapon slotted [weapon equip click]
+	ReelTick      = "", -- each case-reel tile passing [tick]
+	RevealLow     = "", -- common/uncommon/rare pull [small reward sting]
+	RevealHigh    = "", -- epic/legendary pull [big reward sting]
+	RevealJackpot = "", -- mythic/divine or NEW GUN [jackpot fanfare]
+	TeleportGo    = "", -- party countdown ends [teleport whoosh]
+}
+local SOUND_VOL = { -- base volume per slot (before the sliders)
+	Music = 0.45, Click = 0.4, ReelTick = 0.35, RevealJackpot = 0.8,
+}
+
+local volMaster, volMusic, volSfx = 1, 0.6, 1
+local volTouched = false -- true once the player moves a slider (server echoes stop overriding)
+
+local function soundAsset(raw)
+	if raw == "" then return "" end
+	if string.find(raw, "://") then return raw end
+	return "rbxassetid://" .. raw
+end
+
+local function lplay(name, pitch)
+	local id = SOUND_IDS[name]
+	if not id or id == "" then return end
+	local s = Instance.new("Sound")
+	s.SoundId = soundAsset(id)
+	s.Volume = (SOUND_VOL[name] or 0.5) * volMaster * volSfx
+	if pitch then s.PlaybackSpeed = pitch end
+	s.Parent = SoundService
+	s.Ended:Once(function() s:Destroy() end)
+	task.delay(15, function() if s.Parent then s:Destroy() end end)
+	s:Play()
+end
+
+local lobbyMusic = nil
+local function applySoundVol()
+	if lobbyMusic then
+		lobbyMusic.Volume = (SOUND_VOL.Music or 0.45) * volMaster * volMusic
+	end
+end
+if SOUND_IDS.Music ~= "" then
+	lobbyMusic = Instance.new("Sound")
+	lobbyMusic.SoundId = soundAsset(SOUND_IDS.Music)
+	lobbyMusic.Looped = true
+	lobbyMusic.Parent = SoundService
+	applySoundVol()
+	lobbyMusic:Play()
+end
+
+-- Every button in every lobby gui clicks — no per-button wiring. Opt out: SetAttribute("NoClickSound", true).
+playerGui.DescendantAdded:Connect(function(inst)
+	if inst:IsA("GuiButton") and not inst:GetAttribute("NoClickSound") then
+		inst.Activated:Connect(function() lplay("Click") end)
+	end
+end)
+
+-- Debounced slider save -> shared profile (settings.vol), same field the game place reads.
+local volSaveAt = 0
+local function queueVolSave()
+	volSaveAt = os.clock() + 0.6
+	task.delay(0.65, function()
+		if os.clock() >= volSaveAt then
+			SetSoundSettings:FireServer({ master = volMaster, music = volMusic, sfx = volSfx })
+		end
+	end)
 end
 
 -- ===== BUILD =====
@@ -319,6 +401,12 @@ end
 local saveWarn = nil -- the profile-failed-to-load banner (built once, stays up all session)
 StatsRemote.OnClientEvent:Connect(function(s)
 	if typeof(s) ~= "table" then return end
+	if not volTouched and typeof(s.settings) == "table" and typeof(s.settings.vol) == "table" then
+		volMaster = math.clamp(tonumber(s.settings.vol.master) or volMaster, 0, 1)
+		volMusic = math.clamp(tonumber(s.settings.vol.music) or volMusic, 0, 1)
+		volSfx = math.clamp(tonumber(s.settings.vol.sfx) or volSfx, 0, 1)
+		applySoundVol()
+	end
 	moneyLabel.Text = fmt(s.lobbyMoney or 0)
 	bestLabel.Text = "BEST: WAVE " .. tostring(s.bestWave or 0)
 	-- keep the (future) coin icon hugging the number's left edge
@@ -370,8 +458,14 @@ ZoneLeave.OnClientEvent:Connect(function()
 	status.Text = ""
 end)
 
+local lastPartySeconds = math.huge
 PartyStatus.OnClientEvent:Connect(function(info)
 	if typeof(info) ~= "table" then return end
+	local secs = tonumber(info.seconds) or 0
+	if secs <= 1 and lastPartySeconds > 1 then
+		lplay("TeleportGo")
+	end
+	lastPartySeconds = secs
 	if zoneMode == "party" then
 		leaveStatus.Text = ("PARTY %d/%d  ·  STARTING IN %ds"):format(info.count or 1, info.size or 1, info.seconds or 0)
 	end
@@ -697,10 +791,10 @@ local function renderInvDetail()
 		local eq2 = paneButton(inS2 and "IN SLOT 2" or "EQUIP SLOT 2", GHOSTA, GHOSTB, inS2 and ACCENT or TEXTCOL)
 		eq2.AnchorPoint = Vector2.new(1, 0); eq2.Position = UDim2.new(1, -14, 0, 182); eq2.Size = UDim2.new(0.5, -20, 0, 46)
 		eq1.Activated:Connect(function()
-			if not inS1 then EquipSlot:FireServer({ slot = 1, weaponId = id }) end
+			if not inS1 then lplay("Equip"); EquipSlot:FireServer({ slot = 1, weaponId = id }) end
 		end)
 		eq2.Activated:Connect(function()
-			if not inS2 then EquipSlot:FireServer({ slot = 2, weaponId = id }) end
+			if not inS2 then lplay("Equip"); EquipSlot:FireServer({ slot = 2, weaponId = id }) end
 		end)
 
 		if need then
@@ -710,6 +804,7 @@ local function renderInvDetail()
 			if canCopies and canCoins then
 				up = paneButton(("UPGRADE  ·  🪙 %s"):format(fmt(cost or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
 				up.Activated:Connect(function()
+					lplay("Upgrade")
 					UpgradeGun:FireServer({ weaponId = id })
 				end)
 			else
@@ -955,6 +1050,14 @@ playReel = function(caseId, wonId, res)
 			resultLabel.Text = ("+%d %s copies"):format(copies, gunName)
 		end
 		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = ACCENT; reelBtn.TextColor3 = Color3.fromRGB(14, 22, 6)
+		local r = info and info.rarity or "common"
+		if res.unlocked or r == "mythic" or r == "divine" then
+			lplay("RevealJackpot")
+		elseif r == "epic" or r == "legendary" then
+			lplay("RevealHigh")
+		else
+			lplay("RevealLow")
+		end
 	end
 
 	activeTween = TweenService:Create(strip, TweenInfo.new(4.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.fromOffset(target, 0) })
@@ -962,6 +1065,21 @@ playReel = function(caseId, wonId, res)
 		finishReel()
 	end)
 	activeTween:Play()
+
+	-- Tick as tiles sweep past the pointer (self-disconnects at reveal).
+	local lastTickIdx = math.floor(-strip.Position.X.Offset / STEP)
+	local tickConn
+	tickConn = RunService.RenderStepped:Connect(function()
+		if revealed then
+			tickConn:Disconnect()
+			return
+		end
+		local idx = math.floor(-strip.Position.X.Offset / STEP)
+		if idx ~= lastTickIdx then
+			lastTickIdx = idx
+			lplay("ReelTick", 0.95 + math.random() * 0.1)
+		end
+	end)
 end
 
 reelBtn.Activated:Connect(function()
@@ -990,6 +1108,7 @@ end
 
 -- ===== OPEN / CLOSE + REMOTE WIRING =====
 local function openInventory()
+	lplay("Open")
 	InvRequest:FireServer()
 	showTab(activeTab)
 	renderActive()
@@ -999,6 +1118,7 @@ invBtn.Activated:Connect(openInventory)
 invClose.Activated:Connect(function()
 	if rolling then return end -- don't close mid-open
 	hideTip()
+	lplay("Close")
 	invPanel.Visible = false
 end)
 
@@ -1013,6 +1133,7 @@ end)
 CaseResult.OnClientEvent:Connect(function(res)
 	rollToken += 1 -- a reply arrived; disarm the watchdog
 	if typeof(res) ~= "table" or res.failed or not res.caseId then
+		lplay("Error")
 		rolling = false
 		if invPanel.Visible then
 			renderActive() -- restore any "..." button state
@@ -1256,12 +1377,14 @@ local function renderShopDetail()
 	buyOpen.AnchorPoint = Vector2.new(1, 1); buyOpen.Position = UDim2.new(1, -14, 1, -12); buyOpen.Size = UDim2.new(0.5, -20, 0, 42)
 	if not soldOut and afford then
 		buy.Activated:Connect(function()
+			lplay("Buy")
 			ShopBuy:FireServer({ slot = shopSelected, open = false })
 		end)
 		buyOpen.Activated:Connect(function()
 			if rolling then return end
 			rolling = true
 			armRollTimeout()
+			lplay("Buy")
 			ShopBuy:FireServer({ slot = shopSelected, open = true })
 		end)
 	end
@@ -1313,6 +1436,7 @@ ShopSync.OnClientEvent:Connect(function(p)
 		shopSelected = defaultShopSelection()
 	end
 	if p.enter then
+		if not shopPanel.Visible then lplay("Open") end
 		shopPanel.Visible = true
 	end
 	if shopPanel.Visible then
@@ -1327,6 +1451,7 @@ ShopClose.OnClientEvent:Connect(function()
 	shopPanel.Visible = false
 end)
 shopX.Activated:Connect(function()
+	lplay("Close")
 	shopPanel.Visible = false -- walk off + back on to reopen
 end)
 
@@ -1426,6 +1551,120 @@ do
 		}):Play()
 		task.delay(SHOW_SECONDS, dismiss)
 	end
+end
+
+-- =====================================================================================================
+-- ===== SETTINGS (volume sliders — persists via settings.vol, shared with the game place) =============
+-- =====================================================================================================
+do
+	local setGui = Instance.new("ScreenGui")
+	setGui.Name = "LobbySettings"; setGui.ResetOnSpawn = false; setGui.IgnoreGuiInset = true; setGui.DisplayOrder = 14
+	setGui.Parent = playerGui
+	lattach(setGui)
+
+	local gear = Instance.new("TextButton")
+	gear.AnchorPoint = Vector2.new(1, 1); gear.Position = UDim2.new(1, -12, 1, -12); gear.Size = UDim2.fromOffset(48, 48)
+	gear.BackgroundColor3 = PANEL; gear.BorderSizePixel = 0; gear.FontFace = BODYB_FACE
+	gear.TextSize = 24; gear.TextColor3 = DIMTEXT; gear.Text = "⚙"; gear.Parent = setGui
+	corner(gear, 8); lstuds(gear); ldepth(gear); ledge(gear)
+
+	local sPanel = Instance.new("Frame")
+	sPanel.AnchorPoint = Vector2.new(1, 1); sPanel.Position = UDim2.new(1, -12, 1, -68)
+	sPanel.Size = UDim2.fromOffset(340, 250); sPanel.BackgroundColor3 = PANEL
+	sPanel.BorderSizePixel = 0; sPanel.Visible = false; sPanel.Parent = setGui
+	corner(sPanel, 8); lstuds(sPanel); ldepth(sPanel); ledge(sPanel, TBLACK, 3); ledge(sPanel, ACCENT, 1, 0.45)
+
+	local sTitle = Instance.new("TextLabel")
+	sTitle.Position = UDim2.fromOffset(18, 0); sTitle.Size = UDim2.fromOffset(200, 44); sTitle.BackgroundTransparency = 1
+	sTitle.FontFace = TITLE_FACE; sTitle.TextSize = 22; sTitle.TextXAlignment = Enum.TextXAlignment.Left
+	sTitle.TextColor3 = TEXTCOL; sTitle.Text = "SETTINGS"; sTitle.Parent = sPanel
+
+	local sClose = Instance.new("TextButton")
+	sClose.AnchorPoint = Vector2.new(1, 0); sClose.Position = UDim2.new(1, -6, 0, 4); sClose.Size = UDim2.fromOffset(40, 40)
+	sClose.BackgroundTransparency = 1; sClose.FontFace = TITLE_FACE; sClose.TextSize = 28
+	sClose.TextColor3 = Color3.fromRGB(235, 55, 45); sClose.Text = "✕"; sClose.Parent = sPanel
+	local sCloseStroke = Instance.new("UIStroke")
+	sCloseStroke.Color = TBLACK; sCloseStroke.Thickness = 1.4; sCloseStroke.Parent = sClose
+
+	local function sliderRow(y, labelText, get, set)
+		local label = Instance.new("TextLabel")
+		label.Position = UDim2.fromOffset(18, y); label.Size = UDim2.fromOffset(120, 18); label.BackgroundTransparency = 1
+		label.FontFace = BODYB_FACE; label.TextSize = 15; label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextColor3 = DIMTEXT; label.Text = labelText; label.Parent = sPanel
+
+		local pct = Instance.new("TextLabel")
+		pct.AnchorPoint = Vector2.new(1, 0); pct.Position = UDim2.new(1, -18, 0, y); pct.Size = UDim2.fromOffset(60, 18)
+		pct.BackgroundTransparency = 1; pct.FontFace = BODYB_FACE; pct.TextSize = 15
+		pct.TextXAlignment = Enum.TextXAlignment.Right; pct.TextColor3 = TEXTCOL; pct.Parent = sPanel
+
+		local track = Instance.new("TextButton")
+		track.Position = UDim2.fromOffset(18, y + 24); track.Size = UDim2.new(1, -36, 0, 14)
+		track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Text = ""; track.AutoButtonColor = false
+		track:SetAttribute("NoClickSound", true); track.Parent = sPanel
+		corner(track, 7); ledge(track, TBLACK, 1.5)
+
+		local fill = Instance.new("Frame")
+		fill.BackgroundColor3 = ACCENT; fill.BorderSizePixel = 0; fill.Parent = track; corner(fill, 7)
+		local knob = Instance.new("Frame")
+		knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.Size = UDim2.fromOffset(20, 20)
+		knob.BackgroundColor3 = TEXTCOL; knob.BorderSizePixel = 0; knob.ZIndex = 2; knob.Parent = track
+		corner(knob, 10); ledge(knob, TBLACK, 2)
+
+		local function render()
+			local v = get()
+			fill.Size = UDim2.new(v, 0, 1, 0)
+			knob.Position = UDim2.new(v, 0, 0.5, 0)
+			pct.Text = math.floor(v * 100 + 0.5) .. "%"
+		end
+
+		local dragging = false
+		local function applyFromX(x)
+			local v = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+			volTouched = true
+			set(v)
+			applySoundVol()
+			render()
+			queueVolSave()
+		end
+		track.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				applyFromX(input.Position.X)
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+				or input.UserInputType == Enum.UserInputType.Touch) then
+				applyFromX(input.Position.X)
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = false
+			end
+		end)
+		return render
+	end
+
+	local renders = {
+		sliderRow(58, "MASTER", function() return volMaster end, function(v) volMaster = v end),
+		sliderRow(120, "MUSIC", function() return volMusic end, function(v) volMusic = v end),
+		sliderRow(182, "SFX", function() return volSfx end, function(v) volSfx = v end),
+	}
+	local function renderAll()
+		for _, r in renders do r() end
+	end
+
+	gear.Activated:Connect(function()
+		sPanel.Visible = not sPanel.Visible
+		if sPanel.Visible then renderAll() end
+	end)
+	sClose.Activated:Connect(function()
+		sPanel.Visible = false
+	end)
+	task.delay(3, renderAll) -- saved volumes arrive async via Stats
 end
 
 print("[LobbyClient] started")

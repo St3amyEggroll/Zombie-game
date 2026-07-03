@@ -54,6 +54,10 @@ local DEFINITIONS: { [string]: string } = {
 	TrapActivated     = "RemoteEvent",     -- S->C: (trapPart, trapType, duration) — turn trap VFX on
 	TrapDeactivated   = "RemoteEvent",     -- S->C: (trapPart) — turn trap VFX off
 
+	-- SoundFXService (all playback is client-side; the server only broadcasts named events)
+	SoundEvent        = "RemoteEvent",     -- S->C: (name, position?) — play a named SoundConfig sound
+	SetSoundSettings  = "RemoteEvent",     -- C->S: ({master, music, sfx} 0..1) — persist the volume sliders
+
 	-- PlayerStateService
 	HealthChanged     = "RemoteEvent",     -- S->C: (health, maxHealth)
 	DamageTaken       = "RemoteEvent",     -- S->C: (amount, sourcePosition) — drives directional hurt UI

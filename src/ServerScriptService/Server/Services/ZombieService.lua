@@ -29,12 +29,16 @@ local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
 local ZombieConfig = require(Config.ZombieConfig)
+local SoundConfig = require(Config.SoundConfig)
 local AnimationConfig = require(Config.AnimationConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 local SpawnZones = require(Modules.SpawnZones)
 
 local PlayerStateService = require(script.Parent.PlayerStateService)
+local SoundFXService = require(script.Parent.SoundFXService)
+
+local lastGrowlEmit = 0 -- os.clock() of the last ambient growl broadcast (global throttle)
 
 local ZombieService = {}
 
@@ -765,6 +769,9 @@ local function onZombieDied(record)
 	end
 	record.dead = true
 	active[record.model] = nil
+	if record.root then
+		SoundFXService.Emit("ZDeath:" .. record.typeId, record.root.Position)
+	end
 
 	-- Direction to launch the ragdoll: along the bullet's travel — from the shot origin toward the zombie,
 	-- i.e. it flies backward away from the shooter. Falls back to "away from whoever it was facing".
@@ -1265,6 +1272,7 @@ local function explode(record)
 			end
 		end
 		spawnExplosionVFX(pos)
+		SoundFXService.Emit("Explosion", pos, 220)
 	end
 	if record.hum then
 		record.hum.Health = 0 -- dies in its own blast
@@ -1383,6 +1391,16 @@ local function think(record, now: number)
 	local blocked = sightBlocked(root.Position, targetRoot.Position)
 	local stuck = (now - record.lastMoveTime) > STUCK_REPLAN and dist > ATTACK_RANGE
 
+	-- Ambient growl: each zombie voices off every 6-14s, globally throttled (SoundConfig.GrowlMinGap) so
+	-- a full horde is a murmur, not a wall of sound. Distance filtering happens in SoundFXService.Emit.
+	if now >= (record.nextGrowl or 0) then
+		record.nextGrowl = now + math.random(60, 140) / 10
+		if (now - lastGrowlEmit) >= SoundConfig.GrowlMinGap then
+			lastGrowlEmit = now
+			SoundFXService.Emit("ZGrowl:" .. record.typeId, root.Position, 80)
+		end
+	end
+
 	if blocked or stuck then
 		-- Navigate AROUND geometry. Recompute toward the player's CURRENT position; retry fast after a
 		-- failure or while wedged, otherwise sparsely (perf).
@@ -1416,6 +1434,7 @@ local function think(record, now: number)
 			record.fuseLit = true
 			record.fuseEnd = now + BOMB_FUSE
 			recolor(record.model, DEATH_COLOR) -- warning flash while the fuse burns
+			SoundFXService.Emit("BombFuse", record.root and record.root.Position or nil)
 		end
 		if record.fuseLit and now >= record.fuseEnd then
 			explode(record)
@@ -1429,6 +1448,7 @@ local function think(record, now: number)
 	if t and t.summons and now >= (record.nextSummon or 0) then
 		record.nextSummon = now + SUMMON_CD
 		task.defer(summonAdds, SUMMON_COUNT)
+		SoundFXService.Emit("SummonCast", root.Position, 160)
 	end
 
 	-- Backstop: a zombie wedged for STUCK_TIMEOUT (or alive too long) force-kills itself so the round
@@ -1488,6 +1508,7 @@ local function steer(record, now: number)
 			and (now - record.lastAttack) >= ATTACK_COOLDOWN then
 			record.lastAttack = now
 			PlayerStateService.Damage(record.target, record.damage, "zombie", root.Position)
+			SoundFXService.Emit("ZAttack:" .. record.typeId, root.Position)
 		end
 		return
 	end
@@ -1515,6 +1536,7 @@ local function steer(record, now: number)
 		if record.target and record.damage > 0 and (now - record.lastAttack) >= ATTACK_COOLDOWN then
 			record.lastAttack = now
 			PlayerStateService.Damage(record.target, record.damage, "zombie", root.Position)
+			SoundFXService.Emit("ZAttack:" .. record.typeId, root.Position)
 			if record.attackTrack then
 				record.attackTrack:Play(0.1)
 			end
@@ -1640,6 +1662,7 @@ function ZombieService.SpawnBoss(round: number, bossId: string?, playerCount: nu
 			hum.Health = hum.MaxHealth
 		end
 		Remotes.Get("BossSpawned"):FireAllClients(record.type.name, hum.MaxHealth)
+		SoundFXService.Emit("ZRoar:" .. record.typeId, record.root and record.root.Position or nil, 250)
 		record.bossHealthConn = hum.HealthChanged:Connect(function(h)
 			Remotes.Get("BossHealth"):FireAllClients(h, hum.MaxHealth)
 		end)

@@ -357,6 +357,8 @@ local CaseResult    = mk("CaseResult")    -- S->C: {caseId, wonId, duplicate, co
 local ShopSync      = mk("ShopSync")      -- S->C: {enter?, window, endsIn, coins, slots} storefront snapshot
 local ShopClose     = mk("ShopClose")     -- S->C: you left the shop zone; close the panel
 local ShopBuy       = mk("ShopBuy")       -- C->S: {slot=1..6, open=bool} buy (and optionally reel-open) a case
+-- Sound
+local SetSoundSettings = mk("SetSoundSettings") -- C->S: ({master, music, sfx} 0..1) persist volume sliders
 
 -- ===== PROFILE =====
 local store = DataStoreService:GetDataStore(STORE_NAME)
@@ -485,6 +487,19 @@ local function sanitizeShop(v)
 	return out
 end
 
+-- Sound/volume settings ride in the SHARED `settings` table (the game place owns other keys in it, like
+-- sfx/music toggles) — keep everything as-is and only normalize the .vol sliders the lobby edits.
+local function sanitizeSettings(v)
+	local out = (typeof(v) == "table") and v or {}
+	local vol = (typeof(out.vol) == "table") and out.vol or {}
+	out.vol = {
+		master = math.clamp(tonumber(vol.master) or 1, 0, 1),
+		music = math.clamp(tonumber(vol.music) or 0.6, 0, 1),
+		sfx = math.clamp(tonumber(vol.sfx) or 1, 0, 1),
+	}
+	return out
+end
+
 local function readProfile(player)
 	-- Retry with backoff: a transient DataStore error must NOT make a veteran look brand-new (persisting
 	-- that fallback would wipe their profile).
@@ -516,6 +531,7 @@ local function readProfile(player)
 		gunLevels = sanitizeGunLevels(data.gunLevels, owned),
 		gunCopies = sanitizeGunCopies(data.gunCopies),
 		shop = sanitizeShop(data.shop),
+		settings = sanitizeSettings(data.settings),
 		noPersist = loadFailed, -- fallback profile: NEVER write it back
 	}
 end
@@ -545,6 +561,7 @@ local function persist(player)
 			old.gunCopies = prof.gunCopies
 			old.lobbyMoney = prof.lobbyMoney
 			old.shop = prof.shop
+			old.settings = prof.settings
 			return old
 		end)
 	end)
@@ -743,7 +760,7 @@ end
 
 -- ===== RATE LIMITING (token buckets — the lobby's SecurityService-lite) =====
 -- Every C->S remote passes through allow() so a spamming client burns its bucket, not the DataStore.
-local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Upgrade = 3 } -- refill/second (burst = 2s worth)
+local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Upgrade = 3, Settings = 3 } -- refill/second (burst = 2s worth)
 local buckets = {} -- userId -> { [action] = { tokens, last } }
 
 local function allow(player, action)
@@ -1468,3 +1485,28 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 print(("[LobbyServer] started (party pads + 2-slot loadout + shop%s)"):format(RunService:IsStudio() and " — Studio: teleports won't fire until published" or ""))
+
+-- Volume sliders -> the shared profile's settings.vol (read by BOTH places at join).
+SetSoundSettings.OnServerEvent:Connect(function(player, vol)
+	if not allow(player, "Settings") then
+		return
+	end
+	if typeof(vol) ~= "table" then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return
+	end
+	local m, mu, s = tonumber(vol.master), tonumber(vol.music), tonumber(vol.sfx)
+	if not m or not mu or not s or m ~= m or mu ~= mu or s ~= s then
+		return
+	end
+	prof.settings = (typeof(prof.settings) == "table") and prof.settings or {}
+	prof.settings.vol = {
+		master = math.clamp(m, 0, 1),
+		music = math.clamp(mu, 0, 1),
+		sfx = math.clamp(s, 0, 1),
+	}
+	markDirty(player)
+end)
