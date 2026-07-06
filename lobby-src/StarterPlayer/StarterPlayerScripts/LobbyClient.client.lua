@@ -1114,7 +1114,17 @@ local function openInventory()
 	renderActive()
 	invPanel.Visible = true
 end
-invBtn.Activated:Connect(openInventory)
+invBtn.Activated:Connect(function()
+	-- Toggle: clicking INVENTORY while the panel is open closes it (except mid case-open).
+	if invPanel.Visible then
+		if rolling then return end
+		hideTip()
+		lplay("Close")
+		invPanel.Visible = false
+	else
+		openInventory()
+	end
+end)
 invClose.Activated:Connect(function()
 	if rolling then return end -- don't close mid-open
 	hideTip()
