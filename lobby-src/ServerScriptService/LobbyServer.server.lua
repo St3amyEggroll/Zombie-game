@@ -1044,6 +1044,42 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	if prof.noPersist then
 		return fail()
 	end
+	-- BUY ALL: sweep every slot's remaining stock cheapest-first until the coins run out.
+	if req.all == true then
+		local shop = ensureShopState(prof)
+		local order = {}
+		for i in shop.slots do
+			table.insert(order, i)
+		end
+		table.sort(order, function(a, b)
+			return shop.slots[a].price < shop.slots[b].price
+		end)
+		local total = 0
+		for _, i in order do
+			local slot = shop.slots[i]
+			local key = tostring(i)
+			local bought = prof.shop.bought[key] or 0
+			local left = slot.stock - bought
+			if left > 0 and slot.price > 0 then
+				local n = math.min(left, math.floor(prof.lobbyMoney / slot.price))
+				if n > 0 then
+					prof.lobbyMoney -= slot.price * n
+					prof.shop.bought[key] = bought + n
+					prof.cases[slot.caseId] = (prof.cases[slot.caseId] or 0) + n
+					total += n
+				end
+			end
+		end
+		if total < 1 then
+			return fail()
+		end
+		markDirty(player)
+		pushShop(player)
+		pushInv(player)
+		StatsRemote:FireClient(player, prof)
+		return
+	end
+
 	local idx = tonumber(req.slot)
 	if not idx or idx % 1 ~= 0 or idx < 1 or idx > SHOP.Slots then
 		return fail()
