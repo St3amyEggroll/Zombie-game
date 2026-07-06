@@ -1,4 +1,4 @@
-# Zombie Lobby — Build Roadmap (Zombie Rush)
+# ZombieRot — Build Roadmap (Zombie Rush)
 
 Wave-survival co-op zombie shooter. Each phase is independently testable in Roblox Studio.
 **Status legend:** ✅ done · 🔄 in progress · ⬜ planned

@@ -1,10 +1,10 @@
-# ZOMBIE LOBBY — Build Doc & Source of Truth
+# ZOMBIEROT — Build Doc & Source of Truth
 
 A 3D co-op wave-survival zombie shooter (**Zombie Rush** style): **kill rushing zombies → earn cash →
 buy & upgrade weapons from a shop menu → survive escalating, endless waves → respawn and keep going,
 push for a higher wave than last time.** Third-person, drop-in co-op.
 
-> Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **Zombie Lobby**.
+> Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **ZombieRot** (formerly "Zombie Lobby").
 > **Pivoted from a Call-of-Duty-Zombies loop to a simpler Zombie Rush loop** — no doors, wall-buys,
 > Pack-a-Punch, perks, or Mystery Box; a **menu shop** (buy + upgrade weapons for cash) instead, and
 > respawn-on-death endless waves rather than a team-wipe game over. Build incrementally, testable in Studio.
@@ -18,7 +18,7 @@ push for a higher wave than last time.** Third-person, drop-in co-op.
 | Decision | Choice |
 |---|---|
 | Game style | **Zombie Rush** — wave survival; cash from kills; **menu shop** to buy + upgrade weapons; endless waves; **respawn on death** (no team-wipe game over). Replaced the CoD-Zombies loop (removed doors, wall-buys, Pack-a-Punch, perks, Mystery Box). |
-| Game name | **Zombie Lobby** (project name in `default.project.json`) |
+| Game name | **ZombieRot** (project name in `default.project.json`) |
 | Data persistence | **SKIPPED for now.** `DataService` is an in-memory stub with the final API — swap in ProfileStore later by editing one file. No data survives a server restart yet. |
 | Progression XP | **Kill-weighted** (most XP from kills; round reached is a small bonus). See `ProgressionConfig`. |
 | Wonder weapon | **Ray Gun** added — box-only jackpot pull (`WeaponConfig.raygun`, in `MysteryBoxConfig.Pool` at low weight). |

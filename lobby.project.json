@@ -1,5 +1,5 @@
 {
-  "name": "Zombie Lobby - Lobby Place",
+  "name": "ZombieRot - Lobby Place",
   "tree": {
     "$className": "DataModel",
     "ServerScriptService": {
