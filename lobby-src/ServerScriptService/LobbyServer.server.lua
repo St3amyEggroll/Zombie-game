@@ -610,30 +610,61 @@ local function sanitizeName(s)
 	return (s:lower():gsub("[%s%-_]", ""))
 end
 
--- Client-visible display clones for the UI's spinning 3D gun previews (same contract as the game place).
-local function publishDisplayModels()
-	local folder = ReplicatedStorage:FindFirstChild("GunDisplay")
+-- Client-visible display clones for the UI's spinning 3D previews (same contract as the game place):
+-- GunDisplay (weapons, named the weaponId) + CrateDisplay (Assets models named "<Rarity>Crate"/"Case").
+local function displayFolder(name)
+	local folder = ReplicatedStorage:FindFirstChild(name)
 	if not folder then
 		folder = Instance.new("Folder")
-		folder.Name = "GunDisplay"
+		folder.Name = name
 		folder.Parent = ReplicatedStorage
 	end
+	return folder
+end
+
+local function publishOne(folder, id, inst)
+	if folder:FindFirstChild(id) then
+		return
+	end
+	local c = inst:Clone()
+	CollectionService:RemoveTag(c, "WeaponModel")
+	for _, d in c:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		elseif d:IsA("BaseScript") or d:IsA("Sound") then
+			d:Destroy()
+		end
+	end
+	c.Name = id
+	c.Parent = folder
+end
+
+local function publishDisplayModels()
+	local gunFolder = displayFolder("GunDisplay")
 	for id, inst in carryTemplates do
-		if not folder:FindFirstChild(id) then
-			local c = inst:Clone()
-			CollectionService:RemoveTag(c, "WeaponModel")
-			for _, d in c:GetDescendants() do
-				if d:IsA("BasePart") then
-					d.Anchored = true
-					d.CanCollide = false
-					d.CanQuery = false
-					d.CanTouch = false
-				elseif d:IsA("BaseScript") or d:IsA("Sound") then
-					d:Destroy()
+		publishOne(gunFolder, id, inst)
+	end
+	local crateFolder = displayFolder("CrateDisplay")
+	local wanted = {} -- "commoncrate" -> "common", "commoncase" -> "common", ...
+	for rarity in CASES do
+		wanted[rarity .. "crate"] = rarity
+		wanted[rarity .. "case"] = rarity
+	end
+	for _, container in { ReplicatedStorage, ServerStorage, Workspace } do
+		for _, child in container:GetChildren() do
+			if child.Name:lower() == "assets" then
+				for _, d in child:GetDescendants() do
+					if d:IsA("Model") then
+						local rarity = wanted[sanitizeName(d.Name)]
+						if rarity then
+							publishOne(crateFolder, rarity, d)
+						end
+					end
 				end
 			end
-			c.Name = id
-			c.Parent = folder
 		end
 	end
 end

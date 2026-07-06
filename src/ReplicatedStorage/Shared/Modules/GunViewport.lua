@@ -40,8 +40,8 @@ local function startLoop()
 	end)
 end
 
-function GunViewport.Create(weaponId: string, spin: boolean?)
-	local folder = ReplicatedStorage:FindFirstChild("GunDisplay")
+function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string?)
+	local folder = ReplicatedStorage:FindFirstChild(folderName or "GunDisplay")
 	local template = folder and folder:FindFirstChild(weaponId)
 	if not template then
 		return nil

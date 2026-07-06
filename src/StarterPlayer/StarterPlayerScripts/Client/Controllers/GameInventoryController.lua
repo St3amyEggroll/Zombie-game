@@ -165,9 +165,10 @@ local function card(parent, opts)
 	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
 	nmStroke.Color = UITheme.BLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
 	-- 3D SLOT: the spinning model IS the card art — fills the whole card, text floats above (ZIndex 0).
+	-- Weapons pull from GunDisplay; cases from CrateDisplay (Assets models named "<Rarity>Crate").
 	local showedModel = false
-	if opts.kind == "weapon" then
-		local vp = GunViewport.Create(opts.id, true)
+	if opts.kind == "weapon" or opts.kind == "case" then
+		local vp = GunViewport.Create(opts.id, true, opts.kind == "case" and "CrateDisplay" or nil)
 		if vp then
 			vp.ZIndex = 0
 			vp.Position = UDim2.new(0, 0, 0, 0); vp.Size = UDim2.new(1, 0, 1, 0)
@@ -226,9 +227,9 @@ local function renderDetail()
 		render()
 	end)
 
-	-- Spinning 3D hero for weapons: fills the whole pane as a backdrop, info floats above it.
-	if kind == "weapon" then
-		local vp = GunViewport.Create(id, true)
+	-- Spinning 3D hero for weapons + cases: fills the whole pane as a backdrop, info floats above it.
+	if kind == "weapon" or kind == "case" then
+		local vp = GunViewport.Create(id, true, kind == "case" and "CrateDisplay" or nil)
 		if vp then
 			vp.ZIndex = 0
 			vp.Position = UDim2.new(0, 0, 0, 0)

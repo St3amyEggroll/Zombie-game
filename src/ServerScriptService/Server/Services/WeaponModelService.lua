@@ -15,6 +15,7 @@ local TweenService = game:GetService("TweenService")
 
 local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local WeaponConfig = require(SharedConfig:WaitForChild("WeaponConfig"))
+local GameConfig = require(SharedConfig:WaitForChild("GameConfig"))
 local AnimationConfig = require(SharedConfig:WaitForChild("AnimationConfig"))
 
 local MatchService = require(script.Parent.MatchService)
@@ -279,31 +280,67 @@ local function scanAssets()
 end
 
 -- ===== LIFECYCLE =====
--- Publish a client-visible display clone of every weapon model (ReplicatedStorage > GunDisplay) so the
--- UI can render spinning 3D previews (GunViewport). Sanitized: anchored, no scripts/sounds, no tags.
-local function publishDisplayModels()
-	local folder = ReplicatedStorage:FindFirstChild("GunDisplay")
+-- Publish client-visible display clones so the UI can render spinning 3D previews (GunViewport):
+--   ReplicatedStorage > GunDisplay   (weapon models, named the weaponId)
+--   ReplicatedStorage > CrateDisplay (case models — Assets models named e.g. "CommonCrate" / "RareCase")
+-- Sanitized: anchored, no scripts/sounds, no tags.
+local function displayFolder(name: string): Folder
+	local folder = ReplicatedStorage:FindFirstChild(name)
 	if not folder then
 		folder = Instance.new("Folder")
-		folder.Name = "GunDisplay"
+		folder.Name = name
 		folder.Parent = ReplicatedStorage
 	end
+	return folder
+end
+
+local function publishOne(folder: Folder, id: string, inst: Model)
+	if folder:FindFirstChild(id) then
+		return
+	end
+	local c = inst:Clone()
+	CollectionService:RemoveTag(c, "WeaponModel")
+	for _, d in c:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		elseif d:IsA("BaseScript") or d:IsA("Sound") then
+			d:Destroy()
+		end
+	end
+	c.Name = id
+	c.Parent = folder
+end
+
+local function crateSanitize(s: string): string
+	return (s:lower():gsub("[%s%-_]", ""))
+end
+
+local function publishDisplayModels()
+	local gunFolder = displayFolder("GunDisplay")
 	for id, inst in templates do
-		if not folder:FindFirstChild(id) then
-			local c = inst:Clone()
-			CollectionService:RemoveTag(c, "WeaponModel")
-			for _, d in c:GetDescendants() do
-				if d:IsA("BasePart") then
-					d.Anchored = true
-					d.CanCollide = false
-					d.CanQuery = false
-					d.CanTouch = false
-				elseif d:IsA("BaseScript") or d:IsA("Sound") then
-					d:Destroy()
+		publishOne(gunFolder, id, inst)
+	end
+	-- Crates: any Assets model named "<rarity>Crate" or "<rarity>Case" (case-insensitive).
+	local crateFolder = displayFolder("CrateDisplay")
+	local wanted = {} -- "commoncrate" -> "common", "commoncase" -> "common", ...
+	for _, rarity in GameConfig.CaseRarities do
+		wanted[rarity .. "crate"] = rarity
+		wanted[rarity .. "case"] = rarity
+	end
+	for _, container in { ReplicatedStorage, ServerStorage } do
+		local assets = ciFind(container, "Assets")
+		if assets then
+			for _, d in assets:GetDescendants() do
+				if d:IsA("Model") then
+					local rarity = wanted[crateSanitize(d.Name)]
+					if rarity then
+						publishOne(crateFolder, rarity, d)
+					end
 				end
 			end
-			c.Name = id
-			c.Parent = folder
 		end
 	end
 end

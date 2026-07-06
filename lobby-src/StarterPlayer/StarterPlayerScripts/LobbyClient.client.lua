@@ -209,8 +209,8 @@ end
 -- publishes sanitized clones of every carry model at boot). Returns nil when a gun has no model yet.
 local gvSpinning = {} -- { {vp, model, base, ang} }
 local gvLoop = false
-local function makeGunViewport(weaponId, spin)
-	local folder = ReplicatedStorage:FindFirstChild("GunDisplay")
+local function makeGunViewport(weaponId, spin, folderName)
+	local folder = ReplicatedStorage:FindFirstChild(folderName or "GunDisplay")
 	local template = folder and folder:FindFirstChild(weaponId)
 	if not template then
 		return nil
@@ -711,9 +711,10 @@ local function invCard(opts)
 	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
 	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
 	-- 3D SLOT: the spinning model IS the card art — fills the whole card, text floats above (ZIndex 0).
+	-- Weapons pull from GunDisplay; cases from CrateDisplay (Assets models named "<Rarity>Crate").
 	local showedModel = false
-	if opts.kind == "weapon" then
-		local vp = makeGunViewport(opts.id, true)
+	if opts.kind == "weapon" or opts.kind == "case" then
+		local vp = makeGunViewport(opts.id, true, opts.kind == "case" and "CrateDisplay" or nil)
 		if vp then
 			vp.ZIndex = 0
 			vp.Position = UDim2.new(0, 0, 0, 0); vp.Size = UDim2.new(1, 0, 1, 0)
@@ -786,9 +787,9 @@ local function renderInvDetail()
 		renderActive()
 	end)
 
-	-- Spinning 3D hero for weapons: fills the whole pane as a backdrop, info floats above it.
-	if kind == "weapon" then
-		local heroVp = makeGunViewport(id, true)
+	-- Spinning 3D hero for weapons + cases: fills the whole pane as a backdrop, info floats above it.
+	if kind == "weapon" or kind == "case" then
+		local heroVp = makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
 		if heroVp then
 			heroVp.ZIndex = 0
 			heroVp.Position = UDim2.new(0, 0, 0, 0)
@@ -1380,7 +1381,10 @@ local function renderShopDetail()
 	corner(well, 6); ledge(well, TBLACK, 2)
 	local caseInfo = invData and invData.catalog.cases[slot.caseId]
 	local imageId = caseInfo and caseInfo.image
-	if typeof(imageId) == "string" and imageId ~= "" then
+	local wellVp = makeGunViewport(slot.caseId, true, "CrateDisplay")
+	if wellVp then
+		wellVp.Size = UDim2.fromScale(1, 1); wellVp.Parent = well
+	elseif typeof(imageId) == "string" and imageId ~= "" then
 		local img = Instance.new("ImageLabel")
 		img.BackgroundTransparency = 1; img.Size = UDim2.fromScale(1, 1)
 		img.Image = imageId; img.ScaleType = Enum.ScaleType.Fit; img.Parent = well
