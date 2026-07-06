@@ -88,6 +88,7 @@ local function lstuds(frame, tile, transparency)
 end
 -- Responsive: one live UIScale per ScreenGui (designed 1920x1080, clamped, touch bump).
 local UserInputService = game:GetService("UserInputService")
+local UI_SCALE_MULT = 1.5 -- GLOBAL lobby size dial — matches UITheme.UIScaleMult in the game place
 local function lattach(screenGui)
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
@@ -98,7 +99,7 @@ local function lattach(screenGui)
 		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
 			sc *= 1.12
 		end
-		return math.clamp(sc, 0.55, 1.3)
+		return math.clamp(sc, 0.55, 1.3) * UI_SCALE_MULT
 	end
 	scale.Scale = compute()
 	scale.Parent = screenGui
