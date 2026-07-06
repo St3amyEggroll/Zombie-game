@@ -279,6 +279,35 @@ local function scanAssets()
 end
 
 -- ===== LIFECYCLE =====
+-- Publish a client-visible display clone of every weapon model (ReplicatedStorage > GunDisplay) so the
+-- UI can render spinning 3D previews (GunViewport). Sanitized: anchored, no scripts/sounds, no tags.
+local function publishDisplayModels()
+	local folder = ReplicatedStorage:FindFirstChild("GunDisplay")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "GunDisplay"
+		folder.Parent = ReplicatedStorage
+	end
+	for id, inst in templates do
+		if not folder:FindFirstChild(id) then
+			local c = inst:Clone()
+			CollectionService:RemoveTag(c, "WeaponModel")
+			for _, d in c:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide = false
+					d.CanQuery = false
+					d.CanTouch = false
+				elseif d:IsA("BaseScript") or d:IsA("Sound") then
+					d:Destroy()
+				end
+			end
+			c.Name = id
+			c.Parent = folder
+		end
+	end
+end
+
 function WeaponModelService.Start()
 	templatesFolder = Instance.new("Folder")
 	templatesFolder.Name = "WeaponModels"
@@ -286,7 +315,11 @@ function WeaponModelService.Start()
 
 	loadTaggedTemplates()
 	scanAssets()
-	CollectionService:GetInstanceAddedSignal("WeaponModel"):Connect(registerTemplate)
+	publishDisplayModels()
+	CollectionService:GetInstanceAddedSignal("WeaponModel"):Connect(function(inst)
+		registerTemplate(inst)
+		publishDisplayModels()
+	end)
 
 	-- ANIMATOR REPLICATION RULE: a track played on the server only replicates to clients if its
 	-- Animator was created ON THE SERVER before the client's Animate script spun up its own. Creating

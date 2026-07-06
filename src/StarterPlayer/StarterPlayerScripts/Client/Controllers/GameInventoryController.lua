@@ -13,6 +13,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Modules = Shared:WaitForChild("Modules")
 local Remotes = require(Modules.Remotes)
 local UITheme = require(Modules.UITheme)
+local GunViewport = require(Modules.GunViewport)
 
 local GameInventoryController = {}
 
@@ -161,8 +162,18 @@ local function card(parent, opts)
 	nm.Position = UDim2.fromOffset(6, 14); nm.Size = UDim2.new(1, -12, 0, 40); nm.BackgroundTransparency = 1
 	nm.FontFace = UITheme.BodyBoldFace; nm.TextSize = 12; nm.TextWrapped = true
 	nm.TextColor3 = UITheme.TEXT; nm.Text = opts.name; nm.Parent = f
+	-- 3D SLOT: weapons with a published model get a live spinning preview; photo id is the fallback.
+	local showedModel = false
+	if opts.kind == "weapon" then
+		local vp = GunViewport.Create(opts.id, true)
+		if vp then
+			vp.AnchorPoint = Vector2.new(0.5, 1); vp.Position = UDim2.new(0.5, 0, 1, -22)
+			vp.Size = UDim2.fromOffset(100, 50); vp.Parent = f
+			showedModel = true
+		end
+	end
 	-- PHOTO SLOT: catalog entries with an `image` id show it on the card.
-	if typeof(opts.image) == "string" and opts.image ~= "" then
+	if not showedModel and typeof(opts.image) == "string" and opts.image ~= "" then
 		local img = Instance.new("ImageLabel")
 		img.AnchorPoint = Vector2.new(0.5, 1); img.Position = UDim2.new(0.5, 0, 1, -24)
 		img.Size = UDim2.fromOffset(64, 44); img.BackgroundTransparency = 1
@@ -210,6 +221,17 @@ local function renderDetail()
 		selected = nil
 		render()
 	end)
+
+	-- Spinning 3D hero for weapons, top-right of the pane.
+	if kind == "weapon" then
+		local vp = GunViewport.Create(id, true)
+		if vp then
+			vp.AnchorPoint = Vector2.new(1, 0)
+			vp.Position = UDim2.new(1, -40, 0, 4)
+			vp.Size = UDim2.fromOffset(104, 72)
+			vp.Parent = detail
+		end
+	end
 
 	local function bigTitle(textStr, col)
 		local t = Instance.new("TextLabel")

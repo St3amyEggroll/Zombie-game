@@ -205,6 +205,52 @@ local function queueVolSave()
 	end)
 end
 
+-- ===== 3D GUN PREVIEWS ===== spinning ViewportFrames fed by ReplicatedStorage > GunDisplay (the server
+-- publishes sanitized clones of every carry model at boot). Returns nil when a gun has no model yet.
+local gvSpinning = {} -- { {vp, model, base, ang} }
+local gvLoop = false
+local function makeGunViewport(weaponId, spin)
+	local folder = ReplicatedStorage:FindFirstChild("GunDisplay")
+	local template = folder and folder:FindFirstChild(weaponId)
+	if not template then
+		return nil
+	end
+	local vp = Instance.new("ViewportFrame")
+	vp.Name = "GunViewport"
+	vp.BackgroundTransparency = 1
+	vp.Ambient = Color3.fromRGB(160, 160, 160)
+	vp.LightColor = Color3.fromRGB(235, 235, 220)
+	vp.LightDirection = Vector3.new(-0.4, -1, -0.4)
+	local model = template:Clone()
+	model.Parent = vp
+	local cam = Instance.new("Camera")
+	cam.FieldOfView = 30
+	cam.Parent = vp
+	vp.CurrentCamera = cam
+	local cf, size = model:GetBoundingBox()
+	model.WorldPivot = cf
+	local dist = (size.Magnitude / 2) / math.tan(math.rad(15)) * 1.12 + 0.1
+	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * 0.22, dist), cf.Position)
+	if spin ~= false then
+		table.insert(gvSpinning, { vp = vp, model = model, base = cf, ang = math.random() * math.pi * 2 })
+		if not gvLoop then
+			gvLoop = true
+			RunService.RenderStepped:Connect(function(dt)
+				for i = #gvSpinning, 1, -1 do
+					local e = gvSpinning[i]
+					if not e.vp.Parent then
+						table.remove(gvSpinning, i)
+					elseif e.vp.Visible then
+						e.ang += dt * math.rad(45)
+						e.model:PivotTo(e.base * CFrame.Angles(0, e.ang, 0))
+					end
+				end
+			end)
+		end
+	end
+	return vp
+end
+
 -- ===== BUILD =====
 local gui = Instance.new("ScreenGui")
 gui.Name = "LobbyHUD"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 10
@@ -662,8 +708,18 @@ local function invCard(opts)
 	nm.Position = UDim2.fromOffset(8, 12); nm.Size = UDim2.new(1, -16, 0, 44); nm.BackgroundTransparency = 1
 	nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextWrapped = true
 	nm.TextColor3 = TEXTCOL; nm.Text = opts.name; nm.Parent = f
+	-- 3D SLOT: weapons with a published model get a live spinning preview; photo id is the fallback.
+	local showedModel = false
+	if opts.kind == "weapon" then
+		local vp = makeGunViewport(opts.id, true)
+		if vp then
+			vp.AnchorPoint = Vector2.new(0.5, 1); vp.Position = UDim2.new(0.5, 0, 1, -26)
+			vp.Size = UDim2.fromOffset(120, 58); vp.Parent = f
+			showedModel = true
+		end
+	end
 	-- PHOTO SLOT: any catalog entry with an `image` id renders it on the card (add ids later, zero code).
-	if typeof(opts.image) == "string" and opts.image ~= "" then
+	if not showedModel and typeof(opts.image) == "string" and opts.image ~= "" then
 		local img = Instance.new("ImageLabel")
 		img.AnchorPoint = Vector2.new(0.5, 1); img.Position = UDim2.new(0.5, 0, 1, -28)
 		img.Size = UDim2.fromOffset(82, 56); img.BackgroundTransparency = 1
@@ -725,6 +781,17 @@ local function renderInvDetail()
 		selectedInv = nil
 		renderActive()
 	end)
+
+	-- Spinning 3D hero for weapons, top-right of the pane.
+	if kind == "weapon" then
+		local heroVp = makeGunViewport(id, true)
+		if heroVp then
+			heroVp.AnchorPoint = Vector2.new(1, 0)
+			heroVp.Position = UDim2.new(1, -46, 0, 6)
+			heroVp.Size = UDim2.fromOffset(116, 80)
+			heroVp.Parent = invDetail
+		end
+	end
 
 	-- PHOTO SLOT: entries with an `image` id get a thumbnail in the pane's corner.
 	local entry
@@ -1007,9 +1074,10 @@ playReel = function(caseId, wonId, res)
 		tile.BackgroundColor3 = col:Lerp(BLACK, 0.5); tile.BorderSizePixel = 0; tile.ZIndex = 6; tile.Parent = strip
 		corner(tile, 8)
 		local ts = Instance.new("UIStroke"); ts.Color = col; ts.Thickness = 1.5; ts.Parent = tile
-		local ic = Instance.new("TextLabel")
-		ic.Position = UDim2.fromOffset(0, 12); ic.Size = UDim2.new(1, 0, 0, 34); ic.BackgroundTransparency = 1
-		ic.FontFace = TITLE_FACE; ic.TextSize = 12; ic.Text = ""; ic.BackgroundTransparency = 1; ic.ZIndex = 7; ic.Parent = tile
+		local tvp = makeGunViewport(id, false) -- static pose: 50 spinning viewports would cost real frames
+		if tvp then
+			tvp.Position = UDim2.new(0, 4, 0, 8); tvp.Size = UDim2.new(1, -8, 0, 26); tvp.ZIndex = 7; tvp.Parent = tile
+		end
 		local tbar = Instance.new("Frame"); tbar.Position = UDim2.fromOffset(0, 0); tbar.Size = UDim2.new(1, 0, 0, 4)
 		tbar.BackgroundColor3 = col; tbar.BorderSizePixel = 0; tbar.ZIndex = 7; tbar.Parent = tile
 		local nm = Instance.new("TextLabel")

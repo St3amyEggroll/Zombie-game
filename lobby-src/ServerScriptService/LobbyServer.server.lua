@@ -610,6 +610,34 @@ local function sanitizeName(s)
 	return (s:lower():gsub("[%s%-_]", ""))
 end
 
+-- Client-visible display clones for the UI's spinning 3D gun previews (same contract as the game place).
+local function publishDisplayModels()
+	local folder = ReplicatedStorage:FindFirstChild("GunDisplay")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "GunDisplay"
+		folder.Parent = ReplicatedStorage
+	end
+	for id, inst in carryTemplates do
+		if not folder:FindFirstChild(id) then
+			local c = inst:Clone()
+			CollectionService:RemoveTag(c, "WeaponModel")
+			for _, d in c:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide = false
+					d.CanQuery = false
+					d.CanTouch = false
+				elseif d:IsA("BaseScript") or d:IsA("Sound") then
+					d:Destroy()
+				end
+			end
+			c.Name = id
+			c.Parent = folder
+		end
+	end
+end
+
 local function scanCarryTemplates()
 	carryTemplates = {}
 	local nameMap = {}
@@ -637,6 +665,7 @@ local function scanCarryTemplates()
 			end
 		end
 	end
+	publishDisplayModels()
 end
 
 local function attachCarry(char, torso, weaponId, mountCF, name)
