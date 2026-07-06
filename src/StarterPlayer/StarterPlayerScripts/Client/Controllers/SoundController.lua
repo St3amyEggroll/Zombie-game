@@ -256,7 +256,9 @@ local function setMusic(name)
 end
 
 local function updateMusic()
-	if musicState.phase == "Playing" then
+	-- Combat music runs for the WHOLE run — wave breaks included. Calm is only pre-run (waiting/countdown).
+	local inRun = musicState.phase == "Playing" or musicState.phase == "RoundBreak"
+	if inRun then
 		setMusic(musicState.bossAlive and "MusicBoss" or "MusicCombat")
 	else
 		setMusic("MusicCalm")
@@ -382,8 +384,10 @@ function SoundController.Start()
 		end
 		updateMusic()
 	end)
-	Remotes.Get("RoundChanged").OnClientEvent:Connect(function()
-		SoundController.Play("WaveStart")
+	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
+		if tonumber(round) == 1 then
+			SoundController.Play("WaveStart") -- the ROUND-start audio: first wave only
+		end
 		musicState.phase = "Playing"
 		updateMusic()
 	end)
