@@ -218,8 +218,11 @@ function HUDController.Start()
 
 	Remotes.Get("HealthChanged").OnClientEvent:Connect(setHealth)
 	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
-		roundLabel.Text = "WAVE " .. tostring(round)
 		breakEndsAt = 0
+		-- The wave-start audio sting leads by 1s; the text lands on its beat.
+		task.delay(1, function()
+			roundLabel.Text = "WAVE " .. tostring(round)
+		end)
 	end)
 
 	-- Pre-run countdown (waiting for the party to load in): shown in the wave slot until the run starts.

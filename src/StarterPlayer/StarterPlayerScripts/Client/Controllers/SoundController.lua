@@ -106,6 +106,21 @@ function SoundController.Play(name, pitchMult)
 	s:Play()
 end
 
+local liveFuses = {} -- { {sound, pos} } — BombFuse plays 5s of beeps but detonation cuts it off
+
+local function stopFusesNear(position)
+	for i = #liveFuses, 1, -1 do
+		local f = liveFuses[i]
+		if not f.sound.Parent or (f.pos - position).Magnitude <= 20 then
+			if f.sound.Parent then
+				f.sound:Stop()
+				f.sound:Destroy()
+			end
+			table.remove(liveFuses, i)
+		end
+	end
+end
+
 -- 3D one-shot at a world position (gunshots, zombies, explosions).
 function SoundController.PlayAt(name, position, pitchMult)
 	local d = def(name)
@@ -135,6 +150,11 @@ function SoundController.PlayAt(name, position, pitchMult)
 	end
 	s.Ended:Once(cleanup)
 	task.delay(15, cleanup)
+	if name == "BombFuse" then
+		table.insert(liveFuses, { sound = s, pos = position })
+	elseif name == "Explosion" then
+		stopFusesNear(position)
+	end
 	s:Play()
 end
 
@@ -342,13 +362,10 @@ function SoundController.Start()
 	end)
 
 	-- Hit feedback (2D — it's YOUR hit).
-	Remotes.Get("HitConfirmed").OnClientEvent:Connect(function(_position, isHeadshot, _hitHumanoid, killed)
+	Remotes.Get("HitConfirmed").OnClientEvent:Connect(function(_position, _isHeadshot, _hitHumanoid, killed)
 		if killed then
 			SoundController.Play("KillConfirm")
-		end
-		if isHeadshot then
-			SoundController.Play("Headshot")
-		elseif not killed then
+		else
 			SoundController.Play("Hitmarker")
 		end
 	end)

@@ -130,7 +130,7 @@ end
 -- The game place has its own (bigger) list in ReplicatedStorage/Shared/Config/SoundConfig.lua.
 -- =====================================================================================================
 local SOUND_IDS = {
-	Music         = "", -- lobby background loop [chill dark ambient loop]
+	Music         = "138934492920017", -- lobby background loop [chill dark ambient loop]
 	Click         = "", -- any button [ui click]
 	Open          = "", -- panel opens [ui whoosh open]
 	Close         = "", -- panel closes [ui whoosh close]

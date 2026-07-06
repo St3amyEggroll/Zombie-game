@@ -28,22 +28,21 @@ SoundConfig.LowHealthRatio = 0.35      -- heartbeat loop kicks in below this fra
 SoundConfig.Sounds = {
 	-- ===== MUSIC (looping tracks) =====
 	MusicCalm      = S("", 0.45, 0, 1, 1, true),   -- between waves / countdown [dark ambient loop]
-	MusicCombat    = S("", 0.5,  0, 1, 1, true),   -- while a wave is active [action/horror combat loop]
+	MusicCombat    = S("140604599195788", 0.5,  0, 1, 1, true),   -- while a wave is active [action/horror combat loop]
 	MusicBoss      = S("", 0.55, 0, 1, 1, true),   -- while a boss is alive [epic boss battle loop]
 
 	-- ===== GUN FIRE ===== (slot name = "Fire_" .. weaponId)
-	Fire_pistol    = S("", 0.6, 160, 0.97, 1.03),  -- [pistol gunshot]
-	Fire_smg       = S("", 0.5, 150, 0.97, 1.03),  -- [smg gunshot single]
-	Fire_shotgun   = S("", 0.7, 180, 0.96, 1.02),  -- [shotgun blast]
-	Fire_minigun   = S("", 0.45, 170, 0.97, 1.03), -- [minigun single shot] (played per bullet)
-	Fire_raygun    = S("", 0.6, 170, 0.95, 1.05),  -- [laser blaster zap]
+	Fire_pistol    = S("103589268560856", 0.6, 160, 0.97, 1.03),  -- [pistol gunshot]
+	Fire_smg       = S("115515020371003", 0.5, 150, 0.97, 1.03),  -- [smg gunshot single]
+	Fire_shotgun   = S("122727185777303", 0.7, 180, 0.96, 1.02),  -- [shotgun blast]
+	Fire_minigun   = S("130050001949841", 0.45, 170, 0.97, 1.03), -- [minigun single shot] (played per bullet)
+	Fire_raygun    = S("118709034685445", 0.6, 170, 0.95, 1.05),  -- [laser blaster zap]
 
 	-- ===== COMBAT FEEDBACK (2D, local player only) =====
-	Hitmarker      = S("", 0.5, 0, 0.97, 1.03),    -- [hitmarker tick]
-	Headshot       = S("", 0.6, 0, 0.98, 1.04),    -- [headshot ding / crunch]
-	KillConfirm    = S("", 0.55, 0, 0.98, 1.02),   -- [kill confirm thud]
-	Explosion      = S("", 0.9, 220, 0.95, 1.05),  -- bomb zombie blast [explosion]
-	BombFuse       = S("", 0.8, 90,  0.98, 1.02),  -- 1.1s creeper hiss [fuse hiss / creeper hiss]
+	Hitmarker      = S("80826043767749", 0.5, 0, 0.97, 1.03),    -- [hitmarker tick]
+	KillConfirm    = S("130456049552264", 0.55, 0, 0.98, 1.02),   -- [kill confirm thud]
+	Explosion      = S("139210252225248", 0.9, 220, 0.95, 1.05),  -- bomb zombie blast [explosion]
+	BombFuse       = S("82308469908666", 0.8, 90,  1, 1),  -- 5s countdown beeps; the Explosion CUTS IT OFF at detonation (SoundController)
 
 	-- ===== ZOMBIE VOICES ===== Growl = ambient idle; Attack = bite lands; Death = kill.
 	-- Blank per-type slots FALL BACK to the _normal set (pitched by type), so only _normal is required.
@@ -84,7 +83,7 @@ SoundConfig.Sounds = {
 	ReviveComplete = S("", 0.7, 0, 1, 1),          -- you got back up [revive chime]
 
 	-- ===== WAVES / MATCH (2D stingers) =====
-	WaveStart          = S("", 0.6, 0, 1, 1),      -- new wave [horde horn / air raid sting]
+	WaveStart          = S("137884319678560", 0.6, 0, 1, 1),      -- new wave [horde horn / air raid sting]
 	WaveCleared        = S("", 0.6, 0, 1, 1),      -- wave done [success sting]
 	FlawlessJingle     = S("", 0.7, 0, 1, 1),      -- flawless wave bonus [triumphant jingle]
 	NewEnemySting      = S("", 0.65, 0, 1, 1),     -- first-ever enemy type [danger sting]
