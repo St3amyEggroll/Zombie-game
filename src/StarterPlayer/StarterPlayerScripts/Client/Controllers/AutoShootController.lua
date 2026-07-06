@@ -56,7 +56,7 @@ local function build()
 	button = Instance.new("TextButton")
 	button.Name = "AutoShootButton"
 	button.AnchorPoint = Vector2.new(1, 1)
-	button.Position = UDim2.new(1, -16, 1, -16)
+	button.Position = UDim2.new(1, -72, 1, -16) -- clear of the settings gear in the corner
 	button.Size = UDim2.fromOffset(170, 38)
 	button.BackgroundColor3 = COL_PANEL
 	button.BackgroundTransparency = 0.06

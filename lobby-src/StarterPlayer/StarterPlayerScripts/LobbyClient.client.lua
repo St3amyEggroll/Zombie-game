@@ -50,6 +50,7 @@ local DIMTEXT = Color3.fromRGB(134, 142, 116)
 local GOLD    = Color3.fromRGB(230, 180, 76)
 local DIM = TRACK          -- (legacy name: disabled-button fill)
 local CARD = PANEL2        -- (legacy name: card/button fill)
+local SELBG = Color3.fromRGB(52, 92, 16) -- selected-button fill: dark toxic, so text can STAY bone-white
 local STUDS_TEXTURE = "rbxassetid://6965996718"
 
 local function darker(c, f)
@@ -328,7 +329,7 @@ local function refresh()
 		if not info.unlocked then
 			b.Text = cap(w) .. " 🔒"; b.AutoButtonColor = false; b.TextColor3 = Color3.fromRGB(150, 150, 160)
 		end
-		b.BackgroundColor3 = (sel.map == w) and ACCENT or CARD
+		b.BackgroundColor3 = (sel.map == w) and SELBG or CARD
 		b.Activated:Connect(function()
 			if info.unlocked then sel.map = w; refresh() end
 		end)
@@ -345,8 +346,8 @@ local function refresh()
 		if not unlocked then
 			b.AutoButtonColor = false; b.BackgroundColor3 = DIM; b.TextColor3 = Color3.fromRGB(150, 150, 160)
 		else
-			b.BackgroundColor3 = (sel.difficulty == d) and ACCENT or CARD
-			b.TextColor3 = (sel.difficulty == d) and Color3.fromRGB(14, 22, 6) or TEXTCOL
+			b.BackgroundColor3 = (sel.difficulty == d) and SELBG or CARD
+			b.TextColor3 = TEXTCOL -- selection shows in the fill, text stays normal
 		end
 		b.Activated:Connect(function()
 			if unlocked then sel.difficulty = d; refresh() end
@@ -359,8 +360,8 @@ local function refresh()
 	for n = 1, 4 do
 		local b = button(sizeRow, 64, 48, tostring(n))
 		b.LayoutOrder = n
-		b.BackgroundColor3 = (sel.size == n) and ACCENT or CARD
-		b.TextColor3 = (sel.size == n) and Color3.fromRGB(14, 22, 6) or TEXTCOL
+		b.BackgroundColor3 = (sel.size == n) and SELBG or CARD
+		b.TextColor3 = TEXTCOL -- selection shows in the fill, text stays normal
 		b.Activated:Connect(function()
 			sel.size = n; refresh()
 		end)
@@ -1050,7 +1051,7 @@ playReel = function(caseId, wonId, res)
 			resultLabel.TextColor3 = col
 			resultLabel.Text = ("+%d %s copies"):format(copies, gunName)
 		end
-		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = ACCENT; reelBtn.TextColor3 = Color3.fromRGB(14, 22, 6)
+		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = SELBG; reelBtn.TextColor3 = TEXTCOL
 		local r = info and info.rarity or "common"
 		if res.unlocked or r == "mythic" or r == "divine" then
 			lplay("RevealJackpot")
