@@ -708,21 +708,25 @@ local function invCard(opts)
 	nm.Position = UDim2.fromOffset(8, 12); nm.Size = UDim2.new(1, -16, 0, 44); nm.BackgroundTransparency = 1
 	nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextWrapped = true
 	nm.TextColor3 = TEXTCOL; nm.Text = opts.name; nm.Parent = f
-	-- 3D SLOT: weapons with a published model get a live spinning preview; photo id is the fallback.
+	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
+	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
+	-- 3D SLOT: the spinning model IS the card art — fills the whole card, text floats above (ZIndex 0).
 	local showedModel = false
 	if opts.kind == "weapon" then
 		local vp = makeGunViewport(opts.id, true)
 		if vp then
-			vp.AnchorPoint = Vector2.new(0.5, 1); vp.Position = UDim2.new(0.5, 0, 1, -26)
-			vp.Size = UDim2.fromOffset(120, 58); vp.Parent = f
+			vp.ZIndex = 0
+			vp.Position = UDim2.new(0, 0, 0, 0); vp.Size = UDim2.new(1, 0, 1, 0)
+			vp.Parent = f
 			showedModel = true
 		end
 	end
-	-- PHOTO SLOT: any catalog entry with an `image` id renders it on the card (add ids later, zero code).
+	-- PHOTO SLOT: full-card photo when there's no model (add ids later, zero code).
 	if not showedModel and typeof(opts.image) == "string" and opts.image ~= "" then
 		local img = Instance.new("ImageLabel")
-		img.AnchorPoint = Vector2.new(0.5, 1); img.Position = UDim2.new(0.5, 0, 1, -28)
-		img.Size = UDim2.fromOffset(82, 56); img.BackgroundTransparency = 1
+		img.ZIndex = 0
+		img.Position = UDim2.new(0, 0, 0, 0); img.Size = UDim2.new(1, 0, 1, 0)
+		img.BackgroundTransparency = 1
 		img.Image = opts.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = f
 	end
 	if opts.chip then
@@ -782,13 +786,14 @@ local function renderInvDetail()
 		renderActive()
 	end)
 
-	-- Spinning 3D hero for weapons, top-right of the pane.
+	-- Spinning 3D hero for weapons: fills the whole pane as a backdrop, info floats above it.
 	if kind == "weapon" then
 		local heroVp = makeGunViewport(id, true)
 		if heroVp then
-			heroVp.AnchorPoint = Vector2.new(1, 0)
-			heroVp.Position = UDim2.new(1, -46, 0, 6)
-			heroVp.Size = UDim2.fromOffset(116, 80)
+			heroVp.ZIndex = 0
+			heroVp.Position = UDim2.new(0, 0, 0, 0)
+			heroVp.Size = UDim2.new(1, 0, 1, 0)
+			heroVp.ImageTransparency = 0.1
 			heroVp.Parent = invDetail
 		end
 	end
@@ -1076,7 +1081,7 @@ playReel = function(caseId, wonId, res)
 		local ts = Instance.new("UIStroke"); ts.Color = col; ts.Thickness = 1.5; ts.Parent = tile
 		local tvp = makeGunViewport(id, false) -- static pose: 50 spinning viewports would cost real frames
 		if tvp then
-			tvp.Position = UDim2.new(0, 4, 0, 8); tvp.Size = UDim2.new(1, -8, 0, 26); tvp.ZIndex = 7; tvp.Parent = tile
+			tvp.Position = UDim2.new(0, 0, 0, 0); tvp.Size = UDim2.new(1, 0, 1, 0); tvp.ZIndex = 6; tvp.Parent = tile
 		end
 		local tbar = Instance.new("Frame"); tbar.Position = UDim2.fromOffset(0, 0); tbar.Size = UDim2.new(1, 0, 0, 4)
 		tbar.BackgroundColor3 = col; tbar.BorderSizePixel = 0; tbar.ZIndex = 7; tbar.Parent = tile
