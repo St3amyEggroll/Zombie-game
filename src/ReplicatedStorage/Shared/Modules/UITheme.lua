@@ -111,9 +111,12 @@ function UITheme.Attach(gui: ScreenGui): UIScale
 end
 
 -- ===== BUILD HELPERS =====
+-- CHANGED: chunky simulator-style roundness — every radius in the game runs through this curve,
+-- so the whole UI got rounder in one place (6->13, 8->16, 5->11...). Dial with CORNER_MULT.
+local CORNER_MULT = 1.8
 function UITheme.Corner(o: Instance, r: number?)
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r or 5)
+	c.CornerRadius = UDim.new(0, math.floor((r or 5) * CORNER_MULT + 2))
 	c.Parent = o
 	return c
 end
@@ -122,7 +125,7 @@ end
 function UITheme.Edge(o: Instance, color: Color3?, thickness: number?, transparency: number?)
 	local s = Instance.new("UIStroke")
 	s.Color = color or UITheme.BLACK
-	s.Thickness = thickness or 2
+	s.Thickness = thickness or 2.5
 	s.Transparency = transparency or 0
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.Parent = o
@@ -262,10 +265,22 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	b.TextColor3 = fill[3]
 	b.Text = string.upper(textStr)
 	b.Parent = parent
-	UITheme.Corner(b, 5)
-	UITheme.Edge(b, UITheme.BLACK, 2)
+	UITheme.Corner(b, 7)
+	UITheme.Edge(b, UITheme.BLACK, 2.5)
+	local ts = Instance.new("UIStroke") -- chunky text: dark contextual outline on the label itself
+	ts.Color = UITheme.BLACK
+	ts.Thickness = 1.4
+	ts.Transparency = 0.25
+	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	ts.Parent = b
+	-- CHANGED: hard-stop gradient = the classic cartoon bottom bevel (crisp darker strip, no children)
 	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(fill[1], fill[2])
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, fill[1]),
+		ColorSequenceKeypoint.new(0.78, fill[1]),
+		ColorSequenceKeypoint.new(0.8, fill[2]),
+		ColorSequenceKeypoint.new(1, fill[2]),
+	})
 	g.Rotation = 90
 	g.Parent = b
 	if variant == "ghost" then

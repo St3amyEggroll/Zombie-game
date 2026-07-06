@@ -1052,15 +1052,34 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	local slot = shop.slots[idx]
 	local key = tostring(idx)
 	local boughtCount = prof.shop.bought[key] or 0
-	if boughtCount >= slot.stock then
+	local left = slot.stock - boughtCount
+	if left < 1 then
 		return fail()
 	end
 	if prof.lobbyMoney < slot.price then
 		return fail()
 	end
-	prof.lobbyMoney -= slot.price
-	prof.shop.bought[key] = boughtCount + 1
-	prof.cases[slot.caseId] = (prof.cases[slot.caseId] or 0) + 1
+	-- Quantity: 1 (default), a small whole number, or "max" — clamped to remaining stock AND what the
+	-- player can afford, so BUY 5 / BUY MAX gracefully buy "as many as possible". Opening forces 1.
+	local wantQty
+	if req.qty == "max" then
+		wantQty = left
+	else
+		wantQty = tonumber(req.qty) or 1
+		if wantQty % 1 ~= 0 or wantQty < 1 or wantQty > 100 then
+			return fail() -- sanity-check CLIENT numbers only; "max" derives from server stock
+		end
+	end
+	if wantOpen then
+		wantQty = 1
+	end
+	local n = math.min(wantQty, left, math.floor(prof.lobbyMoney / slot.price))
+	if n < 1 then
+		return fail()
+	end
+	prof.lobbyMoney -= slot.price * n
+	prof.shop.bought[key] = boughtCount + n
+	prof.cases[slot.caseId] = (prof.cases[slot.caseId] or 0) + n
 	local result = nil
 	if wantOpen then
 		result = doOpenCase(player, prof, slot.caseId)

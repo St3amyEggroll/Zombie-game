@@ -123,8 +123,43 @@ end
 local function cap(s)
 	return s:sub(1, 1):upper() .. s:sub(2)
 end
+-- CHANGED: chunky simulator-style roundness — every radius runs through this curve (6->13, 8->16...).
 local function corner(o, r)
-	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = o
+	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, math.floor((r or 6) * 1.8 + 2)); c.Parent = o
+end
+
+-- The classic cartoon bottom bevel: a hard-stop WHITE->dark gradient multiplies whatever the
+-- background color is, so it works on recolored (selected) buttons too.
+local function lbevel(o)
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(0.78, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(0.8, Color3.new(0.58, 0.58, 0.58)),
+		ColorSequenceKeypoint.new(1, Color3.new(0.58, 0.58, 0.58)),
+	})
+	g.Rotation = 90
+	g.Parent = o
+	return g
+end
+
+-- Chunky red close button (the image's red X): red rounded square, white X, bevel bottom.
+local function redX(parentGui, size, tsize)
+	local x = Instance.new("TextButton")
+	x.AnchorPoint = Vector2.new(1, 0); x.Size = UDim2.fromOffset(size, size)
+	x.BackgroundColor3 = Color3.fromRGB(224, 34, 34); x.BorderSizePixel = 0
+	x.FontFace = TITLE_FACE; x.TextSize = tsize
+	x.TextColor3 = Color3.fromRGB(255, 255, 255); x.Text = "✕"; x.Parent = parentGui
+	corner(x, 6); ledge(x, TBLACK, 2.5)
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
+		ColorSequenceKeypoint.new(0.78, Color3.fromRGB(224, 34, 34)),
+		ColorSequenceKeypoint.new(0.8, Color3.fromRGB(150, 16, 16)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
+	})
+	g.Rotation = 90; g.Parent = x
+	return x
 end
 
 -- =====================================================================================================
@@ -317,7 +352,10 @@ local function button(parent, w, h, text)
 	local b = Instance.new("TextButton")
 	b.Size = UDim2.fromOffset(w, h); b.BackgroundColor3 = CARD; b.AutoButtonColor = true; b.Text = text
 	b.FontFace = BODYB_FACE; b.TextSize = 20; b.TextColor3 = TEXTCOL; b.Parent = parent
-	corner(b, 6); ledge(b, TBLACK, 2)
+	corner(b, 6); ledge(b, TBLACK, 2.5); lbevel(b)
+	local ts = Instance.new("UIStroke")
+	ts.Color = TBLACK; ts.Thickness = 1.3; ts.Transparency = 0.3
+	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; ts.Parent = b
 	return b
 end
 
@@ -604,12 +642,8 @@ invCoins.AnchorPoint = Vector2.new(1, 0); invCoins.Position = UDim2.new(1, -64, 
 invCoins.BackgroundTransparency = 1; invCoins.FontFace = BODYB_FACE; invCoins.TextSize = 20
 invCoins.TextXAlignment = Enum.TextXAlignment.Right; invCoins.TextColor3 = GOLD; invCoins.Text = "0"; invCoins.Parent = invPanel
 
-local invClose = Instance.new("TextButton")
-invClose.AnchorPoint = Vector2.new(1, 0); invClose.Position = UDim2.new(1, -8, 0, 6); invClose.Size = UDim2.fromOffset(46, 46)
-invClose.BackgroundTransparency = 1; invClose.FontFace = TITLE_FACE; invClose.TextSize = 34
-invClose.TextColor3 = Color3.fromRGB(235, 55, 45); invClose.Text = "✕"; invClose.Parent = invPanel
-local invCloseStroke = Instance.new("UIStroke")
-invCloseStroke.Color = TBLACK; invCloseStroke.Thickness = 1.6; invCloseStroke.Parent = invClose
+local invClose = redX(invPanel, 46, 26)
+invClose.Position = UDim2.new(1, -10, 0, 8)
 
 -- Top tab strip.
 local invTabs = Instance.new("Frame")
@@ -763,8 +797,15 @@ local function paneButton(textStr, fillA, fillB, textCol)
 	local b = Instance.new("TextButton")
 	b.BackgroundColor3 = fillA; b.BorderSizePixel = 0; b.AutoButtonColor = true
 	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = textCol; b.Text = textStr; b.Parent = invDetail
-	corner(b, 5); ledge(b, TBLACK, 2)
-	local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(fillA, fillB); g.Rotation = 90; g.Parent = b
+	corner(b, 5); ledge(b, TBLACK, 2.5)
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, fillA),
+		ColorSequenceKeypoint.new(0.78, fillA),
+		ColorSequenceKeypoint.new(0.8, fillB),
+		ColorSequenceKeypoint.new(1, fillB),
+	})
+	g.Rotation = 90; g.Parent = b
 	return b
 end
 
@@ -776,12 +817,8 @@ local function renderInvDetail()
 	end
 	local kind, id = selectedInv.kind, selectedInv.id
 
-	local dClose = Instance.new("TextButton")
-	dClose.AnchorPoint = Vector2.new(1, 0); dClose.Position = UDim2.new(1, -4, 0, 4); dClose.Size = UDim2.fromOffset(40, 40)
-	dClose.BackgroundTransparency = 1; dClose.FontFace = TITLE_FACE; dClose.TextSize = 28
-	dClose.TextColor3 = Color3.fromRGB(235, 55, 45); dClose.Text = "✕"; dClose.Parent = invDetail
-	local dCloseStroke = Instance.new("UIStroke")
-	dCloseStroke.Color = TBLACK; dCloseStroke.Thickness = 1.4; dCloseStroke.Parent = dClose
+	local dClose = redX(invDetail, 34, 20)
+	dClose.Position = UDim2.new(1, -6, 0, 6)
 	dClose.Activated:Connect(function()
 		selectedInv = nil
 		renderActive()
@@ -1062,7 +1099,7 @@ resultLabel.TextColor3 = TEXTCOL; resultLabel.ZIndex = 7; resultLabel.Parent = r
 local reelBtn = Instance.new("TextButton") -- doubles as Skip (while rolling) and Continue (after)
 reelBtn.AnchorPoint = Vector2.new(0.5, 1); reelBtn.Position = UDim2.new(0.5, 0, 1, -34); reelBtn.Size = UDim2.fromOffset(200, 44)
 reelBtn.BackgroundColor3 = CARD; reelBtn.FontFace = BODYB_FACE; reelBtn.TextSize = 18; reelBtn.TextColor3 = TEXTCOL
-reelBtn.Text = "SKIP"; reelBtn.ZIndex = 7; reelBtn.Parent = reel; corner(reelBtn, 8)
+reelBtn.Text = "SKIP"; reelBtn.ZIndex = 7; reelBtn.Parent = reel; corner(reelBtn, 8); ledge(reelBtn, TBLACK, 2.5); lbevel(reelBtn)
 
 local activeTween = nil
 local finishReel = nil
@@ -1271,12 +1308,8 @@ shopCoins.AnchorPoint = Vector2.new(1, 0); shopCoins.Position = UDim2.new(1, -64
 shopCoins.BackgroundTransparency = 1; shopCoins.FontFace = BODYB_FACE; shopCoins.TextSize = 16
 shopCoins.TextXAlignment = Enum.TextXAlignment.Right; shopCoins.TextColor3 = GOLD; shopCoins.Text = ""; shopCoins.Parent = shopPanel
 
-local shopX = Instance.new("TextButton")
-shopX.AnchorPoint = Vector2.new(1, 0); shopX.Position = UDim2.new(1, -8, 0, 6); shopX.Size = UDim2.fromOffset(46, 46)
-shopX.BackgroundTransparency = 1; shopX.FontFace = TITLE_FACE; shopX.TextSize = 34
-shopX.TextColor3 = Color3.fromRGB(235, 55, 45); shopX.Text = "✕"; shopX.Parent = shopPanel
-local shopXStroke = Instance.new("UIStroke")
-shopXStroke.Color = TBLACK; shopXStroke.Thickness = 1.6; shopXStroke.Parent = shopX
+local shopX = redX(shopPanel, 46, 26)
+shopX.Position = UDim2.new(1, -10, 0, 8)
 
 -- LEFT: the stock list (one column).
 local shopList = Instance.new("ScrollingFrame")
@@ -1446,35 +1479,44 @@ local function renderShopDetail()
 	local function buyBtn(textStr, primary)
 		local b = Instance.new("TextButton")
 		b.BorderSizePixel = 0; b.AutoButtonColor = true
-		b.FontFace = TITLE_FACE; b.TextSize = 13; b.Parent = shopDetail
-		corner(b, 5); ledge(b, TBLACK, 2)
+		b.FontFace = TITLE_FACE; b.TextSize = 14; b.Parent = shopDetail
+		corner(b, 5); ledge(b, TBLACK, 2.5)
 		if soldOut or not afford then
 			b.BackgroundColor3 = TRACK; b.TextColor3 = DIMTEXT; b.AutoButtonColor = false
 		elseif primary then
-			b.BackgroundColor3 = ACCENT; b.TextColor3 = Color3.fromRGB(14, 22, 6)
-			local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(ACCENT, darker(ACCENT, 0.45)); g.Rotation = 90; g.Parent = b
+			b.BackgroundColor3 = SELBG; b.TextColor3 = TEXTCOL
+			lbevel(b)
 		else
 			b.BackgroundColor3 = PANEL2; b.TextColor3 = TEXTCOL
-			ledge(b, ACCENT, 1, 0.5)
+			ledge(b, ACCENT, 1, 0.5); lbevel(b)
 		end
 		b.Text = textStr
 		return b
 	end
-	local buy = buyBtn(soldOut and "SOLD OUT" or "BUY", true)
-	buy.AnchorPoint = Vector2.new(0, 1); buy.Position = UDim2.new(0, 14, 1, -12); buy.Size = UDim2.new(0.5, -20, 0, 42)
-	local buyOpen = buyBtn(soldOut and "—" or "BUY & OPEN", false)
-	buyOpen.AnchorPoint = Vector2.new(1, 1); buyOpen.Position = UDim2.new(1, -14, 1, -12); buyOpen.Size = UDim2.new(0.5, -20, 0, 42)
+	-- Quantity pills (like the reference shop): BUY 1 / BUY 5 / BUY MAX in a row, BUY & OPEN below.
+	-- The server clamps to remaining stock + what you can afford, so 5/MAX buy "as many as possible".
+	local quantities = { { 1, "BUY 1" }, { 5, "BUY 5" }, { "max", "BUY MAX" } }
+	for i, q in quantities do
+		local b = buyBtn(soldOut and (i == 2 and "SOLD OUT" or "—") or q[2], true)
+		b.AnchorPoint = Vector2.new(0, 1)
+		b.Position = UDim2.new((i - 1) / 3, 14 - (i - 1) * 9, 1, -62)
+		b.Size = UDim2.new(1 / 3, -14, 0, 40)
+		if not soldOut and afford then
+			b.Activated:Connect(function()
+				lplay("Buy")
+				ShopBuy:FireServer({ slot = shopSelected, open = false, qty = q[1] })
+			end)
+		end
+	end
+	local buyOpen = buyBtn(soldOut and "—" or "BUY & OPEN 1", false)
+	buyOpen.AnchorPoint = Vector2.new(0, 1); buyOpen.Position = UDim2.new(0, 14, 1, -12); buyOpen.Size = UDim2.new(1, -28, 0, 40)
 	if not soldOut and afford then
-		buy.Activated:Connect(function()
-			lplay("Buy")
-			ShopBuy:FireServer({ slot = shopSelected, open = false })
-		end)
 		buyOpen.Activated:Connect(function()
 			if rolling then return end
 			rolling = true
 			armRollTimeout()
 			lplay("Buy")
-			ShopBuy:FireServer({ slot = shopSelected, open = true })
+			ShopBuy:FireServer({ slot = shopSelected, open = true, qty = 1 })
 		end)
 	end
 end
@@ -1668,12 +1710,8 @@ do
 	sTitle.FontFace = TITLE_FACE; sTitle.TextSize = 22; sTitle.TextXAlignment = Enum.TextXAlignment.Left
 	sTitle.TextColor3 = TEXTCOL; sTitle.Text = "SETTINGS"; sTitle.Parent = sPanel
 
-	local sClose = Instance.new("TextButton")
-	sClose.AnchorPoint = Vector2.new(1, 0); sClose.Position = UDim2.new(1, -6, 0, 4); sClose.Size = UDim2.fromOffset(40, 40)
-	sClose.BackgroundTransparency = 1; sClose.FontFace = TITLE_FACE; sClose.TextSize = 28
-	sClose.TextColor3 = Color3.fromRGB(235, 55, 45); sClose.Text = "✕"; sClose.Parent = sPanel
-	local sCloseStroke = Instance.new("UIStroke")
-	sCloseStroke.Color = TBLACK; sCloseStroke.Thickness = 1.4; sCloseStroke.Parent = sClose
+	local sClose = redX(sPanel, 34, 20)
+	sClose.Position = UDim2.new(1, -6, 0, 6)
 
 	local function sliderRow(y, labelText, get, set)
 		local label = Instance.new("TextLabel")
