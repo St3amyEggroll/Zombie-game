@@ -1174,7 +1174,6 @@ local function spawnOne(round: number, forcedType: string?)
 	hum.MaxHealth = hp
 	hum.Health = hp
 	hum.WalkSpeed = scaledSpeed(round, t)
-	record.baseSpeed = hum.WalkSpeed -- statusSpeed() restores to this after chills/pins expire
 
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)
@@ -1196,6 +1195,7 @@ local function spawnOne(round: number, forcedType: string?)
 		hum = hum,
 		typeId = typeId,
 		type = t,
+		baseSpeed = hum.WalkSpeed, -- statusSpeed() restores to this after chills/pins expire
 		damage = t.damage,
 		target = nil,
 		targetRoot = nil,
