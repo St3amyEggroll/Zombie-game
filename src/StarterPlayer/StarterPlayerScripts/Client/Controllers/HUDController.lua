@@ -38,6 +38,7 @@ local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, incomingLabel, flawlessLabel
+local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
 
 local RARITY_COLOR = {}
@@ -124,6 +125,41 @@ local function build()
 	breakLabel.Position = UDim2.new(0.5, 0, 0, 80)
 	breakLabel.Size = UDim2.fromOffset(300, 20)
 	breakLabel.Text = ""
+
+	-- Enemies-left bar (under the wave number, only during a live wave): depletes as the wave is cleared,
+	-- with the count printed on it — the "am I about to clear this?" beat, made visible.
+	enemiesTrack = Instance.new("Frame")
+	enemiesTrack.Name = "EnemiesTrack"
+	enemiesTrack.AnchorPoint = Vector2.new(0.5, 0)
+	enemiesTrack.Position = UDim2.new(0.5, 0, 0, 84)
+	enemiesTrack.Size = UDim2.fromOffset(210, 16)
+	enemiesTrack.BackgroundColor3 = COL_TRACK
+	enemiesTrack.BackgroundTransparency = 0.15
+	enemiesTrack.BorderSizePixel = 0
+	enemiesTrack.Visible = false
+	enemiesTrack.Parent = gui
+	corner(enemiesTrack, 8)
+	UITheme.Edge(enemiesTrack, UITheme.BLACK, 1.5)
+
+	enemiesFill = Instance.new("Frame")
+	enemiesFill.Name = "Fill"
+	enemiesFill.AnchorPoint = Vector2.new(0, 0)
+	enemiesFill.Size = UDim2.fromScale(1, 1)
+	enemiesFill.BackgroundColor3 = COL_DANGER
+	enemiesFill.BorderSizePixel = 0
+	enemiesFill.Parent = enemiesTrack
+	corner(enemiesFill, 8)
+
+	enemiesLabel = text(enemiesTrack, "EnemiesLabel", UITheme.BodyBoldFace, 11, COL_TEXT)
+	enemiesLabel.Size = UDim2.fromScale(1, 1)
+	enemiesLabel.ZIndex = 2
+	enemiesLabel.TextXAlignment = Enum.TextXAlignment.Center
+	enemiesLabel.Text = ""
+	local enStroke = Instance.new("UIStroke")
+	enStroke.Color = Color3.fromRGB(0, 0, 0)
+	enStroke.Transparency = 0.35
+	enStroke.Thickness = 1.5
+	enStroke.Parent = enemiesLabel
 
 	-- INCOMING! banner (below the wave counter, above the kill-streak flair).
 	incomingLabel = text(gui, "IncomingLabel", UITheme.TitleFace, 20, COL_DANGER)
@@ -228,6 +264,24 @@ function HUDController.Start()
 		else
 			breakEndsAt = 0
 		end
+		if enemiesTrack and phase ~= "Playing" then
+			enemiesTrack.Visible = false -- no live wave between rounds / in the lobby countdown
+		end
+	end)
+
+	-- Enemies left to kill this wave — the count bar under the wave number.
+	Remotes.Get("WaveProgress").OnClientEvent:Connect(function(remaining, total)
+		remaining = tonumber(remaining) or 0
+		total = tonumber(total) or 0
+		if total <= 0 or remaining <= 0 then
+			enemiesTrack.Visible = false
+			return
+		end
+		enemiesTrack.Visible = true
+		enemiesLabel.Text = ("%d %s LEFT"):format(remaining, remaining == 1 and "ENEMY" or "ENEMIES")
+		TweenService:Create(enemiesFill, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.fromScale(math.clamp(remaining / total, 0, 1), 1),
+		}):Play()
 	end)
 	RunService.RenderStepped:Connect(function()
 		if breakEndsAt > 0 and os.clock() < breakEndsAt then

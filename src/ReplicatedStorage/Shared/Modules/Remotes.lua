@@ -31,6 +31,7 @@ local DEFINITIONS: { [string]: string } = {
 	BossDefeated      = "RemoteEvent",     -- S->C: hide the bar + "boss defeated" banner
 	EnemyIncoming     = "RemoteEvent",     -- S->C: (typeName) — a NEW enemy type just spawned for the first time
 	StartCountdown    = "RemoteEvent",     -- S->C: (seconds) — pre-run countdown while the party loads in (0 = clear)
+	WaveProgress      = "RemoteEvent",     -- S->C: (remaining, total) — zombies left to kill this wave (drives the count bar)
 
 	-- CombatService (THE exploit surface — server validates everything)
 	FireWeapon        = "RemoteEvent",     -- C->S: intent (weaponId, origin, direction)

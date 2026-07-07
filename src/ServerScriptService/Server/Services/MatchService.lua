@@ -402,6 +402,9 @@ runMatch = function()
 		local count = computeCount(state.round, inMatchCount())
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
+		local waveTotal = count               -- this wave's owed count (denominator for the count bar)
+		local lastRemaining = -1
+		Remotes.Get("WaveProgress"):FireAllClients(count, waveTotal)
 
 		-- Boss waves (10 = Boss, 20 = Lumberjack, 30 = Necromancer) — the boss counts toward the clear.
 		-- Past the scheduled list (Endless depth), every 10th wave cycles the roster so the boss-kill
@@ -421,6 +424,10 @@ runMatch = function()
 			end
 			state.zombiesAlive = ZombieService.GetAliveCount()
 			state.zombiesRemaining = ZombieService.GetRemaining()
+			if state.zombiesRemaining ~= lastRemaining then
+				lastRemaining = state.zombiesRemaining
+				Remotes.Get("WaveProgress"):FireAllClients(state.zombiesRemaining, waveTotal)
+			end
 			task.wait(0.1) -- tight poll so the break starts right when the last zombie dies
 		end
 		if not anyInMatch() then
