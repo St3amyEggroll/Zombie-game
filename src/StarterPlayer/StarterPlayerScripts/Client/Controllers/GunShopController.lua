@@ -295,7 +295,7 @@ function GunShopController.Start()
 	UITheme.Studs(shopBtn)
 
 	-- Panel: grid | featured | buy stack (same skeleton as the lobby's crate shop).
-	panel = UITheme.Panel(gui, "GunShopPanel", { accent = UITheme.GOLD })
+	panel = UITheme.Panel(gui, "GunShopPanel", { accent = UITheme.HeaderColors.guns })
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
@@ -321,6 +321,7 @@ function GunShopController.Start()
 	closeBtn.Parent = panel
 	UITheme.Corner(closeBtn, 7)
 	UITheme.Edge(closeBtn, UITheme.BLACK, 2.5)
+	UITheme.WhiteX(closeBtn)
 	local xg = Instance.new("UIGradient")
 	xg.Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),

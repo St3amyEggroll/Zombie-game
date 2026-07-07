@@ -39,6 +39,13 @@ end
 
 function SoundFXService.Start()
 	-- Volume sliders. Validated + rate-limited like every other remote (CLAUDE.md §14).
+	Remotes.Get("SetShake").OnServerEvent:Connect(function(player, on)
+		if not SecurityService.Allow(player, "Settings") then
+			return
+		end
+		DataService.SetSetting(player, "shake", on == true)
+	end)
+
 	Remotes.Get("SetSoundSettings").OnServerEvent:Connect(function(player, vol)
 		if not SecurityService.Allow(player, "Settings") then
 			return

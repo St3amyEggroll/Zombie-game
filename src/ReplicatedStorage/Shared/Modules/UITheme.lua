@@ -188,7 +188,7 @@ function UITheme.Panel(parent: Instance, name: string?, opts: any?)
 	UITheme.Corner(f, opts.radius or 6)
 	UITheme.Edge(f, opts.edge or UITheme.BLACK, opts.edgeThickness or 2)
 	if opts.accent then
-		UITheme.Edge(f, opts.accent, 1, 0.45) -- inner colored line over the black edge
+		UITheme.Edge(f, opts.accent, 2.5, 0.05) -- the panel's OUTLINE = the accent color (matches the header bar)
 	end
 	if opts.studs ~= false then
 		UITheme.Studs(f, opts.tile, opts.studsAlpha)
@@ -296,6 +296,26 @@ function UITheme.Header(panel: GuiObject, titleText: string, height: number?, ac
 		line.Parent = panel
 	end
 	return title
+end
+
+-- Draw a white X inside a button (two rotated bars) — robust vs fonts that lack the ✕ glyph.
+function UITheme.WhiteX(button: GuiObject, thickness: number?)
+	button.Text = ""
+	local t = thickness or 3
+	for _, rot in { 45, -45 } do
+		local bar = Instance.new("Frame")
+		bar.AnchorPoint = Vector2.new(0.5, 0.5)
+		bar.Position = UDim2.fromScale(0.5, 0.5)
+		bar.Size = UDim2.new(0.5, 0, 0, t)
+		bar.Rotation = rot
+		bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		bar.BorderSizePixel = 0
+		bar.ZIndex = (button.ZIndex or 1) + 2
+		bar.Parent = button
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = bar
+	end
 end
 
 -- Vertical shade for cards: multiplies the fill darker toward the BOTTOM (a subtle 3D drop).

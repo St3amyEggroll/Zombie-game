@@ -55,6 +55,7 @@ local DEFINITIONS: { [string]: string } = {
 	-- SoundFXService (all playback is client-side; the server only broadcasts named events)
 	SoundEvent        = "RemoteEvent",     -- S->C: (name, position?) — play a named SoundConfig sound
 	SetSoundSettings  = "RemoteEvent",     -- C->S: ({master, music, sfx} 0..1) — persist the volume sliders
+	SetShake          = "RemoteEvent",     -- C->S: (bool) — persist the camera-shake on/off preference
 
 	-- PlayerStateService
 	HealthChanged     = "RemoteEvent",     -- S->C: (health, maxHealth)

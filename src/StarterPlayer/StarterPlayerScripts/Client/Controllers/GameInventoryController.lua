@@ -219,7 +219,7 @@ function GameInventoryController.Start()
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
-	panel = UITheme.Panel(gui, "CasesPanel", { accent = UITheme.TOXIC })
+	panel = UITheme.Panel(gui, "CasesPanel", { accent = UITheme.HeaderColors.cases })
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
@@ -239,6 +239,7 @@ function GameInventoryController.Start()
 	closeBtn.Parent = panel
 	UITheme.Corner(closeBtn, 7)
 	UITheme.Edge(closeBtn, UITheme.BLACK, 2.5)
+	UITheme.WhiteX(closeBtn)
 	local xg = Instance.new("UIGradient")
 	xg.Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),

@@ -18,7 +18,7 @@ local UIFocus = require(Shared.Modules.UIFocus)
 local SettingsController = {}
 
 -- ===== TUNABLES =====
-local PANEL_W, PANEL_H = 340, 250
+local PANEL_W, PANEL_H = 340, 300
 local SAVE_DEBOUNCE = 0.6 -- seconds after the last slider move before the save fires
 
 local localPlayer = Players.LocalPlayer
@@ -62,7 +62,7 @@ function SettingsController.Start()
 	UITheme.Studs(gear)
 
 	-- Panel.
-	local panel = UITheme.Panel(gui, "SettingsPanel", { accent = UITheme.TOXIC })
+	local panel = UITheme.Panel(gui, "SettingsPanel", { accent = UITheme.HeaderColors.settings })
 	panel.AnchorPoint = Vector2.new(1, 1)
 	panel.Position = UDim2.new(1, -12, 1, -64)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
@@ -81,6 +81,7 @@ function SettingsController.Start()
 	closeBtn.Text = "✕"
 	closeBtn.Parent = panel
 	UITheme.Corner(closeBtn, 6); UITheme.Edge(closeBtn, UITheme.BLACK, 2.5)
+	UITheme.WhiteX(closeBtn)
 	local closeBtnG = Instance.new("UIGradient")
 	closeBtnG.Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
@@ -168,6 +169,48 @@ function SettingsController.Start()
 		return render
 	end
 
+	-- On/off toggle row (label + a pill switch). get()/set(bool).
+	local function toggleRow(y, labelText, get, set)
+		local label = UITheme.Label(panel, nil, 14, UITheme.DIM, true)
+		label.Position = UDim2.fromOffset(18, y)
+		label.Size = UDim2.fromOffset(180, 26)
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Text = labelText
+
+		local sw = Instance.new("TextButton")
+		sw.AnchorPoint = Vector2.new(1, 0.5)
+		sw.Position = UDim2.new(1, -18, 0, y + 13)
+		sw.Size = UDim2.fromOffset(64, 30)
+		sw.BorderSizePixel = 0
+		sw.Text = ""
+		sw.AutoButtonColor = false
+		sw:SetAttribute("NoClickSound", true)
+		sw.Parent = panel
+		UITheme.Corner(sw, 15)
+		UITheme.Edge(sw, UITheme.BLACK, 2)
+
+		local knob = Instance.new("Frame")
+		knob.AnchorPoint = Vector2.new(0.5, 0.5)
+		knob.Size = UDim2.fromOffset(24, 24)
+		knob.BackgroundColor3 = UITheme.TEXT
+		knob.BorderSizePixel = 0
+		knob.Parent = sw
+		UITheme.Corner(knob, 12)
+		UITheme.Edge(knob, UITheme.BLACK, 1.5)
+
+		local function paint()
+			local on = get()
+			sw.BackgroundColor3 = on and UITheme.TOXIC or UITheme.TRACK
+			knob.Position = on and UDim2.new(1, -15, 0.5, 0) or UDim2.new(0, 15, 0.5, 0)
+		end
+		sw.Activated:Connect(function()
+			set(not get())
+			paint()
+		end)
+		paint()
+		return paint
+	end
+
 	local renders = {}
 	table.insert(renders, sliderRow(58, "MASTER", function()
 		local m = SoundController.GetVolumes()
@@ -191,6 +234,17 @@ function SettingsController.Start()
 		SoundController.SetVolumes(m, mu, v)
 	end))
 
+	-- CAMERA SHAKE on/off (client-side gate via a player attribute; persisted through SetShake).
+	local shakeOn = localPlayer:GetAttribute("ShakeOff") ~= true
+	local shakePaint = toggleRow(244, "CAMERA SHAKE", function()
+		return shakeOn
+	end, function(v)
+		shakeOn = v
+		localPlayer:SetAttribute("ShakeOff", not v)
+		Remotes.Get("SetShake"):FireServer(v)
+	end)
+	table.insert(renders, shakePaint)
+
 	local function renderAll()
 		for _, r in renders do
 			r()
@@ -211,8 +265,17 @@ function SettingsController.Start()
 		panel.Visible = false
 	end)
 
-	-- The profile's saved volumes may land after we've built (SoundController fetches async) — re-render
-	-- whenever the panel opens covers it; also refresh once shortly after boot.
+	-- Load the saved camera-shake preference (default ON) + volumes; then refresh the toggle/sliders.
+	task.spawn(function()
+		local ok, data = pcall(function()
+			return Remotes.Get("GetData"):InvokeServer()
+		end)
+		if ok and typeof(data) == "table" and typeof(data.settings) == "table" and data.settings.shake ~= nil then
+			shakeOn = data.settings.shake == true
+			localPlayer:SetAttribute("ShakeOff", not shakeOn)
+		end
+		renderAll()
+	end)
 	task.delay(3, renderAll)
 
 	print("[SettingsController] started")

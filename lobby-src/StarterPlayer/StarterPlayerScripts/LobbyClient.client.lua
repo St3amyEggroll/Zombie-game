@@ -159,6 +159,15 @@ local function redX(parentGui, size, tsize)
 		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
 	})
 	g.Rotation = 90; g.Parent = x
+	-- Drawn white X (robust vs fonts lacking the glyph).
+	x.Text = ""
+	for _, rot in { 45, -45 } do
+		local bar = Instance.new("Frame")
+		bar.AnchorPoint = Vector2.new(0.5, 0.5); bar.Position = UDim2.fromScale(0.5, 0.5)
+		bar.Size = UDim2.new(0.5, 0, 0, 3); bar.Rotation = rot
+		bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255); bar.BorderSizePixel = 0; bar.ZIndex = 3; bar.Parent = x
+		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = bar
+	end
 	return x
 end
 
@@ -398,7 +407,7 @@ panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5,
 panel.Size = UDim2.fromOffset(600, 430); panel.BackgroundColor3 = PANEL
 panel.BackgroundTransparency = 0.12; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
 corner(panel, 8)
-lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, ACCENT, 1, 0.45)
+lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, HEADER_COLORS.play, 2.5, 0.05)
 
 local title = Instance.new("TextLabel")
 title.Position = UDim2.new(0, 0, 0, 14); title.Size = UDim2.new(1, 0, 0, 34); title.BackgroundTransparency = 1
@@ -717,7 +726,8 @@ invPanel.AnchorPoint = Vector2.new(0.5, 0.5); invPanel.Position = UDim2.fromScal
 invPanel.Size = UDim2.fromOffset(PANEL_W, PANEL_H); invPanel.BackgroundColor3 = PANEL
 invPanel.BackgroundTransparency = 0.12; invPanel.BorderSizePixel = 0; invPanel.Visible = false; invPanel.Parent = invGui
 corner(invPanel, 8)
-lstuds(invPanel); ldepth(invPanel); ledge(invPanel, TBLACK, 3); ledge(invPanel, ACCENT, 1, 0.45)
+lstuds(invPanel); ldepth(invPanel); ledge(invPanel, TBLACK, 3)
+local invEdge = ledge(invPanel, HEADER_COLORS.guns, 2.5, 0.05)
 
 local invHeaderBar, invHeaderSq = headerBar(invPanel, 52, HEADER_COLORS.guns)
 local invTitle = Instance.new("TextLabel")
@@ -841,10 +851,10 @@ end
 -- neutral buttons still read as buttons (they used to use PANEL2-on-PANEL2 and vanished).
 local GHOSTA = Color3.fromRGB(54, 60, 42)
 local GHOSTB = Color3.fromRGB(42, 47, 33)
-local function paneButton(textStr, fillA, fillB, textCol)
+local function bigButton(parent, textStr, fillA, fillB, textCol)
 	local b = Instance.new("TextButton")
 	b.BackgroundColor3 = fillA; b.BorderSizePixel = 0; b.AutoButtonColor = true
-	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = textCol; b.Text = textStr; b.Parent = invActs
+	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = textCol; b.Text = textStr; b.Parent = parent
 	corner(b, 5); ledge(b, TBLACK, 2.5)
 	local g = Instance.new("UIGradient")
 	g.Color = ColorSequence.new({
@@ -855,6 +865,9 @@ local function paneButton(textStr, fillA, fillB, textCol)
 	})
 	g.Rotation = 90; g.Parent = b
 	return b
+end
+local function paneButton(textStr, fillA, fillB, textCol)
+	return bigButton(invActs, textStr, fillA, fillB, textCol)
 end
 
 -- ===== FEATURED PANE (middle) + ACTION STACK (right) =====
@@ -929,8 +942,24 @@ local function renderInvDetail()
 		stats.Text = ("DMG %.0f%s\n%s shots/s   ·   RNG %s\nDPS ~%d"):format(
 			w.damage or 0, w.pellets and (" ×" .. w.pellets) or "", tostring(w.fireRate or "?"),
 			tostring(w.range or "?"), math.floor(dps + 0.5))
+		-- EQUIP / UNEQUIP — big button right under the damage info. Each gun has a fixed slot (primary/secondary).
+		if ownsGun(id) then
+			local sl = (w.slot == "secondary") and 2 or 1
+			local equipped = (invData.loadout[sl] == id)
+			local eqBtn = bigButton(invDetail,
+				equipped and "UNEQUIP" or "EQUIP",
+				equipped and ORANGE or ACCENT,
+				equipped and darker(ORANGE, 0.4) or darker(ACCENT, 0.5),
+				equipped and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(14, 22, 6))
+			eqBtn.Position = UDim2.fromOffset(14, 330); eqBtn.Size = UDim2.new(1, -28, 0, 50)
+			eqBtn.Activated:Connect(function()
+				lplay("Equip")
+				EquipSlot:FireServer({ slot = sl, weaponId = equipped and false or id })
+			end)
+		end
+
 		if w.ability then
-			local ab = centered(344, 44, BODYB_FACE, 13, ACCENT)
+			local ab = centered(388, 40, BODYB_FACE, 13, ACCENT)
 			ab.Text = w.ability
 			ab.TextYAlignment = Enum.TextYAlignment.Top
 		end
@@ -938,7 +967,7 @@ local function renderInvDetail()
 		-- SKIN STRIP: this gun's skins as four swatches — click an OWNED one to equip (again to remove).
 		if ownsGun(id) and invData.catalog.skins then
 			local strip = Instance.new("Frame")
-			strip.Position = UDim2.fromOffset(14, 392); strip.Size = UDim2.new(1, -28, 0, 54)
+			strip.Position = UDim2.fromOffset(14, 430); strip.Size = UDim2.new(1, -28, 0, 54)
 			strip.BackgroundTransparency = 1; strip.Parent = invDetail
 			local sl = Instance.new("UIListLayout")
 			sl.FillDirection = Enum.FillDirection.Horizontal; sl.Padding = UDim.new(0, 8); sl.Parent = strip
@@ -972,36 +1001,58 @@ local function renderInvDetail()
 		end
 
 		if not ownsGun(id) then
-			-- Locked: show the price, the action is BUY.
-			local priceLbl = centered(410, 24, BODYB_FACE, 18, GOLD)
+			-- Locked: price + BUY under the stats.
+			local priceLbl = centered(330, 22, BODYB_FACE, 18, GOLD)
 			priceLbl.Text = "🪙 " .. fmt(w.price or 0)
 			local canAfford = (invData.coins or 0) >= (w.price or 0)
 			local buy
 			if canAfford then
-				buy = paneButton(("BUY  ·  🪙 %s"):format(fmt(w.price or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
+				buy = bigButton(invDetail, ("BUY  ·  🪙 %s"):format(fmt(w.price or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
 				buy.Activated:Connect(function()
 					lplay("Buy")
 					BuyGun:FireServer({ weaponId = id })
 				end)
 			else
-				buy = paneButton(("NEED 🪙 %s"):format(fmt(w.price or 0)), GHOSTA, GHOSTB, DIMTEXT)
+				buy = bigButton(invDetail, ("NEED 🪙 %s"):format(fmt(w.price or 0)), GHOSTA, GHOSTB, DIMTEXT)
 				buy.AutoButtonColor = false
 			end
-			buy.Position = UDim2.new(0, 0, 0, 0); buy.Size = UDim2.new(1, 0, 0, 60)
-		else
-			local inS1 = (invData.loadout[1] == id)
-			local inS2 = (invData.loadout[2] == id)
-			local eq1 = paneButton(inS1 and "PRIMARY ✓" or "SET PRIMARY", GHOSTA, GHOSTB, inS1 and ACCENT or TEXTCOL)
-			eq1.Position = UDim2.new(0, 0, 0, 0); eq1.Size = UDim2.new(1, 0, 0, 56)
-			local eq2 = paneButton(inS2 and "SECONDARY ✓" or "SET SECONDARY", GHOSTA, GHOSTB, inS2 and ACCENT or TEXTCOL)
-			eq2.Position = UDim2.new(0, 0, 0, 70); eq2.Size = UDim2.new(1, 0, 0, 56)
-			eq1.Activated:Connect(function()
-				if not inS1 then lplay("Equip"); EquipSlot:FireServer({ slot = 1, weaponId = id }) end
-			end)
-			eq2.Activated:Connect(function()
-				if not inS2 then lplay("Equip"); EquipSlot:FireServer({ slot = 2, weaponId = id }) end
-			end)
+			buy.Position = UDim2.fromOffset(14, 356); buy.Size = UDim2.new(1, -28, 0, 46)
 		end
+
+		-- RIGHT STACK: two big SLOT BOXES showing the current PRIMARY + SECONDARY guns (click to feature).
+		local function slotBox(label, slotNum, yPos)
+			local gid = invData.loadout[slotNum]
+			local box = Instance.new("TextButton")
+			box.Position = UDim2.new(0, 0, 0, yPos); box.Size = UDim2.new(1, 0, 0, 226)
+			box.BackgroundColor3 = gid and rarityColor((weaponInfo(gid) or {}).rarity or "common"):Lerp(BLACK, 0.6) or darker(PANEL2, 0.15)
+			box.AutoButtonColor = gid ~= nil; box.Text = ""; box.BorderSizePixel = 0; box.Parent = invActs
+			corner(box, 7); ledge(box, (gid and selectedInv and selectedInv.id == gid) and ACCENT or TBLACK, 2.5); cardShade(box)
+			local tag = Instance.new("TextLabel")
+			tag.Position = UDim2.fromOffset(8, 6); tag.Size = UDim2.new(1, -16, 0, 18); tag.BackgroundTransparency = 1
+			tag.FontFace = TITLE_FACE; tag.TextSize = 13; tag.TextXAlignment = Enum.TextXAlignment.Left
+			tag.TextColor3 = ACCENT; tag.Text = label; tag.ZIndex = 3; tag.Parent = box
+			if gid then
+				local gvp = makeGunViewport(gid, false)
+				if gvp then gvp.Position = UDim2.fromOffset(0, 20); gvp.Size = UDim2.new(1, 0, 1, -46); gvp.Parent = box end
+				local gnm = Instance.new("TextLabel")
+				gnm.AnchorPoint = Vector2.new(0, 1); gnm.Position = UDim2.new(0, 0, 1, -4); gnm.Size = UDim2.new(1, 0, 0, 22)
+				gnm.BackgroundTransparency = 1; gnm.FontFace = BODYB_FACE; gnm.TextSize = 14
+				gnm.TextColor3 = TEXTCOL; gnm.Text = (weaponInfo(gid) or {}).name or gid; gnm.ZIndex = 3; gnm.Parent = box
+				local gs = Instance.new("UIStroke"); gs.Color = TBLACK; gs.Thickness = 1.3
+				gs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; gs.Parent = gnm
+				box.Activated:Connect(function()
+					selectedInv = { kind = "weapon", id = gid }
+					renderActive()
+				end)
+			else
+				local empty = Instance.new("TextLabel")
+				empty.Position = UDim2.fromOffset(0, 20); empty.Size = UDim2.new(1, 0, 1, -20); empty.BackgroundTransparency = 1
+				empty.FontFace = TITLE_FACE; empty.TextSize = 16; empty.TextColor3 = DIMTEXT
+				empty.Text = "EMPTY"; empty.Parent = box
+			end
+		end
+		slotBox("PRIMARY", 1, 0)
+		slotBox("SECONDARY", 2, 240)
 	elseif kind == "skin" then
 		local s = entry
 		nm.Text = s.name
@@ -1123,6 +1174,7 @@ local function showTab(id)
 	local hc = (id == "weapons") and HEADER_COLORS.guns or HEADER_COLORS.cases
 	invHeaderBar.BackgroundColor3 = hc
 	invHeaderSq.BackgroundColor3 = hc
+	invEdge.Color = hc
 end
 
 renderActive = function()
@@ -1388,7 +1440,7 @@ shopPanel.AnchorPoint = Vector2.new(0.5, 0.5); shopPanel.Position = UDim2.fromSc
 shopPanel.Size = UDim2.fromOffset(940, 560); shopPanel.BackgroundColor3 = PANEL
 shopPanel.BackgroundTransparency = 0.12; shopPanel.BorderSizePixel = 0; shopPanel.Visible = false; shopPanel.Parent = shopGui
 corner(shopPanel, 8)
-lstuds(shopPanel); ldepth(shopPanel); ledge(shopPanel, TBLACK, 3); ledge(shopPanel, GOLD, 1, 0.45)
+lstuds(shopPanel); ldepth(shopPanel); ledge(shopPanel, TBLACK, 3); ledge(shopPanel, HEADER_COLORS.shop, 2.5, 0.05)
 
 headerBar(shopPanel, 52, HEADER_COLORS.shop)
 local shopTitle = Instance.new("TextLabel")
@@ -1838,7 +1890,7 @@ do
 	sPanel.AnchorPoint = Vector2.new(1, 1); sPanel.Position = UDim2.new(1, -12, 1, -68)
 	sPanel.Size = UDim2.fromOffset(340, 250); sPanel.BackgroundColor3 = PANEL; sPanel.BackgroundTransparency = 0.12
 	sPanel.BorderSizePixel = 0; sPanel.Visible = false; sPanel.Parent = setGui
-	corner(sPanel, 8); lstuds(sPanel); ldepth(sPanel); ledge(sPanel, TBLACK, 3); ledge(sPanel, ACCENT, 1, 0.45)
+	corner(sPanel, 8); lstuds(sPanel); ldepth(sPanel); ledge(sPanel, TBLACK, 3); ledge(sPanel, HEADER_COLORS.settings, 2.5, 0.05)
 
 	headerBar(sPanel, 44, HEADER_COLORS.settings)
 	local sTitle = Instance.new("TextLabel")

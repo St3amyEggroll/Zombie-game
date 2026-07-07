@@ -53,7 +53,7 @@ end
 
 local function addShake(weaponId: string)
 	local cfg = AnimationConfig.Shake
-	if not cfg.Enabled then
+	if not cfg.Enabled or localPlayer:GetAttribute("ShakeOff") == true then
 		return
 	end
 	local w = cfg.PerWeapon[weaponId] or cfg.Default

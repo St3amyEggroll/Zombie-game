@@ -104,18 +104,22 @@ local RARITY = {
 
 -- Stats mirror the game's WeaponConfig (kept in sync by hand) for the hover tooltips.
 -- CHANGED: guns are BOUGHT with Coins (price below; pistol is the free starter). Crates pay SKINS.
+-- Each gun belongs to a fixed loadout slot: 1 = PRIMARY, 2 = SECONDARY (WEAPONS[id].slot).
+local function slotFor(weaponId)
+	return (WEAPONS[weaponId] and WEAPONS[weaponId].slot == "secondary") and 2 or 1
+end
 local WEAPONS = {
-	pistol    = { name = "M1911",        tier = 1, rarity = "common",    damage = 30,  fireRate = 5,   range = 200, price = 0 },
-	revolver  = { name = "Revolver",     tier = 2, rarity = "uncommon",  damage = 70,  fireRate = 1.8, range = 220, price = 1500,
+	pistol    = { name = "M1911",        tier = 1, rarity = "common",    damage = 30,  fireRate = 5,   range = 200, price = 0, slot = "secondary" },
+	revolver  = { name = "Revolver",     tier = 2, rarity = "uncommon",  damage = 70,  fireRate = 1.8, range = 220, price = 1500, slot = "secondary",
 		ability = "PIERCE — rounds punch through up to 3 zombies in a line" },
-	shotgun   = { name = "Pump Shotgun", tier = 2, rarity = "uncommon",  damage = 16,  fireRate = 1.2, range = 40, pellets = 6, price = 2500 },
-	ak47      = { name = "AK-47",        tier = 3, rarity = "rare",      damage = 40,  fireRate = 9,   range = 300, price = 6000 },
-	crossbow  = { name = "Crossbow",     tier = 3, rarity = "rare",      damage = 110, fireRate = 1.0, range = 260, price = 8000,
+	shotgun   = { name = "Pump Shotgun", tier = 2, rarity = "uncommon",  damage = 16,  fireRate = 1.2, range = 40, pellets = 6, price = 2500, slot = "primary" },
+	ak47      = { name = "AK-47",        tier = 3, rarity = "rare",      damage = 40,  fireRate = 9,   range = 300, price = 6000, slot = "primary" },
+	crossbow  = { name = "Crossbow",     tier = 3, rarity = "rare",      damage = 110, fireRate = 1.0, range = 260, price = 8000, slot = "primary",
 		ability = "PIN — bolts nail zombies in place for 2s" },
-	minigun   = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 16,  fireRate = 18,  range = 300, price = 15000 },
-	freezeray = { name = "Freeze Ray",   tier = 4, rarity = "epic",      damage = 10,  fireRate = 10,  range = 180, price = 20000,
+	minigun   = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 16,  fireRate = 18,  range = 300, price = 15000, slot = "primary" },
+	freezeray = { name = "Freeze Ray",   tier = 4, rarity = "epic",      damage = 10,  fireRate = 10,  range = 180, price = 20000, slot = "primary",
 		ability = "CRYO — chills 30%; chilled zombies SHATTER on death" },
-	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80,  fireRate = 4,   range = 250, price = 40000 },
+	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80,  fireRate = 4,   range = 250, price = 40000, slot = "primary" },
 }
 
 -- ===== SKINS ===== (what crates pay out — synced with the game's SkinConfig; models are optional:
@@ -377,25 +381,26 @@ local function sanitizeOwned(v)
 end
 
 -- The up-to-2 guns carried into runs. Migration: selectedWeapon (single-gun era), then tierLoadout.
+-- Loadout is fixed-slot: [1] = a PRIMARY gun, [2] = a SECONDARY gun (either may be empty). A gun is only
+-- kept in the slot it belongs to; mismatches/unowned are dropped. Empty until nothing valid -> pistol (2).
 local function sanitizeLoadout(v, legacySelected, owned)
 	local ownedSet = {}
 	for _, id in owned do
 		ownedSet[id] = true
 	end
-	local out, seen = {}, {}
+	local out = {}
 	if typeof(v) == "table" then
 		for slot = 1, 2 do
 			local id = v[slot]
-			if typeof(id) == "string" and WEAPONS[id] and ownedSet[id] and not seen[id] then
-				seen[id] = true
-				table.insert(out, id)
+			if typeof(id) == "string" and WEAPONS[id] and ownedSet[id] and slotFor(id) == slot then
+				out[slot] = id
 			end
 		end
 	end
-	if #out == 0 then
+	if not out[1] and not out[2] then
 		local sel = (typeof(legacySelected) == "string" and WEAPONS[legacySelected] and ownedSet[legacySelected])
 			and legacySelected or "pistol"
-		out = { sel }
+		out[slotFor(sel)] = sel
 	end
 	return out
 end
@@ -881,25 +886,23 @@ EquipSlot.OnServerEvent:Connect(function(player, req)
 	if not prof or prof.noPersist then
 		return
 	end
-	local slot = tonumber(req.slot)
 	local weaponId = tostring(req.weaponId or "")
-	if not slot or (slot ~= 1 and slot ~= 2) then
+	-- UNEQUIP: a falsy weaponId clears the given slot (1 or 2).
+	if req.weaponId == false or weaponId == "" then
+		local slot = tonumber(req.slot)
+		if slot == 1 or slot == 2 then
+			prof.loadout[slot] = nil
+			markDirty(player)
+			pushInv(player)
+			refreshCarry(player)
+		end
 		return
 	end
 	if not WEAPONS[weaponId] or not table.find(prof.ownedWeapons, weaponId) then
 		return
 	end
-	local other = (slot == 1) and 2 or 1
-	if prof.loadout[other] == weaponId then
-		-- Already in the other slot: swap the two.
-		prof.loadout[other] = prof.loadout[slot]
-	end
-	prof.loadout[slot] = weaponId
-	-- Compact: slot 1 must always hold a gun.
-	if not prof.loadout[1] and prof.loadout[2] then
-		prof.loadout[1] = prof.loadout[2]
-		prof.loadout[2] = nil
-	end
+	-- The gun goes in ITS slot (primary/secondary), replacing whatever was there.
+	prof.loadout[slotFor(weaponId)] = weaponId
 	markDirty(player)
 	pushInv(player)
 	refreshCarry(player)
@@ -1597,9 +1600,10 @@ BuyGun.OnServerEvent:Connect(function(player, req)
 	prof.lobbyMoney -= price
 	table.insert(prof.ownedWeapons, weaponId)
 	prof.gunLevels[weaponId] = 1 -- legacy field kept in sync
-	-- First bought gun drops straight into the empty secondary slot.
-	if not prof.loadout[2] and prof.loadout[1] ~= weaponId then
-		prof.loadout[2] = weaponId
+	-- Auto-equip into the gun's own slot if it's currently empty.
+	local sl = slotFor(weaponId)
+	if not prof.loadout[sl] then
+		prof.loadout[sl] = weaponId
 		refreshCarry(player)
 	end
 	markDirty(player)
