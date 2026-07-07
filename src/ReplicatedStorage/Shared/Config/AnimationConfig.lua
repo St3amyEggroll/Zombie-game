@@ -63,7 +63,7 @@ AnimationConfig.Impact = {
 }
 
 AnimationConfig.Hitmarker = {
-	Enabled = true,
+	Enabled = false, -- CHANGED: the pop-up X on hits is retired (the hit SOUND still plays)
 	Color = Color3.fromRGB(255, 255, 255),
 	KillColor = Color3.fromRGB(255, 80, 80),
 	Size = 24,    -- pixels
