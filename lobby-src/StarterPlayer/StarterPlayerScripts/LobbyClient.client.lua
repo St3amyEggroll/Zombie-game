@@ -267,7 +267,7 @@ local function makeGunViewport(weaponId, spin, folderName)
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(15)) * 1.12 + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * 0.22, dist), cf.Position)
 	if spin ~= false then
-		table.insert(gvSpinning, { vp = vp, model = model, base = cf, ang = math.random() * math.pi * 2 })
+		table.insert(gvSpinning, { vp = vp, model = model, pos = cf.Position, rot = cf.Rotation, ang = math.random() * math.pi * 2 })
 		if not gvLoop then
 			gvLoop = true
 			RunService.RenderStepped:Connect(function(dt)
@@ -277,7 +277,8 @@ local function makeGunViewport(weaponId, spin, folderName)
 						table.remove(gvSpinning, i)
 					elseif e.vp.Visible then
 						e.ang += dt * math.rad(45)
-						e.model:PivotTo(e.base * CFrame.Angles(0, e.ang, 0))
+						-- Yaw around WORLD up (spinning the model's local Y flipped flat-built guns).
+						e.model:PivotTo(CFrame.new(e.pos) * CFrame.Angles(0, e.ang, 0) * e.rot)
 					end
 				end
 			end)
@@ -572,6 +573,8 @@ end)
 -- =====================================================================================================
 local TweenService = game:GetService("TweenService")
 local InvRequest = remotes:WaitForChild("InvRequest")
+local BuyGun     = remotes:WaitForChild("BuyGun")
+local EquipSkin  = remotes:WaitForChild("EquipSkin")
 local InvSync    = remotes:WaitForChild("InvSync")
 local EquipSlot = remotes:WaitForChild("EquipSlot")
 local OpenCase   = remotes:WaitForChild("OpenCase")
@@ -594,6 +597,15 @@ local function rarityColor(rarityId)
 end
 local function weaponInfo(id)
 	return invData and invData.catalog.weapons[id]
+end
+local function skinInfo(id)
+	return invData and invData.catalog.skins and invData.catalog.skins[id]
+end
+local function ownsGun(id)
+	return invData and table.find(invData.owned, id) ~= nil
+end
+local function ownsSkin(fullId)
+	return invData and invData.skins and invData.skins.owned and invData.skins.owned[fullId] == true
 end
 local function ownsSet()
 	local s = {}
@@ -652,8 +664,8 @@ invTabList.FillDirection = Enum.FillDirection.Horizontal; invTabList.Padding = U
 local invTabBtns = {}
 local function invTabButton(id, textStr)
 	local b = Instance.new("TextButton")
-	b.Size = UDim2.fromOffset(180, 46); b.BackgroundColor3 = PANEL2; b.BorderSizePixel = 0
-	b.FontFace = TITLE_FACE; b.TextSize = 18; b.TextColor3 = DIMTEXT; b.Text = textStr; b.Parent = invTabs
+	b.Size = UDim2.fromOffset(150, 46); b.BackgroundColor3 = PANEL2; b.BorderSizePixel = 0
+	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = DIMTEXT; b.Text = textStr; b.Parent = invTabs
 	corner(b, 5); ledge(b, TBLACK, 2)
 	local under = Instance.new("Frame")
 	under.Name = "Under"; under.AnchorPoint = Vector2.new(0.5, 1); under.Position = UDim2.new(0.5, 0, 1, -3)
@@ -662,7 +674,8 @@ local function invTabButton(id, textStr)
 	invTabBtns[id] = b
 	return b
 end
-invTabButton("weapons", "WEAPONS")
+invTabButton("weapons", "GUNS")
+invTabButton("skins", "SKINS")
 invTabButton("cases", "CASES")
 invTabButton("potions", "POTIONS")
 
@@ -707,15 +720,22 @@ local function invCard(opts)
 	local col = opts.color
 	local isSel = selectedInv and selectedInv.kind == opts.kind and selectedInv.id == opts.id
 	local f = Instance.new("TextButton")
-	f.BackgroundColor3 = col:Lerp(BLACK, 0.62); f.AutoButtonColor = true; f.Text = ""
+	f.BackgroundColor3 = col:Lerp(BLACK, opts.locked and 0.82 or 0.62); f.AutoButtonColor = true; f.Text = ""
 	f.BorderSizePixel = 0; f.LayoutOrder = opts.order or 0; f.Parent = invGrid
 	corner(f, 6); ledge(f, isSel and ACCENT or TBLACK, 2)
 	-- STATIC art fills the card (only the featured pane spins); name sits on a strip at the bottom.
 	local showedModel = false
-	if opts.kind == "weapon" or opts.kind == "case" then
-		local vp = makeGunViewport(opts.id, false, opts.kind == "case" and "CrateDisplay" or nil)
+	if opts.kind == "weapon" or opts.kind == "case" or opts.kind == "skin" then
+		local vp
+		if opts.kind == "skin" then
+			local s = skinInfo(opts.id)
+			vp = makeGunViewport(opts.id, false) or (s and makeGunViewport(s.gun, false)) -- skin model, else base gun
+		else
+			vp = makeGunViewport(opts.id, false, opts.kind == "case" and "CrateDisplay" or nil)
+		end
 		if vp then
 			vp.Size = UDim2.new(1, 0, 1, -26)
+			vp.ImageTransparency = opts.locked and 0.55 or 0
 			vp.Parent = f
 			showedModel = true
 		end
@@ -805,13 +825,19 @@ local function renderInvDetail()
 	local entry, wellCol
 	if kind == "weapon" then entry = weaponInfo(id); wellCol = entry and rarityColor(entry.rarity)
 	elseif kind == "case" then entry = invData.catalog.cases[id]; wellCol = rarityColor(id)
+	elseif kind == "skin" then entry = skinInfo(id); wellCol = entry and rarityColor(entry.rarity)
 	else entry = invData.catalog.potions[id]; wellCol = entry and rarityColor(entry.rarity) end
 	if not entry then
 		return
 	end
 	well.BackgroundColor3 = wellCol:Lerp(BLACK, 0.7)
 
-	local wellVp = (kind ~= "potion") and makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil) or nil
+	local wellVp
+	if kind == "skin" then
+		wellVp = makeGunViewport(id, true) or makeGunViewport(entry.gun, true) -- skin model, else base gun
+	elseif kind ~= "potion" then
+		wellVp = makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
+	end
 	if wellVp then
 		wellVp.Size = UDim2.fromScale(1, 1); wellVp.Parent = well
 	elseif typeof(entry.image) == "string" and entry.image ~= "" then
@@ -853,18 +879,75 @@ local function renderInvDetail()
 			ab.TextYAlignment = Enum.TextYAlignment.Top
 		end
 
-		local inS1 = (invData.loadout[1] == id)
-		local inS2 = (invData.loadout[2] == id)
-		local eq1 = paneButton(inS1 and "IN SLOT 1" or "EQUIP SLOT 1", GHOSTA, GHOSTB, inS1 and ACCENT or TEXTCOL)
-		eq1.Position = UDim2.new(0, 0, 0, 0); eq1.Size = UDim2.new(1, 0, 0, 56)
-		local eq2 = paneButton(inS2 and "IN SLOT 2" or "EQUIP SLOT 2", GHOSTA, GHOSTB, inS2 and ACCENT or TEXTCOL)
-		eq2.Position = UDim2.new(0, 0, 0, 70); eq2.Size = UDim2.new(1, 0, 0, 56)
-		eq1.Activated:Connect(function()
-			if not inS1 then lplay("Equip"); EquipSlot:FireServer({ slot = 1, weaponId = id }) end
-		end)
-		eq2.Activated:Connect(function()
-			if not inS2 then lplay("Equip"); EquipSlot:FireServer({ slot = 2, weaponId = id }) end
-		end)
+		if not ownsGun(id) then
+			-- Locked: show the price, the action is BUY.
+			local priceLbl = centered(410, 24, BODYB_FACE, 18, GOLD)
+			priceLbl.Text = "🪙 " .. fmt(w.price or 0)
+			local canAfford = (invData.coins or 0) >= (w.price or 0)
+			local buy
+			if canAfford then
+				buy = paneButton(("BUY  ·  🪙 %s"):format(fmt(w.price or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
+				buy.Activated:Connect(function()
+					lplay("Buy")
+					BuyGun:FireServer({ weaponId = id })
+				end)
+			else
+				buy = paneButton(("NEED 🪙 %s"):format(fmt(w.price or 0)), GHOSTA, GHOSTB, DIMTEXT)
+				buy.AutoButtonColor = false
+			end
+			buy.Position = UDim2.new(0, 0, 0, 0); buy.Size = UDim2.new(1, 0, 0, 60)
+		else
+			local inS1 = (invData.loadout[1] == id)
+			local inS2 = (invData.loadout[2] == id)
+			local eq1 = paneButton(inS1 and "PRIMARY ✓" or "SET PRIMARY", GHOSTA, GHOSTB, inS1 and ACCENT or TEXTCOL)
+			eq1.Position = UDim2.new(0, 0, 0, 0); eq1.Size = UDim2.new(1, 0, 0, 56)
+			local eq2 = paneButton(inS2 and "SECONDARY ✓" or "SET SECONDARY", GHOSTA, GHOSTB, inS2 and ACCENT or TEXTCOL)
+			eq2.Position = UDim2.new(0, 0, 0, 70); eq2.Size = UDim2.new(1, 0, 0, 56)
+			eq1.Activated:Connect(function()
+				if not inS1 then lplay("Equip"); EquipSlot:FireServer({ slot = 1, weaponId = id }) end
+			end)
+			eq2.Activated:Connect(function()
+				if not inS2 then lplay("Equip"); EquipSlot:FireServer({ slot = 2, weaponId = id }) end
+			end)
+		end
+	elseif kind == "skin" then
+		local s = entry
+		nm.Text = s.name
+		local rar = centered(246, 20, BODYB_FACE, 15, wellCol)
+		rar.Text = ((invData.catalog.rarities[s.rarity] or {}).name or "") .. " SKIN"
+		local forGun = centered(274, 20, BODY_FACE, 14, TEXTCOL)
+		local gw = weaponInfo(s.gun)
+		forGun.Text = "For: " .. (gw and gw.name or s.gun)
+		local owned = ownsSkin(id)
+		local status = centered(300, 20, BODYB_FACE, 13, owned and ACCENT or DIMTEXT)
+		local isOn = owned and invData.skins.equipped and invData.skins.equipped[s.gun] == s.skin
+		status.Text = isOn and "EQUIPPED" or (owned and "OWNED" or "LOCKED — pull it from a crate")
+
+		if owned and ownsGun(s.gun) then
+			local btn
+			if isOn then
+				btn = paneButton("REMOVE SKIN", GHOSTA, GHOSTB, TEXTCOL)
+				btn.Activated:Connect(function()
+					lplay("Equip")
+					EquipSkin:FireServer({ weaponId = s.gun, skinId = false })
+				end)
+			else
+				btn = paneButton("EQUIP SKIN", ACCENT, darker(ACCENT, 0.5), Color3.fromRGB(14, 22, 6))
+				btn.Activated:Connect(function()
+					lplay("Equip")
+					EquipSkin:FireServer({ weaponId = s.gun, skinId = s.skin })
+				end)
+			end
+			btn.Position = UDim2.new(0, 0, 0, 0); btn.Size = UDim2.new(1, 0, 0, 56)
+		elseif owned then
+			local note = paneButton("BUY THE GUN FIRST", GHOSTA, GHOSTB, DIMTEXT)
+			note.AutoButtonColor = false
+			note.Position = UDim2.new(0, 0, 0, 0); note.Size = UDim2.new(1, 0, 0, 56)
+		else
+			local note = paneButton("FIND IT IN CRATES", GHOSTA, GHOSTB, DIMTEXT)
+			note.AutoButtonColor = false
+			note.Position = UDim2.new(0, 0, 0, 0); note.Size = UDim2.new(1, 0, 0, 56)
+		end
 	elseif kind == "case" then
 		nm.Text = entry.name
 		local count = invData.cases[id] or 0
@@ -910,17 +993,55 @@ end
 
 -- ===== GRID RENDERS ===== each returns the ordered id list so the pane can default to the first item.
 local function renderWeaponsGrid()
+	-- EVERY gun shows (locked ones carry their Coin price) — guns are bought, crates only pay skins.
 	local ids = {}
-	for _, id in invData.owned do
-		if weaponInfo(id) then table.insert(ids, id) end
+	for id in invData.catalog.weapons do
+		table.insert(ids, id)
 	end
 	table.sort(ids, function(a, b)
-		return (weaponInfo(a).tier or 0) < (weaponInfo(b).tier or 0)
+		local wa, wb = weaponInfo(a), weaponInfo(b)
+		if (wa.tier or 0) ~= (wb.tier or 0) then
+			return (wa.tier or 0) < (wb.tier or 0)
+		end
+		return a < b
 	end)
 	for i, id in ids do
 		local w = weaponInfo(id)
-		local slotTag = (invData.loadout[1] == id and "S1") or (invData.loadout[2] == id and "S2") or nil
-		invCard({ kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity), tag = slotTag, order = i, image = w.image })
+		local owned = ownsGun(id)
+		local slotTag = (invData.loadout[1] == id and "PRIM") or (invData.loadout[2] == id and "SEC") or nil
+		invCard({
+			kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity),
+			tag = slotTag, order = i, image = w.image,
+			chip = (not owned) and ("🪙 " .. fmt(w.price or 0)) or nil,
+			locked = not owned,
+		})
+	end
+	return ids
+end
+
+local function renderSkinsGrid()
+	-- Every skin, grouped by gun tier then rarity; locked ones render dim.
+	local ids = {}
+	for id in (invData.catalog.skins or {}) do
+		table.insert(ids, id)
+	end
+	table.sort(ids, function(a, b)
+		local sa, sb = skinInfo(a), skinInfo(b)
+		local ta = (weaponInfo(sa.gun) or {}).tier or 0
+		local tb = (weaponInfo(sb.gun) or {}).tier or 0
+		if ta ~= tb then
+			return ta < tb
+		end
+		return a < b
+	end)
+	for i, id in ids do
+		local s = skinInfo(id)
+		local owned = ownsSkin(id)
+		local isOn = owned and invData.skins.equipped and invData.skins.equipped[s.gun] == s.skin
+		invCard({
+			kind = "skin", id = id, name = s.name, color = rarityColor(s.rarity),
+			tag = isOn and "ON" or nil, order = i, locked = not owned,
+		})
 	end
 	return ids
 end
@@ -979,12 +1100,14 @@ renderActive = function()
 		b.Under.Visible = on
 	end
 	if not invData then return end
-	local tabKind = (activeTab == "weapons" and "weapon") or (activeTab == "cases" and "case") or "potion"
+	local tabKind = (activeTab == "weapons" and "weapon") or (activeTab == "skins" and "skin")
+		or (activeTab == "cases" and "case") or "potion"
 	-- The pane is permanent (like the shop's featured slot): default to the tab's first item whenever
 	-- nothing valid is selected. Two passes because selection paints the card outline.
 	local function paintGrid()
 		clearChildren(invGrid)
 		if activeTab == "weapons" then return renderWeaponsGrid()
+		elseif activeTab == "skins" then return renderSkinsGrid()
 		elseif activeTab == "cases" then return renderCasesGrid()
 		else return renderPotionsGrid() end
 	end
@@ -1057,14 +1180,15 @@ playReel = function(caseId, wonId, res)
 	for _, c in strip:GetChildren() do c:Destroy() end
 	for i = 1, N_TILES do
 		local id = (i == WIN_INDEX) and wonId or poolIds[math.random(1, #poolIds)]
-		local info = weaponInfo(id)
+		local info = skinInfo(id) or weaponInfo(id)
 		local col = info and rarityColor(info.rarity) or Color3.fromRGB(150, 150, 160)
 		local tile = Instance.new("Frame")
 		tile.Position = UDim2.fromOffset((i - 1) * STEP, 8); tile.Size = UDim2.fromOffset(TILE_W, REEL_H - 16)
 		tile.BackgroundColor3 = col:Lerp(BLACK, 0.5); tile.BorderSizePixel = 0; tile.ZIndex = 6; tile.Parent = strip
 		corner(tile, 8)
 		local ts = Instance.new("UIStroke"); ts.Color = col; ts.Thickness = 1.5; ts.Parent = tile
-		local tvp = makeGunViewport(id, false) -- static pose: 50 spinning viewports would cost real frames
+		local sInfo = skinInfo(id)
+		local tvp = makeGunViewport(id, false) or (sInfo and makeGunViewport(sInfo.gun, false)) -- skin model, else base gun
 		if tvp then
 			tvp.Position = UDim2.new(0, 0, 0, 0); tvp.Size = UDim2.new(1, 0, 1, 0); tvp.ZIndex = 6; tvp.Parent = tile
 		end
@@ -1095,20 +1219,19 @@ playReel = function(caseId, wonId, res)
 		revealed = true
 		if activeTween then activeTween:Cancel() end
 		strip.Position = UDim2.fromOffset(target, 0)
-		local info = weaponInfo(wonId)
+		local info = skinInfo(wonId) or weaponInfo(wonId)
 		local col = info and rarityColor(info.rarity) or TEXTCOL
-		local gunName = info and info.name or wonId
-		local copies = tonumber(res.copies) or 1
+		local wonName = info and info.name or wonId
 		if res.unlocked then
 			resultLabel.TextColor3 = col
-			resultLabel.Text = ("Unlocked %s!"):format(gunName)
+			resultLabel.Text = ("Unlocked %s!"):format(wonName)
 		else
 			resultLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
-			resultLabel.Text = ("Duplicate %s → 🪙 %d"):format(gunName, tonumber(res.coins) or 0)
+			resultLabel.Text = ("Duplicate %s → 🪙 %d"):format(wonName, tonumber(res.coins) or 0)
 		end
 		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = SELBG; reelBtn.TextColor3 = TEXTCOL
 		local r = info and info.rarity or "common"
-		if res.unlocked or r == "mythic" or r == "divine" then
+		if res.unlocked and (r == "legendary" or r == "divine") or r == "divine" then
 			lplay("RevealJackpot")
 		elseif r == "epic" or r == "legendary" then
 			lplay("RevealHigh")

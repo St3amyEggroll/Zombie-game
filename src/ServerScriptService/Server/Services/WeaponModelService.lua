@@ -16,10 +16,12 @@ local TweenService = game:GetService("TweenService")
 local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local WeaponConfig = require(SharedConfig:WaitForChild("WeaponConfig"))
 local GameConfig = require(SharedConfig:WaitForChild("GameConfig"))
+local SkinConfig = require(SharedConfig:WaitForChild("SkinConfig"))
 local AnimationConfig = require(SharedConfig:WaitForChild("AnimationConfig"))
 
 local MatchService = require(script.Parent.MatchService)
 local CombatService = require(script.Parent.CombatService)
+local DataService = require(script.Parent.DataService)
 
 local WeaponModelService = {}
 
@@ -65,6 +67,11 @@ for id, w in WeaponConfig do
 	if type(w) == "table" and w.name then
 		nameToId[sanitize(w.name)] = id
 	end
+end
+-- Skin models register under their FULL id ("revolver_gold"); accept "Gold Revolver" style names too.
+for fullId, s in SkinConfig.Skins do
+	nameToId[sanitize(fullId)] = fullId
+	nameToId[sanitize(s.name)] = fullId
 end
 local function resolveWeaponId(modelName: string): string?
 	return nameToId[sanitize(modelName)]
@@ -127,7 +134,14 @@ local function attach(player: Player)
 	if not ps then
 		return
 	end
+	-- Equipped SKIN first (profile skins.equipped, lobby-owned), base gun model as the fallback.
 	local template = templates[ps.equippedWeapon]
+	local data = DataService.Get(player)
+	local skins = data and data.skins
+	local skinId = (type(skins) == "table" and type(skins.equipped) == "table") and skins.equipped[ps.equippedWeapon] or nil
+	if skinId and templates[ps.equippedWeapon .. "_" .. skinId] then
+		template = templates[ps.equippedWeapon .. "_" .. skinId]
+	end
 	if not template then
 		return -- no model supplied for this weapon (the FP viewmodel still works in first person)
 	end

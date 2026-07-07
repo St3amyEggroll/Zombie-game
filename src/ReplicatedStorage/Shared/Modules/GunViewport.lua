@@ -34,7 +34,9 @@ local function startLoop()
 				table.remove(spinning, i)
 			elseif e.vp.Visible then
 				e.ang += dt * SPIN_SPEED
-				e.model:PivotTo(e.base * CFrame.Angles(0, e.ang, 0))
+				-- Yaw around WORLD up at the pivot point (base * Angles spun around the MODEL's local Y,
+				-- which flipped guns built lying flat).
+				e.model:PivotTo(CFrame.new(e.pos) * CFrame.Angles(0, e.ang, 0) * e.rot)
 			end
 		end
 	end)
@@ -68,7 +70,7 @@ function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * CAM_PITCH, dist), cf.Position)
 
 	if spin ~= false then
-		table.insert(spinning, { vp = vp, model = model, base = cf, ang = math.random() * math.pi * 2 })
+		table.insert(spinning, { vp = vp, model = model, pos = cf.Position, rot = cf.Rotation, ang = math.random() * math.pi * 2 })
 		startLoop()
 	end
 	return vp
