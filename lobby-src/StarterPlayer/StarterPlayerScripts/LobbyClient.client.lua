@@ -621,8 +621,8 @@ invBtn.FontFace = TITLE_FACE; invBtn.TextSize = 24; invBtn.TextColor3 = TEXTCOL
 invBtn.Text = "INVENTORY"; invBtn.Parent = invGui; corner(invBtn, 6)
 lstuds(invBtn); ldepth(invBtn); ledge(invBtn); ledge(invBtn, ACCENT, 1, 0.35)
 
-local PANEL_W, PANEL_H = 920, 560
-local DETAIL_W = 340
+local PANEL_W, PANEL_H = 940, 560
+local DETAIL_W = 280
 
 local invPanel = Instance.new("Frame")
 invPanel.AnchorPoint = Vector2.new(0.5, 0.5); invPanel.Position = UDim2.fromScale(0.5, 0.5)
@@ -666,42 +666,33 @@ invTabButton("weapons", "WEAPONS")
 invTabButton("cases", "CASES")
 invTabButton("potions", "POTIONS")
 
--- Grid (full width; shrinks when the detail pane opens) + the detail pane.
+-- Same 3-region skeleton as the SHOP: card grid (left) | featured pane, always visible (middle) |
+-- action-button stack (right).
 local CONTENT_Y = 114
 local invGrid = Instance.new("ScrollingFrame")
-invGrid.Position = UDim2.fromOffset(14, CONTENT_Y); invGrid.Size = UDim2.new(1, -28, 1, -(CONTENT_Y + 14))
+invGrid.Position = UDim2.fromOffset(16, CONTENT_Y); invGrid.Size = UDim2.fromOffset(346, PANEL_H - CONTENT_Y - 16)
 invGrid.BackgroundTransparency = 1; invGrid.BorderSizePixel = 0; invGrid.ScrollBarThickness = 6
 invGrid.CanvasSize = UDim2.new(); invGrid.AutomaticCanvasSize = Enum.AutomaticSize.Y; invGrid.Parent = invPanel
 local invGridLayout = Instance.new("UIGridLayout")
-invGridLayout.CellSize = UDim2.fromOffset(136, 126); invGridLayout.CellPadding = UDim2.fromOffset(12, 12); invGridLayout.Parent = invGrid
+invGridLayout.CellSize = UDim2.fromOffset(160, 148); invGridLayout.CellPadding = UDim2.fromOffset(12, 12); invGridLayout.Parent = invGrid
 
 local invDetail = Instance.new("Frame")
-invDetail.AnchorPoint = Vector2.new(1, 0); invDetail.Position = UDim2.new(1, -14, 0, CONTENT_Y)
-invDetail.Size = UDim2.fromOffset(DETAIL_W, PANEL_H - CONTENT_Y - 14)
-invDetail.BackgroundColor3 = PANEL2; invDetail.BorderSizePixel = 0; invDetail.Visible = false; invDetail.Parent = invPanel
+invDetail.Position = UDim2.fromOffset(378, CONTENT_Y)
+invDetail.Size = UDim2.fromOffset(DETAIL_W, PANEL_H - CONTENT_Y - 16)
+invDetail.BackgroundColor3 = PANEL2; invDetail.BorderSizePixel = 0; invDetail.Parent = invPanel
 corner(invDetail, 6); lstuds(invDetail, 42, 0.75); ledge(invDetail, TBLACK, 2); ledge(invDetail, LINE, 1, 0.5)
 
-local selectedInv = nil -- { kind = "weapon"|"case"|"potion", id } — drives the detail pane
+local invActs = Instance.new("Frame")
+invActs.AnchorPoint = Vector2.new(1, 0); invActs.Position = UDim2.new(1, -16, 0, CONTENT_Y)
+invActs.Size = UDim2.fromOffset(250, PANEL_H - CONTENT_Y - 16); invActs.BackgroundTransparency = 1; invActs.Parent = invPanel
 
-local function invLayout()
-	if selectedInv then
-		invGrid.Size = UDim2.new(1, -(28 + DETAIL_W + 10), 1, -(CONTENT_Y + 14))
-		invDetail.Visible = true
-	else
-		invGrid.Size = UDim2.new(1, -28, 1, -(CONTENT_Y + 14))
-		invDetail.Visible = false
-	end
-end
+local selectedInv = nil -- { kind = "weapon"|"case"|"potion", id } — drives the featured pane
 
 local renderActive -- forward decl (grid + detail render)
 local playReel -- forward decl (the reel section below assigns it)
 
 local function invSelect(kind, id)
-	if selectedInv and selectedInv.kind == kind and selectedInv.id == id then
-		selectedInv = nil
-	else
-		selectedInv = { kind = kind, id = id }
-	end
+	selectedInv = { kind = kind, id = id } -- pane is permanent; clicking just features the item
 	renderActive()
 end
 
@@ -719,43 +710,42 @@ local function invCard(opts)
 	f.BackgroundColor3 = col:Lerp(BLACK, 0.62); f.AutoButtonColor = true; f.Text = ""
 	f.BorderSizePixel = 0; f.LayoutOrder = opts.order or 0; f.Parent = invGrid
 	corner(f, 6); ledge(f, isSel and ACCENT or TBLACK, 2)
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; bar.Parent = f
-	-- 3D SLOT: a STATIC model pose IS the card art (created FIRST so everything else stacks above it;
-	-- only the info pane spins). Weapons pull from GunDisplay; cases from CrateDisplay.
+	-- STATIC art fills the card (only the featured pane spins); name sits on a strip at the bottom.
 	local showedModel = false
 	if opts.kind == "weapon" or opts.kind == "case" then
 		local vp = makeGunViewport(opts.id, false, opts.kind == "case" and "CrateDisplay" or nil)
 		if vp then
-			vp.Size = UDim2.new(1, 0, 1, 0)
+			vp.Size = UDim2.new(1, 0, 1, -26)
 			vp.Parent = f
 			showedModel = true
 		end
 	end
-	-- PHOTO SLOT: full-card photo when there's no model (add ids later, zero code).
 	if not showedModel and typeof(opts.image) == "string" and opts.image ~= "" then
 		local img = Instance.new("ImageLabel")
-		img.Size = UDim2.new(1, 0, 1, 0); img.BackgroundTransparency = 1
+		img.Size = UDim2.new(1, 0, 1, -26); img.BackgroundTransparency = 1
 		img.Image = opts.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = f
 	end
 	local nm = Instance.new("TextLabel")
-	nm.Position = UDim2.fromOffset(8, 12); nm.Size = UDim2.new(1, -16, 0, 44); nm.BackgroundTransparency = 1
-	nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextWrapped = true
+	nm.AnchorPoint = Vector2.new(0, 1); nm.Position = UDim2.new(0, 0, 1, -4); nm.Size = UDim2.new(1, 0, 0, 22)
+	nm.BackgroundTransparency = 1; nm.FontFace = BODYB_FACE; nm.TextSize = 14
 	nm.TextColor3 = TEXTCOL; nm.Text = opts.name; nm.Parent = f
 	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
-	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
+	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4
+	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; nmStroke.Parent = nm
 	if opts.chip then
 		local chip = Instance.new("TextLabel")
-		chip.AnchorPoint = Vector2.new(1, 1); chip.Position = UDim2.new(1, -6, 1, -6)
-		chip.Size = UDim2.fromOffset(58, 20); chip.BackgroundColor3 = darker(col, 0.7); chip.BorderSizePixel = 0
-		chip.FontFace = BODYB_FACE; chip.TextSize = 13; chip.TextColor3 = col; chip.Text = opts.chip; chip.Parent = f
-		corner(chip, 3)
+		chip.Position = UDim2.fromOffset(6, 6); chip.Size = UDim2.fromOffset(48, 18)
+		chip.BackgroundColor3 = darker(col, 0.7); chip.BorderSizePixel = 0; chip.ZIndex = 3
+		chip.FontFace = BODYB_FACE; chip.TextSize = 12; chip.TextColor3 = col; chip.Text = opts.chip; chip.Parent = f
+		corner(chip, 4)
 	end
-	if opts.tag then
+	if opts.tag then -- short badge (e.g. "S1"), top-right like the shop's deal badge
 		local tag = Instance.new("TextLabel")
-		tag.Position = UDim2.fromOffset(8, 66); tag.Size = UDim2.new(1, -16, 0, 16); tag.BackgroundTransparency = 1
-		tag.FontFace = TITLE_FACE; tag.TextSize = 12; tag.TextXAlignment = Enum.TextXAlignment.Left
-		tag.TextColor3 = ACCENT; tag.Text = opts.tag; tag.Parent = f
+		tag.AnchorPoint = Vector2.new(1, 0); tag.Position = UDim2.new(1, -6, 0, 6); tag.Size = UDim2.fromOffset(36, 18)
+		tag.BackgroundColor3 = ACCENT; tag.BorderSizePixel = 0; tag.ZIndex = 3
+		tag.FontFace = TITLE_FACE; tag.TextSize = 12; tag.TextColor3 = Color3.fromRGB(14, 22, 6)
+		tag.Text = opts.tag; tag.Parent = f
+		corner(tag, 4)
 	end
 	f.Activated:Connect(function()
 		invSelect(opts.kind, opts.id)
@@ -764,9 +754,10 @@ local function invCard(opts)
 end
 
 local function invEmptyNote(textStr)
+	-- Lives inside the grid layout, so it gets a cell-sized box: wrap the text to fit.
 	local msg = Instance.new("TextLabel")
-	msg.Size = UDim2.fromOffset(560, 44); msg.BackgroundTransparency = 1; msg.FontFace = BODYB_FACE
-	msg.TextSize = 17; msg.TextColor3 = DIMTEXT; msg.Text = textStr; msg.Parent = invGrid
+	msg.Size = UDim2.fromOffset(320, 60); msg.BackgroundTransparency = 1; msg.FontFace = BODYB_FACE
+	msg.TextSize = 14; msg.TextWrapped = true; msg.TextColor3 = DIMTEXT; msg.Text = textStr; msg.Parent = invGrid
 end
 
 -- Themed action button for the detail pane. GHOSTA/GHOSTB sit a step lighter than the pane itself so
@@ -776,7 +767,7 @@ local GHOSTB = Color3.fromRGB(42, 47, 33)
 local function paneButton(textStr, fillA, fillB, textCol)
 	local b = Instance.new("TextButton")
 	b.BackgroundColor3 = fillA; b.BorderSizePixel = 0; b.AutoButtonColor = true
-	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = textCol; b.Text = textStr; b.Parent = invDetail
+	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = textCol; b.Text = textStr; b.Parent = invActs
 	corner(b, 5); ledge(b, TBLACK, 2.5)
 	local g = Instance.new("UIGradient")
 	g.Color = ColorSequence.new({
@@ -789,76 +780,80 @@ local function paneButton(textStr, fillA, fillB, textCol)
 	return b
 end
 
--- ===== DETAIL PANE =====
+-- ===== FEATURED PANE (middle) + ACTION STACK (right) =====
 local function renderInvDetail()
 	clearChildren(invDetail)
-	if not selectedInv or not invData then
+	clearChildren(invActs)
+	if not invData then
+		return
+	end
+	if not selectedInv then
+		local hint = Instance.new("TextLabel")
+		hint.Size = UDim2.fromScale(1, 1); hint.BackgroundTransparency = 1
+		hint.FontFace = TITLE_FACE; hint.TextSize = 18; hint.TextColor3 = DIMTEXT
+		hint.Text = "NOTHING HERE YET"; hint.Parent = invDetail
 		return
 	end
 	local kind, id = selectedInv.kind, selectedInv.id
 
-	local dClose = redX(invDetail, 34, 20)
-	dClose.Position = UDim2.new(1, -6, 0, 6); dClose.ZIndex = 5 -- above the pane's 3D backdrop
-	dClose.Activated:Connect(function()
-		selectedInv = nil
-		renderActive()
-	end)
+	-- Big render well (spins here — the grid cards stay static).
+	local well = Instance.new("Frame")
+	well.Position = UDim2.fromOffset(14, 14); well.Size = UDim2.new(1, -28, 0, 190)
+	well.BackgroundColor3 = darker(PANEL2, 0.25); well.BorderSizePixel = 0; well.Parent = invDetail
+	corner(well, 6); ledge(well, TBLACK, 2)
 
-	-- Spinning 3D hero for weapons + cases: fills the whole pane as a backdrop; everything created
-	-- after it stacks above naturally.
-	if kind == "weapon" or kind == "case" then
-		local heroVp = makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
-		if heroVp then
-			heroVp.Size = UDim2.new(1, 0, 1, 0)
-			heroVp.ImageTransparency = 0.1
-			heroVp.Parent = invDetail
-		end
+	local entry, wellCol
+	if kind == "weapon" then entry = weaponInfo(id); wellCol = entry and rarityColor(entry.rarity)
+	elseif kind == "case" then entry = invData.catalog.cases[id]; wellCol = rarityColor(id)
+	else entry = invData.catalog.potions[id]; wellCol = entry and rarityColor(entry.rarity) end
+	if not entry then
+		return
+	end
+	well.BackgroundColor3 = wellCol:Lerp(BLACK, 0.7)
+
+	local wellVp = (kind ~= "potion") and makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil) or nil
+	if wellVp then
+		wellVp.Size = UDim2.fromScale(1, 1); wellVp.Parent = well
+	elseif typeof(entry.image) == "string" and entry.image ~= "" then
+		local img = Instance.new("ImageLabel")
+		img.BackgroundTransparency = 1; img.Size = UDim2.fromScale(1, 1)
+		img.Image = entry.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = well
+	else
+		local plate = Instance.new("TextLabel")
+		plate.Size = UDim2.fromScale(1, 1); plate.BackgroundTransparency = 1
+		plate.FontFace = TITLE_FACE; plate.TextSize = 24; plate.TextColor3 = wellCol
+		plate.Text = (kind == "potion") and "POTION" or "?"; plate.Parent = well
 	end
 
-	-- PHOTO SLOT: entries with an `image` id get a thumbnail in the pane's corner.
-	local entry
-	if kind == "weapon" then entry = weaponInfo(id)
-	elseif kind == "case" then entry = invData.catalog.cases[id]
-	else entry = invData.catalog.potions[id] end
-	if entry and typeof(entry.image) == "string" and entry.image ~= "" then
-		local thumb = Instance.new("ImageLabel")
-		thumb.AnchorPoint = Vector2.new(1, 0); thumb.Position = UDim2.new(1, -48, 0, 8)
-		thumb.Size = UDim2.fromOffset(84, 62); thumb.BackgroundTransparency = 1
-		thumb.Image = entry.image; thumb.ScaleType = Enum.ScaleType.Fit; thumb.Parent = invDetail
-	end
-
-	local function bigTitle(textStr, col)
-		local t = Instance.new("TextLabel")
-		t.Position = UDim2.fromOffset(14, 12); t.Size = UDim2.new(1, -56, 0, 48); t.BackgroundTransparency = 1
-		t.FontFace = TITLE_FACE; t.TextSize = 23; t.TextWrapped = true
-		t.TextXAlignment = Enum.TextXAlignment.Left; t.TextColor3 = col or TEXTCOL; t.Text = textStr; t.Parent = invDetail
-	end
-	local function line(y, textStr, col, size, h)
+	-- Centered info column under the well (same rhythm as the shop's featured pane).
+	local function centered(y, h, face, size, colr)
 		local l = Instance.new("TextLabel")
-		l.Position = UDim2.fromOffset(14, y); l.Size = UDim2.new(1, -28, 0, h or 40); l.BackgroundTransparency = 1
-		l.FontFace = BODY_FACE; l.TextSize = size or 14; l.TextWrapped = true
-		l.TextXAlignment = Enum.TextXAlignment.Left; l.TextYAlignment = Enum.TextYAlignment.Top
-		l.TextColor3 = col or TEXTCOL; l.Text = textStr; l.Parent = invDetail
+		l.Position = UDim2.fromOffset(14, y); l.Size = UDim2.new(1, -28, 0, h); l.BackgroundTransparency = 1
+		l.FontFace = face; l.TextSize = size; l.TextWrapped = true; l.TextColor3 = colr; l.Parent = invDetail
+		return l
 	end
+
+	local nm = centered(214, 30, TITLE_FACE, 21, wellCol)
+	local nmStroke = Instance.new("UIStroke")
+	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.5; nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; nmStroke.Parent = nm
 
 	if kind == "weapon" then
-		local w = weaponInfo(id)
-		if not w then return end
-		local col = rarityColor(w.rarity)
+		local w = entry
+		nm.Text = w.name
+		local rar = centered(246, 20, BODYB_FACE, 15, wellCol)
+		rar.Text = (invData.catalog.rarities[w.rarity] or {}).name or ""
 		local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
-		bigTitle(w.name, col)
-		line(62, (invData.catalog.rarities[w.rarity] or {}).name or "", col, 16, 22)
-		line(88, ("DMG %.0f%s   ·   %s/s   ·   RNG %s\nDPS ~%d"):format(
+		local stats = centered(274, 66, BODY_FACE, 14, TEXTCOL)
+		stats.Text = ("DMG %.0f%s\n%s shots/s   ·   RNG %s\nDPS ~%d"):format(
 			w.damage or 0, w.pellets and (" ×" .. w.pellets) or "", tostring(w.fireRate or "?"),
-			tostring(w.range or "?"), math.floor(dps + 0.5)), TEXTCOL, 14, 42)
+			tostring(w.range or "?"), math.floor(dps + 0.5))
 
-		-- Actions: equip into either slot. (Gun upgrading was removed — duplicates pay Coins instead.)
 		local inS1 = (invData.loadout[1] == id)
 		local inS2 = (invData.loadout[2] == id)
 		local eq1 = paneButton(inS1 and "IN SLOT 1" or "EQUIP SLOT 1", GHOSTA, GHOSTB, inS1 and ACCENT or TEXTCOL)
-		eq1.Position = UDim2.fromOffset(14, 150); eq1.Size = UDim2.new(0.5, -20, 0, 46)
+		eq1.Position = UDim2.new(0, 0, 0, 0); eq1.Size = UDim2.new(1, 0, 0, 56)
 		local eq2 = paneButton(inS2 and "IN SLOT 2" or "EQUIP SLOT 2", GHOSTA, GHOSTB, inS2 and ACCENT or TEXTCOL)
-		eq2.AnchorPoint = Vector2.new(1, 0); eq2.Position = UDim2.new(1, -14, 0, 150); eq2.Size = UDim2.new(0.5, -20, 0, 46)
+		eq2.Position = UDim2.new(0, 0, 0, 70); eq2.Size = UDim2.new(1, 0, 0, 56)
 		eq1.Activated:Connect(function()
 			if not inS1 then lplay("Equip"); EquipSlot:FireServer({ slot = 1, weaponId = id }) end
 		end)
@@ -866,21 +861,19 @@ local function renderInvDetail()
 			if not inS2 then lplay("Equip"); EquipSlot:FireServer({ slot = 2, weaponId = id }) end
 		end)
 	elseif kind == "case" then
-		local disp = invData.catalog.cases[id]
-		if not disp then return end
-		local col = rarityColor(id)
+		nm.Text = entry.name
 		local count = invData.cases[id] or 0
-		bigTitle(disp.name, col)
-		line(62, ("You have: x%d"):format(count), TEXTCOL, 16, 22)
-		-- Drop odds straight on the pane (this replaced the hover tooltip).
-		local y = 92
-		line(y, "DROP ODDS", DIMTEXT, 13, 16)
-		y += 22
-		for _, o in (disp.odds or {}) do
-			line(y, ("%s  %.1f%%"):format((invData.catalog.rarities[o.rarity] or {}).name or o.rarity, o.pct),
-				rarityColor(o.rarity), 14, 18)
-			y += 21
+		local have = centered(246, 20, BODYB_FACE, 15, TEXTCOL)
+		have.Text = ("You have: x%d"):format(count)
+		local oddsHead = centered(276, 20, TITLE_FACE, 15, TEXTCOL)
+		oddsHead.Text = "RARITIES"
+		local y = 300
+		for _, o in (entry.odds or {}) do
+			local l = centered(y, 17, BODYB_FACE, 13, rarityColor(o.rarity))
+			l.Text = ("%s - %.1f%%"):format((invData.catalog.rarities[o.rarity] or {}).name or o.rarity, o.pct)
+			y += 19
 		end
+
 		local open
 		if count > 0 then
 			open = paneButton("OPEN CASE", ACCENT, darker(ACCENT, 0.5), Color3.fromRGB(14, 22, 6))
@@ -894,21 +887,23 @@ local function renderInvDetail()
 			open = paneButton("NONE LEFT", GHOSTA, GHOSTB, DIMTEXT)
 			open.AutoButtonColor = false
 		end
-		open.AnchorPoint = Vector2.new(0.5, 1); open.Position = UDim2.new(0.5, 0, 1, -12); open.Size = UDim2.new(1, -28, 0, 52)
+		open.Position = UDim2.new(0, 0, 0, 0); open.Size = UDim2.new(1, 0, 0, 60)
 	elseif kind == "potion" then
-		local disp = invData.catalog.potions[id]
-		if not disp then return end
-		local col = rarityColor(disp.rarity)
-		bigTitle(disp.name, col)
-		line(62, disp.desc or "", TEXTCOL, 15, 48)
-		line(114, ("You have: x%d"):format(invData.potions[id] or 0), DIMTEXT, 14, 18)
+		nm.Text = entry.name
+		local rar = centered(246, 20, BODYB_FACE, 15, wellCol)
+		rar.Text = (invData.catalog.rarities[entry.rarity] or {}).name or ""
+		local desc = centered(274, 60, BODY_FACE, 14, TEXTCOL)
+		desc.Text = entry.desc or ""
+		local have = centered(338, 18, BODYB_FACE, 14, DIMTEXT)
+		have.Text = ("You have: x%d"):format(invData.potions[id] or 0)
+
 		local note = paneButton("DRINK IT IN A RUN", GHOSTA, GHOSTB, DIMTEXT)
 		note.AutoButtonColor = false
-		note.AnchorPoint = Vector2.new(0.5, 1); note.Position = UDim2.new(0.5, 0, 1, -12); note.Size = UDim2.new(1, -28, 0, 44)
+		note.Position = UDim2.new(0, 0, 0, 0); note.Size = UDim2.new(1, 0, 0, 56)
 	end
 end
 
--- ===== GRID RENDERS =====
+-- ===== GRID RENDERS ===== each returns the ordered id list so the pane can default to the first item.
 local function renderWeaponsGrid()
 	local ids = {}
 	for _, id in invData.owned do
@@ -919,46 +914,45 @@ local function renderWeaponsGrid()
 	end)
 	for i, id in ids do
 		local w = weaponInfo(id)
-		local slotTag = (invData.loadout[1] == id and "EQUIPPED · S1") or (invData.loadout[2] == id and "EQUIPPED · S2") or nil
+		local slotTag = (invData.loadout[1] == id and "S1") or (invData.loadout[2] == id and "S2") or nil
 		invCard({ kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity), tag = slotTag, order = i, image = w.image })
 	end
+	return ids
 end
 
 local function renderCasesGrid()
-	local any = false
-	local order = 0
+	local ids = {}
 	for _, caseId in invData.catalog.rarityOrder do
 		local disp = invData.catalog.cases[caseId]
 		local count = invData.cases[caseId] or 0
 		if disp and count > 0 then
-			any = true
-			order += 1
-			invCard({ kind = "case", id = caseId, name = disp.name, color = rarityColor(caseId), chip = "x" .. count, order = order, image = disp.image })
+			table.insert(ids, caseId)
+			invCard({ kind = "case", id = caseId, name = disp.name, color = rarityColor(caseId), chip = "x" .. count, order = #ids, image = disp.image })
 		end
 	end
-	if not any then
+	if #ids == 0 then
 		invEmptyNote("No cases right now — kill BOSSES in runs (or hit the SHOP) to get more!")
 	end
+	return ids
 end
 
 local function renderPotionsGrid()
-	local any = false
-	local order = 0
+	local ids = {}
 	for _, rarity in invData.catalog.rarityOrder do
 		for _, ptype in { "damage", "regen" } do
 			local potId = ptype .. "_" .. rarity
 			local disp = invData.catalog.potions[potId]
 			local count = disp and (invData.potions[potId] or 0) or 0
 			if disp and count > 0 then
-				any = true
-				order += 1
-				invCard({ kind = "potion", id = potId, name = disp.name, color = rarityColor(disp.rarity), chip = "x" .. count, order = order, image = disp.image })
+				table.insert(ids, potId)
+				invCard({ kind = "potion", id = potId, name = disp.name, color = rarityColor(disp.rarity), chip = "x" .. count, order = #ids, image = disp.image })
 			end
 		end
 	end
-	if not any then
+	if #ids == 0 then
 		invEmptyNote("No potions yet — kill glowing ELITE zombies in runs to earn them!")
 	end
+	return ids
 end
 
 -- ===== TAB SWITCHING + MASTER RENDER =====
@@ -980,11 +974,21 @@ renderActive = function()
 		b.Under.Visible = on
 	end
 	if not invData then return end
-	clearChildren(invGrid)
-	invLayout()
-	if activeTab == "weapons" then renderWeaponsGrid()
-	elseif activeTab == "cases" then renderCasesGrid()
-	else renderPotionsGrid() end
+	local tabKind = (activeTab == "weapons" and "weapon") or (activeTab == "cases" and "case") or "potion"
+	-- The pane is permanent (like the shop's featured slot): default to the tab's first item whenever
+	-- nothing valid is selected. Two passes because selection paints the card outline.
+	local function paintGrid()
+		clearChildren(invGrid)
+		if activeTab == "weapons" then return renderWeaponsGrid()
+		elseif activeTab == "cases" then return renderCasesGrid()
+		else return renderPotionsGrid() end
+	end
+	local ids = paintGrid()
+	local valid = selectedInv and selectedInv.kind == tabKind and table.find(ids, selectedInv.id) ~= nil
+	if not valid then
+		selectedInv = ids[1] and { kind = tabKind, id = ids[1] } or nil
+		paintGrid()
+	end
 	renderInvDetail()
 end
 
