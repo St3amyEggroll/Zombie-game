@@ -56,7 +56,7 @@ local function build()
 	gui.Name = "Crosshair"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 5
+	gui.DisplayOrder = 100 -- crosshair sits ON TOP of every other gui (menus, HUD, banners)
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
 
 	holder = Instance.new("Frame")
