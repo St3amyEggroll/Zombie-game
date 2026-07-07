@@ -28,7 +28,7 @@ local HotbarController = {}
 -- ===== TUNABLES =====
 local SLOT = 84      -- square slot size (px) — finger-sized on phones after the responsive scale
 local GAP = 10
-local CASES_ICON = "rbxassetid://99896391127728" -- owner-supplied CASES button image
+local CASES_ICON = "rbxassetid://83465359983310" -- owner-supplied CASES button image
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")

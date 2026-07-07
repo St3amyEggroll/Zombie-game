@@ -706,8 +706,8 @@ local function hideTip() end -- (legacy no-op: hover tooltips were replaced by t
 
 -- Bottom-left buttons: GUNS [B] + CASES — square icon buttons, these ARE the inventory now.
 -- Owner-supplied images; the caption underneath doubles as the fallback if an image id fails to load.
-local GUN_ICON = "rbxassetid://107968878322175"
-local CASES_ICON = "rbxassetid://99896391127728"
+local GUN_ICON = "rbxassetid://107465960874017"
+local CASES_ICON = "rbxassetid://83465359983310"
 local function cornerButton(imageId, caption, xOff, accent, badge)
 	local b = Instance.new("TextButton")
 	b.AnchorPoint = Vector2.new(0, 1)

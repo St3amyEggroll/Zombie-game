@@ -22,7 +22,7 @@ local GunShopController = {}
 
 -- ===== TUNABLES =====
 local TOGGLE_KEY = Enum.KeyCode.B
-local GUN_ICON = "rbxassetid://107968878322175" -- owner-supplied GUNS button image
+local GUN_ICON = "rbxassetid://107465960874017" -- owner-supplied GUNS button image
 local PANEL_W, PANEL_H = 940, 560
 local RARITY_COLORS = {
 	common = Color3.fromRGB(176, 190, 197), uncommon = Color3.fromRGB(102, 187, 106),
