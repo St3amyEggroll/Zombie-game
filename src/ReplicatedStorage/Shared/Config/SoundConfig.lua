@@ -31,6 +31,7 @@ SoundConfig.Sounds = {
 	MusicCalm      = S("", 0.45, 0, 1, 1, true),   -- between waves / countdown [dark ambient loop]
 	MusicCombat    = S("140604599195788", 0.5,  0, 1, 1, true),   -- while a wave is active [action/horror combat loop]
 	MusicBoss      = S("", 0.55, 0, 1, 1, true),   -- while a boss is alive [epic boss battle loop]
+	MusicNightmare = S("88275367596456", 0.55, 0, 1, 1, true), -- Nightmare-difficulty combat loop
 
 	-- ===== GUN FIRE ===== (slot name = "Fire_" .. weaponId)
 	Fire_pistol    = S("103589268560856", 0.6, 160, 0.97, 1.03),  -- [pistol gunshot]
@@ -88,7 +89,8 @@ SoundConfig.Sounds = {
 	ReviveComplete = S("", 0.7, 0, 1, 1),          -- you got back up [revive chime]
 
 	-- ===== WAVES / MATCH (2D stingers) =====
-	WaveStart          = S("137884319678560", 0.6, 0, 1, 1),      -- new wave [horde horn / air raid sting]
+	WaveStart          = S("137884319678560", 0.6, 0, 1, 1),      -- round start (wave 1) [horde horn / air raid sting]
+	WaveBell           = S("114277108838919", 0.6, 0, 1, 1),      -- bell at the start of EVERY wave
 	WaveCleared        = S("", 0.6, 0, 1, 1),      -- wave done [success sting]
 	FlawlessJingle     = S("", 0.7, 0, 1, 1),      -- flawless wave bonus [triumphant jingle]
 	NewEnemySting      = S("", 0.65, 0, 1, 1),     -- first-ever enemy type [danger sting]

@@ -212,6 +212,16 @@ end
 
 -- ===== MUSIC STATE MACHINE =====
 local musicState = { phase = "Lobby", bossAlive = false }
+-- The run's difficulty (from the teleport data) picks the combat track — Nightmare gets its own loop.
+local runDifficulty = "medium"
+do
+	local ok, td = pcall(function()
+		return game:GetService("TeleportService"):GetLocalPlayerTeleportData()
+	end)
+	if ok and typeof(td) == "table" and typeof(td.difficulty) == "string" then
+		runDifficulty = td.difficulty
+	end
+end
 local currentTrack = nil -- name of the playing music slot
 local musicSounds = {}   -- name -> persistent looping Sound
 
@@ -267,13 +277,19 @@ local function updateMusic()
 	-- Combat music runs for the WHOLE run — wave breaks included. Calm is only pre-run (waiting/countdown).
 	local inRun = musicState.phase == "Playing" or musicState.phase == "RoundBreak"
 	if inRun then
-		setMusic(musicState.bossAlive and "MusicBoss" or "MusicCombat")
+		if musicState.bossAlive then
+			setMusic("MusicBoss")
+		elseif runDifficulty == "nightmare" and def("MusicNightmare") then
+			setMusic("MusicNightmare") -- Nightmare's own combat loop
+		else
+			setMusic("MusicCombat")
+		end
 	else
 		setMusic("MusicCalm")
 	end
 	-- Fall back down the chain when a track has no id yet (e.g. no boss track pasted -> keep combat).
 	if currentTrack and not def(currentTrack) then
-		if currentTrack == "MusicBoss" and def("MusicCombat") then
+		if (currentTrack == "MusicBoss" or currentTrack == "MusicNightmare") and def("MusicCombat") then
 			setMusic("MusicCombat")
 		elseif def("MusicCalm") then
 			setMusic("MusicCalm")
@@ -396,6 +412,7 @@ function SoundController.Start()
 		if tonumber(round) == 1 then
 			SoundController.Play("WaveStart") -- the ROUND-start audio: first wave only
 		end
+		SoundController.Play("WaveBell") -- a bell rings at the start of every wave
 		musicState.phase = "Playing"
 		updateMusic()
 	end)
