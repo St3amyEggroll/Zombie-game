@@ -47,7 +47,7 @@ local function refresh()
 		if weapon then
 			b.frame.Visible = true
 			b.name.Text = weapon.name
-			b.level.Text = "LV " .. tostring(gunLevels[id] or 1)
+			b.level.Text = "" -- CHANGED: gun upgrading removed; the LV chip is retired
 			local isHeld = (id == equipped)
 			b.stroke.Color = isHeld and UITheme.TOXIC or UITheme.BLACK
 			b.stroke.Thickness = isHeld and 3 or 2

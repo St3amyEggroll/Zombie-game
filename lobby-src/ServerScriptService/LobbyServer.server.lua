@@ -349,7 +349,6 @@ local PartyStatus   = mk("PartyStatus")   -- S->C: {map, difficulty, size, count
 local InvRequest    = mk("InvRequest")    -- C->S: (please send my inventory)
 local InvSync       = mk("InvSync")       -- S->C: full inventory snapshot + catalog
 local EquipSlot     = mk("EquipSlot")     -- C->S: {slot=1|2, weaponId} put a gun in a loadout slot
-local UpgradeGun    = mk("UpgradeGun")    -- C->S: {weaponId} spend copies + Coins to level the gun up
 local OpenCase      = mk("OpenCase")      -- C->S: {caseId} open a case (caseId = its rarity)
 local CaseResult    = mk("CaseResult")    -- S->C: {caseId, wonId, duplicate, coins} the roll (drives the reel)
                                           --       or {failed=true} — ALWAYS replied so the client never sticks
@@ -820,7 +819,7 @@ end
 
 -- ===== RATE LIMITING (token buckets — the lobby's SecurityService-lite) =====
 -- Every C->S remote passes through allow() so a spamming client burns its bucket, not the DataStore.
-local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Upgrade = 3, Settings = 3 } -- refill/second (burst = 2s worth)
+local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Settings = 3 } -- refill/second (burst = 2s worth)
 local buckets = {} -- userId -> { [action] = { tokens, last } }
 
 local function allow(player, action)
@@ -884,43 +883,9 @@ EquipSlot.OnServerEvent:Connect(function(player, req)
 	refreshCarry(player)
 end)
 
--- Level a gun up: consumes the copy threshold + the Coin cost (both validated here — the client button
--- is just a hint). Levels are read by the GAME place for combat damage.
-UpgradeGun.OnServerEvent:Connect(function(player, req)
-	if not allow(player, "Upgrade") or typeof(req) ~= "table" then
-		return
-	end
-	local prof = profileCache[player.UserId]
-	if not prof or prof.noPersist then
-		return
-	end
-	local weaponId = tostring(req.weaponId or "")
-	if not WEAPONS[weaponId] or not table.find(prof.ownedWeapons, weaponId) then
-		return
-	end
-	local level = prof.gunLevels[weaponId] or 1
-	local need = thresholdFor(weaponId, level)
-	if not need then
-		return -- already max level
-	end
-	local cost = GUNLEVELS.CoinCosts[level] or GUNLEVELS.CoinCosts[#GUNLEVELS.CoinCosts]
-	if (prof.gunCopies[weaponId] or 0) < need or prof.lobbyMoney < cost then
-		return
-	end
-	prof.gunCopies[weaponId] -= need
-	if prof.gunCopies[weaponId] <= 0 then
-		prof.gunCopies[weaponId] = nil
-	end
-	prof.lobbyMoney -= cost
-	prof.gunLevels[weaponId] = level + 1
-	markDirty(player)
-	pushInv(player)
-	StatsRemote:FireClient(player, prof)
-end)
-
--- Consume one case (caller has already verified the player HAS one), roll a gun, and pay out COPIES
--- (the Clash-Royale system): first-ever pull also UNLOCKS the gun at level 1; a MAXED gun's copies
--- auto-convert to Coins instead. Shared by OpenCase and the shop's BUY & OPEN.
+-- Consume one case (caller has already verified the player HAS one) and roll a gun. CHANGED: gun
+-- upgrading was removed — a first-ever pull UNLOCKS the gun; any duplicate converts straight to Coins
+-- (scaled by the old copy-payout × overflow tables). Shared by OpenCase and the shop's BUY & OPEN.
 local function doOpenCase(player, prof, caseId)
 	prof.cases[caseId] = (prof.cases[caseId] or 0) - 1
 	if prof.cases[caseId] <= 0 then
@@ -930,6 +895,7 @@ local function doOpenCase(player, prof, caseId)
 	local gunRarity = WEAPONS[wonId].rarity
 	local payout = (GUNLEVELS.CopyPayout[caseId] or {})[gunRarity] or 1
 	local unlocked = not table.find(prof.ownedWeapons, wonId)
+	local coins = 0
 	if unlocked then
 		table.insert(prof.ownedWeapons, wonId)
 		prof.gunLevels[wonId] = prof.gunLevels[wonId] or 1
@@ -938,16 +904,11 @@ local function doOpenCase(player, prof, caseId)
 			prof.loadout[2] = wonId
 			refreshCarry(player)
 		end
-	end
-	local coins = 0
-	local maxed = (prof.gunLevels[wonId] or 1) >= GUNLEVELS.MaxLevel
-	if maxed then
+	else
 		coins = payout * (GUNLEVELS.Overflow[gunRarity] or 1)
 		prof.lobbyMoney += coins
-	else
-		prof.gunCopies[wonId] = (prof.gunCopies[wonId] or 0) + payout
 	end
-	return { caseId = caseId, wonId = wonId, copies = payout, coins = coins, unlocked = unlocked, maxed = maxed }
+	return { caseId = caseId, wonId = wonId, coins = coins, unlocked = unlocked, maxed = not unlocked }
 end
 
 OpenCase.OnServerEvent:Connect(function(player, req)

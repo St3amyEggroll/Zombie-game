@@ -49,9 +49,9 @@ GunLevelConfig.Weapons = {
 
 -- The damage multiplier for a gun at a level (per-gun table first, Default as the fallback).
 function GunLevelConfig.DamageMult(weaponId: string, level: number?): number
-	local lv = math.clamp(level or 1, 1, GunLevelConfig.MaxLevel)
-	local curve = GunLevelConfig.Weapons[weaponId] or GunLevelConfig.Default
-	return curve[lv] or GunLevelConfig.Default[lv] or 1
+	-- CHANGED: gun upgrading was REMOVED — every gun fires at its base stats regardless of any level
+	-- still stored in old profiles. The curves above are kept only in case the feature returns.
+	return 1
 end
 
 -- The weapon's combat stats at a persistent level. Same shape the old in-run upgrade system returned,

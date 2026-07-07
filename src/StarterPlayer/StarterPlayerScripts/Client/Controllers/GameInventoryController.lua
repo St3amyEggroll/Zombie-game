@@ -166,20 +166,13 @@ local function card(parent, opts)
 	UITheme.Edge(f, isSel and UITheme.TOXIC or UITheme.BLACK, 2)
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; bar.Parent = f
-	local nm = Instance.new("TextLabel")
-	nm.Position = UDim2.fromOffset(6, 14); nm.Size = UDim2.new(1, -12, 0, 40); nm.BackgroundTransparency = 1
-	nm.FontFace = UITheme.BodyBoldFace; nm.TextSize = 12; nm.TextWrapped = true
-	nm.TextColor3 = UITheme.TEXT; nm.Text = opts.name; nm.Parent = f
-	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
-	nmStroke.Color = UITheme.BLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
-	-- 3D SLOT: the spinning model IS the card art — fills the whole card, text floats above (ZIndex 0).
-	-- Weapons pull from GunDisplay; cases from CrateDisplay (Assets models named "<Rarity>Crate").
+	-- 3D SLOT: a STATIC model pose IS the card art (created FIRST so everything else stacks above it;
+	-- only the detail pane spins). Weapons pull from GunDisplay; cases from CrateDisplay.
 	local showedModel = false
 	if opts.kind == "weapon" or opts.kind == "case" then
-		local vp = GunViewport.Create(opts.id, true, opts.kind == "case" and "CrateDisplay" or nil)
+		local vp = GunViewport.Create(opts.id, false, opts.kind == "case" and "CrateDisplay" or nil)
 		if vp then
-			vp.ZIndex = 0
-			vp.Position = UDim2.new(0, 0, 0, 0); vp.Size = UDim2.new(1, 0, 1, 0)
+			vp.Size = UDim2.new(1, 0, 1, 0)
 			vp.Parent = f
 			showedModel = true
 		end
@@ -187,11 +180,15 @@ local function card(parent, opts)
 	-- PHOTO SLOT: full-card photo when there's no model.
 	if not showedModel and typeof(opts.image) == "string" and opts.image ~= "" then
 		local img = Instance.new("ImageLabel")
-		img.ZIndex = 0
-		img.Position = UDim2.new(0, 0, 0, 0); img.Size = UDim2.new(1, 0, 1, 0)
-		img.BackgroundTransparency = 1
+		img.Size = UDim2.new(1, 0, 1, 0); img.BackgroundTransparency = 1
 		img.Image = opts.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = f
 	end
+	local nm = Instance.new("TextLabel")
+	nm.Position = UDim2.fromOffset(6, 14); nm.Size = UDim2.new(1, -12, 0, 40); nm.BackgroundTransparency = 1
+	nm.FontFace = UITheme.BodyBoldFace; nm.TextSize = 12; nm.TextWrapped = true
+	nm.TextColor3 = UITheme.TEXT; nm.Text = opts.name; nm.Parent = f
+	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
+	nmStroke.Color = UITheme.BLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
 	if opts.chip then
 		local chip = Instance.new("TextLabel")
 		chip.AnchorPoint = Vector2.new(1, 1); chip.Position = UDim2.new(1, -6, 1, -6)
@@ -231,6 +228,7 @@ local function renderDetail()
 	dClose.BackgroundColor3 = Color3.fromRGB(224, 34, 34); dClose.BorderSizePixel = 0
 	dClose.FontFace = UITheme.TitleFace; dClose.TextSize = 20
 	dClose.TextColor3 = Color3.fromRGB(255, 255, 255); dClose.Text = "✕"; dClose.Parent = detail
+	dClose.ZIndex = 5 -- above the pane's 3D backdrop
 	UITheme.Corner(dClose, 6); UITheme.Edge(dClose, UITheme.BLACK, 2.5)
 	local dCloseG = Instance.new("UIGradient")
 	dCloseG.Color = ColorSequence.new({
@@ -245,12 +243,11 @@ local function renderDetail()
 		render()
 	end)
 
-	-- Spinning 3D hero for weapons + cases: fills the whole pane as a backdrop, info floats above it.
+	-- Spinning 3D hero for weapons + cases: fills the whole pane as a backdrop; siblings created after
+	-- it stack above naturally.
 	if kind == "weapon" or kind == "case" then
 		local vp = GunViewport.Create(id, true, kind == "case" and "CrateDisplay" or nil)
 		if vp then
-			vp.ZIndex = 0
-			vp.Position = UDim2.new(0, 0, 0, 0)
 			vp.Size = UDim2.new(1, 0, 1, 0)
 			vp.ImageTransparency = 0.1
 			vp.Parent = detail
@@ -290,9 +287,8 @@ local function renderDetail()
 		local w = data.catalog.weapons[id]
 		if not w then return end
 		local col = rarityColor(w.rarity)
-		local lv = (data.gunLevels or {})[id] or 1
 		bigTitle(w.name, col)
-		line(62, ((data.catalog.rarities[w.rarity] or {}).name or "") .. "  ·  LV " .. lv, col, 13)
+		line(62, (data.catalog.rarities[w.rarity] or {}).name or "", col, 13)
 		line(88, ("Damage %s%s\nFire rate %s/s\nRange %s"):format(
 			tostring(w.damage or "?"), w.pellets and (" ×" .. w.pellets) or "",
 			tostring(w.fireRate or "?"), tostring(w.range or "?")), UITheme.TEXT, 12)
@@ -351,8 +347,7 @@ local function renderWeapons()
 			order += 1
 			local inLoadout = (id == data.loadout[1]) or (id == data.loadout[2])
 			card(grid, {
-				kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity),
-				chip = "LV " .. ((data.gunLevels or {})[id] or 1), order = order,
+				kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity), order = order,
 				tag = inLoadout and "EQUIPPED" or nil, image = w.image,
 			})
 		end

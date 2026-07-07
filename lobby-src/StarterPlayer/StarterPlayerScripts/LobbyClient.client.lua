@@ -89,7 +89,7 @@ local function lstuds(frame, tile, transparency)
 end
 -- Responsive: one live UIScale per ScreenGui (designed 1920x1080, clamped, touch bump).
 local UserInputService = game:GetService("UserInputService")
-local UI_SCALE_MULT = 1.5 -- GLOBAL lobby size dial — matches UITheme.UIScaleMult in the game place
+local UI_SCALE_MULT = 1.2 -- GLOBAL lobby size dial (game place uses its own in UITheme)
 local function lattach(screenGui)
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
@@ -574,7 +574,6 @@ local TweenService = game:GetService("TweenService")
 local InvRequest = remotes:WaitForChild("InvRequest")
 local InvSync    = remotes:WaitForChild("InvSync")
 local EquipSlot = remotes:WaitForChild("EquipSlot")
-local UpgradeGun = remotes:WaitForChild("UpgradeGun")
 local OpenCase   = remotes:WaitForChild("OpenCase")
 local CaseResult = remotes:WaitForChild("CaseResult")
 
@@ -694,22 +693,6 @@ local function invLayout()
 	end
 end
 
--- Level / copies / upgrade math for a gun, straight from the snapshot (nil-safe everywhere).
-local function gunLevelInfo(weaponId)
-	local info = weaponInfo(weaponId)
-	local gl = invData and invData.catalog.gunLevels
-	local level = (invData and invData.gunLevels and invData.gunLevels[weaponId]) or 1
-	local copies = (invData and invData.gunCopies and invData.gunCopies[weaponId]) or 0
-	local maxLevel = (gl and gl.maxLevel) or 10
-	if not info or not gl or level >= maxLevel then
-		return level, maxLevel, copies, nil, nil
-	end
-	local t = gl.thresholds[info.rarity] or gl.thresholds.common
-	local need = t[level] or t[#t]
-	local cost = gl.coinCosts[level] or gl.coinCosts[#gl.coinCosts]
-	return level, maxLevel, copies, need, cost
-end
-
 local renderActive -- forward decl (grid + detail render)
 local playReel -- forward decl (the reel section below assigns it)
 
@@ -738,20 +721,13 @@ local function invCard(opts)
 	corner(f, 6); ledge(f, isSel and ACCENT or TBLACK, 2)
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, 0, 0, 4); bar.BackgroundColor3 = col; bar.BorderSizePixel = 0; bar.Parent = f
-	local nm = Instance.new("TextLabel")
-	nm.Position = UDim2.fromOffset(8, 12); nm.Size = UDim2.new(1, -16, 0, 44); nm.BackgroundTransparency = 1
-	nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextWrapped = true
-	nm.TextColor3 = TEXTCOL; nm.Text = opts.name; nm.Parent = f
-	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
-	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
-	-- 3D SLOT: the spinning model IS the card art — fills the whole card, text floats above (ZIndex 0).
-	-- Weapons pull from GunDisplay; cases from CrateDisplay (Assets models named "<Rarity>Crate").
+	-- 3D SLOT: a STATIC model pose IS the card art (created FIRST so everything else stacks above it;
+	-- only the info pane spins). Weapons pull from GunDisplay; cases from CrateDisplay.
 	local showedModel = false
 	if opts.kind == "weapon" or opts.kind == "case" then
-		local vp = makeGunViewport(opts.id, true, opts.kind == "case" and "CrateDisplay" or nil)
+		local vp = makeGunViewport(opts.id, false, opts.kind == "case" and "CrateDisplay" or nil)
 		if vp then
-			vp.ZIndex = 0
-			vp.Position = UDim2.new(0, 0, 0, 0); vp.Size = UDim2.new(1, 0, 1, 0)
+			vp.Size = UDim2.new(1, 0, 1, 0)
 			vp.Parent = f
 			showedModel = true
 		end
@@ -759,11 +735,15 @@ local function invCard(opts)
 	-- PHOTO SLOT: full-card photo when there's no model (add ids later, zero code).
 	if not showedModel and typeof(opts.image) == "string" and opts.image ~= "" then
 		local img = Instance.new("ImageLabel")
-		img.ZIndex = 0
-		img.Position = UDim2.new(0, 0, 0, 0); img.Size = UDim2.new(1, 0, 1, 0)
-		img.BackgroundTransparency = 1
+		img.Size = UDim2.new(1, 0, 1, 0); img.BackgroundTransparency = 1
 		img.Image = opts.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = f
 	end
+	local nm = Instance.new("TextLabel")
+	nm.Position = UDim2.fromOffset(8, 12); nm.Size = UDim2.new(1, -16, 0, 44); nm.BackgroundTransparency = 1
+	nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextWrapped = true
+	nm.TextColor3 = TEXTCOL; nm.Text = opts.name; nm.Parent = f
+	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
+	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4; nmStroke.Parent = nm
 	if opts.chip then
 		local chip = Instance.new("TextLabel")
 		chip.AnchorPoint = Vector2.new(1, 1); chip.Position = UDim2.new(1, -6, 1, -6)
@@ -818,18 +798,17 @@ local function renderInvDetail()
 	local kind, id = selectedInv.kind, selectedInv.id
 
 	local dClose = redX(invDetail, 34, 20)
-	dClose.Position = UDim2.new(1, -6, 0, 6)
+	dClose.Position = UDim2.new(1, -6, 0, 6); dClose.ZIndex = 5 -- above the pane's 3D backdrop
 	dClose.Activated:Connect(function()
 		selectedInv = nil
 		renderActive()
 	end)
 
-	-- Spinning 3D hero for weapons + cases: fills the whole pane as a backdrop, info floats above it.
+	-- Spinning 3D hero for weapons + cases: fills the whole pane as a backdrop; everything created
+	-- after it stacks above naturally.
 	if kind == "weapon" or kind == "case" then
 		local heroVp = makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
 		if heroVp then
-			heroVp.ZIndex = 0
-			heroVp.Position = UDim2.new(0, 0, 0, 0)
 			heroVp.Size = UDim2.new(1, 0, 1, 0)
 			heroVp.ImageTransparency = 0.1
 			heroVp.Parent = invDetail
@@ -866,66 +845,26 @@ local function renderInvDetail()
 		local w = weaponInfo(id)
 		if not w then return end
 		local col = rarityColor(w.rarity)
-		local level, maxLevel, copies, need, cost = gunLevelInfo(id)
-		local dpl = (invData.catalog.gunLevels and invData.catalog.gunLevels.damagePerLevel) or 0
-		local lvDamage = (w.damage or 0) * (1 + dpl * (level - 1))
-		local dps = lvDamage * (w.fireRate or 0) * (w.pellets or 1)
+		local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
 		bigTitle(w.name, col)
-		line(62, ((invData.catalog.rarities[w.rarity] or {}).name or "") .. "  ·  LV " .. level .. " / " .. maxLevel, col, 16, 22)
+		line(62, (invData.catalog.rarities[w.rarity] or {}).name or "", col, 16, 22)
 		line(88, ("DMG %.0f%s   ·   %s/s   ·   RNG %s\nDPS ~%d"):format(
-			lvDamage, w.pellets and (" ×" .. w.pellets) or "", tostring(w.fireRate or "?"),
+			w.damage or 0, w.pellets and (" ×" .. w.pellets) or "", tostring(w.fireRate or "?"),
 			tostring(w.range or "?"), math.floor(dps + 0.5)), TEXTCOL, 14, 42)
 
-		-- Copies progress toward the next level.
-		if need then
-			line(136, ("COPIES  %d / %d"):format(copies, need), DIMTEXT, 13, 16)
-			local track = Instance.new("Frame")
-			track.Position = UDim2.fromOffset(14, 156); track.Size = UDim2.new(1, -28, 0, 10)
-			track.BackgroundColor3 = darker(TRACK, 0.25); track.BorderSizePixel = 0; track.Parent = invDetail
-			corner(track, 3)
-			local frac = math.clamp(copies / need, 0, 1)
-			if frac > 0 then
-				local fillBar = Instance.new("Frame")
-				fillBar.Size = UDim2.fromScale(frac, 1)
-				fillBar.BackgroundColor3 = (copies >= need) and GOLD or ACCENT
-				fillBar.BorderSizePixel = 0; fillBar.Parent = track
-				corner(fillBar, 3)
-			end
-		else
-			line(136, "MAX LEVEL — extra copies become Coins", GOLD, 14, 18)
-		end
-
-		-- Actions: equip into either slot; upgrade when the stack + Coins are there.
+		-- Actions: equip into either slot. (Gun upgrading was removed — duplicates pay Coins instead.)
 		local inS1 = (invData.loadout[1] == id)
 		local inS2 = (invData.loadout[2] == id)
 		local eq1 = paneButton(inS1 and "IN SLOT 1" or "EQUIP SLOT 1", GHOSTA, GHOSTB, inS1 and ACCENT or TEXTCOL)
-		eq1.Position = UDim2.fromOffset(14, 182); eq1.Size = UDim2.new(0.5, -20, 0, 46)
+		eq1.Position = UDim2.fromOffset(14, 150); eq1.Size = UDim2.new(0.5, -20, 0, 46)
 		local eq2 = paneButton(inS2 and "IN SLOT 2" or "EQUIP SLOT 2", GHOSTA, GHOSTB, inS2 and ACCENT or TEXTCOL)
-		eq2.AnchorPoint = Vector2.new(1, 0); eq2.Position = UDim2.new(1, -14, 0, 182); eq2.Size = UDim2.new(0.5, -20, 0, 46)
+		eq2.AnchorPoint = Vector2.new(1, 0); eq2.Position = UDim2.new(1, -14, 0, 150); eq2.Size = UDim2.new(0.5, -20, 0, 46)
 		eq1.Activated:Connect(function()
 			if not inS1 then lplay("Equip"); EquipSlot:FireServer({ slot = 1, weaponId = id }) end
 		end)
 		eq2.Activated:Connect(function()
 			if not inS2 then lplay("Equip"); EquipSlot:FireServer({ slot = 2, weaponId = id }) end
 		end)
-
-		if need then
-			local canCopies = copies >= need
-			local canCoins = (invData.coins or 0) >= (cost or 0)
-			local up
-			if canCopies and canCoins then
-				up = paneButton(("UPGRADE  ·  🪙 %s"):format(fmt(cost or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
-				up.Activated:Connect(function()
-					lplay("Upgrade")
-					UpgradeGun:FireServer({ weaponId = id })
-				end)
-			else
-				up = paneButton(canCopies and ("NEED 🪙 %s"):format(fmt(cost or 0))
-					or ("NEED %d MORE COPIES"):format(need - copies), GHOSTA, GHOSTB, DIMTEXT)
-				up.AutoButtonColor = false
-			end
-			up.AnchorPoint = Vector2.new(0.5, 1); up.Position = UDim2.new(0.5, 0, 1, -12); up.Size = UDim2.new(1, -28, 0, 52)
-		end
 	elseif kind == "case" then
 		local disp = invData.catalog.cases[id]
 		if not disp then return end
@@ -981,8 +920,7 @@ local function renderWeaponsGrid()
 	for i, id in ids do
 		local w = weaponInfo(id)
 		local slotTag = (invData.loadout[1] == id and "EQUIPPED · S1") or (invData.loadout[2] == id and "EQUIPPED · S2") or nil
-		local level = (invData.gunLevels and invData.gunLevels[id]) or 1
-		invCard({ kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity), chip = "LV " .. level, tag = slotTag, order = i, image = w.image })
+		invCard({ kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity), tag = slotTag, order = i, image = w.image })
 	end
 end
 
@@ -1154,13 +1092,10 @@ playReel = function(caseId, wonId, res)
 		local copies = tonumber(res.copies) or 1
 		if res.unlocked then
 			resultLabel.TextColor3 = col
-			resultLabel.Text = ("Unlocked %s!  (+%d copies)"):format(gunName, copies)
-		elseif res.maxed then
-			resultLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
-			resultLabel.Text = ("+%d %s copies → 🪙 %d  (max level)"):format(copies, gunName, tonumber(res.coins) or 0)
+			resultLabel.Text = ("Unlocked %s!"):format(gunName)
 		else
-			resultLabel.TextColor3 = col
-			resultLabel.Text = ("+%d %s copies"):format(copies, gunName)
+			resultLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
+			resultLabel.Text = ("Duplicate %s → 🪙 %d"):format(gunName, tonumber(res.coins) or 0)
 		end
 		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = SELBG; reelBtn.TextColor3 = TEXTCOL
 		local r = info and info.rarity or "common"
@@ -1355,9 +1290,9 @@ local function shopCell(i, slot)
 	cell.BackgroundColor3 = soldOut and darker(PANEL2, 0.25) or col:Lerp(BLACK, 0.62)
 	cell.AutoButtonColor = true; cell.Text = ""; cell.BorderSizePixel = 0; cell.LayoutOrder = i; cell.Parent = shopGrid
 	corner(cell, 7); ledge(cell, isSel and GOLD or TBLACK, isSel and 3 or 2.5)
-	local vp = makeGunViewport(slot.caseId, true, "CrateDisplay")
+	local vp = makeGunViewport(slot.caseId, false, "CrateDisplay") -- static: only the featured pane spins
 	if vp then
-		vp.ZIndex = 0; vp.Size = UDim2.new(1, 0, 1, -26)
+		vp.Size = UDim2.new(1, 0, 1, -26)
 		vp.ImageTransparency = soldOut and 0.6 or 0
 		vp.Parent = cell
 	else
