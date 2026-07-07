@@ -149,18 +149,8 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- to AimController's lock rule, so what locks is exactly what hits. Distance/falloff stay 3D.
 	local flatDir = Vector3.new(dir.X, 0, dir.Z)
 	flatDir = (flatDir.Magnitude > 0.01) and flatDir.Unit or dir
-	-- Damage = leveled gun damage × (1 + buff draft Damage + the SUM of every active damage potion —
-	-- different tiers stack, e.g. divine 75% + common 10% = +85%).
-	local potionDamage = 0
-	if ps.potionBuffs then
-		local nowP = os.clock()
-		for _, b in ps.potionBuffs do
-			if b.type == "damage" and b.expiresAt > nowP then
-				potionDamage += b.pct
-			end
-		end
-	end
-	local baseDamage = eff.damage * (1 + buffOf(ps, "damage") + potionDamage)
+	-- Damage = base weapon damage (potions + the buff draft were removed; buffOf stays for future use).
+	local baseDamage = eff.damage * (1 + buffOf(ps, "damage"))
 	local arcRange = GameConfig.ArcRange
 	-- Pellet weapons can hit across a WIDER arc than the global cone (weapon.spreadArc — the shotgun
 	-- sprays the crowd, not one line). The client lock rule stays on the narrower global arc, which is

@@ -295,7 +295,6 @@ end
 
 -- ===== SUBSCRIPTIONS =====
 local lastHurt = 0
-local activePotionIds = {}
 local countdownToken = 0
 local wasDowned = false
 
@@ -472,30 +471,6 @@ function SoundController.Start()
 		end
 	end)
 
-	-- Potions: diff the active-buff list — a NEW id is a drink, a VANISHED id is an expiry.
-	Remotes.Get("PotionBuffsChanged").OnClientEvent:Connect(function(list)
-		if typeof(list) ~= "table" then
-			return
-		end
-		local nowIds = {}
-		for _, buff in list do
-			if typeof(buff) == "table" and buff.id then
-				nowIds[buff.id] = true
-				if not activePotionIds[buff.id] then
-					SoundController.Play("PotionDrink")
-				end
-			end
-		end
-		for id in activePotionIds do
-			if not nowIds[id] then
-				SoundController.Play("PotionExpire")
-			end
-		end
-		activePotionIds = nowIds
-	end)
-	Remotes.Get("PotionDropped").OnClientEvent:Connect(function()
-		SoundController.Play("PotionDrop")
-	end)
 	Remotes.Get("CaseDropped").OnClientEvent:Connect(function()
 		SoundController.Play("CaseDrop")
 	end)

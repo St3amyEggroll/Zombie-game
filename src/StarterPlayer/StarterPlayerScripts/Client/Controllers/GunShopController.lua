@@ -1,8 +1,9 @@
 --!nonstrict
--- GunShopController.lua — the MID-RUN gun shop: press B (or the SHOP button by the bottom-right corner)
--- to open a list of every gun. Buy with Coins at the same prices as the lobby; the purchase is permanent.
--- Reads names/prices/abilities straight from WeaponConfig; owned list + Coins come from GetData and stay
--- live via LoadoutChanged / LobbyMoneyChanged.
+-- GunShopController.lua — the MID-RUN gun shop, laid out like the crate shop the owner approved:
+-- gun GRID (left) | FEATURED gun (middle, spinning render + stats + ability) | BUY stack (right).
+-- Open with B or the SHOP button (bottom-right). Buys use persistent Coins at WeaponConfig.price;
+-- purchases are permanent (server: GunShopService). Owned list + Coins stay live via
+-- LoadoutChanged / LobbyMoneyChanged.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,17 +21,25 @@ local GunShopController = {}
 
 -- ===== TUNABLES =====
 local TOGGLE_KEY = Enum.KeyCode.B
-local PANEL_W, PANEL_H = 560, 520
-local ROW_H = 74
+local PANEL_W, PANEL_H = 940, 560
+local RARITY_COLORS = {
+	common = Color3.fromRGB(176, 190, 197), uncommon = Color3.fromRGB(102, 187, 106),
+	rare = Color3.fromRGB(66, 165, 245), epic = Color3.fromRGB(171, 71, 188),
+	legendary = Color3.fromRGB(255, 167, 38), mythic = Color3.fromRGB(239, 83, 80),
+	divine = Color3.fromRGB(255, 213, 79),
+}
+local WEAPON_RARITY = {
+	pistol = "common", revolver = "uncommon", shotgun = "uncommon", ak47 = "rare",
+	crossbow = "rare", minigun = "epic", freezeray = "epic", raygun = "legendary",
+}
 
 local localPlayer = Players.LocalPlayer
 
-local panel = nil
-local listFrame = nil
-local coinsLabel = nil
-local owned = {} -- [weaponId] = true
+local panel, grid, detail, acts, coinsLabel
+local owned = {}   -- [weaponId] = true
 local coins = 0
-local pendingBuy = nil -- weaponId waiting on the server (debounce)
+local selectedId = nil
+local pendingBuy = nil
 
 function GunShopController.IsOpen(): boolean
 	return panel ~= nil and panel.Visible
@@ -41,7 +50,9 @@ local function fmt(n)
 	return (s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", ""))
 end
 
-local render -- forward decl
+local function gunColor(id)
+	return RARITY_COLORS[WEAPON_RARITY[id] or "common"] or RARITY_COLORS.common
+end
 
 local function sortedGunIds()
 	local ids = {}
@@ -58,89 +69,166 @@ local function sortedGunIds()
 	return ids
 end
 
+local function clearChildren(container)
+	for _, c in container:GetChildren() do
+		if c:IsA("GuiObject") then
+			c:Destroy()
+		end
+	end
+end
+
+local render -- forward decl
+
+-- One gun cell in the grid: static render fills it, name strip at the bottom, price/OWNED chip.
+local function gunCell(i, id)
+	local w = WeaponConfig[id]
+	local col = gunColor(id)
+	local isOwned = owned[id] == true
+	local isSel = selectedId == id
+
+	local cell = Instance.new("TextButton")
+	cell.BackgroundColor3 = col:Lerp(UITheme.BG, isOwned and 0.62 or 0.8)
+	cell.AutoButtonColor = true
+	cell.Text = ""
+	cell.BorderSizePixel = 0
+	cell.LayoutOrder = i
+	cell.Parent = grid
+	UITheme.Corner(cell, 7)
+	UITheme.Edge(cell, isSel and UITheme.GOLD or UITheme.BLACK, isSel and 3 or 2.5)
+
+	local vp = GunViewport.Create(id, false)
+	if vp then
+		vp.Size = UDim2.new(1, 0, 1, -26)
+		vp.ImageTransparency = isOwned and 0 or 0.35
+		vp.Parent = cell
+	end
+
+	local nm = UITheme.Label(cell, nil, 14, UITheme.TEXT, true)
+	nm.AnchorPoint = Vector2.new(0, 1)
+	nm.Position = UDim2.new(0, 0, 1, -4)
+	nm.Size = UDim2.new(1, 0, 0, 22)
+	nm.Text = w.name
+	local nmStroke = Instance.new("UIStroke")
+	nmStroke.Color = UITheme.BLACK
+	nmStroke.Thickness = 1.4
+	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	nmStroke.Parent = nm
+
+	local chip = UITheme.Label(cell, nil, 12, isOwned and UITheme.TOXIC or UITheme.GOLD, true)
+	chip.Position = UDim2.fromOffset(6, 6)
+	chip.Size = UDim2.fromOffset(110, 18)
+	chip.TextXAlignment = Enum.TextXAlignment.Left
+	chip.ZIndex = 3
+	chip.Text = isOwned and "OWNED" or ((tonumber(w.price) or 0) > 0 and ("🪙 " .. fmt(w.price)) or "STARTER")
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = UITheme.BLACK
+	cStroke.Thickness = 1.3
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	cStroke.Parent = chip
+
+	cell.Activated:Connect(function()
+		selectedId = id
+		render()
+	end)
+end
+
 render = function()
 	if not panel or not panel.Visible then
 		return
 	end
 	coinsLabel.Text = "🪙 " .. fmt(coins)
-	for _, c in listFrame:GetChildren() do
-		if c:IsA("GuiObject") then
-			c:Destroy()
-		end
+	local ids = sortedGunIds()
+	if not selectedId or not WeaponConfig[selectedId] then
+		selectedId = ids[1]
 	end
-	for i, id in sortedGunIds() do
-		local w = WeaponConfig[id]
-		local isOwned = owned[id] == true
-		local forSale = (tonumber(w.price) or 0) > 0
+	clearChildren(grid)
+	for i, id in ids do
+		gunCell(i, id)
+	end
 
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -6, 0, ROW_H)
-		row.BackgroundColor3 = UITheme.PANEL2
-		row.BorderSizePixel = 0
-		row.LayoutOrder = i
-		row.Parent = listFrame
-		UITheme.Corner(row, 6)
-		UITheme.Edge(row, UITheme.BLACK, 2)
+	-- ===== FEATURED (middle) =====
+	clearChildren(detail)
+	clearChildren(acts)
+	local id = selectedId
+	local w = WeaponConfig[id]
+	if not w then
+		return
+	end
+	local col = gunColor(id)
 
-		local vp = GunViewport.Create(id, false)
-		if vp then
-			vp.Position = UDim2.fromOffset(6, 4)
-			vp.Size = UDim2.fromOffset(92, ROW_H - 8)
-			vp.Parent = row
-		end
+	local well = Instance.new("Frame")
+	well.Position = UDim2.fromOffset(14, 14)
+	well.Size = UDim2.new(1, -28, 0, 190)
+	well.BackgroundColor3 = col:Lerp(UITheme.BG, 0.7)
+	well.BorderSizePixel = 0
+	well.Parent = detail
+	UITheme.Corner(well, 6)
+	UITheme.Edge(well, UITheme.BLACK, 2)
+	local wellVp = GunViewport.Create(id, true)
+	if wellVp then
+		wellVp.Size = UDim2.fromScale(1, 1)
+		wellVp.Parent = well
+	end
 
-		local nm = UITheme.Label(row, nil, 16, UITheme.TEXT, true)
-		nm.Position = UDim2.fromOffset(108, 8)
-		nm.Size = UDim2.new(1, -260, 0, 20)
-		nm.TextXAlignment = Enum.TextXAlignment.Left
-		nm.Text = w.name
+	local function centered(y, h, size, colr, bold)
+		local l = UITheme.Label(detail, nil, size, colr, bold)
+		l.Position = UDim2.fromOffset(14, y)
+		l.Size = UDim2.new(1, -28, 0, h)
+		l.TextWrapped = true
+		return l
+	end
+	local nm = UITheme.Title(detail, nil, 21, col)
+	nm.Position = UDim2.fromOffset(14, 214)
+	nm.Size = UDim2.new(1, -28, 0, 30)
+	nm.Text = string.upper(w.name)
 
-		local sub = UITheme.Label(row, nil, 12, UITheme.DIM)
-		sub.Position = UDim2.fromOffset(108, 30)
-		sub.Size = UDim2.new(1, -260, 0, 34)
-		sub.TextXAlignment = Enum.TextXAlignment.Left
-		sub.TextYAlignment = Enum.TextYAlignment.Top
-		sub.TextWrapped = true
-		sub.Text = w.ability or ("DMG " .. tostring(w.damage) .. "  ·  " .. tostring(w.fireRate) .. "/s")
+	local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
+	local stats = centered(250, 66, 14, UITheme.TEXT)
+	stats.Text = ("DMG %.0f%s\n%s shots/s   ·   RNG %s\nDPS ~%d"):format(
+		w.damage or 0, w.pellets and w.pellets > 1 and (" ×" .. w.pellets) or "",
+		tostring(w.fireRate or "?"), tostring(w.range or "?"), math.floor(dps + 0.5))
 
-		if isOwned then
-			local ownedLbl = UITheme.Label(row, nil, 14, UITheme.TOXIC, true)
-			ownedLbl.AnchorPoint = Vector2.new(1, 0.5)
-			ownedLbl.Position = UDim2.new(1, -16, 0.5, 0)
-			ownedLbl.Size = UDim2.fromOffset(120, 20)
-			ownedLbl.TextXAlignment = Enum.TextXAlignment.Right
-			ownedLbl.Text = "OWNED"
-		elseif not forSale then
-			local starterLbl = UITheme.Label(row, nil, 14, UITheme.DIM, true)
-			starterLbl.AnchorPoint = Vector2.new(1, 0.5)
-			starterLbl.Position = UDim2.new(1, -16, 0.5, 0)
-			starterLbl.Size = UDim2.fromOffset(120, 20)
-			starterLbl.TextXAlignment = Enum.TextXAlignment.Right
-			starterLbl.Text = "STARTER"
-		else
-			local canAfford = coins >= w.price and pendingBuy == nil
-			local buy = UITheme.Button(row, "🪙 " .. fmt(w.price), canAfford and "gold" or "ghost")
-			buy.AnchorPoint = Vector2.new(1, 0.5)
-			buy.Position = UDim2.new(1, -12, 0.5, 0)
-			buy.Size = UDim2.fromOffset(130, 44)
-			if canAfford then
-				buy.Activated:Connect(function()
-					if pendingBuy then
-						return
+	if w.ability then
+		local ab = centered(324, 70, 13, UITheme.TOXIC, true)
+		ab.TextYAlignment = Enum.TextYAlignment.Top
+		ab.Text = w.ability
+	end
+
+	-- ===== ACTIONS (right) =====
+	local isOwned = owned[id] == true
+	local forSale = (tonumber(w.price) or 0) > 0
+	if isOwned then
+		local b = UITheme.Button(acts, "OWNED", "ghost")
+		b.Position = UDim2.new(0, 0, 0, 0)
+		b.Size = UDim2.new(1, 0, 0, 60)
+		UITheme.SetButtonEnabled(b, false, "OWNED ✓")
+	elseif not forSale then
+		local b = UITheme.Button(acts, "STARTER GUN", "ghost")
+		b.Position = UDim2.new(0, 0, 0, 0)
+		b.Size = UDim2.new(1, 0, 0, 60)
+		UITheme.SetButtonEnabled(b, false, "STARTER GUN")
+	else
+		local canAfford = coins >= w.price and pendingBuy == nil
+		local b = UITheme.Button(acts, ("BUY  ·  🪙 %s"):format(fmt(w.price)), "gold")
+		b.Position = UDim2.new(0, 0, 0, 0)
+		b.Size = UDim2.new(1, 0, 0, 60)
+		if canAfford then
+			b.Activated:Connect(function()
+				if pendingBuy then
+					return
+				end
+				pendingBuy = id
+				SoundController.Play("GunBought")
+				Remotes.Get("BuyGun"):FireServer({ weaponId = id })
+				task.delay(3, function() -- watchdog: unlock if no reply ever lands
+					if pendingBuy == id then
+						pendingBuy = nil
+						render()
 					end
-					pendingBuy = id
-					SoundController.Play("GunBought")
-					Remotes.Get("BuyGun"):FireServer({ weaponId = id })
-					task.delay(3, function() -- watchdog: unlock if no reply ever lands
-						if pendingBuy == id then
-							pendingBuy = nil
-							render()
-						end
-					end)
 				end)
-			else
-				UITheme.SetButtonEnabled(buy, false, "🪙 " .. fmt(w.price))
-			end
+			end)
+		else
+			UITheme.SetButtonEnabled(b, false, ("NEED 🪙 %s"):format(fmt(w.price)))
 		end
 	end
 end
@@ -196,38 +284,38 @@ function GunShopController.Start()
 	shopBtn.FontFace = UITheme.TitleFace
 	shopBtn.TextSize = 14
 	shopBtn.TextColor3 = UITheme.GOLD
-	shopBtn.Text = "SHOP [B]"
+	shopBtn.Text = "GUNS [B]"
 	shopBtn.Parent = gui
 	UITheme.Corner(shopBtn, 6)
 	UITheme.Edge(shopBtn)
 	UITheme.Studs(shopBtn)
 
-	-- Panel.
+	-- Panel: grid | featured | buy stack (same skeleton as the lobby's crate shop).
 	panel = UITheme.Panel(gui, "GunShopPanel", { accent = UITheme.GOLD })
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "GUN SHOP", 44, UITheme.GOLD)
+	UITheme.Header(panel, "GUNS", 44, UITheme.GOLD)
 
-	coinsLabel = UITheme.Label(panel, "Coins", 16, UITheme.GOLD, true)
+	coinsLabel = UITheme.Label(panel, "Coins", 18, UITheme.GOLD, true)
 	coinsLabel.AnchorPoint = Vector2.new(1, 0)
-	coinsLabel.Position = UDim2.new(1, -64, 0, 12)
-	coinsLabel.Size = UDim2.fromOffset(160, 24)
+	coinsLabel.Position = UDim2.new(1, -66, 0, 12)
+	coinsLabel.Size = UDim2.fromOffset(180, 26)
 	coinsLabel.TextXAlignment = Enum.TextXAlignment.Right
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.AnchorPoint = Vector2.new(1, 0)
 	closeBtn.Position = UDim2.new(1, -8, 0, 6)
-	closeBtn.Size = UDim2.fromOffset(40, 40)
+	closeBtn.Size = UDim2.fromOffset(46, 46)
 	closeBtn.BackgroundColor3 = Color3.fromRGB(224, 34, 34)
 	closeBtn.BorderSizePixel = 0
 	closeBtn.FontFace = UITheme.TitleFace
-	closeBtn.TextSize = 22
+	closeBtn.TextSize = 26
 	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	closeBtn.Text = "✕"
 	closeBtn.Parent = panel
-	UITheme.Corner(closeBtn, 6)
+	UITheme.Corner(closeBtn, 7)
 	UITheme.Edge(closeBtn, UITheme.BLACK, 2.5)
 	local xg = Instance.new("UIGradient")
 	xg.Color = ColorSequence.new({
@@ -239,19 +327,37 @@ function GunShopController.Start()
 	xg.Rotation = 90
 	xg.Parent = closeBtn
 
-	listFrame = Instance.new("ScrollingFrame")
-	listFrame.Position = UDim2.fromOffset(14, 56)
-	listFrame.Size = UDim2.new(1, -28, 1, -70)
-	listFrame.BackgroundTransparency = 1
-	listFrame.BorderSizePixel = 0
-	listFrame.ScrollBarThickness = 6
-	listFrame.CanvasSize = UDim2.new()
-	listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	listFrame.Parent = panel
-	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 8)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = listFrame
+	grid = Instance.new("ScrollingFrame")
+	grid.Position = UDim2.fromOffset(16, 60)
+	grid.Size = UDim2.fromOffset(346, PANEL_H - 76)
+	grid.BackgroundTransparency = 1
+	grid.BorderSizePixel = 0
+	grid.ScrollBarThickness = 6
+	grid.CanvasSize = UDim2.new()
+	grid.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	grid.Parent = panel
+	local gl = Instance.new("UIGridLayout")
+	gl.CellSize = UDim2.fromOffset(160, 148)
+	gl.CellPadding = UDim2.fromOffset(12, 12)
+	gl.SortOrder = Enum.SortOrder.LayoutOrder
+	gl.Parent = grid
+
+	detail = Instance.new("Frame")
+	detail.Position = UDim2.fromOffset(378, 60)
+	detail.Size = UDim2.fromOffset(280, PANEL_H - 76)
+	detail.BackgroundColor3 = UITheme.PANEL2
+	detail.BorderSizePixel = 0
+	detail.Parent = panel
+	UITheme.Corner(detail, 6)
+	UITheme.Edge(detail, UITheme.BLACK, 2)
+	UITheme.Edge(detail, UITheme.GOLD, 1, 0.55)
+
+	acts = Instance.new("Frame")
+	acts.AnchorPoint = Vector2.new(1, 0)
+	acts.Position = UDim2.new(1, -16, 0, 60)
+	acts.Size = UDim2.fromOffset(250, PANEL_H - 76)
+	acts.BackgroundTransparency = 1
+	acts.Parent = panel
 
 	shopBtn.Activated:Connect(function()
 		setOpen(not panel.Visible)

@@ -326,17 +326,9 @@ local function onHeartbeat(dt: number)
 					bleedOut(player, ps)
 				end
 			else
-				-- Health regen after a quiet period (every ACTIVE Regen Potion buff adds on — tiers stack).
+				-- Health regen after a quiet period.
 				if humanoid.Health < humanoid.MaxHealth and (now - r.lastDamage) >= GameConfig.HealthRegenDelay then
-					local regenMult = 1
-					if ps and ps.potionBuffs then
-						for _, b in ps.potionBuffs do
-							if b.type == "regen" and b.expiresAt > now then
-								regenMult += b.pct
-							end
-						end
-					end
-					humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + GameConfig.HealthRegenRate * regenMult * step)
+					humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + GameConfig.HealthRegenRate * step)
 				end
 
 				-- Sprint stamina.

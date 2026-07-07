@@ -143,7 +143,7 @@ local function makePlayerState(player: Player)
 		runLevel = 1,
 		draftsOwed = 0,
 		pendingDraft = nil,
-		potionBuffs = {},  -- [potionId] = { type, rarity, pct, expiresAt } — ACTIVE timed buffs (tiers STACK)
+
 		buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 },
 	}
 end
@@ -159,7 +159,6 @@ local function resetRunState(player: Player, ps)
 	ps.runLevel = 1
 	ps.draftsOwed = 0
 	ps.pendingDraft = nil
-	ps.potionBuffs = {}
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
 	ps.isDead = false
 	ps.isDowned = false

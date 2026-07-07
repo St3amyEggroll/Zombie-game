@@ -64,9 +64,6 @@ local DEFINITIONS: { [string]: string } = {
 
 	-- GameInventoryService (in-game VIEW of the lobby inventory + potion use + wave case drops)
 	InvSnapshot       = "RemoteEvent",     -- S->C: (snapshot) equipped weapons + cases + potions; C->S: request one
-	ConsumePotion     = "RemoteEvent",     -- C->S: (potionId) drink a potion (timed buff; one active per TYPE)
-	PotionBuffsChanged = "RemoteEvent",    -- S->C: ({ {id, type, rarity, pct, remaining} }) your ACTIVE potion buffs
-	PotionDropped     = "RemoteEvent",     -- S->C: (potionId) an elite zombie dropped a potion (toast)
 	CaseDropped       = "RemoteEvent",     -- S->C: (rarity) you collected a wave-clear case (toast)
 
 	-- (In-run gun upgrades were REMOVED — guns now level up persistently in the LOBBY via case copies;

@@ -97,9 +97,6 @@ SoundConfig.Sounds = {
 	CountdownGo        = S("", 0.7, 0, 1, 1),      -- countdown hits zero [buzzer / GO]
 
 	-- ===== PICKUPS / PROGRESSION (2D) =====
-	PotionDrink    = S("", 0.65, 0, 0.98, 1.02),   -- [potion gulp]
-	PotionExpire   = S("", 0.5, 0, 1, 1),          -- buff ran out [power down]
-	PotionDrop     = S("", 0.6, 0, 1, 1),          -- elite dropped one [item drop sparkle]
 	CaseDrop       = S("", 0.65, 0, 1, 1),         -- case collected [reward chest]
 	GunBought      = S("", 0.7, 0, 1, 1),          -- mid-run gun purchase [cha-ching / unlock]
 	StreakStinger  = S("", 0.55, 0, 1, 1),         -- killstreak (pitch rises with streak) [combo hit]

@@ -172,7 +172,7 @@ local function build()
 	invLabel.FontFace = UITheme.TitleFace
 	invLabel.TextSize = 11
 	invLabel.TextColor3 = UITheme.TEXT
-	invLabel.Text = "ITEMS"
+	invLabel.Text = "CASES"
 	invLabel.Parent = invBtn
 	invBtn.Activated:Connect(function()
 		GameInventoryController.Toggle()

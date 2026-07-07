@@ -40,7 +40,6 @@ local TEMPLATE = {
 	-- ===== LOBBY INVENTORY (managed by the LOBBY place; the game just preserves these on save) =====
 	loadout      = { "pistol" },      -- the up-to-2 guns you carry into runs (picked in the lobby inventory)
 	cases        = { common = 3 },    -- unopened cases by RARITY id -> count (3 free Common Cases to start)
-	potions      = {},                -- owned potions by id -> count (usable in-run)
 	gunLevels    = { pistol = 1 },    -- [weaponId] = persistent level 1..10 (Clash-Royale copies system;
 	gunCopies    = {},                --   upgraded in the LOBBY — the game only READS these for combat stats)
 	bestWave     = 0,
@@ -75,16 +74,6 @@ local function reconcile(data: any)
 			if data.stats[k] == nil then
 				data.stats[k] = v
 			end
-		end
-	end
-	-- Legacy potion ids (pre-tier era) migrate to the common tier.
-	if typeof(data.potions) == "table" then
-		for old, new in { damage = "damage_common", regen = "regen_common" } do
-			local n = tonumber(data.potions[old])
-			if n and n > 0 then
-				data.potions[new] = (tonumber(data.potions[new]) or 0) + math.floor(n)
-			end
-			data.potions[old] = nil
 		end
 	end
 	return data
@@ -127,7 +116,7 @@ end
 -- the lobby saves them before teleporting the player to us.
 local GAME_OWNED_FIELDS = {
 	"dataVersion", "xp", "level", "bestWave", "completed", "stats", "cosmetics", "settings",
-	"lobbyMoney", "potions", "cases", -- cases: wave/boss case drops earned in-run must reach the lobby
+	"lobbyMoney", "cases", -- cases: wave/boss case drops earned in-run must reach the lobby
 	"ownedWeapons", -- mid-run gun purchases (GunShopService) must reach the lobby too
 }
 
@@ -291,44 +280,6 @@ function DataService.AddCase(player: Player, rarity: string, count: number?)
 	end
 	data.cases[rarity] = (data.cases[rarity] or 0) + (count or 1)
 	markDirty(player)
-end
-
--- ----- potions (dropped by elite zombies; usable in-game/lobby) -----
-function DataService.GetPotions(player: Player): { [string]: number }
-	local data = getData(player)
-	return (data and typeof(data.potions) == "table") and data.potions or {}
-end
-
-function DataService.AddPotion(player: Player, potionId: string, count: number?)
-	local data = getData(player)
-	if not data then
-		return
-	end
-	if typeof(data.potions) ~= "table" then
-		data.potions = {}
-	end
-	data.potions[potionId] = (data.potions[potionId] or 0) + (count or 1)
-	markDirty(player)
-end
-
--- Consume one potion. Returns true if the player had one (and it was removed).
-function DataService.TryConsumePotion(player: Player, potionId: string): boolean
-	local data = getData(player)
-	if not data or typeof(data.potions) ~= "table" then
-		return false
-	end
-	local have = data.potions[potionId] or 0
-	if have < 1 then
-		return false
-	end
-	have -= 1
-	if have <= 0 then
-		data.potions[potionId] = nil
-	else
-		data.potions[potionId] = have
-	end
-	markDirty(player)
-	return true
 end
 
 -- ----- stats / best wave / settings -----

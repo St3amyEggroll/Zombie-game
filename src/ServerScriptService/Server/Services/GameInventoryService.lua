@@ -1,10 +1,9 @@
 --!nonstrict
 -- GameInventoryService.lua — the IN-GAME window into the player's persistent inventory that the LOBBY
--- manages: the 2-gun loadout, owned guns, cases, and potions. In-game you can only LOOK at weapons/cases
--- (equip + open in the lobby) — but you CAN use potions here.
+-- manages: the 2-gun loadout, owned guns, and cases (view-only in-game; open cases in the lobby).
+-- CHANGED: potions were REMOVED from the game entirely.
 --
 -- Also owns the PHYSICAL DROPS:
---  * ELITE POTIONS — an elite (yellow) zombie's death pops a potion that homes to the NEAREST player.
 --  * WAVE CASES  — every GameConfig.CaseDropEvery-th wave cleared, EVERY player gets their own case drop
 --    (pops out at their feet, homes to them). Rarity is rolled per player: Common..Divine, with the odds
 --    shifting toward higher tiers the deeper the wave (GameConfig.CaseWeightsBase/CaseWeightGrowth).
@@ -21,13 +20,10 @@ local Modules = Shared:WaitForChild("Modules")
 local WeaponConfig = require(Config.WeaponConfig)
 local GameConfig = require(Config.GameConfig)
 local BuffConfig = require(Config.BuffConfig)
-local PotionConfig = require(Config.PotionConfig)
 local Remotes = require(Modules.Remotes)
 
 local DataService = require(script.Parent.DataService)
-local CombatService = require(script.Parent.CombatService)
 local MatchService = require(script.Parent.MatchService)
-local BuffService = require(script.Parent.BuffService)
 local ZombieService = require(script.Parent.ZombieService)
 
 local GameInventoryService = {}
@@ -49,18 +45,6 @@ for _, rarity in GameConfig.CaseRarities do
 	CASES[rarity] = { name = (RARITIES[rarity] and RARITIES[rarity].name or rarity) .. " Case", rarity = rarity }
 end
 
--- 14 tiered potions (2 types × 7 rarities) straight from PotionConfig — name/desc/rarity per id.
-local POTIONS = {}
-for _, id in PotionConfig.AllIds() do
-	local stats = PotionConfig.Stats(id)
-	POTIONS[id] = {
-		name = PotionConfig.DisplayName(id),
-		desc = PotionConfig.Desc(id),
-		rarity = stats.rarity,
-		type = stats.type,
-	}
-end
-
 local CATALOG = {
 	weapons = (function()
 		local t = {}
@@ -77,7 +61,6 @@ local CATALOG = {
 	rarities = RARITIES,
 	rarityOrder = GameConfig.CaseRarities,
 	cases = CASES,
-	potions = POTIONS,
 }
 
 local function snapshotFor(player: Player)
@@ -88,19 +71,7 @@ local function snapshotFor(player: Player)
 		loadout = (data and typeof(data.loadout) == "table") and data.loadout or { "pistol" },
 		owned = (data and typeof(data.ownedWeapons) == "table") and data.ownedWeapons or { "pistol" },
 		cases = (data and typeof(data.cases) == "table") and data.cases or {},
-		potions = (data and typeof(data.potions) == "table") and data.potions or {},
 		gunLevels = (data and typeof(data.gunLevels) == "table") and data.gunLevels or {},
-		-- ACTIVE potion buffs by POTION ID -> seconds remaining (the client shows EXTEND on a running one).
-		active = (function()
-			local out = {}
-			local now = os.clock()
-			for id, b in (ps and ps.potionBuffs) or {} do
-				if b.expiresAt > now then
-					out[id] = b.expiresAt - now
-				end
-			end
-			return out
-		end)(),
 	}
 end
 
@@ -168,24 +139,12 @@ local function grantDrop(player: Player, drop)
 		Remotes.Get("CaseDropped"):FireClient(player, drop.rarity)
 		return
 	end
-	DataService.AddPotion(player, drop.potionId, 1)
-	Remotes.Get("PotionDropped"):FireClient(player, drop.potionId)
-	DataService.Save(player) -- persist soon so the lobby sees it (teleport-back also does a blocking save)
-	push(player)
 end
 
--- A glowing drop that pops out at `pos` then homes in. opts: {kind="potion", potionId=} or
--- {kind="case", rarity=, targetPlayer=}.
+-- A glowing drop that pops out at `pos` then homes in. opts: {kind="case", rarity=, targetPlayer=}.
 local function spawnDrop(pos: Vector3, opts)
-	local color, labelText
-	if opts.kind == "case" then
-		color = (RARITIES[opts.rarity] and RARITIES[opts.rarity].color) or Color3.fromRGB(220, 220, 230)
-		labelText = "CASE"
-	else
-		local pstats = PotionConfig.Stats(opts.potionId or "")
-		color = (pstats and RARITIES[pstats.rarity] and RARITIES[pstats.rarity].color) or Color3.fromRGB(220, 220, 230)
-		labelText = "POTION"
-	end
+	local color = (RARITIES[opts.rarity] and RARITIES[opts.rarity].color) or Color3.fromRGB(220, 220, 230)
+	local labelText = "CASE"
 
 	local part = Instance.new("Part")
 	part.Name = opts.kind == "case" and "CaseDrop" or "PotionDrop"
@@ -275,25 +234,6 @@ local function updateDrops(dt: number)
 	end
 end
 
--- ===== ELITE POTION DROPS =====
-local function onKill(_player: Player, humanoid: Instance)
-	if typeof(humanoid) ~= "Instance" then
-		return
-	end
-	local model = humanoid.Parent
-	if not model or not model:GetAttribute("IsElite") then
-		return
-	end
-	-- Random type, wave-weighted rarity — deeper waves drop better potions (PotionConfig).
-	local potionId = PotionConfig.RollDropId(MatchService.State.round or 1)
-	local ok, pivot = pcall(function()
-		return model:GetPivot()
-	end)
-	if ok and pivot then
-		spawnDrop(pivot.Position + Vector3.new(0, 2, 0), { kind = "potion", potionId = potionId })
-	end
-end
-
 -- ===== WAVE-CLEAR CASE DROPS =====
 -- Rarity roll: weight(tier) = CaseWeightsBase[tier] * CaseWeightGrowth^((tier-1) * stage), where
 -- stage = wave/CaseDropEvery - 1 (wave 10 = 0, wave 20 = 1, ...) — deeper waves favor higher tiers.
@@ -340,23 +280,6 @@ local function onBossDied(deathPos)
 	end
 end
 
--- ===== POTION CONSUME =====
-local function onConsume(player: Player, potionId: any)
-	if typeof(potionId) ~= "string" or not POTIONS[potionId] then
-		return
-	end
-	-- Potions take effect DURING a run. Stacking is ALLOWED: the same potion extends its own timer,
-	-- different tiers of a type run together and their effects add.
-	local ps = MatchService.GetPlayerState(player)
-	if not ps or not ps.inMatch then
-		return
-	end
-	if DataService.TryConsumePotion(player, potionId) then
-		BuffService.ApplyPotion(player, potionId) -- applies the run effect + marks the type as used
-		push(player)
-	end
-end
-
 function GameInventoryService.Start()
 	dropsFolder = Instance.new("Folder")
 	dropsFolder.Name = "Drops"
@@ -380,12 +303,9 @@ function GameInventoryService.Start()
 	Remotes.Get("InvSnapshot").OnServerEvent:Connect(function(player)
 		push(player)
 	end)
-	Remotes.Get("ConsumePotion").OnServerEvent:Connect(onConsume)
-
-	CombatService.Kill:Connect(onKill)     -- elite zombies drop potions
 	ZombieService.BossDied:Connect(onBossDied) -- killing a boss drops a case for every player
 
-	print("[GameInventoryService] started (inventory view + potion/case drops)")
+	print("[GameInventoryService] started (inventory view + case drops)")
 end
 
 return GameInventoryService
