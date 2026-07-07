@@ -181,8 +181,8 @@ local function headerBar(panel, h, barColor)
 	corner(bar, 6)
 	local grad = Instance.new("UIGradient")
 	grad.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.new(1.18, 1.18, 1.18)),
-		ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(1, Color3.new(0.82, 0.82, 0.82)),
 	})
 	grad.Rotation = 90; grad.Parent = bar
 	local sq = Instance.new("Frame")
