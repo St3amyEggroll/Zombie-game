@@ -55,9 +55,10 @@ local ZombieConfig: { [string]: any } = {
 
 -- ===== BOSS SCHEDULE ===== (wave -> boss id). Wave 25 intentionally has none.
 ZombieConfig.BossWaves = {
-	[10] = "boss",
-	[20] = "lumberjack",
-	[30] = "necromancer",
+	[10] = "boss",       -- mid-run boss (standard modes end at wave 15)
+	[15] = "lumberjack", -- FINAL boss on the last wave of every standard mode
+	[20] = "necromancer",-- (Endless depth beyond 15)
+	[30] = "boss",
 }
 
 return ZombieConfig

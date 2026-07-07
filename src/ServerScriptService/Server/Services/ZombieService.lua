@@ -157,8 +157,13 @@ for id, t in ZombieConfig do
 end
 
 -- ===== SCALING (CLAUDE.md §8) =====
+local difficultyMult = 1 -- set per run by MatchService (the mode's stat scale; see GameConfig.Difficulties)
+function ZombieService.SetDifficultyMult(m: number)
+	difficultyMult = (typeof(m) == "number" and m > 0) and m or 1
+end
+
 local function scaledHealth(round: number, t): number
-	return math.floor(GameConfig.ZombieBaseHealth * (GameConfig.ZombieHealthGrowth ^ (round - 1)) * t.healthMult)
+	return math.floor(GameConfig.ZombieBaseHealth * (GameConfig.ZombieHealthGrowth ^ (round - 1)) * t.healthMult * difficultyMult)
 end
 
 local function scaledSpeed(round: number, t): number
@@ -1196,7 +1201,7 @@ local function spawnOne(round: number, forcedType: string?)
 		typeId = typeId,
 		type = t,
 		baseSpeed = hum.WalkSpeed, -- statusSpeed() restores to this after chills/pins expire
-		damage = t.damage,
+		damage = t.damage * difficultyMult,
 		target = nil,
 		targetRoot = nil,
 		mode = "idle",          -- "idle" | "direct" (live chase) | "path" (navigating obstacles)
@@ -1755,7 +1760,10 @@ end
 
 -- True once every owed zombie has spawned and the world is clear of living zombies.
 function ZombieService.IsRoundCleared(): boolean
-	return remaining <= 0 and aliveCount <= 0
+	-- Cleared the instant the last LIVING zombie dies. `active` only ever holds live zombies (each entry
+	-- is removed the moment it dies), so corpses still lingering/sinking (aliveCount) no longer hold up
+	-- the next-wave timer.
+	return remaining <= 0 and next(active) == nil
 end
 
 function ZombieService.GetAliveCount(): number

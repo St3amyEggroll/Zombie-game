@@ -68,14 +68,16 @@ GameConfig.DebugUnlockAllWeapons = false  -- every player starts owning every we
 GameConfig.DebugStartWave        = 0      -- start the match at this wave (0 = normal, start at wave 1)
 
 -- ===== DIFFICULTY ===== (set by the lobby; caps how far a run goes — clearing the final wave = VICTORY)
+-- Every standard mode runs the SAME 15 waves with a BOSS on wave 15; the MODE just cranks a difficulty
+-- multiplier (`mult`) on zombie HP + damage, so Nightmare is harder than Easy without more waves.
 GameConfig.Difficulties = {
-	easy      = { name = "Easy",      maxWave = 10 },
-	medium    = { name = "Medium",    maxWave = 20 },
-	hard      = { name = "Hard",      maxWave = 25 },
-	nightmare = { name = "Nightmare", maxWave = 30 },
+	easy      = { name = "Easy",      maxWave = 15, mult = 1.0 },
+	medium    = { name = "Medium",    maxWave = 15, mult = 1.6 },
+	hard      = { name = "Hard",      maxWave = 15, mult = 2.4 },
+	nightmare = { name = "Nightmare", maxWave = 15, mult = 3.5 },
 	-- Unlocked by BEATING Nightmare: no final wave, no victory — the run only ends on a wipe. Bosses
 	-- keep coming every 10th wave (the roster cycles), so case drops keep flowing at depth.
-	endless   = { name = "Endless",   maxWave = math.huge },
+	endless   = { name = "Endless",   maxWave = math.huge, mult = 3.5 },
 }
 GameConfig.DefaultDifficulty = "nightmare"  -- used in Studio / if the lobby didn't send one
 GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for completing (winning) a run

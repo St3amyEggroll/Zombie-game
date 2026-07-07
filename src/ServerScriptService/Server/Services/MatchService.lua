@@ -363,6 +363,7 @@ runMatch = function()
 	state.difficulty = state.difficulty or GameConfig.DefaultDifficulty
 	local diff = GameConfig.Difficulties[state.difficulty] or GameConfig.Difficulties[GameConfig.DefaultDifficulty]
 	state.maxWave = diff.maxWave
+	ZombieService.SetDifficultyMult(diff.mult or 1) -- the mode's stat scale (HP + zombie damage)
 
 	state.waveDowned = false
 	state.flawlessStreak = 0
@@ -420,7 +421,7 @@ runMatch = function()
 			end
 			state.zombiesAlive = ZombieService.GetAliveCount()
 			state.zombiesRemaining = ZombieService.GetRemaining()
-			task.wait(0.3)
+			task.wait(0.1) -- tight poll so the break starts right when the last zombie dies
 		end
 		if not anyInMatch() then
 			break
