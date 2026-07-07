@@ -63,15 +63,23 @@ local live3D = 0
 
 local function def(name)
 	local d = SoundConfig.Sounds[name]
-	if d and d.id ~= "" then
+	if d and (typeof(d.id) == "table" and #d.id > 0 or (typeof(d.id) == "string" and d.id ~= "")) then
 		return d
 	end
 	return nil
 end
 
+-- A slot's id may be a list — pick a random variant per play.
+local function pickId(d)
+	if typeof(d.id) == "table" then
+		return d.id[math.random(1, #d.id)]
+	end
+	return d.id
+end
+
 local function buildSound(name, d, pitchMult)
 	local s = Instance.new("Sound")
-	s.SoundId = SoundConfig.AssetId(d.id)
+	s.SoundId = SoundConfig.AssetId(pickId(d))
 	s.Volume = d.vol
 	s.Looped = d.loop
 	s.SoundGroup = (string.sub(name, 1, 5) == "Music") and musicGroup or sfxGroup
@@ -216,7 +224,7 @@ local function musicSound(name)
 		return nil
 	end
 	local s = Instance.new("Sound")
-	s.SoundId = SoundConfig.AssetId(d.id)
+	s.SoundId = SoundConfig.AssetId(pickId(d))
 	s.Looped = true
 	s.Volume = 0
 	s.SoundGroup = musicGroup
@@ -312,10 +320,13 @@ function SoundController.Start()
 	task.spawn(function()
 		local assets = {}
 		for _, d in SoundConfig.Sounds do
-			if d.id ~= "" then
-				local s = Instance.new("Sound")
-				s.SoundId = SoundConfig.AssetId(d.id)
-				table.insert(assets, s)
+			local ids = (typeof(d.id) == "table") and d.id or { d.id }
+			for _, id in ids do
+				if id ~= "" then
+					local s = Instance.new("Sound")
+					s.SoundId = SoundConfig.AssetId(id)
+					table.insert(assets, s)
+				end
 			end
 		end
 		if #assets > 0 then

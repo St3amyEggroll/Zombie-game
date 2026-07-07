@@ -1477,7 +1477,8 @@ local function think(record, now: number)
 	-- a full horde is a murmur, not a wall of sound. Distance filtering happens in SoundFXService.Emit.
 	if now >= (record.nextGrowl or 0) then
 		record.nextGrowl = now + math.random(60, 140) / 10
-		if (now - lastGrowlEmit) >= SoundConfig.GrowlMinGap then
+		-- Bosses roar ONCE on entry (ZRoar at spawn) and never growl ambiently.
+		if not record.isBoss and (now - lastGrowlEmit) >= SoundConfig.GrowlMinGap then
 			lastGrowlEmit = now
 			SoundFXService.Emit("ZGrowl:" .. record.typeId, root.Position, 80)
 		end

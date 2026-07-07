@@ -168,13 +168,13 @@ end
 -- =====================================================================================================
 local SOUND_IDS = {
 	Music         = "138934492920017", -- lobby background loop [chill dark ambient loop]
-	Click         = "", -- any button [ui click]
-	Open          = "", -- panel opens [ui whoosh open]
-	Close         = "", -- panel closes [ui whoosh close]
-	Error         = "", -- failed action [error buzz]
-	Buy           = "", -- shop purchase [cash register / coin spend]
-	Upgrade       = "", -- gun level-up [upgrade success / power up]
-	Equip         = "", -- weapon slotted [weapon equip click]
+	Click         = "133915937837646", -- any button
+	Open          = "8968249401", -- panel opens
+	Close         = "74657965144290", -- panel closes
+	Error         = "87519554692663", -- failed action
+	Buy           = "136519378894463", -- shop/gun purchase
+	Upgrade       = "", -- (retired with gun upgrading; slot kept)
+	Equip         = "81102724493720", -- weapon/skin equipped
 	ReelTick      = "", -- each case-reel tile passing [tick]
 	RevealLow     = "", -- common/uncommon/rare pull [small reward sting]
 	RevealHigh    = "", -- epic/legendary pull [big reward sting]

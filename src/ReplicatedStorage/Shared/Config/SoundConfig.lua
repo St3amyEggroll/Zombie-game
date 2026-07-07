@@ -10,7 +10,8 @@
 -- pitchLo/pitchHi = random PlaybackSpeed range per play (1,1 = no variation)
 -- loop     = true for looping tracks (music, alarms, heartbeat)
 
-local function S(id: string, vol: number, dist: number, pitchLo: number, pitchHi: number, loop: boolean?)
+-- `id` may be ONE id ("123") or a LIST of ids ({"123", "456"}) — lists pick a random variant per play.
+local function S(id: string | { string }, vol: number, dist: number, pitchLo: number, pitchHi: number, loop: boolean?)
 	return { id = id, vol = vol, dist = dist, pitchLo = pitchLo, pitchHi = pitchHi, loop = loop or false }
 end
 
@@ -50,16 +51,16 @@ SoundConfig.Sounds = {
 
 	-- ===== ZOMBIE VOICES ===== Growl = ambient idle; Attack = bite lands; Death = kill.
 	-- Blank per-type slots FALL BACK to the _normal set (pitched by type), so only _normal is required.
-	Growl_normal      = S("", 0.55, 70, 0.9, 1.1),   -- [zombie growl]
+	Growl_normal      = S({ "127809799844346", "129880060515122" }, 0.55, 70, 0.9, 1.1), -- random growl pair
 	Attack_normal     = S("", 0.6, 80,  0.92, 1.08), -- [zombie bite / attack]
 	Death_normal      = S("", 0.6, 90,  0.9, 1.1),   -- [zombie death groan]
-	Growl_runner      = S("", 0.55, 70, 1.05, 1.2),  -- speedy [fast zombie shriek]
+	Growl_runner      = S("106124726539726", 0.55, 70, 1.05, 1.2),  -- speedy: the zombie scream
 	Attack_runner     = S("", 0.6, 80,  1.05, 1.15),
 	Death_runner      = S("", 0.6, 90,  1.05, 1.15),
 	Growl_leaper      = S("", 0.55, 70, 0.95, 1.1),  -- [zombie snarl]
 	Attack_leaper     = S("", 0.6, 80,  0.95, 1.1),  -- pounce bite [pounce roar]
 	Death_leaper      = S("", 0.6, 90,  0.95, 1.1),
-	Growl_tank        = S("", 0.7, 90,  0.7, 0.85),  -- all tank variants [deep monster growl]
+	Growl_tank        = S("133022591851008", 0.7, 90,  0.7, 0.85),  -- all tanks: the deep growl
 	Attack_tank       = S("", 0.7, 100, 0.7, 0.85),  -- [heavy smash hit]
 	Death_tank        = S("", 0.7, 110, 0.7, 0.85),  -- [large monster death]
 	Growl_ghost       = S("", 0.5, 80,  0.95, 1.1),  -- [ghostly wail]
@@ -69,7 +70,7 @@ SoundConfig.Sounds = {
 	Growl_boss        = S("", 0.8, 130, 0.75, 0.9),  -- [boss monster growl]
 	Attack_boss       = S("", 0.8, 130, 0.75, 0.9),
 	Death_boss        = S("", 0.85, 160, 0.75, 0.9), -- [monster death roar]
-	Roar_boss         = S("", 0.9, 200, 0.9, 1.0),   -- entrance roar [monster roar]
+	Roar_boss         = S("109528442570780", 0.9, 200, 0.9, 1.0),   -- boss ENTRANCE roar (once — ambient boss growls are muted)
 	Growl_lumberjack  = S("", 0.8, 130, 0.7, 0.85),
 	Attack_lumberjack = S("", 0.8, 130, 0.7, 0.85),  -- [axe swing hit]
 	Death_lumberjack  = S("", 0.85, 160, 0.7, 0.85),
@@ -108,10 +109,10 @@ SoundConfig.Sounds = {
 	TrapTrigger    = S("", 0.7, 120, 0.97, 1.03),  -- [electric zap / fire whoosh]
 
 	-- ===== UI (2D) =====
-	UiClick        = S("", 0.4, 0, 0.98, 1.02),    -- any button [ui click]
-	UiOpen         = S("", 0.45, 0, 1, 1),         -- panel opens [ui whoosh open]
-	UiClose        = S("", 0.45, 0, 1, 1),         -- panel closes [ui whoosh close]
-	UiError        = S("", 0.5, 0, 1, 1),          -- can't afford / not allowed [error buzz]
+	UiClick        = S("133915937837646", 0.4, 0, 0.98, 1.02),    -- any button
+	UiOpen         = S("8968249401", 0.45, 0, 1, 1),              -- panel opens
+	UiClose        = S("74657965144290", 0.45, 0, 1, 1),          -- panel closes
+	UiError        = S("87519554692663", 0.5, 0, 1, 1),           -- can't afford / not allowed
 }
 
 -- ===== ZOMBIE VOICE MAP ===== typeId -> voice class (which Growl_*/Attack_*/Death_* set it uses).
