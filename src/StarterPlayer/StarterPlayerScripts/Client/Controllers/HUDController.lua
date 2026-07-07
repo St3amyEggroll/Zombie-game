@@ -131,7 +131,7 @@ local function build()
 	enemiesTrack = Instance.new("Frame")
 	enemiesTrack.Name = "EnemiesTrack"
 	enemiesTrack.AnchorPoint = Vector2.new(0.5, 0)
-	enemiesTrack.Position = UDim2.new(0.5, 0, 0, 84)
+	enemiesTrack.Position = UDim2.new(0.5, 0, 0, 82)
 	enemiesTrack.Size = UDim2.fromOffset(340, 26)
 	enemiesTrack.BackgroundColor3 = COL_TRACK
 	enemiesTrack.BackgroundTransparency = 0.15
@@ -164,7 +164,7 @@ local function build()
 	-- INCOMING! banner (below the wave counter, above the kill-streak flair).
 	incomingLabel = text(gui, "IncomingLabel", UITheme.TitleFace, 20, COL_DANGER)
 	incomingLabel.AnchorPoint = Vector2.new(0.5, 0)
-	incomingLabel.Position = UDim2.new(0.5, 0, 0, 102)
+	incomingLabel.Position = UDim2.new(0.5, 0, 0, 118) -- below the enemies bar (82–108)
 	incomingLabel.Size = UDim2.fromOffset(520, 26)
 	incomingLabel.Text = ""
 	incomingLabel.Visible = false
@@ -177,7 +177,7 @@ local function build()
 	-- FLAWLESS WAVE banner (gold, below the incoming line) — nobody downed all wave.
 	flawlessLabel = text(gui, "FlawlessLabel", UITheme.TitleFace, 20, COL_GOLD)
 	flawlessLabel.AnchorPoint = Vector2.new(0.5, 0)
-	flawlessLabel.Position = UDim2.new(0.5, 0, 0, 126)
+	flawlessLabel.Position = UDim2.new(0.5, 0, 0, 146) -- below INCOMING
 	flawlessLabel.Size = UDim2.fromOffset(520, 26)
 	flawlessLabel.Text = ""
 	flawlessLabel.Visible = false

@@ -334,7 +334,8 @@ end
 -- NEW: turn a (square) button into an ICON button — an inset image that the studded plate frames,
 -- an optional small caption under it (also the graceful fallback if the image id ever fails to load),
 -- and an optional keybind badge top-left. Clears the button's own Text. Returns the ImageLabel.
--- opts = { inset?, caption?, captionColor?, badge?, badgeColor? }
+-- opts = { inset?, caption?, captionColor?, badge?, badgeColor?, iconColor? }
+-- iconColor tints the image (multiply) so a white/plain icon blends into the palette — defaults to TOXIC.
 function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
 	opts = opts or {}
 	if button:IsA("TextButton") or button:IsA("TextLabel") then
@@ -346,6 +347,7 @@ function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
 	img.Name = "Icon"
 	img.BackgroundTransparency = 1
 	img.Image = imageId
+	img.ImageColor3 = opts.iconColor or UITheme.TOXIC -- tint to the accent so a white icon isn't stark
 	img.ScaleType = Enum.ScaleType.Fit
 	img.AnchorPoint = Vector2.new(0.5, 0)
 	img.Position = UDim2.new(0.5, 0, 0, pad)

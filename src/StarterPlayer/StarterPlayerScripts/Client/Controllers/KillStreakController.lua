@@ -65,7 +65,7 @@ local function ensureLabel()
 	local l = Instance.new("TextLabel")
 	l.Name = "KillStreakLabel"
 	l.AnchorPoint = Vector2.new(0.5, 0)
-	l.Position = UDim2.fromScale(0.5, 0.12)
+	l.Position = UDim2.fromScale(0.5, 0.24) -- below the wave/enemies bar + INCOMING/FLAWLESS lane
 	l.Size = UDim2.fromOffset(440, 56)
 	l.BackgroundTransparency = 1
 	l.FontFace = UITheme.TitleFace

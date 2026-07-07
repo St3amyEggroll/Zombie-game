@@ -718,6 +718,7 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 
 	local img = Instance.new("ImageLabel")
 	img.BackgroundTransparency = 1; img.Image = imageId
+	img.ImageColor3 = ACCENT -- tint the (white) icon to toxic green so it blends into the palette
 	img.ScaleType = Enum.ScaleType.Fit
 	img.AnchorPoint = Vector2.new(0.5, 0)
 	img.Position = UDim2.new(0.5, 0, 0, 9); img.Size = UDim2.new(1, -18, 1, -27)

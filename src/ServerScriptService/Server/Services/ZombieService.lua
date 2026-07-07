@@ -1932,10 +1932,15 @@ function ZombieService.GetRemaining(): number
 	return remaining
 end
 
--- Zombies STILL TO KILL this wave = owed-but-not-yet-spawned (remaining) + spawned-and-alive (aliveCount).
--- This is what the HUD count bar shows: it drops on every kill, not just as zombies spawn.
+-- Zombies STILL TO KILL this wave = owed-but-not-yet-spawned (remaining) + currently-alive (the `active`
+-- set, which clears the INSTANT a zombie dies). NOTE: aliveCount is NOT used here — it only drops once the
+-- corpse finishes sinking, which would pin the bar at the wave total until bodies despawn.
 function ZombieService.GetLeft(): number
-	return remaining + aliveCount
+	local aliveNow = 0
+	for _ in active do
+		aliveNow += 1
+	end
+	return remaining + aliveNow
 end
 
 -- The Workspace folder holding all live zombies (used to exclude them from line-of-sight checks).
