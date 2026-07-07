@@ -128,6 +128,7 @@ end
 local GAME_OWNED_FIELDS = {
 	"dataVersion", "xp", "level", "bestWave", "completed", "stats", "cosmetics", "settings",
 	"lobbyMoney", "potions", "cases", -- cases: wave/boss case drops earned in-run must reach the lobby
+	"ownedWeapons", -- mid-run gun purchases (GunShopService) must reach the lobby too
 }
 
 local function saveAsync(player: Player): boolean
@@ -362,6 +363,11 @@ function DataService.IncrementStat(player: Player, statKey: string, amount: numb
 		data.stats[statKey] = (data.stats[statKey] or 0) + amount
 		markDirty(player)
 	end
+end
+
+-- Public dirty-mark for services that mutate the data table directly (e.g. GunShopService purchases).
+function DataService.MarkDirty(player: Player)
+	markDirty(player)
 end
 
 function DataService.SetSetting(player: Player, key: string, value: any)

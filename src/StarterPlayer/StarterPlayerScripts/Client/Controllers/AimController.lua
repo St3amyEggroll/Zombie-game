@@ -17,11 +17,8 @@ local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Conf
 local GameConfig = require(SharedConfig:WaitForChild("GameConfig"))
 local WeaponConfig = require(SharedConfig:WaitForChild("WeaponConfig"))
 local CameraController = require(script.Parent.CameraController)
--- Buff stats (auto-aim reach). GUARDED: a missing/broken BuffController must never brick auto-aim.
-local okBuff, BuffController = pcall(require, script.Parent.BuffController)
-if not okBuff or type(BuffController) ~= "table" then
-	BuffController = { GetStat = function() return 0 end }
-end
+-- (Buff draft removed — no client-side range buff anymore.)
+local BuffController = { GetStat = function() return 0 end }
 
 local AimController = {}
 

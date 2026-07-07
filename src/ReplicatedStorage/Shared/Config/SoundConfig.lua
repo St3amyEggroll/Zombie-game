@@ -101,8 +101,7 @@ SoundConfig.Sounds = {
 	PotionExpire   = S("", 0.5, 0, 1, 1),          -- buff ran out [power down]
 	PotionDrop     = S("", 0.6, 0, 1, 1),          -- elite dropped one [item drop sparkle]
 	CaseDrop       = S("", 0.65, 0, 1, 1),         -- case collected [reward chest]
-	LevelUp        = S("", 0.7, 0, 1, 1),          -- run level up (buff draft opens) [level up]
-	BuffPick       = S("", 0.6, 0, 1, 1),          -- buff chosen [card select]
+	GunBought      = S("", 0.7, 0, 1, 1),          -- mid-run gun purchase [cha-ching / unlock]
 	StreakStinger  = S("", 0.55, 0, 1, 1),         -- killstreak (pitch rises with streak) [combo hit]
 
 	-- ===== TRAPS =====

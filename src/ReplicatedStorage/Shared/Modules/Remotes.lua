@@ -40,10 +40,8 @@ local DEFINITIONS: { [string]: string } = {
 	LoadoutChanged    = "RemoteEvent",     -- S->C: (ownedWeapons, equippedWeaponId)
 
 	-- BuffService (in-run level-up buff draft)
-	RunXPChanged      = "RemoteEvent",     -- S->C: (xp, needed, level) — the run's level bar
-	BuffDraft         = "RemoteEvent",     -- S->C: (draft) — present 3 same-rarity options (roll then reveal)
-	BuffPick          = "RemoteEvent",     -- C->S: (optionIndex) — chose a buff
-	BuffsChanged      = "RemoteEvent",     -- S->C: (buffs) — current per-run buff totals (drives client fire rate/range + HUD)
+	-- (Run-XP buff draft REMOVED — potions are the only in-run power-up now.)
+	BuyGun            = "RemoteEvent",     -- C->S: ({weaponId}) buy a gun MID-RUN with Coins (same prices as the lobby)
 
 	-- PointsService
 	PointsChanged     = "RemoteEvent",     -- S->C: (points)

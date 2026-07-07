@@ -14,9 +14,10 @@ local okInv, GameInventoryController = pcall(require, script.Parent.GameInventor
 if not okInv or type(GameInventoryController) ~= "table" then
 	GameInventoryController = { IsOpen = function() return false end }
 end
-local okBuff, BuffController = pcall(require, script.Parent.BuffController)
-if not okBuff or type(BuffController) ~= "table" then
-	BuffController = { IsDraftOpen = function() return false end }
+-- (The buff-draft panel is gone; GunShopController is the other panel that shows the OS cursor.)
+local okShop, GunShopController = pcall(require, script.Parent.GunShopController)
+if not okShop or type(GunShopController) ~= "table" then
+	GunShopController = { IsOpen = function() return false end }
 end
 
 local CrosshairController = {}
@@ -85,7 +86,7 @@ local function update(dt: number)
 	-- inventory, the buff draft — or there's no character, back off: show the real OS cursor ABOVE the UI
 	-- and hide our crosshair (it draws under the panels and just looks stuck).
 	local uiOpen = (GameInventoryController.IsOpen and GameInventoryController.IsOpen())
-		or (BuffController.IsDraftOpen and BuffController.IsDraftOpen())
+		or (GunShopController.IsOpen and GunShopController.IsOpen())
 	if uiOpen or not localPlayer.Character then
 		holder.Visible = false
 		UserInputService.MouseIconEnabled = true

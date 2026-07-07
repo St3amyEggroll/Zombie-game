@@ -295,8 +295,6 @@ end
 
 -- ===== SUBSCRIPTIONS =====
 local lastHurt = 0
-local lastRunLevel = nil
-local draftOpen = false
 local activePotionIds = {}
 local countdownToken = 0
 local wasDowned = false
@@ -471,25 +469,6 @@ function SoundController.Start()
 				wasDowned = false
 				SoundController.Play("ReviveComplete")
 			end
-		end
-	end)
-
-	-- Run progression: level-up opens the draft; the next BuffsChanged after a draft is the pick landing.
-	Remotes.Get("RunXPChanged").OnClientEvent:Connect(function(_xp, _needed, level)
-		level = tonumber(level)
-		if level and lastRunLevel and level > lastRunLevel then
-			SoundController.Play("LevelUp")
-		end
-		lastRunLevel = level or lastRunLevel
-	end)
-	Remotes.Get("BuffDraft").OnClientEvent:Connect(function()
-		draftOpen = true
-		SoundController.Play("UiOpen")
-	end)
-	Remotes.Get("BuffsChanged").OnClientEvent:Connect(function()
-		if draftOpen then
-			draftOpen = false
-			SoundController.Play("BuffPick")
 		end
 	end)
 
