@@ -104,10 +104,6 @@ local RARITY = {
 
 -- Stats mirror the game's WeaponConfig (kept in sync by hand) for the hover tooltips.
 -- CHANGED: guns are BOUGHT with Coins (price below; pistol is the free starter). Crates pay SKINS.
--- Each gun belongs to a fixed loadout slot: 1 = PRIMARY, 2 = SECONDARY (WEAPONS[id].slot).
-local function slotFor(weaponId)
-	return (WEAPONS[weaponId] and WEAPONS[weaponId].slot == "secondary") and 2 or 1
-end
 local WEAPONS = {
 	pistol    = { name = "M1911",        tier = 1, rarity = "common",    damage = 30,  fireRate = 5,   range = 200, price = 0, slot = "secondary" },
 	revolver  = { name = "Revolver",     tier = 2, rarity = "uncommon",  damage = 70,  fireRate = 1.8, range = 220, price = 1500, slot = "secondary",
@@ -121,6 +117,11 @@ local WEAPONS = {
 		ability = "CRYO — chills 30%; chilled zombies SHATTER on death" },
 	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80,  fireRate = 4,   range = 250, price = 40000, slot = "primary" },
 }
+
+-- Each gun belongs to a fixed loadout slot: 1 = PRIMARY, 2 = SECONDARY (WEAPONS[id].slot).
+local function slotFor(weaponId)
+	return (WEAPONS[weaponId] and WEAPONS[weaponId].slot == "secondary") and 2 or 1
+end
 
 -- ===== SKINS ===== (what crates pay out — synced with the game's SkinConfig; models are optional:
 -- name a Model "<gunId>_<skinId>" in Assets and it's used everywhere, else the base gun stands in)
