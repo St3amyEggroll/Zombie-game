@@ -624,14 +624,19 @@ lattach(invGui)
 
 local function hideTip() end -- (legacy no-op: hover tooltips were replaced by the detail pane)
 
--- Bottom-left Inventory button (opens the panel).
-local invBtn = Instance.new("TextButton")
-invBtn.AnchorPoint = Vector2.new(0, 1)
-invBtn.Position = UDim2.new(0, 16, 1, -16); invBtn.Size = UDim2.fromOffset(280, 68)
-invBtn.BackgroundColor3 = PANEL; invBtn.BorderSizePixel = 0
-invBtn.FontFace = TITLE_FACE; invBtn.TextSize = 24; invBtn.TextColor3 = TEXTCOL
-invBtn.Text = "INVENTORY"; invBtn.Parent = invGui; corner(invBtn, 6)
-lstuds(invBtn); ldepth(invBtn); ledge(invBtn); ledge(invBtn, ACCENT, 1, 0.35)
+-- Bottom-left buttons: GUNS [B] + CASES — these ARE the inventory now (the old single panel is gone).
+local function cornerButton(textStr, yOff, accent)
+	local b = Instance.new("TextButton")
+	b.AnchorPoint = Vector2.new(0, 1)
+	b.Position = UDim2.new(0, 16, 1, yOff); b.Size = UDim2.fromOffset(280, 64)
+	b.BackgroundColor3 = PANEL; b.BorderSizePixel = 0
+	b.FontFace = TITLE_FACE; b.TextSize = 24; b.TextColor3 = TEXTCOL
+	b.Text = textStr; b.Parent = invGui; corner(b, 6)
+	lstuds(b); ldepth(b); ledge(b); ledge(b, accent, 1, 0.35); lbevel(b)
+	return b
+end
+local gunsBtn = cornerButton("GUNS [B]", -16, GOLD)
+local casesBtn = cornerButton("CASES", -92, ACCENT)
 
 local PANEL_W, PANEL_H = 940, 560
 local DETAIL_W = 280
@@ -656,32 +661,11 @@ invCoins.TextXAlignment = Enum.TextXAlignment.Right; invCoins.TextColor3 = GOLD;
 local invClose = redX(invPanel, 46, 26)
 invClose.Position = UDim2.new(1, -10, 0, 8)
 
--- Top tab strip.
-local invTabs = Instance.new("Frame")
-invTabs.Position = UDim2.fromOffset(16, 56); invTabs.Size = UDim2.new(1, -32, 0, 46); invTabs.BackgroundTransparency = 1; invTabs.Parent = invPanel
-local invTabList = Instance.new("UIListLayout")
-invTabList.FillDirection = Enum.FillDirection.Horizontal; invTabList.Padding = UDim.new(0, 8); invTabList.Parent = invTabs
-local invTabBtns = {}
-local function invTabButton(id, textStr)
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.fromOffset(150, 46); b.BackgroundColor3 = PANEL2; b.BorderSizePixel = 0
-	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = DIMTEXT; b.Text = textStr; b.Parent = invTabs
-	corner(b, 5); ledge(b, TBLACK, 2)
-	local under = Instance.new("Frame")
-	under.Name = "Under"; under.AnchorPoint = Vector2.new(0.5, 1); under.Position = UDim2.new(0.5, 0, 1, -3)
-	under.Size = UDim2.new(1, -16, 0, 3); under.BackgroundColor3 = ACCENT; under.BorderSizePixel = 0
-	under.Visible = false; under.Parent = b
-	invTabBtns[id] = b
-	return b
-end
-invTabButton("weapons", "GUNS")
-invTabButton("skins", "SKINS")
-invTabButton("cases", "CASES")
-invTabButton("potions", "POTIONS")
+-- (No tab strip: GUNS and CASES are separate screens sharing this panel; the header shows which.)
 
 -- Same 3-region skeleton as the SHOP: card grid (left) | featured pane, always visible (middle) |
 -- action-button stack (right).
-local CONTENT_Y = 114
+local CONTENT_Y = 60
 local invGrid = Instance.new("ScrollingFrame")
 invGrid.Position = UDim2.fromOffset(16, CONTENT_Y); invGrid.Size = UDim2.fromOffset(346, PANEL_H - CONTENT_Y - 16)
 invGrid.BackgroundTransparency = 1; invGrid.BorderSizePixel = 0; invGrid.ScrollBarThickness = 6
@@ -825,8 +809,7 @@ local function renderInvDetail()
 	local entry, wellCol
 	if kind == "weapon" then entry = weaponInfo(id); wellCol = entry and rarityColor(entry.rarity)
 	elseif kind == "case" then entry = invData.catalog.cases[id]; wellCol = rarityColor(id)
-	elseif kind == "skin" then entry = skinInfo(id); wellCol = entry and rarityColor(entry.rarity)
-	else entry = invData.catalog.potions[id]; wellCol = entry and rarityColor(entry.rarity) end
+	elseif kind == "skin" then entry = skinInfo(id); wellCol = entry and rarityColor(entry.rarity) end
 	if not entry then
 		return
 	end
@@ -874,9 +857,45 @@ local function renderInvDetail()
 			w.damage or 0, w.pellets and (" ×" .. w.pellets) or "", tostring(w.fireRate or "?"),
 			tostring(w.range or "?"), math.floor(dps + 0.5))
 		if w.ability then
-			local ab = centered(344, 60, BODYB_FACE, 13, ACCENT)
+			local ab = centered(344, 44, BODYB_FACE, 13, ACCENT)
 			ab.Text = w.ability
 			ab.TextYAlignment = Enum.TextYAlignment.Top
+		end
+
+		-- SKIN STRIP: this gun's skins as four swatches — click an OWNED one to equip (again to remove).
+		if ownsGun(id) and invData.catalog.skins then
+			local strip = Instance.new("Frame")
+			strip.Position = UDim2.fromOffset(14, 392); strip.Size = UDim2.new(1, -28, 0, 54)
+			strip.BackgroundTransparency = 1; strip.Parent = invDetail
+			local sl = Instance.new("UIListLayout")
+			sl.FillDirection = Enum.FillDirection.Horizontal; sl.Padding = UDim.new(0, 8); sl.Parent = strip
+			local skinIds = {}
+			for sid, s in invData.catalog.skins do
+				if s.gun == id then
+					table.insert(skinIds, sid)
+				end
+			end
+			table.sort(skinIds)
+			for _, sid in skinIds do
+				local s = invData.catalog.skins[sid]
+				local sOwned = ownsSkin(sid)
+				local isOn = sOwned and invData.skins.equipped and invData.skins.equipped[id] == s.skin
+				local sw = Instance.new("TextButton")
+				sw.Size = UDim2.fromOffset(56, 54)
+				sw.BackgroundColor3 = rarityColor(s.rarity):Lerp(BLACK, sOwned and 0.35 or 0.78)
+				sw.BorderSizePixel = 0; sw.AutoButtonColor = sOwned
+				sw.FontFace = BODYB_FACE; sw.TextSize = 11; sw.TextWrapped = true
+				sw.TextColor3 = sOwned and TEXTCOL or DIMTEXT
+				sw.Text = s.skin:upper() .. (isOn and " ✓" or "") .. (sOwned and "" or "\n🔒")
+				sw.Parent = strip
+				corner(sw, 5); ledge(sw, isOn and ACCENT or TBLACK, isOn and 2.5 or 1.5)
+				if sOwned then
+					sw.Activated:Connect(function()
+						lplay("Equip")
+						EquipSkin:FireServer({ weaponId = id, skinId = (not isOn) and s.skin or false })
+					end)
+				end
+			end
 		end
 
 		if not ownsGun(id) then
@@ -976,18 +995,6 @@ local function renderInvDetail()
 			open.AutoButtonColor = false
 		end
 		open.Position = UDim2.new(0, 0, 0, 0); open.Size = UDim2.new(1, 0, 0, 60)
-	elseif kind == "potion" then
-		nm.Text = entry.name
-		local rar = centered(246, 20, BODYB_FACE, 15, wellCol)
-		rar.Text = (invData.catalog.rarities[entry.rarity] or {}).name or ""
-		local desc = centered(274, 60, BODY_FACE, 14, TEXTCOL)
-		desc.Text = entry.desc or ""
-		local have = centered(338, 18, BODYB_FACE, 14, DIMTEXT)
-		have.Text = ("You have: x%d"):format(invData.potions[id] or 0)
-
-		local note = paneButton("DRINK IT IN A RUN", GHOSTA, GHOSTB, DIMTEXT)
-		note.AutoButtonColor = false
-		note.Position = UDim2.new(0, 0, 0, 0); note.Size = UDim2.new(1, 0, 0, 56)
 	end
 end
 
@@ -1019,33 +1026,6 @@ local function renderWeaponsGrid()
 	return ids
 end
 
-local function renderSkinsGrid()
-	-- Every skin, grouped by gun tier then rarity; locked ones render dim.
-	local ids = {}
-	for id in (invData.catalog.skins or {}) do
-		table.insert(ids, id)
-	end
-	table.sort(ids, function(a, b)
-		local sa, sb = skinInfo(a), skinInfo(b)
-		local ta = (weaponInfo(sa.gun) or {}).tier or 0
-		local tb = (weaponInfo(sb.gun) or {}).tier or 0
-		if ta ~= tb then
-			return ta < tb
-		end
-		return a < b
-	end)
-	for i, id in ids do
-		local s = skinInfo(id)
-		local owned = ownsSkin(id)
-		local isOn = owned and invData.skins.equipped and invData.skins.equipped[s.gun] == s.skin
-		invCard({
-			kind = "skin", id = id, name = s.name, color = rarityColor(s.rarity),
-			tag = isOn and "ON" or nil, order = i, locked = not owned,
-		})
-	end
-	return ids
-end
-
 local function renderCasesGrid()
 	local ids = {}
 	for _, caseId in invData.catalog.rarityOrder do
@@ -1062,54 +1042,23 @@ local function renderCasesGrid()
 	return ids
 end
 
-local function renderPotionsGrid()
-	local ids = {}
-	for _, rarity in invData.catalog.rarityOrder do
-		for _, ptype in { "damage", "regen" } do
-			local potId = ptype .. "_" .. rarity
-			local disp = invData.catalog.potions[potId]
-			local count = disp and (invData.potions[potId] or 0) or 0
-			if disp and count > 0 then
-				table.insert(ids, potId)
-				invCard({ kind = "potion", id = potId, name = disp.name, color = rarityColor(disp.rarity), chip = "x" .. count, order = #ids, image = disp.image })
-			end
-		end
-	end
-	if #ids == 0 then
-		invEmptyNote("No potions yet — kill glowing ELITE zombies in runs to earn them!")
-	end
-	return ids
-end
-
--- ===== TAB SWITCHING + MASTER RENDER =====
+-- ===== SCREEN SWITCHING + MASTER RENDER ===== ("weapons" = the GUNS screen, "cases" = the CASES screen)
 local function showTab(id)
 	activeTab = id
-	selectedInv = nil -- switching tabs closes the pane
-	for bid, b in invTabBtns do
-		local on = (bid == id)
-		b.TextColor3 = on and TEXTCOL or DIMTEXT
-		b.Under.Visible = on
-	end
+	selectedInv = nil -- switching screens resets the featured pane
+	invTitle.Text = (id == "weapons") and "GUNS" or "CASES"
 end
 
 renderActive = function()
 	invCoins.Text = "🪙 " .. fmt(invData and invData.coins or 0)
-	for bid, b in invTabBtns do
-		local on = (bid == activeTab)
-		b.TextColor3 = on and TEXTCOL or DIMTEXT
-		b.Under.Visible = on
-	end
 	if not invData then return end
-	local tabKind = (activeTab == "weapons" and "weapon") or (activeTab == "skins" and "skin")
-		or (activeTab == "cases" and "case") or "potion"
-	-- The pane is permanent (like the shop's featured slot): default to the tab's first item whenever
+	local tabKind = (activeTab == "weapons") and "weapon" or "case"
+	-- The pane is permanent (like the shop's featured slot): default to the screen's first item whenever
 	-- nothing valid is selected. Two passes because selection paints the card outline.
 	local function paintGrid()
 		clearChildren(invGrid)
 		if activeTab == "weapons" then return renderWeaponsGrid()
-		elseif activeTab == "skins" then return renderSkinsGrid()
-		elseif activeTab == "cases" then return renderCasesGrid()
-		else return renderPotionsGrid() end
+		else return renderCasesGrid() end
 	end
 	local ids = paintGrid()
 	local valid = selectedInv and selectedInv.kind == tabKind and table.find(ids, selectedInv.id) ~= nil
@@ -1118,15 +1067,6 @@ renderActive = function()
 		paintGrid()
 	end
 	renderInvDetail()
-end
-
-for bid, b in invTabBtns do
-	b.Activated:Connect(function()
-		if not rolling then
-			showTab(bid)
-			renderActive()
-		end
-	end)
 end
 
 -- ===== CASE-OPENING REEL (CS:GO-style horizontal scroll) =====
@@ -1287,22 +1227,33 @@ armRollTimeout = function()
 end
 
 -- ===== OPEN / CLOSE + REMOTE WIRING =====
-local function openInventory()
-	lplay("Open")
-	InvRequest:FireServer()
-	showTab(activeTab)
-	renderActive()
-	invPanel.Visible = true
-end
-invBtn.Activated:Connect(function()
-	-- Toggle: clicking INVENTORY while the panel is open closes it (except mid case-open).
-	if invPanel.Visible then
+local function openScreen(tab)
+	-- Same screen while open = toggle closed (except mid case-open); other screen = switch in place.
+	if invPanel.Visible and activeTab == tab then
 		if rolling then return end
 		hideTip()
 		lplay("Close")
 		invPanel.Visible = false
-	else
-		openInventory()
+		return
+	end
+	lplay("Open")
+	InvRequest:FireServer()
+	showTab(tab)
+	renderActive()
+	invPanel.Visible = true
+end
+gunsBtn.Activated:Connect(function()
+	openScreen("weapons")
+end)
+casesBtn.Activated:Connect(function()
+	openScreen("cases")
+end)
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.B then
+		openScreen("weapons")
 	end
 end)
 invClose.Activated:Connect(function()
