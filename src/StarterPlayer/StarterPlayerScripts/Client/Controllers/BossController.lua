@@ -41,9 +41,9 @@ local function build()
 	barHolder = Instance.new("Frame")
 	barHolder.Name = "BossBar"
 	barHolder.AnchorPoint = Vector2.new(0.5, 0)
-	-- CHANGED: fixed top offset (its own lane) so the bar no longer drifts onto the wave number.
-	-- A scale-Y (0.06) collided with the wave label's fixed offset (44px) on short screens.
-	barHolder.Position = UDim2.new(0.5, 0, 0, 12)
+	-- Fixed offset BELOW the wave number (the enemies-left bar owns the top spot now); a scale-Y would
+	-- drift onto other text on short screens.
+	barHolder.Position = UDim2.new(0.5, 0, 0, 82)
 	barHolder.Size = UDim2.fromOffset(BAR_W, BAR_H)
 	barHolder.BackgroundColor3 = UITheme.Darker(UITheme.TRACK, 0.3)
 	barHolder.BackgroundTransparency = 0.08

@@ -404,7 +404,7 @@ bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestL
 -- selection panel
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.fromOffset(600, 430); panel.BackgroundColor3 = PANEL
+panel.Size = UDim2.fromOffset(600, 570); panel.BackgroundColor3 = PANEL -- taller: room for the map preview
 panel.BackgroundTransparency = 0.12; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
 corner(panel, 8)
 lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, HEADER_COLORS.play, 2.5, 0.05)
@@ -446,6 +446,25 @@ local diffLbl = sectionLabel("DIFFICULTY", 146)
 local diffRow = row(172, 52)
 local sizeLbl = sectionLabel("PARTY SIZE", 238)
 local sizeRow = row(262, 48)
+
+-- Map preview photo (fills the space above PLAY; updates with the selected map). Scoped in a `do` block +
+-- looked up by name in refresh() so it adds NO top-level locals (the lobby chunk is near Luau's 200 cap).
+do
+	local mp = Instance.new("ImageLabel")
+	mp.Name = "MapPreview"
+	mp.Position = UDim2.new(0, 24, 0, 316); mp.Size = UDim2.new(1, -48, 0, 140)
+	mp.BackgroundColor3 = CARD; mp.BorderSizePixel = 0
+	mp.ScaleType = Enum.ScaleType.Crop; mp.Visible = false; mp.Parent = panel
+	corner(mp, 6); ledge(mp, TBLACK, 2.5)
+	local cap = Instance.new("TextLabel")
+	cap.Name = "Cap"
+	cap.AnchorPoint = Vector2.new(0, 1); cap.Position = UDim2.new(0, 10, 1, -8)
+	cap.Size = UDim2.fromOffset(300, 26); cap.BackgroundTransparency = 1
+	cap.FontFace = TITLE_FACE; cap.TextSize = 22; cap.TextColor3 = TEXTCOL
+	cap.TextXAlignment = Enum.TextXAlignment.Left; cap.Text = ""; cap.ZIndex = 2; cap.Parent = mp
+	local st = Instance.new("UIStroke")
+	st.Color = TBLACK; st.Thickness = 2; st.Parent = cap
+end
 
 -- PARTY MODE has no panel at all: just one BIG red LEAVE button at the bottom of the screen with a
 -- live status line above it (the billboard over the pad shows the rest).
@@ -499,6 +518,16 @@ local function refresh()
 			if info.unlocked then sel.map = w; refresh() end
 		end)
 		table.insert(mapBtns, b)
+	end
+	-- map preview photo for the selected map (add a line per world's owner-supplied photo)
+	local MAP_IMAGES = { forest = "rbxassetid://85349059800026" }
+	local mp = panel:FindFirstChild("MapPreview")
+	if mp then
+		local mimg = MAP_IMAGES[sel.map]
+		mp.Image = mimg or ""
+		mp.Visible = mimg ~= nil
+		local capLbl = mp:FindFirstChild("Cap")
+		if capLbl then capLbl.Text = mimg and cap(sel.map) or "" end
 	end
 	-- difficulty buttons
 	for _, b in diffBtns do b:Destroy() end

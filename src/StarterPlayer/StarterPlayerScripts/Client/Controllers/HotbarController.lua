@@ -117,6 +117,7 @@ local function build()
 	-- Row anchor (manual X offsets — the held slot animates upward, a list layout would fight it).
 	local totalW = SLOT * 2 + GAP -- CHANGED: 2 gun slots; CASES moved to the left-center menu pair
 	local holder = Instance.new("Frame")
+	holder.Name = "Slots" -- SpectateController hides this (keeps the CASES button, which is a sibling)
 	holder.AnchorPoint = Vector2.new(0.5, 1)
 	holder.Position = UDim2.new(0.5, 0, 1, -14)
 	holder.Size = UDim2.fromOffset(totalW, SLOT + 10)

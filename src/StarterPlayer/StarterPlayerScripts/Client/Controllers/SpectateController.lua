@@ -25,6 +25,7 @@ local downedSet = {}       -- [userId] = true — server-broadcast down state (s
 local spectating = false
 local targetPlayer = nil
 local panel, nameLabel
+local playerGuiRef = nil
 
 -- A player is a valid spectate target if it isn't me, isn't downed, and has a living character.
 local function isLive(pl): boolean
@@ -97,11 +98,49 @@ local function cycle(dir: number)
 	setSubject(list[idx])
 end
 
+-- While spectating we strip the HUD down to just the menu buttons. Keep = ScreenGuis that stay on.
+local KEEP = { GunShop = true, Settings = true, Spectate = true, HotbarHUD = true }
+local hiddenGuis = {}   -- gui -> its prior .Enabled
+local hiddenSlots = nil -- the hotbar's gun-slot row (hidden, but the CASES button beside it stays)
+
+local function hideHud()
+	if not playerGuiRef then
+		return
+	end
+	for _, g in playerGuiRef:GetChildren() do
+		if g:IsA("ScreenGui") and not KEEP[g.Name] and hiddenGuis[g] == nil then
+			hiddenGuis[g] = g.Enabled
+			g.Enabled = false
+		end
+	end
+	-- Hotbar stays enabled for its CASES button; hide only the two gun slots.
+	local hb = playerGuiRef:FindFirstChild("HotbarHUD")
+	local slots = hb and hb:FindFirstChild("Slots")
+	if slots then
+		hiddenSlots = slots
+		slots.Visible = false
+	end
+end
+
+local function restoreHud()
+	for g, enabled in hiddenGuis do
+		if g and g.Parent then
+			g.Enabled = enabled
+		end
+	end
+	hiddenGuis = {}
+	if hiddenSlots and hiddenSlots.Parent then
+		hiddenSlots.Visible = true
+	end
+	hiddenSlots = nil
+end
+
 local function enter()
 	if spectating then
 		return
 	end
 	spectating = true
+	hideHud() -- leave only GUNS / CASES / Settings (+ this overlay)
 	if panel then
 		panel.Visible = true
 	end
@@ -116,6 +155,7 @@ local function exit()
 	if panel then
 		panel.Visible = false
 	end
+	restoreHud()
 	restoreSubject()
 end
 
@@ -177,6 +217,7 @@ end
 
 function SpectateController.Start()
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
+	playerGuiRef = playerGui
 	build(playerGui)
 
 	Remotes.Get("DownedChanged").OnClientEvent:Connect(function(userId, isDowned)

@@ -110,7 +110,7 @@ local function build()
 	-- Wave number (top-center, just below the run XP bar): plain large white text, no panel.
 	roundLabel = text(gui, "RoundLabel", UITheme.TitleFace, 34, COL_TEXT)
 	roundLabel.AnchorPoint = Vector2.new(0.5, 0)
-	roundLabel.Position = UDim2.new(0.5, 0, 0, 44)
+	roundLabel.Position = UDim2.new(0.5, 0, 0, 44) -- just below the enemies bar (12–38)
 	roundLabel.Size = UDim2.fromOffset(300, 36)
 	roundLabel.Text = "WAVE 0"
 	local waveStroke = Instance.new("UIStroke") -- thin dark outline so white text reads on bright skies
@@ -122,7 +122,7 @@ local function build()
 	-- NEXT WAVE countdown (under the wave number, only during the wave break).
 	breakLabel = text(gui, "BreakLabel", UITheme.BodyBoldFace, 16, COL_TEXT_DIM)
 	breakLabel.AnchorPoint = Vector2.new(0.5, 0)
-	breakLabel.Position = UDim2.new(0.5, 0, 0, 80)
+	breakLabel.Position = UDim2.new(0.5, 0, 0, 82)
 	breakLabel.Size = UDim2.fromOffset(300, 20)
 	breakLabel.Text = ""
 
@@ -131,7 +131,7 @@ local function build()
 	enemiesTrack = Instance.new("Frame")
 	enemiesTrack.Name = "EnemiesTrack"
 	enemiesTrack.AnchorPoint = Vector2.new(0.5, 0)
-	enemiesTrack.Position = UDim2.new(0.5, 0, 0, 82)
+	enemiesTrack.Position = UDim2.new(0.5, 0, 0, 12) -- top center (the boss bar's old spot)
 	enemiesTrack.Size = UDim2.fromOffset(340, 26)
 	enemiesTrack.BackgroundColor3 = COL_TRACK
 	enemiesTrack.BackgroundTransparency = 0.15
@@ -164,7 +164,7 @@ local function build()
 	-- INCOMING! banner (below the wave counter, above the kill-streak flair).
 	incomingLabel = text(gui, "IncomingLabel", UITheme.TitleFace, 20, COL_DANGER)
 	incomingLabel.AnchorPoint = Vector2.new(0.5, 0)
-	incomingLabel.Position = UDim2.new(0.5, 0, 0, 118) -- below the enemies bar (82–108)
+	incomingLabel.Position = UDim2.new(0.5, 0, 0, 110) -- below the wave / boss-bar lane
 	incomingLabel.Size = UDim2.fromOffset(520, 26)
 	incomingLabel.Text = ""
 	incomingLabel.Visible = false
@@ -177,7 +177,7 @@ local function build()
 	-- FLAWLESS WAVE banner (gold, below the incoming line) — nobody downed all wave.
 	flawlessLabel = text(gui, "FlawlessLabel", UITheme.TitleFace, 20, COL_GOLD)
 	flawlessLabel.AnchorPoint = Vector2.new(0.5, 0)
-	flawlessLabel.Position = UDim2.new(0.5, 0, 0, 146) -- below INCOMING
+	flawlessLabel.Position = UDim2.new(0.5, 0, 0, 136) -- below INCOMING
 	flawlessLabel.Size = UDim2.fromOffset(520, 26)
 	flawlessLabel.Text = ""
 	flawlessLabel.Visible = false
