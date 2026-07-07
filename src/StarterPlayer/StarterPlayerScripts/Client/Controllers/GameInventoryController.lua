@@ -292,6 +292,10 @@ local function renderDetail()
 		line(88, ("Damage %s%s\nFire rate %s/s\nRange %s"):format(
 			tostring(w.damage or "?"), w.pellets and (" ×" .. w.pellets) or "",
 			tostring(w.fireRate or "?"), tostring(w.range or "?")), UITheme.TEXT, 12)
+		if w.ability then
+			local ab = line(146, w.ability, UITheme.TOXIC, 12)
+			ab.Size = UDim2.new(1, -28, 0, 52)
+		end
 		local inLoadout = (id == data.loadout[1]) or (id == data.loadout[2])
 		if inLoadout then
 			line(150, "EQUIPPED", UITheme.TOXIC, 13)

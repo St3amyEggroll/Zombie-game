@@ -773,6 +773,23 @@ local function onZombieDied(record)
 		SoundFXService.Emit("ZDeath:" .. record.typeId, record.root.Position)
 	end
 
+	-- Freeze Ray SHATTER: a chilled zombie's death pops a frost nova that damages nearby zombies.
+	-- (Chains are intentional: shattered kills of other chilled zombies shatter too.)
+	if record.shatter and record.root and os.clock() < (record.chilledUntil or 0) then
+		local pos = record.root.Position
+		local cfg = record.shatter
+		record.shatter = nil
+		spawnShatterVFX(pos, cfg.radius or 10)
+		SoundFXService.Emit("FrostShatter", pos, 140)
+		for _, other in active do
+			if other ~= record and not other.dead and other.root and other.hum and other.hum.Health > 0 then
+				if (other.root.Position - pos).Magnitude <= (cfg.radius or 10) then
+					other.hum.Health = math.max(0, other.hum.Health - (cfg.damage or 45))
+				end
+			end
+		end
+	end
+
 	-- Direction to launch the ragdoll: along the bullet's travel — from the shot origin toward the zombie,
 	-- i.e. it flies backward away from the shooter. Falls back to "away from whoever it was facing".
 	local kroot = record.root
@@ -1157,6 +1174,7 @@ local function spawnOne(round: number, forcedType: string?)
 	hum.MaxHealth = hp
 	hum.Health = hp
 	hum.WalkSpeed = scaledSpeed(round, t)
+	record.baseSpeed = hum.WalkSpeed -- statusSpeed() restores to this after chills/pins expire
 
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)
@@ -1287,6 +1305,70 @@ local function summonAdds(n: number)
 		end
 		spawnOne(currentRound, "default")
 	end
+end
+
+-- ===== STATUS EFFECTS (weapon abilities) =====
+local ICE_TINT = Color3.fromRGB(130, 190, 255)
+
+-- Freeze Ray: slow the zombie; remember the shatter payload so its death pops a frost AoE.
+function ZombieService.Chill(record, chillCfg, shatterCfg)
+	if not record or record.dead then
+		return
+	end
+	record.slowPct = chillCfg.slowPct or 0.3
+	record.chilledUntil = os.clock() + (chillCfg.secs or 2)
+	record.shatter = shatterCfg
+	if not record.frostTint then
+		record.frostTint = true
+		recolor(record.model, ICE_TINT)
+	end
+end
+
+-- Crossbow: nail the zombie in place.
+function ZombieService.Pin(record, secs)
+	if not record or record.dead then
+		return
+	end
+	record.pinnedUntil = os.clock() + (secs or 2)
+end
+
+-- Per-frame speed from active statuses (called from steer). Cheap: two clock compares + one property set.
+local function statusSpeed(record, now)
+	local hum, base = record.hum, record.baseSpeed
+	if not hum or not base then
+		return
+	end
+	local target = base
+	if now < (record.pinnedUntil or 0) then
+		target = 0
+	elseif now < (record.chilledUntil or 0) then
+		target = base * (1 - (record.slowPct or 0))
+	end
+	if hum.WalkSpeed ~= target then
+		hum.WalkSpeed = target
+	end
+	if record.frostTint and now >= (record.chilledUntil or 0) then
+		record.frostTint = nil
+		restoreColors(record.model)
+	end
+end
+
+-- Frost nova visual for a shattered corpse.
+local function spawnShatterVFX(pos, radius)
+	local burst = Instance.new("Part")
+	burst.Shape = Enum.PartType.Ball
+	burst.Anchored = true
+	burst.CanCollide = false
+	burst.CanQuery = false
+	burst.CastShadow = false
+	burst.Material = Enum.Material.Neon
+	burst.Color = ICE_TINT
+	burst.Transparency = 0.25
+	burst.Size = Vector3.new(2, 2, 2)
+	burst.CFrame = CFrame.new(pos)
+	burst.Parent = Workspace
+	TweenService:Create(burst, TweenInfo.new(0.35), { Transparency = 1, Size = Vector3.new(radius * 2, radius * 2, radius * 2) }):Play()
+	Debris:AddItem(burst, 0.4)
 end
 
 -- ===== AI =====
@@ -1471,6 +1553,7 @@ local function steer(record, now: number)
 	if not hum or not root or not root.Parent then
 		return
 	end
+	statusSpeed(record, now) -- chills/pins apply + expire here (runs every steer frame)
 	local targetRoot = record.targetRoot
 	if record.mode == "idle" or not targetRoot or not targetRoot.Parent then
 		hum:Move(Vector3.zero)

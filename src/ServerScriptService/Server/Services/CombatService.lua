@@ -216,6 +216,27 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		end
 	end
 
+	-- PIERCE ability (weapon.pierce = N): after the first target locks, the round keeps flying — up to
+	-- N zombies standing in a TIGHT lane behind it (±PIERCE_ARC°) each take FULL damage. No LOS re-check
+	-- past the first target: the bullet is already inside the crowd (bodies are what it pierces).
+	if weapon.pierce and weapon.pierce > 1 and targets[1] then
+		local laneDot = math.cos(math.rad(10)) -- half-angle of the pierce lane
+		local laneDir = (targets[1].root.Position - origin)
+		laneDir = Vector3.new(laneDir.X, 0, laneDir.Z)
+		laneDir = laneDir.Magnitude > 0.01 and laneDir.Unit or flatDir
+		for _, c in cands do
+			if #targets >= weapon.pierce then
+				break
+			end
+			if c ~= targets[1] then
+				local flatTo = Vector3.new(c.root.Position.X - origin.X, 0, c.root.Position.Z - origin.Z)
+				if flatTo.Magnitude > 0.01 and flatTo.Unit:Dot(laneDir) >= laneDot then
+					table.insert(targets, c)
+				end
+			end
+		end
+	end
+
 	-- Bullets fly at GUN level: a miss goes straight ahead HORIZONTALLY — the cursor can't pitch shots
 	-- into the sky or the floor. Only a real target above/below angles a shot (the hit path below sends
 	-- its tracer at the zombie itself).
@@ -224,9 +245,15 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		-- Distribute pellets round-robin across the targets (nearest get the extras): all pellets dump into
 		-- one zombie up close, but spread across a crowd. For a 1-pellet gun this is just "hit the closest".
 		local pelletsOn = {}
-		for i = 1, pellets do
-			local idx = ((i - 1) % #targets) + 1
-			pelletsOn[idx] = (pelletsOn[idx] or 0) + 1
+		if weapon.pierce and weapon.pierce > 1 then
+			for i = 1, #targets do
+				pelletsOn[i] = 1 -- pierce: every lined-up zombie takes one FULL hit
+			end
+		else
+			for i = 1, pellets do
+				local idx = ((i - 1) % #targets) + 1
+				pelletsOn[idx] = (pelletsOn[idx] or 0) + 1
+			end
 		end
 		for idx, count in pelletsOn do
 			local c = targets[idx]
@@ -243,7 +270,14 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			if killed then
 				killEvent:Fire(player, humanoid, false, weaponId)
 			else
-				ZombieService.Hit(c.record, origin, eff.knockback) -- upgraded knockback + white flash
+				ZombieService.Hit(c.record, origin, eff.knockback) -- knockback + white flash
+				-- Ability status effects ride on live hits (a corpse can't be pinned or chilled).
+				if weapon.chill then
+					ZombieService.Chill(c.record, weapon.chill, weapon.shatter)
+				end
+				if weapon.pin then
+					ZombieService.Pin(c.record, weapon.pin.secs)
+				end
 			end
 			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5), isCrit)
 			-- A tracer per zombie hit, carrying how many pellets landed there (the client fans that many bolts).

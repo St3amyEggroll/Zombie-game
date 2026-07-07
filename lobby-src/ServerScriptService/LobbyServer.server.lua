@@ -104,11 +104,17 @@ local RARITY = {
 
 -- Stats mirror the game's WeaponConfig (kept in sync by hand) for the hover tooltips.
 local WEAPONS = {
-	pistol  = { name = "M1911",        tier = 1, rarity = "common",    damage = 30, fireRate = 5,   range = 200 },
-	shotgun = { name = "Pump Shotgun", tier = 2, rarity = "uncommon",  damage = 16, fireRate = 1.2, range = 40, pellets = 6 },
-	ak47    = { name = "AK-47",        tier = 3, rarity = "rare",      damage = 40, fireRate = 9,   range = 300 },
-	minigun = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 16, fireRate = 18,  range = 300 },
-	raygun  = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80, fireRate = 4,   range = 250 },
+	pistol    = { name = "M1911",        tier = 1, rarity = "common",    damage = 30,  fireRate = 5,   range = 200 },
+	revolver  = { name = "Revolver",     tier = 2, rarity = "uncommon",  damage = 70,  fireRate = 1.8, range = 220,
+		ability = "PIERCE — rounds punch through up to 3 zombies in a line" },
+	shotgun   = { name = "Pump Shotgun", tier = 2, rarity = "uncommon",  damage = 16,  fireRate = 1.2, range = 40, pellets = 6 },
+	ak47      = { name = "AK-47",        tier = 3, rarity = "rare",      damage = 40,  fireRate = 9,   range = 300 },
+	crossbow  = { name = "Crossbow",     tier = 3, rarity = "rare",      damage = 110, fireRate = 1.0, range = 260,
+		ability = "PIN — bolts nail zombies in place for 2s" },
+	minigun   = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 16,  fireRate = 18,  range = 300 },
+	freezeray = { name = "Freeze Ray",   tier = 4, rarity = "epic",      damage = 10,  fireRate = 10,  range = 180,
+		ability = "CRYO — chills 30%; chilled zombies SHATTER on death" },
+	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80,  fireRate = 4,   range = 250 },
 }
 
 -- 7 rarity-tiered cases (wave rewards + starter grants + the shop). Higher case rarity = better guns +
@@ -116,13 +122,13 @@ local WEAPONS = {
 -- PHOTOS: add image = "rbxassetid://..." to any CASES entry (and to WEAPONS/POTIONS entries) and the
 -- inventory/shop UI shows the picture on cards + detail panes automatically.
 local CASES = {
-	common    = { pool = { shotgun = 70, ak47 = 24, minigun = 5,  raygun = 1 } },
-	uncommon  = { pool = { shotgun = 55, ak47 = 32, minigun = 10, raygun = 3 } },
-	rare      = { pool = { shotgun = 35, ak47 = 40, minigun = 18, raygun = 7 } },
-	epic      = { pool = { shotgun = 20, ak47 = 38, minigun = 30, raygun = 12 } },
-	legendary = { pool = { shotgun = 10, ak47 = 28, minigun = 38, raygun = 24 } },
-	mythic    = { pool = { shotgun = 5,  ak47 = 18, minigun = 40, raygun = 37 } },
-	divine    = { pool = { shotgun = 2,  ak47 = 10, minigun = 33, raygun = 55 } },
+	common    = { pool = { revolver = 30, shotgun = 40, ak47 = 16, crossbow = 8,  minigun = 3,  freezeray = 2,  raygun = 1 } },
+	uncommon  = { pool = { revolver = 25, shotgun = 32, ak47 = 20, crossbow = 12, minigun = 6,  freezeray = 3,  raygun = 2 } },
+	rare      = { pool = { revolver = 16, shotgun = 20, ak47 = 26, crossbow = 18, minigun = 10, freezeray = 6,  raygun = 4 } },
+	epic      = { pool = { revolver = 9,  shotgun = 11, ak47 = 22, crossbow = 20, minigun = 18, freezeray = 12, raygun = 8 } },
+	legendary = { pool = { revolver = 5,  shotgun = 5,  ak47 = 14, crossbow = 16, minigun = 24, freezeray = 18, raygun = 18 } },
+	mythic    = { pool = { revolver = 2,  shotgun = 3,  ak47 = 8,  crossbow = 12, minigun = 26, freezeray = 22, raygun = 27 } },
+	divine    = { pool = { revolver = 1,  shotgun = 1,  ak47 = 4,  crossbow = 7,  minigun = 18, freezeray = 26, raygun = 43 } },
 }
 for rarity, c in CASES do
 	c.name = RARITY[rarity].name .. " Case"

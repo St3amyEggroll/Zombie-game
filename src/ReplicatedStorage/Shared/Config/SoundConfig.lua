@@ -37,6 +37,10 @@ SoundConfig.Sounds = {
 	Fire_shotgun   = S("122727185777303", 0.7, 180, 0.96, 1.02),  -- [shotgun blast]
 	Fire_minigun   = S("130050001949841", 0.45, 170, 0.97, 1.03), -- [minigun single shot] (played per bullet)
 	Fire_raygun    = S("118709034685445", 0.6, 170, 0.95, 1.05),  -- [laser blaster zap]
+	Fire_revolver  = S("", 0.65, 170, 0.97, 1.03), -- [revolver shot]
+	Fire_crossbow  = S("", 0.6, 120, 0.97, 1.03),  -- [crossbow shot / bow release]
+	Fire_freezeray = S("", 0.5, 150, 0.97, 1.03),  -- [ice ray / frost beam zap]
+	FrostShatter   = S("", 0.75, 140, 0.95, 1.05), -- chilled zombie explodes [glass ice shatter]
 
 	-- ===== COMBAT FEEDBACK (2D, local player only) =====
 	Hitmarker      = S("80826043767749", 0.5, 0, 0.97, 1.03),    -- [hitmarker tick]

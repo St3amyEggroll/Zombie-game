@@ -847,6 +847,11 @@ local function renderInvDetail()
 		stats.Text = ("DMG %.0f%s\n%s shots/s   ·   RNG %s\nDPS ~%d"):format(
 			w.damage or 0, w.pellets and (" ×" .. w.pellets) or "", tostring(w.fireRate or "?"),
 			tostring(w.range or "?"), math.floor(dps + 0.5))
+		if w.ability then
+			local ab = centered(344, 60, BODYB_FACE, 13, ACCENT)
+			ab.Text = w.ability
+			ab.TextYAlignment = Enum.TextYAlignment.Top
+		end
 
 		local inS1 = (invData.loadout[1] == id)
 		local inS2 = (invData.loadout[2] == id)

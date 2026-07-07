@@ -39,7 +39,10 @@ for _, r in BuffConfig.Rarities do
 	RARITIES[r.id] = { name = r.name, color = r.color }
 end
 
-local WEAPON_RARITY = { pistol = "common", shotgun = "uncommon", ak47 = "rare", minigun = "epic", raygun = "legendary" }
+local WEAPON_RARITY = {
+	pistol = "common", revolver = "uncommon", shotgun = "uncommon", ak47 = "rare",
+	crossbow = "rare", minigun = "epic", freezeray = "epic", raygun = "legendary",
+}
 
 local CASES = {}
 for _, rarity in GameConfig.CaseRarities do
@@ -65,6 +68,7 @@ local CATALOG = {
 			t[id] = {
 				name = w.name, tier = w.tier, rarity = WEAPON_RARITY[id] or "common",
 				damage = w.damage, fireRate = w.fireRate, range = w.range, pellets = w.pellets,
+				ability = w.ability, -- one-line ability text (shown on the pane)
 				image = w.image, -- photo slot: set image = "rbxassetid://..." in WeaponConfig to show it
 			}
 		end

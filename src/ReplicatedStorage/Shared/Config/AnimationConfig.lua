@@ -90,6 +90,10 @@ AnimationConfig.Shake = {
 -- ===== ANIMATION IDS ===== (paste the rbxassetid number; "" = none)
 -- Played on the CHARACTER. "Hold" makes the character pose with the gun. (No reload — ammo is infinite.)
 AnimationConfig.Weapons = {
+	-- New guns (paste hold-pose animation ids when the models are rigged; blank = default hold)
+	revolver = { Hold = "" },
+	crossbow = { Hold = "" },
+	freezeray = { Hold = "" },
 	pistol  = { Hold = "", Reload = "" },
 	shotgun = { Hold = "", Reload = "" },
 	ak47    = { Hold = "", Reload = "" },
