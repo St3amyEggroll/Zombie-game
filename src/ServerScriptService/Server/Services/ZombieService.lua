@@ -157,10 +157,23 @@ for id, t in ZombieConfig do
 	end
 end
 
--- ===== SCALING (CLAUDE.md §8) =====
-local difficultyMult = 1 -- set per run by MatchService (the mode's stat scale; see GameConfig.Difficulties)
-function ZombieService.SetDifficultyMult(m: number)
-	difficultyMult = (typeof(m) == "number" and m > 0) and m or 1
+-- ===== SCALING (CLAUDE.md §8) ===== set per run by MatchService from the mode's GameConfig.Difficulties entry.
+local difficultyMult = 1        -- × zombie HP + damage
+local difficultySpeedMult = 1   -- × zombie speed
+local allowedTypes: { [string]: boolean }? = nil  -- roster whitelist (nil = no whitelist)
+local excludedTypes: { [string]: boolean }? = nil -- exclude blacklist (nil = none)
+function ZombieService.SetDifficulty(diff)
+	diff = (typeof(diff) == "table") and diff or {}
+	difficultyMult = (typeof(diff.mult) == "number" and diff.mult > 0) and diff.mult or 1
+	difficultySpeedMult = (typeof(diff.speedMult) == "number" and diff.speedMult > 0) and diff.speedMult or 1
+	allowedTypes = nil
+	if type(diff.roster) == "table" then
+		allowedTypes = {}
+		for _, id in diff.roster do
+			allowedTypes[id] = true
+		end
+	end
+	excludedTypes = (type(diff.exclude) == "table") and diff.exclude or nil
 end
 
 -- ===== MAP / WORLD (set per run by MatchService) =====
@@ -182,7 +195,7 @@ local function scaledHealth(round: number, t): number
 end
 
 local function scaledSpeed(round: number, t): number
-	local s = (GameConfig.ZombieBaseSpeed + GameConfig.ZombieSpeedPerRound * (round - 1)) * t.speedMult
+	local s = (GameConfig.ZombieBaseSpeed + GameConfig.ZombieSpeedPerRound * (round - 1)) * t.speedMult * difficultySpeedMult
 	return math.min(GameConfig.ZombieMaxSpeed, s)
 end
 
@@ -881,9 +894,13 @@ end
 local function pickType(round: number): string?
 	return Util.WeightedChoiceFiltered(ALL_WEIGHTS, function(id)
 		local t = ZOMBIE_TYPES[id]
-		-- Eligible = random-spawnable, unlocked by round, AND allowed on this map (worlds nil = every map).
+		-- Eligible = random-spawnable, unlocked by round, allowed on this map (worlds nil = every map), AND
+		-- allowed by the difficulty roster. World-specific enemies (t.worlds set, e.g. Islands) BYPASS the
+		-- roster whitelist so a map always showcases its own zombies at every difficulty; `exclude` still applies.
 		return t.spawnWeight > 0 and round >= t.minRound
 			and (t.worlds == nil or t.worlds[currentMap] == true)
+			and (allowedTypes == nil or allowedTypes[id] == true or t.worlds ~= nil)
+			and (excludedTypes == nil or excludedTypes[id] ~= true)
 	end)
 end
 
@@ -1913,6 +1930,12 @@ end
 
 function ZombieService.GetRemaining(): number
 	return remaining
+end
+
+-- Zombies STILL TO KILL this wave = owed-but-not-yet-spawned (remaining) + spawned-and-alive (aliveCount).
+-- This is what the HUD count bar shows: it drops on every kill, not just as zombies spawn.
+function ZombieService.GetLeft(): number
+	return remaining + aliveCount
 end
 
 -- The Workspace folder holding all live zombies (used to exclude them from line-of-sight checks).

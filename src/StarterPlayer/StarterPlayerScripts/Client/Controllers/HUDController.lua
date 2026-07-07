@@ -132,14 +132,14 @@ local function build()
 	enemiesTrack.Name = "EnemiesTrack"
 	enemiesTrack.AnchorPoint = Vector2.new(0.5, 0)
 	enemiesTrack.Position = UDim2.new(0.5, 0, 0, 84)
-	enemiesTrack.Size = UDim2.fromOffset(210, 16)
+	enemiesTrack.Size = UDim2.fromOffset(340, 26)
 	enemiesTrack.BackgroundColor3 = COL_TRACK
 	enemiesTrack.BackgroundTransparency = 0.15
 	enemiesTrack.BorderSizePixel = 0
 	enemiesTrack.Visible = false
 	enemiesTrack.Parent = gui
-	corner(enemiesTrack, 8)
-	UITheme.Edge(enemiesTrack, UITheme.BLACK, 1.5)
+	corner(enemiesTrack, 10)
+	UITheme.Edge(enemiesTrack, UITheme.BLACK, 2)
 
 	enemiesFill = Instance.new("Frame")
 	enemiesFill.Name = "Fill"
@@ -150,7 +150,7 @@ local function build()
 	enemiesFill.Parent = enemiesTrack
 	corner(enemiesFill, 8)
 
-	enemiesLabel = text(enemiesTrack, "EnemiesLabel", UITheme.BodyBoldFace, 11, COL_TEXT)
+	enemiesLabel = text(enemiesTrack, "EnemiesLabel", UITheme.BodyBoldFace, 15, COL_TEXT)
 	enemiesLabel.Size = UDim2.fromScale(1, 1)
 	enemiesLabel.ZIndex = 2
 	enemiesLabel.TextXAlignment = Enum.TextXAlignment.Center

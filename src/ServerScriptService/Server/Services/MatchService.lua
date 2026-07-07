@@ -169,11 +169,16 @@ local function resetRunState(player: Player, ps)
 	ps.equippedWeapon = ps.ownedWeapons[1] or "pistol"
 end
 
--- Zombies owed this wave (CLAUDE.md §8) — scaled by how many players are in the run.
-local function computeCount(round: number, playerCount: number): number
+-- Zombies owed this wave (CLAUDE.md §8) — scaled by player count. `earlyBonus` (Nightmare) front-loads the
+-- horde: +earlyBonus× zombies at wave 1, tapering to +0 by the final wave (so the final wave matches Hard).
+local function computeCount(round: number, playerCount: number, earlyBonus: number?, maxWave: number?): number
 	local c = GameConfig.BaseZombiesPerRound
 		* (GameConfig.RoundZombieGrowth ^ (round - 1))
 		* (1 + (math.max(1, playerCount) - 1) * GameConfig.PlayerCountScale)
+	if earlyBonus and earlyBonus > 0 and maxWave and maxWave < math.huge and maxWave > 1 then
+		local t = math.clamp((round - 1) / (maxWave - 1), 0, 1) -- 0 at wave 1 → 1 at the final wave
+		c *= (1 + earlyBonus * (1 - t))
+	end
 	-- Deep Endless waves would otherwise owe thousands of zombies and never clear.
 	return math.clamp(math.floor(c), 1, GameConfig.MaxZombiesPerWave or math.huge)
 end
@@ -326,7 +331,7 @@ runMatch = function()
 	state.difficulty = state.difficulty or GameConfig.DefaultDifficulty
 	local diff = GameConfig.Difficulties[state.difficulty] or GameConfig.Difficulties[GameConfig.DefaultDifficulty]
 	state.maxWave = diff.maxWave
-	ZombieService.SetDifficultyMult(diff.mult or 1) -- the mode's stat scale (HP + zombie damage)
+	ZombieService.SetDifficulty(diff) -- stat scale + speed + roster/exclude for this mode
 	ZombieService.SetMap(state.map or GameConfig.DefaultMap) -- roster + how zombies emerge (grave vs water)
 
 	state.waveDowned = false
@@ -363,18 +368,17 @@ runMatch = function()
 	Remotes.Get("RoundChanged"):FireAllClients(state.round)
 
 	while anyInMatch() do
-		local count = computeCount(state.round, inMatchCount())
+		local count = computeCount(state.round, inMatchCount(), diff.earlyBonus, diff.maxWave)
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
 		local waveTotal = count               -- this wave's owed count (denominator for the count bar)
 		local lastRemaining = -1
 		Remotes.Get("WaveProgress"):FireAllClients(count, waveTotal)
 
-		-- Boss waves (10 = Boss, 20 = Lumberjack, 30 = Necromancer) — the boss counts toward the clear.
-		-- Past the scheduled list (Endless depth), every 10th wave cycles the roster so the boss-kill
-		-- case drops keep flowing forever. Boss HP scales × the number of players in the run.
-		local bossId = ZombieConfig.BossWaves[state.round]
-		if not bossId and state.round % 10 == 0 then
+		-- Bosses come from the difficulty's own schedule (diff.bosses). Endless has none, so it cycles the
+		-- boss roster every 10th wave to keep boss-kill case drops flowing forever. Boss HP scales × players.
+		local bossId = diff.bosses and diff.bosses[state.round]
+		if not bossId and diff.maxWave == math.huge and state.round % 10 == 0 then
 			local roster = { "boss", "lumberjack", "necromancer" }
 			bossId = roster[math.floor(state.round / 10 - 1) % #roster + 1]
 		end
@@ -388,9 +392,10 @@ runMatch = function()
 			end
 			state.zombiesAlive = ZombieService.GetAliveCount()
 			state.zombiesRemaining = ZombieService.GetRemaining()
-			if state.zombiesRemaining ~= lastRemaining then
-				lastRemaining = state.zombiesRemaining
-				Remotes.Get("WaveProgress"):FireAllClients(state.zombiesRemaining, waveTotal)
+			local left = ZombieService.GetLeft() -- remaining + alive → drops on every KILL, not just on spawn
+			if left ~= lastRemaining then
+				lastRemaining = left
+				Remotes.Get("WaveProgress"):FireAllClients(left, waveTotal)
 			end
 			task.wait(0.1) -- tight poll so the break starts right when the last zombie dies
 		end

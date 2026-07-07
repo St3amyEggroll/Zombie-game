@@ -156,8 +156,8 @@ local function build()
 	local invBtn = Instance.new("TextButton")
 	invBtn.Name = "InventoryButton"
 	invBtn.AnchorPoint = Vector2.new(0, 0)
-	invBtn.Position = UDim2.new(0, 16, 0.5, 6)
-	invBtn.Size = UDim2.fromOffset(64, 64)
+	invBtn.Position = UDim2.new(0, 16, 0.5, 4)
+	invBtn.Size = UDim2.fromOffset(52, 52)
 	invBtn.BackgroundColor3 = UITheme.PANEL
 	invBtn.BackgroundTransparency = 0.05
 	invBtn.BorderSizePixel = 0

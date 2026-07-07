@@ -68,16 +68,28 @@ GameConfig.DebugUnlockAllWeapons = false  -- every player starts owning every we
 GameConfig.DebugStartWave        = 0      -- start the match at this wave (0 = normal, start at wave 1)
 
 -- ===== DIFFICULTY ===== (set by the lobby; caps how far a run goes — clearing the final wave = VICTORY)
--- Every standard mode runs the SAME 15 waves with a BOSS on wave 15; the MODE just cranks a difficulty
--- multiplier (`mult`) on zombie HP + damage, so Nightmare is harder than Easy without more waves.
+-- Each mode defines its own wave count, roster, and boss schedule. Per-mode fields:
+--   maxWave    = final wave (clearing it = victory; math.huge = Endless).
+--   mult       = ×zombie HP + damage.
+--   speedMult  = ×zombie speed (Nightmare/Endless run a touch faster).
+--   roster     = ONLY these enemy ids spawn (whitelist). exclude = every enemy EXCEPT these (blacklist).
+--                Omit both = every enemy allowed by the map/round. (Bosses are separate — see `bosses`.)
+--   bosses     = { [wave] = bossId } scheduled bosses. Endless has none → it cycles bosses every 10th wave.
+--   earlyBonus = extra zombies at wave 1, tapering to 0 by the final wave — front-loads the horde WITHOUT
+--                changing the final-wave size (Nightmare piles them on early but ends like Hard).
 GameConfig.Difficulties = {
-	easy      = { name = "Easy",      maxWave = 15, mult = 1.0 },
-	medium    = { name = "Medium",    maxWave = 15, mult = 1.6 },
-	hard      = { name = "Hard",      maxWave = 15, mult = 2.4 },
-	nightmare = { name = "Nightmare", maxWave = 15, mult = 3.5 },
-	-- Unlocked by BEATING Nightmare: no final wave, no victory — the run only ends on a wipe. Bosses
-	-- keep coming every 10th wave (the roster cycles), so case drops keep flowing at depth.
-	endless   = { name = "Endless",   maxWave = math.huge, mult = 3.5 },
+	easy      = { name = "Easy",      maxWave = 10, mult = 1.0,
+		roster = { "default", "speedy", "lead", "leaper" }, bosses = { [10] = "boss" } },
+	medium    = { name = "Medium",    maxWave = 15, mult = 1.6,
+		exclude = { bombzombie = true, leapertank = true, necromancer = true },
+		bosses = { [10] = "boss", [15] = "lumberjack" } },
+	hard      = { name = "Hard",      maxWave = 20, mult = 2.4,
+		bosses = { [10] = "boss", [20] = "necromancer" } }, -- every enemy
+	nightmare = { name = "Nightmare", maxWave = 20, mult = 2.4, speedMult = 1.12, earlyBonus = 1.5,
+		bosses = { [10] = "boss", [20] = "necromancer" } }, -- = Hard, a bit faster + a lot more early
+	-- Unlocked by BEATING Nightmare: no final wave, no victory — the run only ends on a wipe. Bosses cycle
+	-- every 10th wave so case drops keep flowing at depth.
+	endless   = { name = "Endless",   maxWave = math.huge, mult = 2.4, speedMult = 1.12 },
 }
 GameConfig.DefaultDifficulty = "nightmare"  -- used in Studio / if the lobby didn't send one
 GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for completing (winning) a run
