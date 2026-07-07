@@ -14,6 +14,7 @@ local Modules = Shared:WaitForChild("Modules")
 local Remotes = require(Modules.Remotes)
 local UITheme = require(Modules.UITheme)
 local GunViewport = require(Modules.GunViewport)
+local UIFocus = require(Modules.UIFocus)
 
 local GameInventoryController = {}
 
@@ -61,6 +62,7 @@ local function caseCell(i, rarity, count)
 	cell.Parent = grid
 	UITheme.Corner(cell, 7)
 	UITheme.Edge(cell, isSel and UITheme.TOXIC or UITheme.BLACK, isSel and 3 or 2.5)
+	UITheme.CardShade(cell)
 
 	local vp = GunViewport.Create(rarity, false, "CrateDisplay")
 	if vp then
@@ -200,8 +202,11 @@ function GameInventoryController.Toggle()
 	end
 	panel.Visible = not panel.Visible
 	if panel.Visible then
+		UIFocus.Open()
 		Remotes.Get("InvSnapshot"):FireServer() -- ask for a fresh snapshot
 		render()
+	else
+		UIFocus.Close()
 	end
 end
 
@@ -219,7 +224,7 @@ function GameInventoryController.Start()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "CASES", 44)
+	UITheme.Header(panel, "CASES", 44, UITheme.TOXIC, UITheme.HeaderColors.cases)
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.AnchorPoint = Vector2.new(1, 0)
@@ -244,6 +249,7 @@ function GameInventoryController.Start()
 	xg.Rotation = 90
 	xg.Parent = closeBtn
 	closeBtn.Activated:Connect(function()
+		if panel.Visible then UIFocus.Close() end
 		panel.Visible = false
 	end)
 

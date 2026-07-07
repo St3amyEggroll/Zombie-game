@@ -67,6 +67,19 @@ UITheme.DANGER   = UITheme.ORANGE
 -- Studs backdrop texture (tileable). Swap the id if you prefer another studs decal.
 UITheme.StudsTexture = "rbxassetid://6965996718"
 
+-- Panels are slightly see-through so the world/studs read faintly behind (text stays solid).
+UITheme.PanelAlpha = 0.12
+
+-- Per-screen HEADER BAR colors (the solid strip across the top of a panel).
+UITheme.HeaderColors = {
+	guns     = Color3.fromRGB(64, 28, 102),   -- dark purple
+	cases    = Color3.fromRGB(150, 66, 16),   -- dark orange
+	shop     = Color3.fromRGB(140, 100, 22),  -- gold / amber
+	settings = Color3.fromRGB(36, 66, 104),   -- steel blue
+	play     = Color3.fromRGB(42, 82, 20),    -- toxic green (dark)
+	summary  = Color3.fromRGB(120, 30, 22),   -- blood red
+}
+
 function UITheme.Darker(c: Color3, f: number): Color3
 	return Color3.new(c.R * (1 - f), c.G * (1 - f), c.B * (1 - f))
 end
@@ -169,7 +182,7 @@ function UITheme.Panel(parent: Instance, name: string?, opts: any?)
 	local f = Instance.new("Frame")
 	f.Name = name or "Panel"
 	f.BackgroundColor3 = opts.color or UITheme.PANEL
-	f.BackgroundTransparency = opts.alpha or 0
+	f.BackgroundTransparency = opts.alpha or UITheme.PanelAlpha
 	f.BorderSizePixel = 0
 	f.Parent = parent
 	UITheme.Corner(f, opts.radius or 6)
@@ -219,30 +232,83 @@ function UITheme.Label(parent: Instance, name: string?, size: number?, color: Co
 end
 
 -- The panel header strip: toxic tab on the left, stencil title, hairline underneath.
-function UITheme.Header(panel: GuiObject, titleText: string, height: number?, accent: Color3?)
+function UITheme.Header(panel: GuiObject, titleText: string, height: number?, accent: Color3?, barColor: Color3?)
 	local h = height or 44
 	local col = accent or UITheme.TOXIC
+	-- Solid colored TOP BAR (per-screen identity). Rounded top corners, squared bottom via a cover strip.
+	if barColor then
+		local bar = Instance.new("Frame")
+		bar.Name = "HeaderBar"
+		bar.Position = UDim2.fromOffset(0, 0)
+		bar.Size = UDim2.new(1, 0, 0, h)
+		bar.BackgroundColor3 = barColor
+		bar.BorderSizePixel = 0
+		bar.ZIndex = 1
+		bar.Parent = panel
+		UITheme.Corner(bar, 6)
+		local grad = Instance.new("UIGradient") -- faint sheen: lighter top -> the flat color
+		grad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(1.18, 1.18, 1.18)),
+			ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+		})
+		grad.Rotation = 90
+		grad.Parent = bar
+		local squareOff = Instance.new("Frame") -- straighten the bar's bottom edge
+		squareOff.AnchorPoint = Vector2.new(0, 1)
+		squareOff.Position = UDim2.new(0, 0, 1, 0)
+		squareOff.Size = UDim2.new(1, 0, 0, math.floor(h / 2))
+		squareOff.BackgroundColor3 = barColor
+		squareOff.BorderSizePixel = 0
+		squareOff.ZIndex = 1
+		squareOff.Parent = bar
+		local under = Instance.new("Frame") -- thin dark seam under the bar
+		under.AnchorPoint = Vector2.new(0, 1)
+		under.Position = UDim2.new(0, 0, 1, 0)
+		under.Size = UDim2.new(1, 0, 0, 2)
+		under.BackgroundColor3 = UITheme.BLACK
+		under.BackgroundTransparency = 0.2
+		under.BorderSizePixel = 0
+		under.ZIndex = 2
+		under.Parent = bar
+	end
 	local tab = Instance.new("Frame")
 	tab.Name = "HeaderTab"
 	tab.Position = UDim2.fromOffset(0, 10)
 	tab.Size = UDim2.fromOffset(5, h - 20)
-	tab.BackgroundColor3 = col
+	tab.BackgroundColor3 = barColor and UITheme.TEXT or col
 	tab.BorderSizePixel = 0
+	tab.ZIndex = 2
 	tab.Parent = panel
 	local title = UITheme.Title(panel, "HeaderTitle", 22, UITheme.TEXT)
+	title.ZIndex = 2
 	title.Position = UDim2.fromOffset(18, 0)
 	title.Size = UDim2.new(1, -36, 0, h)
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Text = string.upper(titleText)
-	local line = Instance.new("Frame")
-	line.Name = "HeaderLine"
-	line.Position = UDim2.new(0, 12, 0, h)
-	line.Size = UDim2.new(1, -24, 0, 1)
-	line.BackgroundColor3 = UITheme.LINE
-	line.BackgroundTransparency = 0.35
-	line.BorderSizePixel = 0
-	line.Parent = panel
+	if not barColor then
+		local line = Instance.new("Frame")
+		line.Name = "HeaderLine"
+		line.Position = UDim2.new(0, 12, 0, h)
+		line.Size = UDim2.new(1, -24, 0, 1)
+		line.BackgroundColor3 = UITheme.LINE
+		line.BackgroundTransparency = 0.35
+		line.BorderSizePixel = 0
+		line.Parent = panel
+	end
 	return title
+end
+
+-- Vertical shade for cards: multiplies the fill darker toward the BOTTOM (a subtle 3D drop).
+function UITheme.CardShade(frame: GuiObject, strength: number?)
+	local k = strength or 0.4
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(1, Color3.new(1 - k, 1 - k, 1 - k)),
+	})
+	g.Rotation = 90
+	g.Parent = frame
+	return g
 end
 
 -- A chunky action button: gradient fill, black edge, stencil label, press-pop.

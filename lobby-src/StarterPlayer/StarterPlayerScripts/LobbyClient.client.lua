@@ -162,6 +162,76 @@ local function redX(parentGui, size, tsize)
 	return x
 end
 
+-- Per-screen header COLORS (mirror the game's UITheme.HeaderColors).
+local HEADER_COLORS = {
+	guns     = Color3.fromRGB(64, 28, 102),   -- dark purple
+	cases    = Color3.fromRGB(150, 66, 16),   -- dark orange
+	shop     = Color3.fromRGB(140, 100, 22),  -- gold / amber
+	settings = Color3.fromRGB(36, 66, 104),   -- steel blue
+	play     = Color3.fromRGB(42, 82, 20),    -- toxic green (dark)
+	summary  = Color3.fromRGB(120, 30, 22),   -- blood red
+}
+
+-- Solid colored TOP BAR across a panel (rounded top, squared bottom, dark seam). Returns the bar so a
+-- caller can recolor it later (the GUNS/CASES panel is shared, so its bar switches color per screen).
+local function headerBar(panel, h, barColor)
+	local bar = Instance.new("Frame")
+	bar.Name = "HeaderBar"; bar.Size = UDim2.new(1, 0, 0, h)
+	bar.BackgroundColor3 = barColor; bar.BorderSizePixel = 0; bar.ZIndex = 1; bar.Parent = panel
+	corner(bar, 6)
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.new(1.18, 1.18, 1.18)),
+		ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+	})
+	grad.Rotation = 90; grad.Parent = bar
+	local sq = Instance.new("Frame")
+	sq.AnchorPoint = Vector2.new(0, 1); sq.Position = UDim2.new(0, 0, 1, 0); sq.Size = UDim2.new(1, 0, 0, math.floor(h / 2))
+	sq.BackgroundColor3 = barColor; sq.BorderSizePixel = 0; sq.ZIndex = 1; sq.Parent = bar
+	local seam = Instance.new("Frame")
+	seam.AnchorPoint = Vector2.new(0, 1); seam.Position = UDim2.new(0, 0, 1, 0); seam.Size = UDim2.new(1, 0, 0, 2)
+	seam.BackgroundColor3 = TBLACK; seam.BackgroundTransparency = 0.2; seam.BorderSizePixel = 0; seam.ZIndex = 2; seam.Parent = bar
+	return bar, sq
+end
+
+-- Vertical shade for cards: multiplies the fill darker toward the BOTTOM (the 3D drop).
+local function cardShade(frame, strength)
+	local k = strength or 0.4
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(1, Color3.new(1 - k, 1 - k, 1 - k)),
+	})
+	g.Rotation = 90; g.Parent = frame
+	return g
+end
+
+-- Subtle FOV "lean back" while a panel is open (refcounted; eases in/out).
+local UI_FOV_PUSH, UI_FOV_EASE = 6, 6
+local uiOpenCount, uiBaseFov = 0, nil
+do
+	RunService.RenderStepped:Connect(function(dt)
+		local cam = workspace.CurrentCamera
+		if not cam or uiBaseFov == nil then return end
+		local target = (uiOpenCount > 0) and (uiBaseFov + UI_FOV_PUSH) or uiBaseFov
+		local a = math.clamp(dt * UI_FOV_EASE, 0, 1)
+		local cur = cam.FieldOfView
+		if math.abs(cur - target) > 0.05 then
+			cam.FieldOfView = cur + (target - cur) * a
+		elseif uiOpenCount == 0 then
+			cam.FieldOfView = uiBaseFov
+		end
+	end)
+end
+local function uiFocusOpen()
+	local cam = workspace.CurrentCamera
+	if uiBaseFov == nil and cam then uiBaseFov = cam.FieldOfView end
+	uiOpenCount += 1
+end
+local function uiFocusClose()
+	uiOpenCount = math.max(0, uiOpenCount - 1)
+end
+
 -- =====================================================================================================
 -- ===== SOUND ===== paste asset ids below ("123" or "rbxassetid://123"). Blank = that slot is silent.
 -- The game place has its own (bigger) list in ReplicatedStorage/Shared/Config/SoundConfig.lua.
@@ -326,13 +396,14 @@ bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestL
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
 panel.Size = UDim2.fromOffset(600, 430); panel.BackgroundColor3 = PANEL
-panel.BackgroundTransparency = 0; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
+panel.BackgroundTransparency = 0.12; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
 corner(panel, 8)
 lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, ACCENT, 1, 0.45)
 
 local title = Instance.new("TextLabel")
 title.Position = UDim2.new(0, 0, 0, 14); title.Size = UDim2.new(1, 0, 0, 34); title.BackgroundTransparency = 1
 title.FontFace = TITLE_FACE; title.TextSize = 28; title.TextColor3 = TEXTCOL
+headerBar(panel, 44, HEADER_COLORS.play)
 title.Text = "CHOOSE YOUR RUN"; title.Parent = panel
 
 local function sectionLabel(text, y)
@@ -644,10 +715,11 @@ local DETAIL_W = 280
 local invPanel = Instance.new("Frame")
 invPanel.AnchorPoint = Vector2.new(0.5, 0.5); invPanel.Position = UDim2.fromScale(0.5, 0.5)
 invPanel.Size = UDim2.fromOffset(PANEL_W, PANEL_H); invPanel.BackgroundColor3 = PANEL
-invPanel.BorderSizePixel = 0; invPanel.Visible = false; invPanel.Parent = invGui
+invPanel.BackgroundTransparency = 0.12; invPanel.BorderSizePixel = 0; invPanel.Visible = false; invPanel.Parent = invGui
 corner(invPanel, 8)
 lstuds(invPanel); ldepth(invPanel); ledge(invPanel, TBLACK, 3); ledge(invPanel, ACCENT, 1, 0.45)
 
+local invHeaderBar, invHeaderSq = headerBar(invPanel, 52, HEADER_COLORS.guns)
 local invTitle = Instance.new("TextLabel")
 invTitle.Position = UDim2.fromOffset(18, 0); invTitle.Size = UDim2.fromOffset(340, 52); invTitle.BackgroundTransparency = 1
 invTitle.FontFace = TITLE_FACE; invTitle.TextSize = 28; invTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -705,6 +777,7 @@ local function invCard(opts)
 	local isSel = selectedInv and selectedInv.kind == opts.kind and selectedInv.id == opts.id
 	local f = Instance.new("TextButton")
 	f.BackgroundColor3 = col:Lerp(BLACK, opts.locked and 0.82 or 0.62); f.AutoButtonColor = true; f.Text = ""
+	cardShade(f)
 	f.BorderSizePixel = 0; f.LayoutOrder = opts.order or 0; f.Parent = invGrid
 	corner(f, 6); ledge(f, isSel and ACCENT or TBLACK, 2)
 	-- STATIC art fills the card (only the featured pane spins); name sits on a strip at the bottom.
@@ -1047,6 +1120,9 @@ local function showTab(id)
 	activeTab = id
 	selectedInv = nil -- switching screens resets the featured pane
 	invTitle.Text = (id == "weapons") and "GUNS" or "CASES"
+	local hc = (id == "weapons") and HEADER_COLORS.guns or HEADER_COLORS.cases
+	invHeaderBar.BackgroundColor3 = hc
+	invHeaderSq.BackgroundColor3 = hc
 end
 
 renderActive = function()
@@ -1234,8 +1310,10 @@ local function openScreen(tab)
 		hideTip()
 		lplay("Close")
 		invPanel.Visible = false
+		uiFocusClose()
 		return
 	end
+	if not invPanel.Visible then uiFocusOpen() end
 	lplay("Open")
 	InvRequest:FireServer()
 	showTab(tab)
@@ -1260,6 +1338,7 @@ invClose.Activated:Connect(function()
 	if rolling then return end -- don't close mid-open
 	hideTip()
 	lplay("Close")
+	if invPanel.Visible then uiFocusClose() end
 	invPanel.Visible = false
 end)
 
@@ -1307,10 +1386,11 @@ lattach(shopGui)
 local shopPanel = Instance.new("Frame")
 shopPanel.AnchorPoint = Vector2.new(0.5, 0.5); shopPanel.Position = UDim2.fromScale(0.5, 0.5)
 shopPanel.Size = UDim2.fromOffset(940, 560); shopPanel.BackgroundColor3 = PANEL
-shopPanel.BorderSizePixel = 0; shopPanel.Visible = false; shopPanel.Parent = shopGui
+shopPanel.BackgroundTransparency = 0.12; shopPanel.BorderSizePixel = 0; shopPanel.Visible = false; shopPanel.Parent = shopGui
 corner(shopPanel, 8)
 lstuds(shopPanel); ldepth(shopPanel); ledge(shopPanel, TBLACK, 3); ledge(shopPanel, GOLD, 1, 0.45)
 
+headerBar(shopPanel, 52, HEADER_COLORS.shop)
 local shopTitle = Instance.new("TextLabel")
 shopTitle.Position = UDim2.fromOffset(18, 0); shopTitle.Size = UDim2.fromOffset(200, 46); shopTitle.BackgroundTransparency = 1
 shopTitle.FontFace = TITLE_FACE; shopTitle.TextSize = 24; shopTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -1371,6 +1451,7 @@ local function shopCell(i, slot)
 	local isSel = (shopSelected == i)
 	local cell = Instance.new("TextButton")
 	cell.BackgroundColor3 = soldOut and darker(PANEL2, 0.25) or col:Lerp(BLACK, 0.62)
+	cardShade(cell)
 	cell.AutoButtonColor = true; cell.Text = ""; cell.BorderSizePixel = 0; cell.LayoutOrder = i; cell.Parent = shopGrid
 	corner(cell, 7); ledge(cell, isSel and GOLD or TBLACK, isSel and 3 or 2.5)
 	local vp = makeGunViewport(slot.caseId, false, "CrateDisplay") -- static: only the featured pane spins
@@ -1619,7 +1700,7 @@ ShopSync.OnClientEvent:Connect(function(p)
 		shopSelected = defaultShopSelection()
 	end
 	if p.enter then
-		if not shopPanel.Visible then lplay("Open") end
+		if not shopPanel.Visible then lplay("Open"); uiFocusOpen() end
 		shopPanel.Visible = true
 	end
 	if shopPanel.Visible then
@@ -1631,10 +1712,12 @@ ShopSync.OnClientEvent:Connect(function(p)
 end)
 
 ShopClose.OnClientEvent:Connect(function()
+	if shopPanel.Visible then uiFocusClose() end
 	shopPanel.Visible = false
 end)
 shopX.Activated:Connect(function()
 	lplay("Close")
+	if shopPanel.Visible then uiFocusClose() end
 	shopPanel.Visible = false -- walk off + back on to reopen
 end)
 
@@ -1753,10 +1836,11 @@ do
 
 	local sPanel = Instance.new("Frame")
 	sPanel.AnchorPoint = Vector2.new(1, 1); sPanel.Position = UDim2.new(1, -12, 1, -68)
-	sPanel.Size = UDim2.fromOffset(340, 250); sPanel.BackgroundColor3 = PANEL
+	sPanel.Size = UDim2.fromOffset(340, 250); sPanel.BackgroundColor3 = PANEL; sPanel.BackgroundTransparency = 0.12
 	sPanel.BorderSizePixel = 0; sPanel.Visible = false; sPanel.Parent = setGui
 	corner(sPanel, 8); lstuds(sPanel); ldepth(sPanel); ledge(sPanel, TBLACK, 3); ledge(sPanel, ACCENT, 1, 0.45)
 
+	headerBar(sPanel, 44, HEADER_COLORS.settings)
 	local sTitle = Instance.new("TextLabel")
 	sTitle.Position = UDim2.fromOffset(18, 0); sTitle.Size = UDim2.fromOffset(200, 44); sTitle.BackgroundTransparency = 1
 	sTitle.FontFace = TITLE_FACE; sTitle.TextSize = 22; sTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -1838,9 +1922,10 @@ do
 
 	gear.Activated:Connect(function()
 		sPanel.Visible = not sPanel.Visible
-		if sPanel.Visible then renderAll() end
+		if sPanel.Visible then renderAll(); uiFocusOpen() else uiFocusClose() end
 	end)
 	sClose.Activated:Connect(function()
+		if sPanel.Visible then uiFocusClose() end
 		sPanel.Visible = false
 	end)
 	task.delay(3, renderAll) -- saved volumes arrive async via Stats

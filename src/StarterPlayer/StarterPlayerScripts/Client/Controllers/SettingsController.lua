@@ -13,6 +13,7 @@ local UITheme = require(Shared.Modules.UITheme)
 local Remotes = require(Shared.Modules.Remotes)
 
 local SoundController = require(script.Parent.SoundController)
+local UIFocus = require(Shared.Modules.UIFocus)
 
 local SettingsController = {}
 
@@ -66,7 +67,7 @@ function SettingsController.Start()
 	panel.Position = UDim2.new(1, -12, 1, -64)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "SETTINGS", 40)
+	UITheme.Header(panel, "SETTINGS", 40, UITheme.TOXIC, UITheme.HeaderColors.settings)
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.AnchorPoint = Vector2.new(1, 0)
@@ -199,10 +200,14 @@ function SettingsController.Start()
 	gear.Activated:Connect(function()
 		panel.Visible = not panel.Visible
 		if panel.Visible then
+			UIFocus.Open()
 			renderAll()
+		else
+			UIFocus.Close()
 		end
 	end)
 	closeBtn.Activated:Connect(function()
+		if panel.Visible then UIFocus.Close() end
 		panel.Visible = false
 	end)
 

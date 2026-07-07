@@ -14,6 +14,7 @@ local WeaponConfig = require(Shared.Config.WeaponConfig)
 local UITheme = require(Shared.Modules.UITheme)
 local Remotes = require(Shared.Modules.Remotes)
 local GunViewport = require(Shared.Modules.GunViewport)
+local UIFocus = require(Shared.Modules.UIFocus)
 
 local SoundController = require(script.Parent.SoundController)
 
@@ -95,6 +96,7 @@ local function gunCell(i, id)
 	cell.Parent = grid
 	UITheme.Corner(cell, 7)
 	UITheme.Edge(cell, isSel and UITheme.GOLD or UITheme.BLACK, isSel and 3 or 2.5)
+	UITheme.CardShade(cell)
 
 	local vp = GunViewport.Create(id, false)
 	if vp then
@@ -255,10 +257,12 @@ local function setOpen(open)
 	end
 	panel.Visible = open
 	if open then
+		UIFocus.Open()
 		SoundController.Play("UiOpen")
 		refreshData()
 		render()
 	else
+		UIFocus.Close()
 		SoundController.Play("UiClose")
 	end
 end
@@ -296,7 +300,7 @@ function GunShopController.Start()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "GUNS", 44, UITheme.GOLD)
+	UITheme.Header(panel, "GUNS", 44, UITheme.GOLD, UITheme.HeaderColors.guns)
 
 	coinsLabel = UITheme.Label(panel, "Coins", 18, UITheme.GOLD, true)
 	coinsLabel.AnchorPoint = Vector2.new(1, 0)
