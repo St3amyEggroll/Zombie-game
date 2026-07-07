@@ -15,6 +15,7 @@ local Modules = Shared:WaitForChild("Modules")
 local WeaponConfig = require(Config.WeaponConfig)
 local Remotes = require(Modules.Remotes)
 local UITheme = require(Modules.UITheme)
+local GunViewport = require(Modules.GunViewport)
 
 -- The inventory panel (its INVENTORY button lives on this hotbar). GUARDED: a broken inventory
 -- controller must never brick the hotbar.
@@ -47,6 +48,24 @@ local function refresh()
 		local weapon = id and WeaponConfig[id]
 		if weapon then
 			b.frame.Visible = true
+			-- 3D spinning model of the gun in this slot (rebuilt only when the slot's gun changes). Falls
+			-- back to just the name if no model is published in ReplicatedStorage.GunDisplay yet.
+			if b.vpId ~= id then
+				if b.vp then
+					b.vp:Destroy()
+					b.vp = nil
+				end
+				local vp = GunViewport.Create(id, true)
+				if vp then
+					vp.AnchorPoint = Vector2.new(0.5, 0)
+					vp.Position = UDim2.new(0.5, 0, 0, 2)
+					vp.Size = UDim2.new(1, -8, 1, -22) -- fill, leaving a caption strip for the name
+					vp.ZIndex = 2
+					vp.Parent = b.frame
+					b.vp = vp
+				end
+				b.vpId = id
+			end
 			b.name.Text = weapon.name
 			b.level.Text = "" -- CHANGED: gun upgrading removed; the LV chip is retired
 			local isHeld = (id == equipped)
@@ -60,6 +79,11 @@ local function refresh()
 			}):Play()
 		else
 			b.frame.Visible = false
+			if b.vp then
+				b.vp:Destroy()
+				b.vp = nil
+				b.vpId = nil
+			end
 		end
 	end
 end
@@ -108,6 +132,7 @@ local function build()
 		local key = Instance.new("TextLabel") -- keybind number, top-left corner
 		key.Position = UDim2.fromOffset(7, 4)
 		key.Size = UDim2.fromOffset(20, 18)
+		key.ZIndex = 3 -- above the 3D gun viewport
 		key.BackgroundTransparency = 1
 		key.FontFace = UITheme.TitleFace
 		key.TextSize = 15
@@ -133,6 +158,7 @@ local function build()
 		name.AnchorPoint = Vector2.new(0.5, 1)
 		name.Position = UDim2.new(0.5, 0, 1, -6)
 		name.Size = UDim2.new(1, -10, 0, 26)
+		name.ZIndex = 3 -- above the 3D gun viewport
 		name.BackgroundTransparency = 1
 		name.FontFace = UITheme.BodyBoldFace
 		name.TextSize = 11
