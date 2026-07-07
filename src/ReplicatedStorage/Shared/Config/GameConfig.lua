@@ -130,6 +130,7 @@ GameConfig.FalloffMinMult = 0.45 -- damage multiplier at/after FalloffEnd
 GameConfig.RateLimits = {
 	Fire = 40, Buy = 6, Interact = 8, Sprint = 10, Revive = 10, -- Fire headroom for upgraded fire rates
 	Settings = 3, -- volume-slider saves
+	GetData = 3, InvSnapshot = 4, LoadoutResend = 4, -- read-only client-triggered pulls (anti-spam)
 }
 
 -- ===== CASE DROPS (every 10th wave cleared, EVERY player gets one random-rarity case) =====

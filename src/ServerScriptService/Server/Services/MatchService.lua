@@ -473,6 +473,41 @@ end
 -- Published game place: decide what to do with a player who is on this server. If they arrived from the
 -- lobby flagged to play, start their run; otherwise they joined the start place fresh → send them to the
 -- lobby. (Studio never calls this — it uses the in-place menu.)
+-- Server-side unlock re-validation. Teleport data is client-visible + tamperable, so NEVER trust the map/
+-- difficulty it claims — verify the arriving player actually unlocked them (mirrors the lobby's gate).
+local UNLOCK_FINAL_DIFF = "nightmare" -- beating a world's last gated difficulty unlocks the next world
+local function indexOf(list, v)
+	for i, x in list do
+		if x == v then
+			return i
+		end
+	end
+	return nil
+end
+local function worldUnlocked(completed, world): boolean
+	local i = indexOf(GameConfig.Worlds, world)
+	if not i then
+		return false
+	end
+	if i <= 1 then
+		return true
+	end
+	return completed[GameConfig.Worlds[i - 1] .. ":" .. UNLOCK_FINAL_DIFF] == true
+end
+local function diffUnlocked(completed, world, difficulty): boolean
+	if not worldUnlocked(completed, world) then
+		return false
+	end
+	local di = indexOf(GameConfig.DifficultyOrder, difficulty)
+	if not di then
+		return false
+	end
+	if di <= 1 then
+		return true
+	end
+	return completed[world .. ":" .. GameConfig.DifficultyOrder[di - 1]] == true
+end
+
 local function handleArrival(player: Player)
 	local startRun = false
 	local ok, joinData = pcall(function()
@@ -480,12 +515,21 @@ local function handleArrival(player: Player)
 	end)
 	if ok and typeof(joinData) == "table" and typeof(joinData.TeleportData) == "table" then
 		startRun = joinData.TeleportData.startRun == true
-		-- The lobby sends the chosen map + difficulty; the first player to start the run sets them.
+		-- The lobby sends the chosen map + difficulty; the FIRST player to start the run sets them — but only
+		-- after re-validating against their real unlocks (a tampered teleport payload can't unlock content).
 		if startRun and not state.difficulty and typeof(joinData.TeleportData.difficulty) == "string" then
-			state.difficulty = joinData.TeleportData.difficulty
-			if typeof(joinData.TeleportData.map) == "string" then
-				state.map = joinData.TeleportData.map
+			local prof = DataService.WaitFor(player)
+			local completed = (typeof(prof) == "table" and typeof(prof.completed) == "table") and prof.completed or {}
+			local reqMap = (typeof(joinData.TeleportData.map) == "string") and joinData.TeleportData.map or GameConfig.DefaultMap
+			local reqDiff = joinData.TeleportData.difficulty
+			if not worldUnlocked(completed, reqMap) then
+				reqMap = GameConfig.DefaultMap
 			end
+			if not diffUnlocked(completed, reqMap, reqDiff) then
+				reqDiff = GameConfig.DifficultyOrder[1] -- fall back to the easiest unlocked
+			end
+			state.map = reqMap
+			state.difficulty = reqDiff
 		end
 		-- How many players the lobby teleported together — the pre-run countdown waits for all of them.
 		if startRun and typeof(joinData.TeleportData.partySize) == "number" then

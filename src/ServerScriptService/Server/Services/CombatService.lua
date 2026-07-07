@@ -358,6 +358,9 @@ function CombatService.Start()
 	-- Client fires LoadoutChanged (no args) to REQUEST a re-send — the spawn-time push can beat the
 	-- client's controllers loading (they'd show only slot 1 until the next equip otherwise).
 	Remotes.Get("LoadoutChanged").OnServerEvent:Connect(function(player)
+		if not SecurityService.Allow(player, "LoadoutResend") then
+			return
+		end
 		local ps = MatchService.GetPlayerState(player)
 		if ps then
 			fireLoadout(player, ps)

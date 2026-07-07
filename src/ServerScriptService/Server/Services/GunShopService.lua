@@ -45,10 +45,10 @@ function GunShopService.Start()
 		if Util.Contains(data.ownedWeapons, weaponId) then
 			return -- already owned
 		end
-		if (data.lobbyMoney or 0) < price then
-			return
+		-- Single clamped spend path (checks affordability, deducts, marks dirty). Never hand-roll the deduct.
+		if not DataService.TrySpendMoney(player, price) then
+			return -- can't afford
 		end
-		data.lobbyMoney -= price
 		table.insert(data.ownedWeapons, weaponId)
 		DataService.MarkDirty(player)
 

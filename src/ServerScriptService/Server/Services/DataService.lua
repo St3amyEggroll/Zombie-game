@@ -22,8 +22,24 @@ local Config = Shared:WaitForChild("Config")
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 local ProgressionConfig = require(Config.ProgressionConfig)
+local SecurityService = require(script.Parent.SecurityService)
 
 local DataService = {}
+
+-- A copy of the profile safe to send to a client: internal server-only fields (any `_`-prefixed key, e.g.
+-- `_noPersist`) are stripped so they never replicate. Shallow — nested tables are serialized by the remote.
+local function clientSnapshot(data: any): any
+	if typeof(data) ~= "table" then
+		return data
+	end
+	local copy = {}
+	for k, v in data do
+		if typeof(k) ~= "string" or k:sub(1, 1) ~= "_" then
+			copy[k] = v
+		end
+	end
+	return copy
+end
 
 -- ===== TUNABLES =====
 local STORE_NAME    = "PlayerData_v2" -- bump this string to wipe everyone's save (new schema epoch)
@@ -171,7 +187,7 @@ end
 local function pushSnapshot(player: Player)
 	local data = getData(player)
 	if data then
-		Remotes.Get("DataReady"):FireClient(player, data)
+		Remotes.Get("DataReady"):FireClient(player, clientSnapshot(data))
 	end
 end
 DataService.PushSnapshot = pushSnapshot
@@ -339,9 +355,12 @@ function DataService.Start()
 	end)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 
-	-- Client can pull a fresh snapshot on demand.
+	-- Client can pull a fresh snapshot on demand (rate-limited; internal flags stripped).
 	Remotes.Get("GetData").OnServerInvoke = function(player: Player)
-		return getData(player)
+		if not SecurityService.Allow(player, "GetData") then
+			return nil
+		end
+		return clientSnapshot(getData(player))
 	end
 
 	-- Periodic autosave of dirty sessions.

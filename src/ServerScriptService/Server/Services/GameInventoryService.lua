@@ -25,6 +25,7 @@ local Remotes = require(Modules.Remotes)
 local DataService = require(script.Parent.DataService)
 local MatchService = require(script.Parent.MatchService)
 local ZombieService = require(script.Parent.ZombieService)
+local SecurityService = require(script.Parent.SecurityService)
 
 local GameInventoryService = {}
 
@@ -301,6 +302,9 @@ function GameInventoryService.Start()
 
 	-- Client asks for a fresh snapshot (e.g. when opening the inventory) by firing InvSnapshot with no args.
 	Remotes.Get("InvSnapshot").OnServerEvent:Connect(function(player)
+		if not SecurityService.Allow(player, "InvSnapshot") then
+			return
+		end
 		push(player)
 	end)
 	ZombieService.BossDied:Connect(onBossDied) -- killing a boss drops a case for every player
