@@ -36,7 +36,7 @@ local GAME_PLACE_ID    = 140566663451993 -- the gameplay place (PLAY teleports h
 local STORE_NAME       = "PlayerData_v2"
 local DIFFS            = { "easy", "medium", "hard", "nightmare", "endless" } -- endless: beat Nightmare to unlock
 local FINAL_DIFF       = "nightmare" -- beating THIS unlocks the next world (Endless is a bonus mode, not a gate)
-local WORLDS           = { "forest" }
+local WORLDS           = { "forest", "islands" } -- islands unlocks after beating forest:nightmare (worldUnlocked)
 local PARTY_WAIT       = 30   -- seconds an OPEN party waits before launching with whoever joined
 local FULL_GRACE       = 5    -- once the party is FULL (incl. solo), the countdown drops to this — a short
                               -- window to hit LEAVE before launch (nobody teleports instantly)

@@ -87,6 +87,7 @@ local STUCK_REPLAN     = 0.9    -- seconds of no progress before a direct-chaser
 local MAX_LIFETIME     = 120    -- backstop: a zombie alive this long is force-killed (anti soft-lock).
                                -- High so big hordes don't get culled mid-chase; STUCK_TIMEOUT handles real wedges.
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
+local SPAWNPOINT_NEAR  = 160    -- studs: prefer ZombieSpawn parts within this range of a living player (Islands)
 local GRAVE_STAND_HEIGHT = 3.5 -- studs the zombie's root sits above the ground when fully risen (feet land
                                -- just above ground so it settles cleanly instead of toppling)
 local MIN_SPAWN_DIST   = 10    -- min studs between a new spawn and any active grave (no stacking spawns)
@@ -160,6 +161,20 @@ end
 local difficultyMult = 1 -- set per run by MatchService (the mode's stat scale; see GameConfig.Difficulties)
 function ZombieService.SetDifficultyMult(m: number)
 	difficultyMult = (typeof(m) == "number" and m > 0) and m or 1
+end
+
+-- ===== MAP / WORLD (set per run by MatchService) =====
+-- Drives (a) which enemy roster spawns (ZombieConfig `worlds`), (b) how zombies emerge — "grave" (dig out of
+-- the ground, Forest) vs "water" (rise from the ocean with a splash, Islands) — and (c) whether they spawn AT
+-- ZombieSpawn-tagged parts (Islands) or ~35 studs from a random player (Forest). See GameConfig.Maps.
+local currentMap = GameConfig.DefaultMap
+local mapEmerge = "grave"
+local mapUseSpawnPoints = false
+function ZombieService.SetMap(mapId: string?)
+	currentMap = (typeof(mapId) == "string" and mapId ~= "") and mapId or GameConfig.DefaultMap
+	local cfg = GameConfig.Maps and GameConfig.Maps[currentMap]
+	mapEmerge = (cfg and cfg.emerge) or "grave"
+	mapUseSpawnPoints = (cfg and cfg.useSpawnPoints) == true
 end
 
 local function scaledHealth(round: number, t): number
@@ -866,7 +881,9 @@ end
 local function pickType(round: number): string?
 	return Util.WeightedChoiceFiltered(ALL_WEIGHTS, function(id)
 		local t = ZOMBIE_TYPES[id]
+		-- Eligible = random-spawnable, unlocked by round, AND allowed on this map (worlds nil = every map).
 		return t.spawnWeight > 0 and round >= t.minRound
+			and (t.worlds == nil or t.worlds[currentMap] == true)
 	end)
 end
 
@@ -940,9 +957,56 @@ local function tooCloseToActiveGrave(pos: Vector3): boolean
 	return false
 end
 
--- Spawn ~35 studs from a random living player. (No maps yet, so no ZombieSpawn points — when you build
--- maps, ask to re-add tagged spawn points.) Keeps clear of active graves so zombies don't stack.
+-- Spawn AT a ZombieSpawn-tagged part (place these where zombies should appear — e.g. in the shallows on
+-- Islands so they wade ashore). Prefers points near a living player; falls back to any tagged point.
+local function getSpawnPointCFrame(): CFrame?
+	local pts = CollectionService:GetTagged("ZombieSpawn")
+	if #pts == 0 then
+		return nil
+	end
+	local playerPositions = {}
+	for _, pl in Players:GetPlayers() do
+		local char = pl.Character
+		local r = char and char:FindFirstChild("HumanoidRootPart")
+		local h = char and char:FindFirstChildOfClass("Humanoid")
+		if r and h and h.Health > 0 then
+			table.insert(playerPositions, r.Position)
+		end
+	end
+	local near, all = {}, {}
+	for _, p in pts do
+		if p:IsA("BasePart") and p:IsDescendantOf(Workspace) then -- ignore points in maps tucked into ServerStorage
+			table.insert(all, p)
+			for _, pp in playerPositions do
+				if (p.Position - pp).Magnitude <= SPAWNPOINT_NEAR then
+					table.insert(near, p)
+					break
+				end
+			end
+		end
+	end
+	local pool = (#near > 0) and near or all
+	if #pool == 0 then
+		return nil
+	end
+	local part = pool[math.random(#pool)]
+	-- Top surface of the part + a small random offset within its footprint so a busy point doesn't stack.
+	local top = part.Position.Y + part.Size.Y * 0.5
+	local ox = (math.random() - 0.5) * math.min(part.Size.X, 12)
+	local oz = (math.random() - 0.5) * math.min(part.Size.Z, 12)
+	return CFrame.new(part.Position.X + ox, top + SPAWN_HEIGHT, part.Position.Z + oz)
+end
+
+-- Pick where the next zombie surfaces. Islands (useSpawnPoints) uses ZombieSpawn parts; Forest spawns ~35
+-- studs from a random living player, clear of active graves and outside the out-of-bounds fog.
 local function getSpawnCFrame(): CFrame?
+	if mapUseSpawnPoints then
+		local cf = getSpawnPointCFrame()
+		if cf then
+			return cf
+		end
+		-- No ZombieSpawn points tagged yet — fall through to near-player so the map still functions.
+	end
 	local candidates = {}
 	for _, player in Players:GetPlayers() do
 		local char = player.Character
@@ -992,6 +1056,26 @@ local function loadGraveTemplates()
 	graveTemplates = regular
 	bigGraveTemplates = big
 	hugeGraveTemplates = huge
+end
+
+-- Water emergence props (Islands): optional Models under Assets > Splashes (Splash1, Splash2, ...). If none
+-- exist a simple procedural water ring is used, so Islands works before the owner builds splash models.
+local splashTemplates: { Model } = {}
+local function loadWaterTemplates()
+	local list = {}
+	for _, container in { ReplicatedStorage, ServerStorage } do
+		local assets = ciFind(container, "Assets")
+		local sf = assets and ciFind(assets, "Splashes")
+		if sf then
+			for _, c in sf:GetChildren() do
+				local m = asModel(c)
+				if m then
+					table.insert(list, m)
+				end
+			end
+		end
+	end
+	splashTemplates = list
 end
 
 -- Find the ground under a point: returns (groundY, surfaceNormal). Ignores zombies, players, and grave
@@ -1090,18 +1174,75 @@ local function placeGrave(x: number, groundY: number, z: number, normal: Vector3
 	end)
 end
 
--- Emergence: drop a grave on the ground above the spawn, bury the zombie below it, then raise it to the
+-- Water emergence (Islands): a splash where the zombie surfaces. Clones an Assets>Splashes model if the owner
+-- built one; otherwise spawns a quick expanding water ring. Non-colliding; fades and cleans itself up.
+local function placeSplash(x: number, surfaceY: number, z: number)
+	local pos = Vector3.new(x, surfaceY, z)
+	if #splashTemplates > 0 then
+		local splash = splashTemplates[math.random(#splashTemplates)]:Clone()
+		for _, p in splash:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Anchored = true
+				p.CanCollide = false
+				p.CanQuery = false
+			end
+		end
+		splash:PivotTo(CFrame.new(pos))
+		splash.Parent = graveFolder
+		task.delay(GRAVE_LINGER, function()
+			for _, p in splash:GetDescendants() do
+				if p:IsA("BasePart") then
+					pcall(function()
+						p.Transparency = math.min(1, p.Transparency + 0.5)
+					end)
+				end
+			end
+			task.wait(0.4)
+			splash:Destroy()
+		end)
+		return
+	end
+	-- Procedural fallback: a flat translucent disc that expands and fades (reads as water spray).
+	local ring = Instance.new("Part")
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.Material = Enum.Material.Water
+	ring.Color = Color3.fromRGB(180, 220, 240)
+	ring.Transparency = 0.2
+	ring.Size = Vector3.new(0.6, 4, 4)
+	ring.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90)) -- lay the cylinder flat = a disc on the surface
+	ring.Parent = graveFolder
+	task.spawn(function()
+		local elapsed = 0
+		while elapsed < 1 and ring.Parent do
+			elapsed += task.wait()
+			local a = math.clamp(elapsed, 0, 1)
+			ring.Size = Vector3.new(0.6, 4 + 16 * a, 4 + 16 * a)
+			ring.Transparency = 0.2 + 0.8 * a
+		end
+		ring:Destroy()
+	end)
+end
+
+-- Emergence: props above the spawn (a grave on land, a splash on water), then raise the buried zombie to the
 -- surface over EMERGE_TIME. AI is suppressed (record.emerging) until it's out, then chasing takes over.
 local function startEmergence(record, spawnCF: CFrame)
 	local model = record.model
 	local hum = record.hum
 	local root = record.root
 	local pos = spawnCF.Position
-	local groundY, groundNormal = findGround(pos.X, pos.Z, pos.Y)
-	-- The zombie itself still stands upright (the Humanoid balances it); only the grave follows the slope.
+	-- The zombie itself always stands upright (the Humanoid balances it); only a grave follows the slope.
+	local groundY, groundNormal
+	if mapEmerge == "water" then
+		groundY, groundNormal = pos.Y, Vector3.yAxis -- the ZombieSpawn point is placed AT the water surface
+		placeSplash(pos.X, groundY, pos.Z)
+	else
+		groundY, groundNormal = findGround(pos.X, pos.Z, pos.Y)
+		placeGrave(pos.X, groundY, pos.Z, groundNormal, GRAVE_TIER[record.typeId])
+	end
 	local finalCF = CFrame.new(pos.X, groundY + GRAVE_STAND_HEIGHT, pos.Z)
-
-	placeGrave(pos.X, groundY, pos.Z, groundNormal, GRAVE_TIER[record.typeId])
 
 	record.emerging = true
 	-- Anchor ONLY the root and limp the Humanoid during the rise. The rig's joints keep the limbs glued to
@@ -1853,6 +1994,7 @@ function ZombieService.Start()
 	CollectionService:GetInstanceAddedSignal("ZombieTemplate"):Connect(registerTemplate)
 
 	loadGraveTemplates()
+	loadWaterTemplates()
 
 	RunService.Heartbeat:Connect(onHeartbeat)
 

@@ -21,6 +21,7 @@ export type ZombieType = {
 	isBomb: boolean?,    -- lights a fuse near you, then explodes (BombZombie)
 	canFly: boolean?,    -- hovers and dive-bombs from above (Ghost)
 	summons: boolean?,   -- periodically spawns extra zombies (Necromancer)
+	worlds: { [string]: boolean }?, -- which maps this type randomly spawns on (nil = EVERY map). e.g. {islands=true}
 }
 
 -- ===== ZOMBIE TABLE =====
@@ -46,6 +47,14 @@ local ZombieConfig: { [string]: any } = {
 	speedytank = { id="speedytank", name="Speedy Tank", healthMult=3.5, speedMult=1.5,  damage=30, pointsMult=3.0, isSpecial=true, minRound=17, spawnWeight=10, tint=Color3.fromRGB(160,140,40) },
 	leapertank = { id="leapertank", name="Leaper Tank", healthMult=6,   speedMult=1.05, damage=40, pointsMult=3.5, isSpecial=true, minRound=18, spawnWeight=8,  tint=Color3.fromRGB(100,50,120), canLeap=true },
 	leadtank   = { id="leadtank",   name="Lead Tank",   healthMult=9,   speedMult=0.45, damage=65, pointsMult=4.5, isSpecial=true, minRound=22, spawnWeight=6,  tint=Color3.fromRGB(70,75,85) },
+
+	-- ===== ISLANDS (World 2) ===== rise from the OCEAN (emerge="water"); islands-only via `worlds`. The Forest
+	-- roster above (no `worlds`) also appears here — add worlds={forest=true} to those if you want them Forest-only.
+	-- Model names: Assets > Zombies > <id> (drowned / lurker / angler / brinebrute), else the default model.
+	drowned    = { id="drowned",    name="Drowned",     healthMult=1.1,  speedMult=0.95, damage=22, pointsMult=1.2, isSpecial=false, minRound=1,  spawnWeight=100, tint=Color3.fromRGB(70,110,120),  worlds={islands=true} },
+	lurker     = { id="lurker",     name="Lurker",      healthMult=0.6,  speedMult=2.0,  damage=14, pointsMult=1.5, isSpecial=false, minRound=3,  spawnWeight=42,  tint=Color3.fromRGB(90,170,150),  worlds={islands=true} },
+	angler     = { id="angler",     name="Angler",      healthMult=0.8,  speedMult=1.2,  damage=20, pointsMult=1.8, isSpecial=false, minRound=8,  spawnWeight=28,  tint=Color3.fromRGB(120,90,150),  canLeap=true, worlds={islands=true} },
+	brinebrute = { id="brinebrute", name="Brine Brute", healthMult=3,    speedMult=0.8,  damage=40, pointsMult=2.0, isSpecial=true,  minRound=6,  spawnWeight=20,  tint=Color3.fromRGB(40,90,90),    worlds={islands=true} },
 
 	-- ===== BOSSES (spawnWeight 0 — only spawned by BossWaves) =====
 	boss        = { id="boss",        name="Boss",        healthMult=100, speedMult=0.7,  damage=75, pointsMult=10, isSpecial=true, minRound=10, spawnWeight=0, tint=Color3.fromRGB(40,10,50) },

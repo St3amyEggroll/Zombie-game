@@ -85,8 +85,18 @@ GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for comp
 -- Progression: difficulties unlock in ORDER (beat Easy → Medium unlocks, etc.); beating a world's LAST
 -- difficulty (nightmare) unlocks the next World. Only Forest exists so far.
 GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare", "endless" }
-GameConfig.Worlds          = { "forest" }
+GameConfig.Worlds          = { "forest", "islands" }
 GameConfig.DefaultMap      = "forest"
+
+-- ===== MAPS / WORLDS ===== how each world plays.
+--   emerge         = how zombies surface: "grave" (dig out of the ground) | "water" (rise from the ocean).
+--   useSpawnPoints = true → spawn AT ZombieSpawn-tagged parts (place them where zombies appear); false →
+--                    spawn ~35 studs from a random living player (the Forest default).
+-- Add a world = add a row here + build its map + tag its spawns (see MAPS.md).
+GameConfig.Maps = {
+	forest  = { emerge = "grave", useSpawnPoints = false },
+	islands = { emerge = "water", useSpawnPoints = true },
+}
 
 -- ===== PRE-RUN COUNTDOWN ===== waves don't start until the whole party has loaded in (or the timer
 -- runs out). Once everyone expected is present, the countdown snaps down to the quick value.

@@ -30,6 +30,7 @@ local Places = require(Config.Places)
 local Remotes = require(Modules.Remotes)
 
 local DataService = require(script.Parent.DataService)
+local MapService = require(script.Parent.MapService)
 
 -- Required lazily in Start() to break the cycle (Match -> Zombie -> PlayerState -> Match).
 local ZombieService
@@ -364,6 +365,7 @@ runMatch = function()
 	local diff = GameConfig.Difficulties[state.difficulty] or GameConfig.Difficulties[GameConfig.DefaultDifficulty]
 	state.maxWave = diff.maxWave
 	ZombieService.SetDifficultyMult(diff.mult or 1) -- the mode's stat scale (HP + zombie damage)
+	ZombieService.SetMap(state.map or GameConfig.DefaultMap) -- roster + how zombies emerge (grave vs water)
 
 	state.waveDowned = false
 	state.flawlessStreak = 0
@@ -496,6 +498,7 @@ startRunFor = function(player: Player)
 	ps.inMatch = true
 	ps.ownedWeapons = runWeaponsFor(player) -- re-read the lobby selection (it may have changed between runs)
 	resetRunState(player, ps)
+	MapService.Activate(state.map or GameConfig.DefaultMap) -- show the chosen world's map BEFORE the player spawns onto it
 	spawnCharacter(player)
 	startMatchIfNeeded()
 end
