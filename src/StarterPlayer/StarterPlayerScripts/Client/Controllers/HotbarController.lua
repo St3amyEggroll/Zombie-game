@@ -91,7 +91,7 @@ local function build()
 	UITheme.Attach(gui)
 
 	-- Row anchor (manual X offsets — the held slot animates upward, a list layout would fight it).
-	local totalW = SLOT * 3 + GAP * 2
+	local totalW = SLOT * 2 + GAP -- CHANGED: 2 gun slots; CASES moved to the left-center menu pair
 	local holder = Instance.new("Frame")
 	holder.AnchorPoint = Vector2.new(0.5, 1)
 	holder.Position = UDim2.new(0.5, 0, 1, -14)
@@ -151,29 +151,25 @@ local function build()
 		slotButtons[i] = { frame = frame, name = name, level = level, key = key, stroke = stroke, baseX = x }
 	end
 
-	-- INVENTORY square (third in the row).
-	local invBtn = makeSquare(holder, 2 * (SLOT + GAP))
+	-- CASES button — a standalone square on the LEFT-CENTER edge, LOWER of the GUNS/CASES pair
+	-- (GUNS is the upper square, built by GunShopController). Matches the lobby's menu pair.
+	local invBtn = Instance.new("TextButton")
 	invBtn.Name = "InventoryButton"
+	invBtn.AnchorPoint = Vector2.new(0, 0)
+	invBtn.Position = UDim2.new(0, 16, 0.5, 6)
+	invBtn.Size = UDim2.fromOffset(64, 64)
+	invBtn.BackgroundColor3 = UITheme.PANEL
+	invBtn.BackgroundTransparency = 0.05
+	invBtn.BorderSizePixel = 0
+	invBtn.Text = ""
+	invBtn.AutoButtonColor = true
+	invBtn.Parent = gui
+	UITheme.Corner(invBtn, 8)
+	UITheme.Studs(invBtn, 30)
+	UITheme.Depth(invBtn)
 	UITheme.Edge(invBtn, UITheme.BLACK, 2)
 	UITheme.Edge(invBtn, UITheme.TOXIC, 1, 0.4)
-	local invIcon = Instance.new("ImageLabel")
-	invIcon.AnchorPoint = Vector2.new(0.5, 0)
-	invIcon.Position = UDim2.new(0.5, 0, 0, 8)
-	invIcon.Size = UDim2.new(1, -16, 1, -26) -- leave room for the CASES caption below
-	invIcon.BackgroundTransparency = 1
-	invIcon.Image = CASES_ICON
-	invIcon.ScaleType = Enum.ScaleType.Fit
-	invIcon.Parent = invBtn
-	local invLabel = Instance.new("TextLabel")
-	invLabel.AnchorPoint = Vector2.new(0.5, 1)
-	invLabel.Position = UDim2.new(0.5, 0, 1, -8)
-	invLabel.Size = UDim2.new(1, -8, 0, 14)
-	invLabel.BackgroundTransparency = 1
-	invLabel.FontFace = UITheme.TitleFace
-	invLabel.TextSize = 11
-	invLabel.TextColor3 = UITheme.TEXT
-	invLabel.Text = "CASES"
-	invLabel.Parent = invBtn
+	UITheme.Icon(invBtn, CASES_ICON, { caption = "CASES", captionColor = UITheme.TOXIC })
 	invBtn.Activated:Connect(function()
 		GameInventoryController.Toggle()
 	end)

@@ -704,14 +704,14 @@ lattach(invGui)
 
 local function hideTip() end -- (legacy no-op: hover tooltips were replaced by the detail pane)
 
--- Bottom-left buttons: GUNS [B] + CASES — square icon buttons, these ARE the inventory now.
+-- LEFT-CENTER buttons: GUNS [B] over CASES — square icon buttons, these ARE the inventory now.
 -- Owner-supplied images; the caption underneath doubles as the fallback if an image id fails to load.
 local GUN_ICON = "rbxassetid://107465960874017"
 local CASES_ICON = "rbxassetid://83465359983310"
-local function cornerButton(imageId, caption, xOff, accent, badge)
+local function cornerButton(imageId, caption, yOff, accent, badge)
 	local b = Instance.new("TextButton")
-	b.AnchorPoint = Vector2.new(0, 1)
-	b.Position = UDim2.new(0, xOff, 1, -16); b.Size = UDim2.fromOffset(76, 76)
+	b.AnchorPoint = Vector2.new(0, 0)
+	b.Position = UDim2.new(0, 16, 0.5, yOff); b.Size = UDim2.fromOffset(76, 76)
 	b.BackgroundColor3 = PANEL; b.BorderSizePixel = 0
 	b.Text = ""; b.Parent = invGui; corner(b, 8)
 	lstuds(b); ldepth(b); ledge(b); ledge(b, accent, 1, 0.35); lbevel(b)
@@ -738,8 +738,8 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "GUNS", 16, GOLD, true)
-local casesBtn = cornerButton(CASES_ICON, "CASES", 100, ACCENT, false)
+local gunsBtn = cornerButton(GUN_ICON, "GUNS", -82, GOLD, true)  -- upper
+local casesBtn = cornerButton(CASES_ICON, "CASES", 6, ACCENT, false) -- lower
 
 local PANEL_W, PANEL_H = 940, 560
 local DETAIL_W = 280

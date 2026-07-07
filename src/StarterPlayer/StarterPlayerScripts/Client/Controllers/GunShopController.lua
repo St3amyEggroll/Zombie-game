@@ -279,10 +279,10 @@ function GunShopController.Start()
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
-	-- SHOP button (mobile + mouse) — a square icon button, left of the AUTOSHOOT pill (bottom-right).
+	-- SHOP button (mobile + mouse) — a square icon button, UPPER of the LEFT-CENTER GUNS/CASES pair.
 	local shopBtn = Instance.new("TextButton")
-	shopBtn.AnchorPoint = Vector2.new(1, 1)
-	shopBtn.Position = UDim2.new(1, -250, 1, -16)
+	shopBtn.AnchorPoint = Vector2.new(0, 0)
+	shopBtn.Position = UDim2.new(0, 16, 0.5, -70)
 	shopBtn.Size = UDim2.fromOffset(64, 64)
 	shopBtn.BackgroundColor3 = UITheme.PANEL
 	shopBtn.BorderSizePixel = 0
