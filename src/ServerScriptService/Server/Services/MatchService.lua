@@ -241,8 +241,8 @@ local function teleportToLobby(player: Player, summary)
 	end
 end
 
--- Spawn a player into the arena and arm the death->lobby handoff. resetRunState already reset their cash/
--- buffs. Death ENDS the run (banks, returns to the lobby) — there is no respawn-in-place.
+-- Spawn a player into the arena and arm the death->spectate handoff. resetRunState already reset their cash.
+-- Death does NOT end the run — the player drops into SPECTATE; the run only ends when the whole team is dead.
 spawnCharacter = function(player: Player)
 	player:LoadCharacter()
 	local char = player.Character or player.CharacterAdded:Wait()
@@ -260,96 +260,34 @@ spawnCharacter = function(player: Player)
 			if not p or not p.inMatch then
 				return -- already left the run (e.g. disconnected / teleporting)
 			end
-			p.isDead = true
-			p.isDowned = false
-			p.inMatch = false
-			local summary = bankRun(player, p)
-			if LIVE then
-				teleportToLobby(player, summary) -- published: back to the lobby place
-			else
-				-- Studio: no teleport — restart a fresh run shortly so you can keep testing.
-				task.delay(STUDIO_RESTART_DELAY, function()
-					if player.Parent then
-						startRunFor(player)
-					end
-				end)
-			end
-			-- If everyone left is DOWNED, nobody can revive them — end the run for them too.
-			MatchService.CheckTeamWipe()
+			p.isDead = true -- stays inMatch so they count toward the wipe check + ride the run to the lobby
+			MatchService.MarkWaveDowned() -- a death breaks the team's flawless-wave streak
+			Remotes.Get("DownedChanged"):FireAllClients(player.UserId, true, 0) -- → client SpectateController
+			MatchService.CheckTeamWipe() -- last one standing just died? end the run for everyone
 		end)
 	end
 end
 
--- ===== DOWN / REVIVE SUPPORT ===== (the downed state itself lives in PlayerStateService)
--- "Up" = in the run, alive, and not downed — i.e. capable of reviving someone.
-local function isUp(player: Player): boolean
-	local ps = state.players[player.UserId]
-	if not ps or not ps.inMatch or ps.isDowned then
-		return false
-	end
-	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-	return hum ~= nil and hum.Health > 0
-end
-
--- Does `player` have ANY other up teammate in the run? (Decides downed-vs-dead at 0 HP.)
-function MatchService.HasUpTeammate(player: Player): boolean
-	for _, other in Players:GetPlayers() do
-		if other ~= player and isUp(other) then
-			return true
-		end
-	end
-	return false
-end
-
--- If NOBODY in the run is up (everyone downed/dead), nobody can revive anyone: force-kill the downed so
--- their normal death path (bank + teleport to lobby) runs. Called when someone goes down or dies for real.
-function MatchService.CheckTeamWipe()
-	local anyInRun = false
-	for _, player in Players:GetPlayers() do
-		local ps = state.players[player.UserId]
-		if ps and ps.inMatch then
-			anyInRun = true
-			if isUp(player) then
-				return -- someone can still fight/revive; no wipe
-			end
-		end
-	end
-	if not anyInRun then
-		return
-	end
-	for _, player in Players:GetPlayers() do
-		local ps = state.players[player.UserId]
-		if ps and ps.inMatch then
-			ps.isDowned = false
-			local char = player.Character
-			if char then
-				char:SetAttribute("Downed", nil)
-			end
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			if hum and hum.Health > 0 then
-				hum.Health = 0 -- Died fires -> banks the run + teleports them to the lobby
-			end
-		end
-	end
-end
-
--- ===== THE RUN (endless, shared) =====
--- Run cleared its difficulty's final wave → VICTORY: bank everyone (+ a Coins bonus) and send them to the
--- lobby with a win summary.
-local function winRun()
+-- ===== RUN END ===== (shared by team-wipe and victory)
+-- Bank every in-run player (win adds the Coins bonus + world unlock) and send them back to the lobby.
+local function endRun(win: boolean)
 	for _, player in Players:GetPlayers() do
 		local ps = state.players[player.UserId]
 		if ps and ps.inMatch then
 			ps.inMatch = false
-			DataService.AddMoney(player, GameConfig.VictoryBonusCoins)
-			DataService.MarkCompleted(player, state.map or GameConfig.DefaultMap, state.difficulty) -- unlock the next difficulty/world
+			if win then
+				DataService.AddMoney(player, GameConfig.VictoryBonusCoins)
+				DataService.MarkCompleted(player, state.map or GameConfig.DefaultMap, state.difficulty) -- unlock next
+			end
 			local summary = bankRun(player, ps)
-			summary.win = true
-			summary.money = (summary.money or 0) + GameConfig.VictoryBonusCoins
+			if win then
+				summary.win = true
+				summary.money = (summary.money or 0) + GameConfig.VictoryBonusCoins
+			end
 			if LIVE then
-				teleportToLobby(player, summary)
+				teleportToLobby(player, summary) -- published: back to the lobby place
 			else
-				task.delay(STUDIO_RESTART_DELAY, function()
+				task.delay(STUDIO_RESTART_DELAY, function() -- Studio: restart a fresh run so you can keep testing
 					if player.Parent then
 						startRunFor(player)
 					end
@@ -357,6 +295,30 @@ local function winRun()
 			end
 		end
 	end
+end
+
+-- If NOBODY in the run is still alive (everyone's dead/spectating), the run is over for everyone.
+function MatchService.CheckTeamWipe()
+	local anyInRun, anyAlive = false, false
+	for _, player in Players:GetPlayers() do
+		local ps = state.players[player.UserId]
+		if ps and ps.inMatch then
+			anyInRun = true
+			local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if not ps.isDead and hum and hum.Health > 0 then
+				anyAlive = true
+			end
+		end
+	end
+	if anyInRun and not anyAlive then
+		endRun(false) -- team wipe: bank + back to the lobby
+	end
+end
+
+-- ===== THE RUN (endless, shared) =====
+-- Run cleared its difficulty's final wave → VICTORY: bank everyone (+ a Coins bonus) and send them home.
+local function winRun()
+	endRun(true)
 end
 
 runMatch = function()

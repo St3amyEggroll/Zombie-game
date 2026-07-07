@@ -71,10 +71,8 @@ local DEFINITIONS: { [string]: string } = {
 	-- (In-run gun upgrades were REMOVED — guns now level up persistently in the LOBBY via case copies;
 	-- the level rides in on data.gunLevels and GunLevelConfig turns it into stats.)
 
-	-- Down / Revive (co-op: at 0 HP with teammates up you go DOWNED instead of dying; they revive you)
-	Revive            = "RemoteEvent",     -- C->S: (targetUserId, holding: boolean) start/stop a revive hold
-	ReviveProgress    = "RemoteEvent",     -- S->C: (targetUserId, progress 0..1) — drives the revive bar
-	DownedChanged     = "RemoteEvent",     -- S->C broadcast: (userId, isDowned, bleedoutEndsAt)
+	-- Death / spectate (no revive: dying drops you into spectate; the run ends only on a full team wipe)
+	DownedChanged     = "RemoteEvent",     -- S->C broadcast: (userId, isOut, 0) — a player died → spectating
 }
 
 local cache: { [string]: Instance } = {}

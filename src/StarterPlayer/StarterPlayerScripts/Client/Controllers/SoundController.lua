@@ -472,19 +472,15 @@ function SoundController.Start()
 			stopLoop("lowhp")
 		end
 	end)
+	-- Death → spectate (no revive): one-shot death cue + kill the low-HP loop.
 	Remotes.Get("DownedChanged").OnClientEvent:Connect(function(userId, isDowned)
 		if userId ~= localPlayer.UserId then
 			return
 		end
 		if isDowned then
-			wasDowned = true
-			startLoop("downed", "DownedAlarm")
-		else
+			stopLoop("lowhp")
 			stopLoop("downed")
-			if wasDowned then
-				wasDowned = false
-				SoundController.Play("ReviveComplete")
-			end
+			SoundController.Play("PlayerDeath")
 		end
 	end)
 

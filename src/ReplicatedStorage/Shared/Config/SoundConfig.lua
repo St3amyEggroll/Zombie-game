@@ -85,8 +85,7 @@ SoundConfig.Sounds = {
 	-- ===== PLAYER (2D) =====
 	PlayerHurt     = S("", 0.6, 0, 0.95, 1.05),    -- you took damage [hurt grunt]
 	LowHealthLoop  = S("", 0.5, 0, 1, 1, true),    -- under 35% HP [heartbeat loop]
-	DownedAlarm    = S("", 0.5, 0, 1, 1, true),    -- you are downed [alarm loop / flatline]
-	ReviveComplete = S("", 0.7, 0, 1, 1),          -- you got back up [revive chime]
+	PlayerDeath    = S("", 0.7, 0, 0.9, 1.05),     -- you died → spectate [death sting]
 
 	-- ===== WAVES / MATCH (2D stingers) =====
 	WaveStart          = S("137884319678560", 0.6, 0, 1, 1),      -- round start (wave 1) [horde horn / air raid sting]
