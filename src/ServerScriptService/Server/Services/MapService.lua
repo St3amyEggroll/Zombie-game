@@ -1,69 +1,104 @@
 --!nonstrict
--- MapService.lua — shows the ONE selected world's map and tucks every OTHER map away, so multiple maps can
--- live in the same GAME place without overlapping. Called by MatchService at run start (before players spawn).
+-- MapService.lua — clones the SELECTED world's map into Workspace and removes the previously-active one, so
+-- every map can live as a TEMPLATE in storage. Called by MatchService at run start (before players spawn).
 --
--- A "map" is a Model or Folder in Workspace/ServerStorage that is EITHER:
---   • named "<world>Map"  — case/space/dash insensitive: "ForestMap", "islands map", "islands_map"
---   • OR tagged "Map" (CollectionService) with a string attribute `World` = the world id.
--- The selected map is parented into Workspace; the others are parented to ServerStorage, which makes their
--- geometry, SpawnLocations, ZombieSpawn points, and Fog boundaries all go inert (they're no longer in the
--- world). If NOTHING matches the requested world, the scene is left untouched — single-map greyboxing still
--- works exactly as before.
+-- A map template is a Model or Folder that is EITHER:
+--   • named "<world>Map"  — case/space/dash insensitive, and singular/plural tolerant:
+--       "ForestMap" → forest, "IslandsMap"/"islandMap"/"islands map" → islands
+--   • OR tagged "Map" (CollectionService) with a String attribute `World` = the world id.
+-- Keep templates in ServerStorage or ReplicatedStorage — loose, or nested in a "Maps"/"Assets/Maps" folder
+-- (any depth up to 3 is scanned). ServerStorage is leaner (ReplicatedStorage copies replicate to clients).
+--
+-- Activate() clones the chosen template into Workspace as "ActiveMap" and destroys the previous ActiveMap, so
+-- exactly one map is live at a time. The clone carries its tags (PlayerSpawn/ZombieSpawn/Fog) and its
+-- SpawnLocation, which is why players + zombie spawns work from it.
 
 local Workspace = game:GetService("Workspace")
 local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local MapService = {}
+
+local ACTIVE_NAME = "ActiveMap"
+-- Folders we never descend into while hunting for map templates (perf + avoid false positives).
+local SKIP = {
+	Shared = true, Server = true, Remotes = true, Zombies = true, Graves = true, Splashes = true,
+	GunDisplay = true, CrateDisplay = true, Weapons = true, Terrain = true, Camera = true,
+}
 
 local function norm(s: any): string
 	return (tostring(s):lower():gsub("[%s%-_]", ""))
 end
 
-local containers: { [string]: Instance } = {} -- normalized world id -> its map container
+local templates: { [string]: Instance } = {} -- normalized world id -> its template instance
 
-local function scan()
-	containers = {}
-	for _, root in { Workspace, ServerStorage } do
-		for _, c in root:GetChildren() do
-			if c:IsA("Model") or c:IsA("Folder") then
-				local w = norm(c.Name):match("^(.-)map$") -- "forestmap" -> "forest"
-				if w and w ~= "" then
-					containers[w] = c
-				end
-			end
+local function consider(inst: Instance)
+	if not (inst:IsA("Model") or inst:IsA("Folder")) then
+		return
+	end
+	local world
+	local attr = inst:GetAttribute("World")
+	if typeof(attr) == "string" and attr ~= "" then
+		world = norm(attr)
+	else
+		local w = norm(inst.Name):match("^(.-)map$") -- "forestmap" -> "forest"
+		if w and w ~= "" then
+			world = w
 		end
 	end
-	for _, inst in CollectionService:GetTagged("Map") do
-		local w = inst:GetAttribute("World")
-		if typeof(w) == "string" and w ~= "" then
-			containers[norm(w)] = inst
-		end
+	if world then
+		templates[world] = inst
 	end
 end
 
--- Show `world`'s map, hide the rest. Idempotent (safe to call once per joining player).
-function MapService.Activate(world: string?)
-	scan() -- re-scan so maps added/synced after boot are picked up
-	local key = norm(world)
-	if not containers[key] then
-		return -- unknown world or single-map greybox: don't touch the scene
-	end
-	for w, inst in containers do
-		local dest = (w == key) and Workspace or ServerStorage
-		if inst.Parent ~= dest then
-			inst.Parent = dest
+local function scan()
+	templates = {}
+	local function recurse(inst: Instance, depth: number)
+		for _, c in inst:GetChildren() do
+			consider(c)
+			if depth < 3 and c:IsA("Folder") and not SKIP[c.Name] then
+				recurse(c, depth + 1)
+			end
 		end
 	end
+	recurse(ServerStorage, 0)
+	recurse(ReplicatedStorage, 0)
+	for _, inst in CollectionService:GetTagged("Map") do
+		consider(inst)
+	end
+end
+
+-- Tolerates a singular/plural mismatch (islandMap ↔ islands) so the map name doesn't have to be exact.
+local function lookup(world: string?): Instance?
+	local w = norm(world)
+	return templates[w] or templates[(w:gsub("s$", ""))] or templates[w .. "s"]
+end
+
+function MapService.Activate(world: string?)
+	scan()
+	local tmpl = lookup(world)
+	if not tmpl then
+		warn(("[MapService] no map template for world '%s' — name one '<world>Map' (or tag it 'Map' with a "
+			.. "World attribute) in ServerStorage/ReplicatedStorage."):format(tostring(world)))
+		return
+	end
+	local existing = Workspace:FindFirstChild(ACTIVE_NAME)
+	if existing then
+		existing:Destroy()
+	end
+	local clone = tmpl:Clone()
+	clone.Name = ACTIVE_NAME
+	clone.Parent = Workspace
 end
 
 function MapService.Start()
 	scan()
-	local n = 0
-	for _ in containers do
-		n += 1
+	local names = {}
+	for w in templates do
+		table.insert(names, w)
 	end
-	print(("[MapService] started (%d map container(s) found)"):format(n))
+	print(("[MapService] started (%d map template(s): %s)"):format(#names, table.concat(names, ", ")))
 end
 
 return MapService
