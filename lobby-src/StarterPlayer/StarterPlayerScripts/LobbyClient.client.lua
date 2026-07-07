@@ -704,19 +704,42 @@ lattach(invGui)
 
 local function hideTip() end -- (legacy no-op: hover tooltips were replaced by the detail pane)
 
--- Bottom-left buttons: GUNS [B] + CASES — these ARE the inventory now (the old single panel is gone).
-local function cornerButton(textStr, yOff, accent)
+-- Bottom-left buttons: GUNS [B] + CASES — square icon buttons, these ARE the inventory now.
+-- Owner-supplied images; the caption underneath doubles as the fallback if an image id fails to load.
+local GUN_ICON = "rbxassetid://107968878322175"
+local CASES_ICON = "rbxassetid://99896391127728"
+local function cornerButton(imageId, caption, xOff, accent, badge)
 	local b = Instance.new("TextButton")
 	b.AnchorPoint = Vector2.new(0, 1)
-	b.Position = UDim2.new(0, 16, 1, yOff); b.Size = UDim2.fromOffset(280, 64)
+	b.Position = UDim2.new(0, xOff, 1, -16); b.Size = UDim2.fromOffset(76, 76)
 	b.BackgroundColor3 = PANEL; b.BorderSizePixel = 0
-	b.FontFace = TITLE_FACE; b.TextSize = 24; b.TextColor3 = TEXTCOL
-	b.Text = textStr; b.Parent = invGui; corner(b, 6)
+	b.Text = ""; b.Parent = invGui; corner(b, 8)
 	lstuds(b); ldepth(b); ledge(b); ledge(b, accent, 1, 0.35); lbevel(b)
+
+	local img = Instance.new("ImageLabel")
+	img.BackgroundTransparency = 1; img.Image = imageId
+	img.ScaleType = Enum.ScaleType.Fit
+	img.AnchorPoint = Vector2.new(0.5, 0)
+	img.Position = UDim2.new(0.5, 0, 0, 9); img.Size = UDim2.new(1, -18, 1, -27)
+	img.Parent = b
+
+	local cap = Instance.new("TextLabel")
+	cap.AnchorPoint = Vector2.new(0.5, 1); cap.Position = UDim2.new(0.5, 0, 1, -5)
+	cap.Size = UDim2.new(1, -6, 0, 13); cap.BackgroundTransparency = 1
+	cap.FontFace = TITLE_FACE; cap.TextSize = 11; cap.TextColor3 = TEXTCOL
+	cap.TextXAlignment = Enum.TextXAlignment.Center; cap.Text = caption; cap.Parent = b
+
+	if badge then
+		local bd = Instance.new("TextLabel")
+		bd.Position = UDim2.fromOffset(6, 4); bd.Size = UDim2.fromOffset(16, 14)
+		bd.BackgroundTransparency = 1; bd.FontFace = TITLE_FACE; bd.TextSize = 12
+		bd.TextColor3 = GOLD; bd.TextXAlignment = Enum.TextXAlignment.Left
+		bd.Text = "B"; bd.Parent = b
+	end
 	return b
 end
-local gunsBtn = cornerButton("GUNS [B]", -16, GOLD)
-local casesBtn = cornerButton("CASES", -92, ACCENT)
+local gunsBtn = cornerButton(GUN_ICON, "GUNS", 16, GOLD, true)
+local casesBtn = cornerButton(CASES_ICON, "CASES", 100, ACCENT, false)
 
 local PANEL_W, PANEL_H = 940, 560
 local DETAIL_W = 280

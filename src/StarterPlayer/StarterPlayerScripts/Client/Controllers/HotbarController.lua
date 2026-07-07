@@ -28,6 +28,7 @@ local HotbarController = {}
 -- ===== TUNABLES =====
 local SLOT = 84      -- square slot size (px) — finger-sized on phones after the responsive scale
 local GAP = 10
+local CASES_ICON = "rbxassetid://99896391127728" -- owner-supplied CASES button image
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -155,14 +156,13 @@ local function build()
 	invBtn.Name = "InventoryButton"
 	UITheme.Edge(invBtn, UITheme.BLACK, 2)
 	UITheme.Edge(invBtn, UITheme.TOXIC, 1, 0.4)
-	local invIcon = Instance.new("TextLabel")
-	invIcon.Position = UDim2.fromOffset(0, 14)
-	invIcon.Size = UDim2.new(1, 0, 0, 30)
+	local invIcon = Instance.new("ImageLabel")
+	invIcon.AnchorPoint = Vector2.new(0.5, 0)
+	invIcon.Position = UDim2.new(0.5, 0, 0, 8)
+	invIcon.Size = UDim2.new(1, -16, 1, -26) -- leave room for the CASES caption below
 	invIcon.BackgroundTransparency = 1
-	invIcon.FontFace = UITheme.TitleFace
-	invIcon.TextSize = 26
-	invIcon.TextColor3 = UITheme.TOXIC
-	invIcon.Text = "≡"
+	invIcon.Image = CASES_ICON
+	invIcon.ScaleType = Enum.ScaleType.Fit
 	invIcon.Parent = invBtn
 	local invLabel = Instance.new("TextLabel")
 	invLabel.AnchorPoint = Vector2.new(0.5, 1)

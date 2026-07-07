@@ -22,6 +22,7 @@ local GunShopController = {}
 
 -- ===== TUNABLES =====
 local TOGGLE_KEY = Enum.KeyCode.B
+local GUN_ICON = "rbxassetid://107968878322175" -- owner-supplied GUNS button image
 local PANEL_W, PANEL_H = 940, 560
 local RARITY_COLORS = {
 	common = Color3.fromRGB(176, 190, 197), uncommon = Color3.fromRGB(102, 187, 106),
@@ -278,21 +279,20 @@ function GunShopController.Start()
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
-	-- SHOP button (mobile + mouse), left of the AUTOSHOOT pill in the bottom-right corner.
+	-- SHOP button (mobile + mouse) — a square icon button, left of the AUTOSHOOT pill (bottom-right).
 	local shopBtn = Instance.new("TextButton")
 	shopBtn.AnchorPoint = Vector2.new(1, 1)
 	shopBtn.Position = UDim2.new(1, -250, 1, -16)
-	shopBtn.Size = UDim2.fromOffset(96, 38)
+	shopBtn.Size = UDim2.fromOffset(64, 64)
 	shopBtn.BackgroundColor3 = UITheme.PANEL
 	shopBtn.BorderSizePixel = 0
-	shopBtn.FontFace = UITheme.TitleFace
-	shopBtn.TextSize = 14
-	shopBtn.TextColor3 = UITheme.GOLD
-	shopBtn.Text = "GUNS [B]"
+	shopBtn.AutoButtonColor = true
+	shopBtn.Text = ""
 	shopBtn.Parent = gui
-	UITheme.Corner(shopBtn, 6)
+	UITheme.Corner(shopBtn, 8)
 	UITheme.Edge(shopBtn)
 	UITheme.Studs(shopBtn)
+	UITheme.Icon(shopBtn, GUN_ICON, { caption = "GUNS", captionColor = UITheme.GOLD, badge = "B", badgeColor = UITheme.GOLD })
 
 	-- Panel: grid | featured | buy stack (same skeleton as the lobby's crate shop).
 	panel = UITheme.Panel(gui, "GunShopPanel", { accent = UITheme.HeaderColors.guns })

@@ -331,6 +331,44 @@ function UITheme.CardShade(frame: GuiObject, strength: number?)
 	return g
 end
 
+-- NEW: turn a (square) button into an ICON button — an inset image that the studded plate frames,
+-- an optional small caption under it (also the graceful fallback if the image id ever fails to load),
+-- and an optional keybind badge top-left. Clears the button's own Text. Returns the ImageLabel.
+-- opts = { inset?, caption?, captionColor?, badge?, badgeColor? }
+function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
+	opts = opts or {}
+	if button:IsA("TextButton") or button:IsA("TextLabel") then
+		button.Text = ""
+	end
+	local pad = opts.inset or 9
+	local capH = opts.caption and 13 or 0
+	local img = Instance.new("ImageLabel")
+	img.Name = "Icon"
+	img.BackgroundTransparency = 1
+	img.Image = imageId
+	img.ScaleType = Enum.ScaleType.Fit
+	img.AnchorPoint = Vector2.new(0.5, 0)
+	img.Position = UDim2.new(0.5, 0, 0, pad)
+	img.Size = UDim2.new(1, -pad * 2, 1, -pad * 2 - capH)
+	img.Parent = button
+	if opts.caption then
+		local cap = UITheme.Label(button, "IconCaption", 11, opts.captionColor or UITheme.TEXT, true)
+		cap.AnchorPoint = Vector2.new(0.5, 1)
+		cap.Position = UDim2.new(0.5, 0, 1, -5)
+		cap.Size = UDim2.new(1, -6, 0, capH)
+		cap.TextXAlignment = Enum.TextXAlignment.Center
+		cap.Text = opts.caption
+	end
+	if opts.badge then
+		local bd = UITheme.Label(button, "IconBadge", 12, opts.badgeColor or UITheme.GOLD, true)
+		bd.Position = UDim2.fromOffset(6, 4)
+		bd.Size = UDim2.fromOffset(18, 15)
+		bd.TextXAlignment = Enum.TextXAlignment.Left
+		bd.Text = opts.badge
+	end
+	return img
+end
+
 -- A chunky action button: gradient fill, black edge, stencil label, press-pop.
 -- variant: "primary" (toxic) | "danger" (orange) | "ghost" (dark) | "gold"
 function UITheme.Button(parent: Instance, textStr: string, variant: string?)
