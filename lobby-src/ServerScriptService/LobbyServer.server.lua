@@ -173,7 +173,7 @@ local CASES = {
 	divine    = { skinWeights = { common = 5,  rare = 22, legendary = 38, divine = 35 } },
 }
 for rarity, c in CASES do
-	c.name = RARITY[rarity].name .. " Case"
+	c.name = RARITY[rarity].name .. " Skin Crate"
 end
 
 -- ===== GUN LEVELS (the Clash-Royale copies system) =====
@@ -372,6 +372,7 @@ local BuyGun    = mk("BuyGun")    -- C->S: {weaponId} buy a gun outright with Co
 local EquipSkin = mk("EquipSkin") -- C->S: {weaponId, skinId?} equip a skin (nil/false = back to base look)
 -- Sound
 local SetSoundSettings = mk("SetSoundSettings") -- C->S: ({master, music, sfx} 0..1) persist volume sliders
+local SetShake      = mk("SetShake")      -- C->S: (bool) persist the camera-shake on/off preference (shared with the game place)
 
 -- ===== PROFILE =====
 local store = DataStoreService:GetDataStore(STORE_NAME)
@@ -500,6 +501,8 @@ local function sanitizeSettings(v)
 		music = math.clamp(tonumber(vol.music) or 0.6, 0, 1),
 		sfx = math.clamp(tonumber(vol.sfx) or 1, 0, 1),
 	}
+	-- Camera-shake preference (shared with the game place). Default ON; only false when explicitly disabled.
+	out.shake = (out.shake ~= false)
 	return out
 end
 
@@ -1680,5 +1683,19 @@ SetSoundSettings.OnServerEvent:Connect(function(player, vol)
 		music = math.clamp(mu, 0, 1),
 		sfx = math.clamp(s, 0, 1),
 	}
+	markDirty(player)
+end)
+
+-- Camera-shake on/off -> the shared profile's settings.shake (the game place reads it to gate screen shake).
+SetShake.OnServerEvent:Connect(function(player, on)
+	if not allow(player, "Settings") then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return
+	end
+	prof.settings = (typeof(prof.settings) == "table") and prof.settings or {}
+	prof.settings.shake = (on == true)
 	markDirty(player)
 end)

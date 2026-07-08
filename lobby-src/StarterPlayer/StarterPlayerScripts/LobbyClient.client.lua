@@ -592,6 +592,11 @@ StatsRemote.OnClientEvent:Connect(function(s)
 		volSfx = math.clamp(tonumber(s.settings.vol.sfx) or volSfx, 0, 1)
 		applySoundVol()
 	end
+	-- Camera-shake preference (shared with the game place): mirror it onto a player attribute the settings
+	-- toggle reads. Default ON; only OFF when the saved value is explicitly false.
+	if typeof(s.settings) == "table" and s.settings.shake ~= nil then
+		localPlayer:SetAttribute("ShakeOff", s.settings.shake ~= true)
+	end
 	moneyLabel.Text = fmt(s.lobbyMoney or 0)
 	bestLabel.Text = "BEST: WAVE " .. tostring(s.bestWave or 0)
 	-- keep the (future) coin icon hugging the number's left edge
@@ -758,7 +763,7 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 	return b
 end
 local gunsBtn = cornerButton(GUN_ICON, "GUNS", -82, GOLD, true)  -- upper
-local casesBtn = cornerButton(CASES_ICON, "CASES", 6, ACCENT, false) -- lower
+local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 6, ACCENT, false) -- lower
 
 local PANEL_W, PANEL_H = 940, 560
 local DETAIL_W = 280
@@ -1106,7 +1111,7 @@ local function renderInvDetail()
 		local owned = ownsSkin(id)
 		local status = centered(300, 20, BODYB_FACE, 13, owned and ACCENT or DIMTEXT)
 		local isOn = owned and invData.skins.equipped and invData.skins.equipped[s.gun] == s.skin
-		status.Text = isOn and "EQUIPPED" or (owned and "OWNED" or "LOCKED — pull it from a crate")
+		status.Text = isOn and "EQUIPPED" or (owned and "OWNED" or "LOCKED — pull it from a skin crate")
 
 		if owned and ownsGun(s.gun) then
 			local btn
@@ -1129,7 +1134,7 @@ local function renderInvDetail()
 			note.AutoButtonColor = false
 			note.Position = UDim2.new(0, 0, 0, 0); note.Size = UDim2.new(1, 0, 0, 56)
 		else
-			local note = paneButton("FIND IT IN CRATES", GHOSTA, GHOSTB, DIMTEXT)
+			local note = paneButton("FIND IT IN SKIN CRATES", GHOSTA, GHOSTB, DIMTEXT)
 			note.AutoButtonColor = false
 			note.Position = UDim2.new(0, 0, 0, 0); note.Size = UDim2.new(1, 0, 0, 56)
 		end
@@ -1149,7 +1154,7 @@ local function renderInvDetail()
 
 		local open
 		if count > 0 then
-			open = paneButton("OPEN CASE", ACCENT, darker(ACCENT, 0.5), Color3.fromRGB(14, 22, 6))
+			open = paneButton("OPEN CRATE", ACCENT, darker(ACCENT, 0.5), Color3.fromRGB(14, 22, 6))
 			open.Activated:Connect(function()
 				if rolling then return end
 				rolling = true
@@ -1203,7 +1208,7 @@ local function renderCasesGrid()
 		end
 	end
 	if #ids == 0 then
-		invEmptyNote("No cases right now — kill BOSSES in runs (or hit the SHOP) to get more!")
+		invEmptyNote("No skin crates right now — kill BOSSES in runs (or hit the SHOP) to get more!")
 	end
 	return ids
 end
@@ -1212,7 +1217,7 @@ end
 local function showTab(id)
 	activeTab = id
 	selectedInv = nil -- switching screens resets the featured pane
-	invTitle.Text = (id == "weapons") and "GUNS" or "CASES"
+	invTitle.Text = (id == "weapons") and "GUNS" or "SKIN CRATES"
 	local hc = (id == "weapons") and HEADER_COLORS.guns or HEADER_COLORS.cases
 	invHeaderBar.BackgroundColor3 = hc
 	invHeaderSq.BackgroundColor3 = hc
@@ -1930,7 +1935,7 @@ do
 
 	local sPanel = Instance.new("Frame")
 	sPanel.AnchorPoint = Vector2.new(1, 1); sPanel.Position = UDim2.new(1, -12, 1, -68)
-	sPanel.Size = UDim2.fromOffset(340, 250); sPanel.BackgroundColor3 = PANEL; sPanel.BackgroundTransparency = 0.12
+	sPanel.Size = UDim2.fromOffset(340, 312); sPanel.BackgroundColor3 = PANEL; sPanel.BackgroundTransparency = 0.12
 	sPanel.BorderSizePixel = 0; sPanel.Visible = false; sPanel.Parent = setGui
 	corner(sPanel, 8); lstuds(sPanel); ldepth(sPanel); ledge(sPanel, TBLACK, 3); ledge(sPanel, HEADER_COLORS.settings, 2.5, 0.05)
 
@@ -2005,10 +2010,47 @@ do
 		return render
 	end
 
+	-- On/off pill toggle (label + a sliding switch). get()/set(bool).
+	local function toggleRow(y, labelText, get, set)
+		local label = Instance.new("TextLabel")
+		label.Position = UDim2.fromOffset(18, y); label.Size = UDim2.fromOffset(180, 26); label.BackgroundTransparency = 1
+		label.FontFace = BODYB_FACE; label.TextSize = 15; label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextColor3 = DIMTEXT; label.Text = labelText; label.Parent = sPanel
+
+		local sw = Instance.new("TextButton")
+		sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -18, 0, y + 13); sw.Size = UDim2.fromOffset(64, 30)
+		sw.BorderSizePixel = 0; sw.Text = ""; sw.AutoButtonColor = false
+		sw:SetAttribute("NoClickSound", true); sw.Parent = sPanel
+		corner(sw, 15); ledge(sw, TBLACK, 2)
+
+		local knob = Instance.new("Frame")
+		knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.Size = UDim2.fromOffset(24, 24)
+		knob.BackgroundColor3 = TEXTCOL; knob.BorderSizePixel = 0; knob.Parent = sw
+		corner(knob, 12); ledge(knob, TBLACK, 1.5)
+
+		local function paint()
+			local on = get()
+			sw.BackgroundColor3 = on and ACCENT or TRACK
+			knob.Position = on and UDim2.new(1, -15, 0.5, 0) or UDim2.new(0, 15, 0.5, 0)
+		end
+		sw.Activated:Connect(function()
+			set(not get()); paint()
+		end)
+		paint()
+		return paint
+	end
+
+	local SetShake = remotes:WaitForChild("SetShake")
 	local renders = {
 		sliderRow(58, "MASTER", function() return volMaster end, function(v) volMaster = v end),
 		sliderRow(120, "MUSIC", function() return volMusic end, function(v) volMusic = v end),
 		sliderRow(182, "SFX", function() return volSfx end, function(v) volSfx = v end),
+		toggleRow(244, "CAMERA SHAKE", function()
+			return localPlayer:GetAttribute("ShakeOff") ~= true
+		end, function(v)
+			localPlayer:SetAttribute("ShakeOff", not v)
+			SetShake:FireServer(v)
+		end),
 	}
 	local function renderAll()
 		for _, r in renders do r() end

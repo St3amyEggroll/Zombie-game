@@ -121,7 +121,7 @@ render = function()
 		local msg = UITheme.Label(grid, nil, 14, UITheme.DIM, true)
 		msg.Size = UDim2.fromOffset(320, 60)
 		msg.TextWrapped = true
-		msg.Text = "No crates yet — clear every 10th wave and kill BOSSES to earn them!"
+		msg.Text = "No skin crates yet — clear every 10th wave and kill BOSSES to earn them!"
 	end
 
 	clearChildren(detail)
@@ -160,7 +160,7 @@ render = function()
 	note.Position = UDim2.fromOffset(14, 280)
 	note.Size = UDim2.new(1, -28, 0, 60)
 	note.TextWrapped = true
-	note.Text = "Crates hold gun SKINS. Open them at the lobby — the reel is waiting."
+	note.Text = "Skin crates hold gun SKINS. Open them at the lobby — the reel is waiting."
 
 	local openBtn = UITheme.Button(acts, "OPEN IN LOBBY", "ghost")
 	openBtn.Position = UDim2.new(0, 0, 0, 0)
@@ -224,7 +224,7 @@ function GameInventoryController.Start()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "CASES", 44, UITheme.TOXIC, UITheme.HeaderColors.cases)
+	UITheme.Header(panel, "SKIN CRATES", 44, UITheme.TOXIC, UITheme.HeaderColors.cases)
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.AnchorPoint = Vector2.new(1, 0)
@@ -298,7 +298,7 @@ function GameInventoryController.Start()
 
 	Remotes.Get("CaseDropped").OnClientEvent:Connect(function(rarity)
 		local disp = data and data.catalog.cases[tostring(rarity)]
-		showToast(("CASE DROP — %s!"):format(disp and disp.name or "Case"), rarityColor(tostring(rarity)))
+		showToast(("SKIN CRATE DROP — %s!"):format(disp and disp.name or "Skin Crate"), rarityColor(tostring(rarity)))
 	end)
 
 	print("[GameInventoryController] started (CASES screen)")
