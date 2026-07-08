@@ -608,6 +608,9 @@ StatsRemote.OnClientEvent:Connect(function(s)
 	if typeof(s.settings) == "table" and s.settings.shake ~= nil then
 		localPlayer:SetAttribute("ShakeOff", s.settings.shake ~= true)
 	end
+	-- Account XP drives the level bar; expose it as an attribute so the XP-bar block (below) can react
+	-- without a new top-level local (this client sits at Luau's 200-local ceiling).
+	localPlayer:SetAttribute("AccountXP", tonumber(s.xp) or 0)
 	moneyLabel.Text = fmt(s.lobbyMoney or 0)
 	bestLabel.Text = "BEST: WAVE " .. tostring(s.bestWave or 0)
 	-- keep the (future) coin icon hugging the number's left edge
@@ -1059,22 +1062,33 @@ local function renderInvDetail()
 		end
 
 		if not ownsGun(id) then
-			-- Locked: price + BUY under the stats.
-			local priceLbl = centered(330, 22, BODYB_FACE, 18, GOLD)
-			priceLbl.Text = "🪙 " .. fmt(w.price or 0)
-			local canAfford = (invData.coins or 0) >= (w.price or 0)
-			local buy
-			if canAfford then
-				buy = bigButton(invDetail, ("BUY  ·  🪙 %s"):format(fmt(w.price or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
-				buy.Activated:Connect(function()
-					lplay("Buy")
-					BuyGun:FireServer({ weaponId = id })
-				end)
+			local reqLevel = tonumber(w.unlock) or 0
+			local myLevel = localPlayer:GetAttribute("AccountLevel") or 1
+			if myLevel < reqLevel then
+				-- Level-locked: show the level requirement instead of a buy button (server enforces it too).
+				local lockLbl = centered(330, 22, BODYB_FACE, 18, DIMTEXT)
+				lockLbl.Text = "🔒 UNLOCKS AT LEVEL " .. reqLevel
+				local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), GHOSTA, GHOSTB, DIMTEXT)
+				note.AutoButtonColor = false
+				note.Position = UDim2.fromOffset(14, 356); note.Size = UDim2.new(1, -28, 0, 46)
 			else
-				buy = bigButton(invDetail, ("NEED 🪙 %s"):format(fmt(w.price or 0)), GHOSTA, GHOSTB, DIMTEXT)
-				buy.AutoButtonColor = false
+				-- Unlocked by level: price + BUY under the stats.
+				local priceLbl = centered(330, 22, BODYB_FACE, 18, GOLD)
+				priceLbl.Text = "🪙 " .. fmt(w.price or 0)
+				local canAfford = (invData.coins or 0) >= (w.price or 0)
+				local buy
+				if canAfford then
+					buy = bigButton(invDetail, ("BUY  ·  🪙 %s"):format(fmt(w.price or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
+					buy.Activated:Connect(function()
+						lplay("Buy")
+						BuyGun:FireServer({ weaponId = id })
+					end)
+				else
+					buy = bigButton(invDetail, ("NEED 🪙 %s"):format(fmt(w.price or 0)), GHOSTA, GHOSTB, DIMTEXT)
+					buy.AutoButtonColor = false
+				end
+				buy.Position = UDim2.fromOffset(14, 356); buy.Size = UDim2.new(1, -28, 0, 46)
 			end
-			buy.Position = UDim2.fromOffset(14, 356); buy.Size = UDim2.new(1, -28, 0, 46)
 		end
 
 		-- RIGHT STACK: two big SLOT BOXES showing the current PRIMARY + SECONDARY guns (click to feature).
@@ -1455,6 +1469,8 @@ end)
 InvSync.OnClientEvent:Connect(function(snap)
 	if typeof(snap) ~= "table" then return end
 	invData = snap
+	-- Bump a version attribute so the XP bar recomputes its "next unlock" once the catalog is available.
+	localPlayer:SetAttribute("InvVersion", (localPlayer:GetAttribute("InvVersion") or 0) + 1)
 	if invPanel.Visible then
 		renderActive()
 	end
@@ -2076,6 +2092,103 @@ do
 		sPanel.Visible = false
 	end)
 	task.delay(3, renderAll) -- saved volumes arrive async via Stats
+end
+
+-- ===== ACCOUNT LEVEL / XP BAR ===== (bottom-center: level, progress, and the NEXT gun you'll unlock) ====
+-- =====================================================================================================
+do
+	local LEVEL_BASE_XP, LEVEL_GROWTH, LEVEL_MAX = 120, 1.18, 100 -- mirrors the server's accountLevel curve
+	local function levelInfo(totalXP)
+		local level, remaining = 1, math.max(0, tonumber(totalXP) or 0)
+		while level < LEVEL_MAX do
+			local need = math.floor(LEVEL_BASE_XP * (LEVEL_GROWTH ^ (level - 1)))
+			if remaining < need then
+				return level, remaining, need
+			end
+			remaining -= need
+			level += 1
+		end
+		return LEVEL_MAX, 0, 0
+	end
+
+	local xpGui = Instance.new("ScreenGui")
+	xpGui.Name = "LobbyXP"; xpGui.ResetOnSpawn = false; xpGui.IgnoreGuiInset = true; xpGui.DisplayOrder = 12
+	xpGui.Parent = playerGui
+	lattach(xpGui)
+
+	local bar = Instance.new("Frame")
+	bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.new(0.5, 0, 1, -14); bar.Size = UDim2.fromOffset(470, 56)
+	bar.BackgroundColor3 = PANEL; bar.BackgroundTransparency = 0.15; bar.BorderSizePixel = 0; bar.Parent = xpGui
+	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3); ledge(bar, ACCENT, 2, 0.35)
+
+	local lvl = Instance.new("TextLabel")
+	lvl.Position = UDim2.fromOffset(12, 0); lvl.Size = UDim2.fromOffset(74, 56); lvl.BackgroundTransparency = 1
+	lvl.FontFace = TITLE_FACE; lvl.TextSize = 26; lvl.TextColor3 = ACCENT; lvl.Text = "LVL 1"
+	lvl.TextXAlignment = Enum.TextXAlignment.Left; lvl.Parent = bar
+	local lvlSt = Instance.new("UIStroke"); lvlSt.Color = TBLACK; lvlSt.Thickness = 2; lvlSt.Parent = lvl
+
+	local nextLbl = Instance.new("TextLabel")
+	nextLbl.Position = UDim2.fromOffset(92, 8); nextLbl.Size = UDim2.new(1, -104, 0, 18); nextLbl.BackgroundTransparency = 1
+	nextLbl.FontFace = BODYB_FACE; nextLbl.TextSize = 14; nextLbl.TextXAlignment = Enum.TextXAlignment.Left
+	nextLbl.TextColor3 = TEXTCOL; nextLbl.Text = ""; nextLbl.Parent = bar
+	local nextSt = Instance.new("UIStroke"); nextSt.Color = TBLACK; nextSt.Thickness = 1.5; nextSt.Parent = nextLbl
+
+	local track = Instance.new("Frame")
+	track.AnchorPoint = Vector2.new(0, 1); track.Position = UDim2.new(0, 92, 1, -10); track.Size = UDim2.new(1, -104, 0, 16)
+	track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Parent = bar
+	corner(track, 8); ledge(track, TBLACK, 1.5)
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(0, 0, 1, 0); fill.BackgroundColor3 = ACCENT; fill.BorderSizePixel = 0; fill.Parent = track
+	corner(fill, 8)
+	local xpTxt = Instance.new("TextLabel")
+	xpTxt.Size = UDim2.fromScale(1, 1); xpTxt.BackgroundTransparency = 1; xpTxt.ZIndex = 2
+	xpTxt.FontFace = BODYB_FACE; xpTxt.TextSize = 12; xpTxt.TextColor3 = TEXTCOL; xpTxt.Text = ""; xpTxt.Parent = track
+	local xpSt = Instance.new("UIStroke"); xpSt.Color = TBLACK; xpSt.Thickness = 1.5; xpSt.Parent = xpTxt
+
+	-- The lowest-level gun still above the player's level that they don't already own (drives "NEXT UNLOCK").
+	local function nextUnlock(level)
+		if not invData or not invData.catalog or not invData.catalog.weapons then
+			return nil
+		end
+		local bestId, bestLvl
+		for id, w in invData.catalog.weapons do
+			local u = tonumber(w.unlock) or 0
+			local owned = invData.owned and table.find(invData.owned, id)
+			if u > level and not owned and (not bestLvl or u < bestLvl or (u == bestLvl and id < bestId)) then
+				bestId, bestLvl = id, u
+			end
+		end
+		if bestId then
+			return (invData.catalog.weapons[bestId].name or bestId), bestLvl
+		end
+		return nil
+	end
+
+	local function refresh()
+		local level, into, need = levelInfo(localPlayer:GetAttribute("AccountXP") or 0)
+		localPlayer:SetAttribute("AccountLevel", level) -- the shop pane reads this to gate level-locked guns
+		lvl.Text = "LVL " .. level
+		if need > 0 then
+			fill.Size = UDim2.new(math.clamp(into / need, 0, 1), 0, 1, 0)
+			xpTxt.Text = fmt(into) .. " / " .. fmt(need) .. " XP"
+		else
+			fill.Size = UDim2.fromScale(1, 1)
+			xpTxt.Text = "MAX LEVEL"
+		end
+		local gunName, gunLvl = nextUnlock(level)
+		if gunName then
+			nextLbl.Text = ("NEXT UNLOCK:  %s  ·  Lv %d"):format(string.upper(gunName), gunLvl)
+			nextLbl.TextColor3 = TEXTCOL
+		else
+			nextLbl.Text = "ALL GUNS UNLOCKED"
+			nextLbl.TextColor3 = ACCENT
+		end
+	end
+
+	localPlayer:GetAttributeChangedSignal("AccountXP"):Connect(refresh)
+	localPlayer:GetAttributeChangedSignal("InvVersion"):Connect(refresh)
+	task.delay(2, refresh)
+	refresh()
 end
 
 print("[LobbyClient] started")

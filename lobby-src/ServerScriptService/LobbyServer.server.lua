@@ -130,6 +130,34 @@ local WEAPONS = {
 	p90       = { name = "P90",                tier = 3, rarity = "rare",      damage = 16,  fireRate = 13,  range = 180, price = 5000,  slot = "primary" },
 }
 
+-- ===== ACCOUNT-LEVEL GUN UNLOCKS =====
+-- A gun can't be bought until your ACCOUNT LEVEL reaches its unlock level (Coins still pay for it — level
+-- gates access, Coins are the price). Level comes from XP earned in runs, shared with the game place.
+-- Tune freely: raising a number pushes that gun later. pistol = 0 (free starter, always available).
+local WEAPON_UNLOCK = {
+	pistol = 0, tommygun = 2, shotgun = 3, revolver = 4, p90 = 5, honeybadger = 6, ak47 = 7,
+	m4 = 8, crossbow = 9, sniper = 12, minigun = 14, flamethrower = 16, freezeray = 18,
+	plasma = 22, rocket = 25, raygun = 28,
+}
+for id, w in WEAPONS do
+	w.unlock = WEAPON_UNLOCK[id] or 0 -- rides in the catalog sent to the client (drives the "next unlock" UI)
+end
+
+-- Account level from cumulative XP — mirrors the game place's ProgressionConfig curve (keep in sync).
+local LEVEL_BASE_XP, LEVEL_GROWTH, LEVEL_MAX = 120, 1.18, 100
+local function accountLevel(totalXP)
+	local level, remaining = 1, math.max(0, tonumber(totalXP) or 0)
+	while level < LEVEL_MAX do
+		local need = math.floor(LEVEL_BASE_XP * (LEVEL_GROWTH ^ (level - 1)))
+		if remaining < need then
+			break
+		end
+		remaining -= need
+		level += 1
+	end
+	return level
+end
+
 -- Each gun belongs to a fixed loadout slot: 1 = PRIMARY, 2 = SECONDARY (WEAPONS[id].slot).
 local function slotFor(weaponId)
 	return (WEAPONS[weaponId] and WEAPONS[weaponId].slot == "secondary") and 2 or 1
@@ -552,6 +580,7 @@ local function readProfile(player)
 	return {
 		lobbyMoney = data.lobbyMoney or 0,
 		bestWave = data.bestWave or 0,
+		xp = tonumber(data.xp) or 0, -- account XP (game-owned; read-only here, drives level-gated unlocks)
 		completed = (typeof(data.completed) == "table") and data.completed or {},
 		ownedWeapons = owned,
 		loadout = sanitizeLoadout(data.loadout, data.selectedWeapon, owned),
@@ -1614,6 +1643,9 @@ BuyGun.OnServerEvent:Connect(function(player, req)
 	local w = WEAPONS[weaponId]
 	if not w or table.find(prof.ownedWeapons, weaponId) then
 		return
+	end
+	if accountLevel(prof.xp) < (w.unlock or 0) then
+		return -- account level too low: this gun isn't unlocked yet (client shows "UNLOCKS AT LV N")
 	end
 	local price = tonumber(w.price) or 0
 	if price <= 0 or prof.lobbyMoney < price then
