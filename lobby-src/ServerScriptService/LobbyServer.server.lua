@@ -1420,7 +1420,7 @@ local function updateShopBillboard(part)
 	if not bb then
 		bb = Instance.new("BillboardGui")
 		bb.Name = "ShopBillboard"
-		bb.Size = UDim2.fromOffset(240, 62)
+		bb.Size = UDim2.fromOffset(240, 60)
 		bb.StudsOffsetWorldSpace = Vector3.new(0, 7, 0)
 		bb.AlwaysOnTop = true
 		bb.Parent = part

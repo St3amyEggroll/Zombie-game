@@ -49,6 +49,9 @@ local function ensurePrompt(part: BasePart)
 	label.FontFace = UITheme.BodyBoldFace
 	label.TextScaled = true
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	local cap = Instance.new("UITextSizeConstraint") -- stop the prompt re-sizing per string length
+	cap.MaxTextSize = 26
+	cap.Parent = label
 	label.TextStrokeTransparency = 0.3
 	label.Text = ""
 	label.Parent = bb
