@@ -491,8 +491,9 @@ local function refresh()
 	mapBtns = {}
 	for _, w in unlocks.worldOrder do
 		local info = unlocks.worlds[w]
+		local isSel = (sel.map == w)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(118, 118); b.BackgroundColor3 = CARD; b.AutoButtonColor = info.unlocked
+		b.Size = UDim2.fromOffset(118, 118); b.BackgroundColor3 = isSel and SELBG or CARD; b.AutoButtonColor = info.unlocked
 		b.Text = ""; b.LayoutOrder = #mapBtns + 1; b.Parent = mapRow
 		corner(b, 6); lbevel(b)
 		local img = MAP_IMAGES[w]
@@ -500,19 +501,29 @@ local function refresh()
 			local pic = Instance.new("ImageLabel")
 			pic.Size = UDim2.fromScale(1, 1); pic.BackgroundTransparency = 1; pic.Image = img
 			pic.ScaleType = Enum.ScaleType.Crop
-			pic.ImageColor3 = info.unlocked and Color3.new(1, 1, 1) or Color3.fromRGB(95, 95, 105) -- dim if locked
+			-- Locked = greyed. Unlocked-but-not-selected = dimmed so the SELECTED map pops at full brightness.
+			pic.ImageColor3 = (not info.unlocked and Color3.fromRGB(95, 95, 105))
+				or (isSel and Color3.new(1, 1, 1) or Color3.fromRGB(130, 130, 135))
 			pic.Parent = b; corner(pic, 6)
 		end
 		local nm = Instance.new("TextLabel")
 		nm.AnchorPoint = Vector2.new(0.5, 1); nm.Position = UDim2.new(0.5, 0, 1, -4)
 		nm.Size = UDim2.new(1, -6, 0, 20); nm.BackgroundTransparency = 1; nm.ZIndex = 3
-		nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextColor3 = TEXTCOL
+		nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextColor3 = isSel and ACCENT or TEXTCOL
 		nm.Text = info.unlocked and cap(w) or (cap(w) .. " 🔒"); nm.Parent = b
 		local nmSt = Instance.new("UIStroke"); nmSt.Color = TBLACK; nmSt.Thickness = 2; nmSt.Parent = nm
-		local edge = Instance.new("UIStroke") -- accent outline on the selected map
-		edge.Color = (sel.map == w) and ACCENT or TBLACK
-		edge.Thickness = (sel.map == w) and 4 or 2
+		local edge = Instance.new("UIStroke") -- bright accent outline on the selected map, thin black otherwise
+		edge.Color = isSel and ACCENT or TBLACK
+		edge.Thickness = isSel and 6 or 2
 		edge.Parent = b
+		if isSel then
+			-- A clear "SELECTED" badge across the top so there's no doubt which map is chosen.
+			local badge = Instance.new("TextLabel")
+			badge.AnchorPoint = Vector2.new(0.5, 0); badge.Position = UDim2.new(0.5, 0, 0, 5)
+			badge.Size = UDim2.fromOffset(90, 20); badge.BackgroundColor3 = ACCENT; badge.ZIndex = 4
+			badge.FontFace = BODYB_FACE; badge.TextSize = 12; badge.TextColor3 = Color3.fromRGB(14, 22, 6)
+			badge.Text = "✓ SELECTED"; badge.Parent = b; corner(badge, 4)
+		end
 		b.Activated:Connect(function()
 			if info.unlocked then sel.map = w; refresh() end
 		end)
