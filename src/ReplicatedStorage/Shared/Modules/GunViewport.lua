@@ -19,6 +19,20 @@ local CAM_FOV    = 30            -- narrow FOV = less fisheye on long guns
 local CAM_PITCH  = 0.22          -- how far above the gun the camera sits (fraction of distance)
 local FIT_SLACK  = 1.12          -- zoom-out margin around the bounding box
 
+-- DISPLAY ORIENTATION: how the gun is posed in the card/hotbar.
+--   TILT     = a global upward tilt (degrees) so every gun sits at a cool angle instead of dead-flat.
+--   DISP_YAW = per-gun spin-to-side (degrees) for guns modeled on a different axis, so they show SIDE-ON
+--              instead of pointing at/away from the camera. Anything not listed = 0 (already side-on).
+local TILT     = 45
+local DISP_YAW = { tommygun = 90, raygun = 90, plasma = 90, freezeray = 90 }
+
+-- Build the display rotation for one gun: reorient it side-on, then tilt it up.
+local function displayRot(weaponId: string, builtRot: CFrame): CFrame
+	return CFrame.Angles(0, 0, math.rad(TILT))
+		* CFrame.Angles(0, math.rad(DISP_YAW[weaponId] or 0), 0)
+		* builtRot
+end
+
 local spinning = {} -- { {vp, model, base, ang} }
 local loopStarted = false
 
@@ -69,9 +83,12 @@ function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(CAM_FOV / 2)) * FIT_SLACK + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * CAM_PITCH, dist), cf.Position)
 
+	local dispRot = displayRot(weaponId, cf.Rotation) -- side-on + upward tilt (see TUNABLES)
 	if spin ~= false then
-		table.insert(spinning, { vp = vp, model = model, pos = cf.Position, rot = cf.Rotation, ang = math.random() * math.pi * 2 })
+		table.insert(spinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
 		startLoop()
+	else
+		model:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once
 	end
 	return vp
 end

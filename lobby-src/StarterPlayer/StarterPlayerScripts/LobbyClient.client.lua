@@ -345,8 +345,11 @@ local function makeGunViewport(weaponId, spin, folderName)
 	model.WorldPivot = cf
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(15)) * 1.12 + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * 0.22, dist), cf.Position)
+	-- Display orientation: side-on (per-gun yaw fixes guns built on a different axis) + a cool upward tilt.
+	local TILT, DISP_YAW = 45, { tommygun = 90, raygun = 90, plasma = 90, freezeray = 90 }
+	local dispRot = CFrame.Angles(0, 0, math.rad(TILT)) * CFrame.Angles(0, math.rad(DISP_YAW[weaponId] or 0), 0) * cf.Rotation
 	if spin ~= false then
-		table.insert(gvSpinning, { vp = vp, model = model, pos = cf.Position, rot = cf.Rotation, ang = math.random() * math.pi * 2 })
+		table.insert(gvSpinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
 		if not gvLoop then
 			gvLoop = true
 			RunService.RenderStepped:Connect(function(dt)
@@ -362,6 +365,8 @@ local function makeGunViewport(weaponId, spin, folderName)
 				end
 			end)
 		end
+	else
+		model:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once, side-on + tilted
 	end
 	return vp
 end

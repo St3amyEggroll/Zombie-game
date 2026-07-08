@@ -55,7 +55,7 @@ local function refresh()
 					b.vp:Destroy()
 					b.vp = nil
 				end
-				local vp = GunViewport.Create(id, true)
+				local vp = GunViewport.Create(id, false) -- STILL (no spin) — just the gun, posed side-on + tilted
 				if vp then
 					vp.AnchorPoint = Vector2.new(0.5, 0)
 					vp.Position = UDim2.new(0.5, 0, 0, 2)
