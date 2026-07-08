@@ -89,16 +89,25 @@ AnimationConfig.Shake = {
 
 -- ===== ANIMATION IDS ===== (paste the rbxassetid number; "" = none)
 -- Played on the CHARACTER. "Hold" makes the character pose with the gun. (No reload — ammo is infinite.)
+-- Paste each gun's R6 hold-pose animation id below (just the number). "" = no custom pose (default hold).
 AnimationConfig.Weapons = {
-	-- New guns (paste hold-pose animation ids when the models are rigged; blank = default hold)
-	revolver = { Hold = "" },
-	crossbow = { Hold = "" },
-	freezeray = { Hold = "" },
-	pistol  = { Hold = "", Reload = "" },
-	shotgun = { Hold = "", Reload = "" },
-	ak47    = { Hold = "105591827404665", Reload = "" }, -- AK holding/shooting stance
-	minigun = { Hold = "128207655721600", Reload = "" },
-	raygun  = { Hold = "", Reload = "" },
+	pistol      = { Hold = "" },
+	revolver    = { Hold = "" },
+	shotgun     = { Hold = "" },
+	ak47        = { Hold = "105591827404665" }, -- AK holding/shooting stance
+	crossbow    = { Hold = "" },
+	freezeray   = { Hold = "" },
+	minigun     = { Hold = "128207655721600" },
+	raygun      = { Hold = "" },
+	-- Newer guns
+	m4          = { Hold = "" },
+	tommygun    = { Hold = "" },
+	sniper      = { Hold = "" },
+	flamethrower = { Hold = "" },
+	rocket      = { Hold = "" },
+	plasma      = { Hold = "" },
+	honeybadger = { Hold = "" },
+	p90         = { Hold = "" },
 }
 
 -- Played on each ZOMBIE rig, SERVER-SIDE. Walk loops while chasing (defaults to the engine's walk
