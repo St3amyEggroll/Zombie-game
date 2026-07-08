@@ -93,21 +93,34 @@ local function applyHold(character: Model)
 		warn("[CharacterAnimController] hold animation failed to load: " .. tostring(id))
 		return
 	end
-	track.Looped = true
 	track.Priority = Enum.AnimationPriority.Action
+	track.Looped = true
 	track:Play(0.1)
 	holdTracks[character] = track
-	print(("[CharacterAnimController] playing hold %s on %s"):format(id, character.Name))
-	-- DIAGNOSTIC: after the asset finishes loading, report what the track is actually doing. length=0 means
-	-- the animation is empty / failed to resolve; playing=false means something stopped it; weight=0 means
-	-- it's being overridden. (Temporary — remove once the AK stance is confirmed working.)
+
+	-- KEEP THE POSE HELD. Two safeguards, because setting Looped before the asset loads can be reset to the
+	-- animation's baked (non-looped) value — which makes it play ONCE and stop:
+	--   1) re-assert Looped once the asset has actually loaded (Length > 0), and
+	--   2) if the track ever Stops while it's still the active pose, restart it.
 	task.spawn(function()
-		task.wait(0.7)
+		local t0 = os.clock()
+		while track.Length == 0 and os.clock() - t0 < 3 and holdTracks[character] == track do
+			task.wait()
+		end
 		if holdTracks[character] == track then
-			warn(("[hold-debug] id=%s length=%.2fs playing=%s weight=%.2f speed=%.2f priority=%s"):format(
-				id, track.Length, tostring(track.IsPlaying), track.WeightCurrent, track.Speed, tostring(track.Priority)))
+			track.Looped = true
+			if not track.IsPlaying then
+				track:Play(0.1)
+			end
 		end
 	end)
+	track.Stopped:Connect(function()
+		if holdTracks[character] == track then -- still the equipped pose → keep holding it
+			track.Looped = true
+			track:Play(0.1)
+		end
+	end)
+	print(("[CharacterAnimController] playing hold %s on %s"):format(id, character.Name))
 end
 
 local function watchCharacter(character: Model)
