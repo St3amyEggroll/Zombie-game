@@ -47,6 +47,11 @@ local function handleRotCFrame(weaponId: string): CFrame
 	return CFrame.Angles(math.rad(r.pitch), math.rad(r.yaw), math.rad(r.roll))
 end
 
+-- On R6 the hand we weld to is the "Right Arm" part, whose origin is the MIDDLE of the arm — so a plain
+-- weld sits the gun mid-forearm. Drop it this many studs down the arm to reach the hand (Roblox's own tool
+-- grip uses 1). R15 welds to the actual RightHand, so it gets no drop.
+local HAND_DROP = 1.0
+
 local HELD_NAME = "HeldWeapon"
 
 local templates: { [string]: Model } = {}  -- weaponId -> Model
@@ -231,7 +236,15 @@ local function attach(player: Player)
 		c0 = rel:Inverse()
 	else
 		local grip = template:GetAttribute("Grip")
-		c0 = (typeof(grip) == "CFrame") and grip or handleRotCFrame(ps.equippedWeapon)
+		if typeof(grip) == "CFrame" then
+			c0 = grip
+		else
+			c0 = handleRotCFrame(ps.equippedWeapon)
+			-- R6: shift the weld down the Right Arm so the gun sits in the HAND, not mid-arm.
+			if hand.Name == "Right Arm" then
+				c0 = CFrame.new(0, -HAND_DROP, 0) * c0
+			end
+		end
 	end
 	local weld = Instance.new("Weld")
 	weld.Part0 = hand
