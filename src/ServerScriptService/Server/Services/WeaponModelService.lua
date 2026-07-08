@@ -40,7 +40,7 @@ local HANDLE_ROT = { pitch = 90, yaw = 0, roll = 180 }
 -- Anything not listed uses HANDLE_ROT above. Only add an entry when one gun sits wrong while others are fine.
 local HANDLE_ROT_OVERRIDE = {
 	tommygun = { pitch = 180, yaw = 0, roll = 180 }, -- modeled face-down; +90 pitch vs the default lifts it forward
-	minigun  = { pitch = 90, yaw = -90, roll = 180 }, -- rotated left 90 vs the default
+	minigun  = { pitch = 120, yaw = -90, roll = 180 }, -- rotated left 90; muzzle raised 30 off the default
 }
 
 local function handleRotCFrame(weaponId: string): CFrame
