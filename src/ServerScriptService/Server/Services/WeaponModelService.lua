@@ -26,11 +26,19 @@ local DataService = require(script.Parent.DataService)
 local WeaponModelService = {}
 
 -- ===== TUNABLES =====
--- HOW THE GUN SITS IN THE HAND: the model's "Handle" part is welded DIRECTLY to the hand with no offset.
--- You position the gun by placing the Handle where you want it inside the model in Studio — the Handle IS
--- the grip point, so however it's oriented relative to the rest of the gun is exactly how it's held.
--- (Optional fine-tuning overrides, only if you ever want them: an Attachment named "Grip" in the model,
--- or a "Grip" CFrame attribute on the model. With neither present — the default — it's a plain handle weld.)
+-- HOW THE GUN SITS IN THE HAND: the model's "Handle" part is welded onto the hand — the gun sits exactly
+-- where you place the Handle inside the model in Studio (no position offset). The one thing the hand needs
+-- is a rotation: the R6 arm part's local axes don't line up with "forward", so without this a normally-built
+-- gun comes out backwards / facing the ground. HANDLE_ROT is a SINGLE shared rotation (degrees) applied to
+-- every gun to fix that — NOT a per-gun table:
+--   pitch = tilt the muzzle up/down     (flip the sign if it's pitched the wrong way)
+--   yaw   = spin left/right             (use 180 if the gun points BACKWARDS)
+--   roll  = bank sideways               (use 180 if the gun is UPSIDE DOWN)
+local HANDLE_ROT = { pitch = 90, yaw = 180, roll = 0 }
+
+local function handleRotCFrame(): CFrame
+	return CFrame.Angles(math.rad(HANDLE_ROT.pitch), math.rad(HANDLE_ROT.yaw), math.rad(HANDLE_ROT.roll))
+end
 
 local HELD_NAME = "HeldWeapon"
 
@@ -216,7 +224,7 @@ local function attach(player: Player)
 		c0 = rel:Inverse()
 	else
 		local grip = template:GetAttribute("Grip")
-		c0 = (typeof(grip) == "CFrame") and grip or CFrame.new()
+		c0 = (typeof(grip) == "CFrame") and grip or handleRotCFrame()
 	end
 	local weld = Instance.new("Weld")
 	weld.Part0 = hand
