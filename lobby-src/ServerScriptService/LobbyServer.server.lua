@@ -629,9 +629,15 @@ end
 -- Loadout guns ride on your character: SLOT 1 across the BACK, SLOT 2 on the HIP (a lone small gun sits
 -- on the hip). Models: tag gun Models "WeaponModel" or put them in an "Assets" folder — named after the
 -- weapon id or display name, same contract as the game place. Missing model = skipped quietly.
-local CARRY_SMALL = { pistol = true } -- "small" guns prefer the hip when alone
-local BACK_CF = CFrame.new(0, 0.2, 0.75) * CFrame.Angles(math.rad(-90), 0, math.rad(-40))
-local HIP_CF  = CFrame.new(1.1, -0.95, 0.05) * CFrame.Angles(math.rad(-90), 0, math.rad(90))
+local CARRY_SMALL = { pistol = true, revolver = true } -- "small" guns prefer the hip when alone
+-- Carried guns use the SAME orientation fix as the in-hand hold — the new Handle-only models need it, or
+-- they sit wonky. CARRY_BASE matches the game place's HANDLE_ROT (points a gun forward + upright relative
+-- to a body part; all body parts share the torso's axes). Each mount = a position offset (studs from the
+-- torso) + a small pose tilt layered on top of CARRY_BASE.
+--   pos = { right, up, back } in studs   ·   tilt below is pitch / yaw / roll in degrees
+local CARRY_BASE = CFrame.Angles(math.rad(90), 0, math.rad(180))
+local BACK_CF = CFrame.new(0, 0.4, 0.8)   * CARRY_BASE * CFrame.Angles(math.rad(55), 0, math.rad(-20)) -- slung high across the back
+local HIP_CF  = CFrame.new(1.0, -0.9, 0.2) * CARRY_BASE * CFrame.Angles(math.rad(-15), 0, 0)            -- holstered low on the right hip
 
 local carryTemplates = nil
 
