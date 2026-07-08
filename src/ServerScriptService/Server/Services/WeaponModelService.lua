@@ -36,8 +36,15 @@ local WeaponModelService = {}
 --   roll  = bank sideways               (use 180 if the gun is UPSIDE DOWN)
 local HANDLE_ROT = { pitch = 90, yaw = 0, roll = 180 }
 
-local function handleRotCFrame(): CFrame
-	return CFrame.Angles(math.rad(HANDLE_ROT.pitch), math.rad(HANDLE_ROT.yaw), math.rad(HANDLE_ROT.roll))
+-- Per-gun overrides for any gun modeled on a different axis than the rest (so it needs its own rotation).
+-- Anything not listed uses HANDLE_ROT above. Only add an entry when one gun sits wrong while others are fine.
+local HANDLE_ROT_OVERRIDE = {
+	tommygun = { pitch = 180, yaw = 0, roll = 180 }, -- modeled face-down; +90 pitch vs the default lifts it forward
+}
+
+local function handleRotCFrame(weaponId: string): CFrame
+	local r = HANDLE_ROT_OVERRIDE[weaponId] or HANDLE_ROT
+	return CFrame.Angles(math.rad(r.pitch), math.rad(r.yaw), math.rad(r.roll))
 end
 
 local HELD_NAME = "HeldWeapon"
@@ -224,7 +231,7 @@ local function attach(player: Player)
 		c0 = rel:Inverse()
 	else
 		local grip = template:GetAttribute("Grip")
-		c0 = (typeof(grip) == "CFrame") and grip or handleRotCFrame()
+		c0 = (typeof(grip) == "CFrame") and grip or handleRotCFrame(ps.equippedWeapon)
 	end
 	local weld = Instance.new("Weld")
 	weld.Part0 = hand
