@@ -21,6 +21,7 @@ local Modules = Shared:WaitForChild("Modules")
 local GameConfig = require(Config.GameConfig)
 local WeaponConfig = require(Config.WeaponConfig)
 local GunLevelConfig = require(Config.GunLevelConfig)
+local AnimationConfig = require(Config.AnimationConfig)
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 
@@ -76,6 +77,20 @@ local function falloffMult(dist: number): number
 	end
 	local t = math.clamp((dist - s) / (e - s), 0, 1)
 	return 1 + (GameConfig.FalloffMinMult - 1) * t
+end
+
+-- Where a shot VISUALLY lands: the zombie's torso center, scattered by the weapon's ImpactSpread so every
+-- bullet doesn't hit the exact same pixel. Offset lies in the torso's own sideways/vertical plane (the root
+-- faces the shooter), kept small so it stays on the body. Purely cosmetic — damage is applied separately.
+local function visualHitPos(root: BasePart, weaponId: string): Vector3
+	local cfg = AnimationConfig.ImpactSpread
+	local s = (cfg and ((cfg.PerWeapon and cfg.PerWeapon[weaponId]) or cfg.Default)) or 0
+	if s <= 0 then
+		return root.Position
+	end
+	local dx = (math.random() * 2 - 1) * s          -- sideways across the torso
+	local dy = (math.random() * 2 - 1) * s * 1.3    -- a touch more vertical (torsos are taller than wide)
+	return root.Position + root.CFrame.RightVector * dx + root.CFrame.UpVector * dy
 end
 
 -- ===== FIRE =====
@@ -325,9 +340,12 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 					ZombieService.Pin(c.record, weapon.pin.secs)
 				end
 			end
-			Remotes.Get("HitConfirmed"):FireClient(player, c.root.Position, false, true, killed, math.floor(damage + 0.5), isCrit)
+			-- Scatter the VISUAL impact around the torso (damage above is unchanged); one point drives both the
+			-- tracer endpoint and the damage-number pop so they stay together.
+			local hitPos = visualHitPos(c.root, weaponId)
+			Remotes.Get("HitConfirmed"):FireClient(player, hitPos, false, true, killed, math.floor(damage + 0.5), isCrit)
 			-- A tracer per zombie hit, carrying how many pellets landed there (the client fans that many bolts).
-			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, c.root.Position, weaponId, count)
+			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, hitPos, weaponId, count)
 		end
 	else
 		-- Miss: fan all the pellets straight ahead.

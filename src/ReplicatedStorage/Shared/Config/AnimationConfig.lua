@@ -40,6 +40,20 @@ AnimationConfig.Tracer = {
 	},
 }
 
+-- IMPACT SPREAD — where a shot VISUALLY lands on the target. Auto-aim locks the shot onto the zombie's
+-- torso center; without this every bullet hits the exact same pixel. This scatters the impact point (and its
+-- tracer + damage number) around the torso by up to `n` studs sideways/vertical — so it looks like real
+-- gunfire while STILL hitting the torso (the damage is unchanged; only the visual point moves). Per gun:
+-- tight for precision guns (sniper/crossbow), wide for shotguns/flamethrowers. Default covers anything unlisted.
+AnimationConfig.ImpactSpread = {
+	Default = 0.9,
+	PerWeapon = {
+		pistol = 0.7, revolver = 0.5, shotgun = 1.6, ak47 = 1.0, crossbow = 0.35,
+		freezeray = 0.8, minigun = 1.3, raygun = 0.9, m4 = 1.0, tommygun = 1.2,
+		sniper = 0.3, flamethrower = 1.8, rocket = 0.6, plasma = 0.9, honeybadger = 0.9, p90 = 1.2,
+	},
+}
+
 AnimationConfig.MuzzleFlash = {
 	Enabled = true,
 	Color = Color3.fromRGB(255, 221, 150),
