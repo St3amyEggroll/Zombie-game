@@ -132,15 +132,51 @@ end
 -- The classic cartoon bottom bevel: a hard-stop WHITE->dark gradient multiplies whatever the
 -- background color is, so it works on recolored (selected) buttons too.
 local function lbevel(o)
+	-- 3D BUTTON TREATMENT (approved mockup): smooth two-tone fade + darker bottom LIP the button
+	-- presses down onto + top sheen. Replaced the hard-stop bevel that read as a glitch line.
 	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-		ColorSequenceKeypoint.new(0.78, Color3.new(1, 1, 1)),
-		ColorSequenceKeypoint.new(0.8, Color3.new(0.58, 0.58, 0.58)),
-		ColorSequenceKeypoint.new(1, Color3.new(0.58, 0.58, 0.58)),
-	})
+	g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.72, 0.72, 0.72))
 	g.Rotation = 90
 	g.Parent = o
+	local lip = Instance.new("Frame")
+	lip.Name = "Lip"
+	lip.AnchorPoint = Vector2.new(0.5, 0)
+	lip.Position = UDim2.new(0.5, 0, 1, -6)
+	lip.Size = UDim2.new(1, 0, 0, 11)
+	lip.BackgroundColor3 = Color3.new(0, 0, 0)
+	lip.BackgroundTransparency = 0.5
+	lip.BorderSizePixel = 0
+	lip.Parent = o
+	local lipCorner = Instance.new("UICorner")
+	lipCorner.CornerRadius = UDim.new(0, 5)
+	lipCorner.Parent = lip
+	local sheen = Instance.new("Frame")
+	sheen.Name = "Sheen"
+	sheen.Position = UDim2.new(0, 6, 0, 3)
+	sheen.Size = UDim2.new(1, -12, 0, 3)
+	sheen.BackgroundColor3 = Color3.new(1, 1, 1)
+	sheen.BackgroundTransparency = 0.65
+	sheen.BorderSizePixel = 0
+	sheen.Parent = o
+	local sheenCorner = Instance.new("UICorner")
+	sheenCorner.CornerRadius = UDim.new(1, 0)
+	sheenCorner.Parent = sheen
+	if o:IsA("GuiButton") then
+		local base
+		o.MouseButton1Down:Connect(function()
+			base = o.Position
+			o.Position = base + UDim2.fromOffset(0, 4)
+			lip.Visible = false
+		end)
+		local function up()
+			if base then
+				o.Position = base
+			end
+			lip.Visible = true
+		end
+		o.MouseButton1Up:Connect(up)
+		o.MouseLeave:Connect(up)
+	end
 	return g
 end
 
@@ -467,7 +503,7 @@ leaveBtn.AnchorPoint = Vector2.new(0.5, 1); leaveBtn.Position = UDim2.new(0.5, 0
 leaveBtn.Size = UDim2.fromOffset(240, 44); leaveBtn.BackgroundColor3 = ORANGE; leaveBtn.BorderSizePixel = 0
 leaveBtn.FontFace = TITLE_FACE; leaveBtn.TextSize = 16; leaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 leaveBtn.Text = "LEAVE PARTY"; leaveBtn.Visible = false; leaveBtn.Parent = gui
-corner(leaveBtn, 8); ldepth(leaveBtn); ledge(leaveBtn, TBLACK, 3)
+corner(leaveBtn, 8); ldepth(leaveBtn); ledge(leaveBtn, TBLACK, 3); lbevel(leaveBtn)
 
 local leaveStatus = Instance.new("TextLabel")
 leaveStatus.AnchorPoint = Vector2.new(0.5, 1); leaveStatus.Position = UDim2.new(0.5, 0, 1, -104)
@@ -487,7 +523,7 @@ play.AnchorPoint = Vector2.new(0.5, 1); play.Position = UDim2.new(0.5, 0, 1, -40
 play.BackgroundColor3 = ACCENT; play.FontFace = TITLE_FACE; play.TextSize = 18
 play.TextColor3 = Color3.fromRGB(14, 22, 6); play.Text = "PLAY"; play.Parent = panel
 corner(play, 6)
-ldepth(play); ledge(play, TBLACK, 2)
+ldepth(play); ledge(play, TBLACK, 2.5); lbevel(play)
 
 local status = Instance.new("TextLabel")
 status.AnchorPoint = Vector2.new(0.5, 1); status.Position = UDim2.new(0.5, 0, 1, -12); status.Size = UDim2.new(1, -40, 0, 24)

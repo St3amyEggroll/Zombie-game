@@ -69,7 +69,7 @@ local function refresh()
 			b.name.Text = weapon.name
 			local isHeld = (id == equipped)
 			b.stroke.Color = isHeld and UITheme.TOXIC or UITheme.BLACK
-			b.stroke.Thickness = isHeld and 3 or 2
+			b.stroke.Thickness = isHeld and 4 or 2 -- held = glow ring, not a hairline
 			b.name.TextColor3 = isHeld and UITheme.TEXT or UITheme.DIM
 			b.key.TextColor3 = isHeld and UITheme.TOXIC or UITheme.DIM
 			-- held slot lifts slightly out of the row
@@ -144,12 +144,16 @@ local function build()
 		-- (The gold level chip is DELETED — gun upgrading was removed; it rendered as a permanently
 		-- empty rectangle buried under the viewport.)
 
-		local name = Instance.new("TextLabel") -- gun name along the bottom of the square (the CONTENT: Body tier)
+		local name = Instance.new("TextLabel") -- gun name on a dark strip (reads over the 3D render)
 		name.AnchorPoint = Vector2.new(0.5, 1)
 		name.Position = UDim2.new(0.5, 0, 1, -4)
 		name.Size = UDim2.new(1, -10, 0, 30)
 		name.ZIndex = 3 -- above the 3D gun viewport
-		name.BackgroundTransparency = 1
+		name.BackgroundColor3 = Color3.fromRGB(5, 10, 3)
+		name.BackgroundTransparency = 0.45
+		local nameCorner = Instance.new("UICorner")
+		nameCorner.CornerRadius = UDim.new(0, 6)
+		nameCorner.Parent = name
 		name.FontFace = UITheme.BodyBoldFace
 		name.TextSize = UITheme.Type.Body
 		name.TextWrapped = true

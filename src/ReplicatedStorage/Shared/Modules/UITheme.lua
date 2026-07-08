@@ -411,7 +411,7 @@ function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
 	img.Name = "Icon"
 	img.BackgroundTransparency = 1
 	img.Image = imageId
-	img.ImageColor3 = opts.iconColor or UITheme.TOXIC -- tint to the accent so a white icon isn't stark
+	img.ImageColor3 = opts.iconColor or Color3.new(1, 1, 1) -- WHITE icon (the sticker look)
 	img.ScaleType = Enum.ScaleType.Fit
 	img.AnchorPoint = Vector2.new(0.5, 0)
 	img.Position = UDim2.new(0.5, 0, 0, pad)
@@ -421,6 +421,11 @@ function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
 	-- rather than clipping ("SKIN CRATES" used to truncate on both sides).
 	if opts.caption then
 		local cap = UITheme.Label(button, "IconCaption", UITheme.Type.Caption, opts.captionColor or UITheme.TEXT, true)
+		cap.BackgroundColor3 = Color3.fromRGB(5, 10, 3) -- dark strip so the caption reads on any plate
+		cap.BackgroundTransparency = 0.45
+		local capCorner = Instance.new("UICorner")
+		capCorner.CornerRadius = UDim.new(0, 5)
+		capCorner.Parent = cap
 		cap.AnchorPoint = Vector2.new(0.5, 1)
 		cap.Position = UDim2.new(0.5, 0, 1, -5)
 		cap.Size = UDim2.new(1, -6, 0, capH)
@@ -432,11 +437,21 @@ function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
 		cap.Text = opts.caption
 	end
 	if opts.badge then
+		-- keybind CHIP hanging off the top-left corner (was loose text floating on the icon)
 		local bd = UITheme.Label(button, "IconBadge", UITheme.Type.Caption, opts.badgeColor or UITheme.GOLD, true)
-		bd.Position = UDim2.fromOffset(6, 4)
-		bd.AutomaticSize = Enum.AutomaticSize.X -- was a fixed 18px box that two characters overflowed
-		bd.Size = UDim2.fromOffset(0, 16)
-		bd.TextXAlignment = Enum.TextXAlignment.Left
+		bd.BackgroundColor3 = Color3.fromRGB(28, 36, 21)
+		bd.BackgroundTransparency = 0
+		bd.Position = UDim2.fromOffset(-7, -7)
+		bd.AutomaticSize = Enum.AutomaticSize.X
+		bd.Size = UDim2.fromOffset(0, 20)
+		bd.TextXAlignment = Enum.TextXAlignment.Center
+		local bdPad = Instance.new("UIPadding")
+		bdPad.PaddingLeft = UDim.new(0, 6); bdPad.PaddingRight = UDim.new(0, 6)
+		bdPad.Parent = bd
+		local bdCorner = Instance.new("UICorner")
+		bdCorner.CornerRadius = UDim.new(0, 6)
+		bdCorner.Parent = bd
+		UITheme.Edge(bd, UITheme.BLACK, 2)
 		bd.ZIndex = (button.ZIndex or 1) + 2
 		bd.Text = opts.badge
 	end
@@ -471,27 +486,47 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	ts.Transparency = 0
 	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	ts.Parent = b
-	-- CHANGED: hard-stop gradient = the classic cartoon bottom bevel (crisp darker strip, no children)
+	-- 3D BUTTON RECIPE: smooth two-tone fade (no more hard-stop "glitch line") + a darker bottom LIP
+	-- the button physically presses down onto + a top sheen.
 	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, fill[1]),
-		ColorSequenceKeypoint.new(0.78, fill[1]),
-		ColorSequenceKeypoint.new(0.8, fill[2]),
-		ColorSequenceKeypoint.new(1, fill[2]),
-	})
+	g.Color = ColorSequence.new(fill[1], fill[2])
 	g.Rotation = 90
 	g.Parent = b
+	local lip = Instance.new("Frame")
+	lip.Name = "Lip"
+	lip.AnchorPoint = Vector2.new(0.5, 0)
+	lip.Position = UDim2.new(0.5, 0, 1, -6)
+	lip.Size = UDim2.new(1, 0, 0, 11) -- overlaps the bottom 6px + extends 5px below = the lip
+	lip.BackgroundColor3 = UITheme.Darker(fill[2], 0.5)
+	lip.BorderSizePixel = 0
+	lip.Parent = b
+	UITheme.Corner(lip, 3)
+	local sheen = Instance.new("Frame")
+	sheen.Name = "Sheen"
+	sheen.Position = UDim2.new(0, 6, 0, 3)
+	sheen.Size = UDim2.new(1, -12, 0, 3)
+	sheen.BackgroundColor3 = Color3.new(1, 1, 1)
+	sheen.BackgroundTransparency = 0.65
+	sheen.BorderSizePixel = 0
+	sheen.Parent = b
+	local shc = Instance.new("UICorner")
+	shc.CornerRadius = UDim.new(1, 0)
+	shc.Parent = sheen
 	if variant == "ghost" then
 		UITheme.Edge(b, UITheme.LINE, 1, 0.5)
 	end
-	-- Press pop (scale dip on press, spring back on release).
-	local ps = Instance.new("UIScale")
-	ps.Parent = b
+	-- Press = push DOWN onto the lip (not a shrink).
+	local basePos
 	b.MouseButton1Down:Connect(function()
-		TweenService:Create(ps, TweenInfo.new(0.06), { Scale = 0.94 }):Play()
+		basePos = b.Position
+		b.Position = basePos + UDim2.fromOffset(0, 4)
+		lip.Visible = false
 	end)
 	local function up()
-		TweenService:Create(ps, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		if basePos then
+			b.Position = basePos
+		end
+		lip.Visible = true
 	end
 	b.MouseButton1Up:Connect(up)
 	b.MouseLeave:Connect(up)
