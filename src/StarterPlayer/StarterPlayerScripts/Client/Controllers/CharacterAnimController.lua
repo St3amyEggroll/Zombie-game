@@ -70,7 +70,7 @@ end
 local function applyHold(character: Model)
 	local prev = holdTracks[character]
 	if prev then
-		prev:Stop(0.1)
+		prev:Stop(0) -- instant swap (no cross-fade) so switching guns changes the pose immediately
 		holdTracks[character] = nil
 	end
 	local id = character:GetAttribute("HoldAnimId")
@@ -95,7 +95,7 @@ local function applyHold(character: Model)
 	end
 	track.Priority = Enum.AnimationPriority.Action
 	track.Looped = true
-	track:Play(0.1)
+	track:Play(0) -- instant (asset is preloaded at Start, so the pose appears immediately)
 	holdTracks[character] = track
 
 	-- Setting Looped before the asset loads can be reset to the animation's baked value (play-once), so
@@ -108,7 +108,7 @@ local function applyHold(character: Model)
 		if holdTracks[character] == track then
 			track.Looped = true
 			if not track.IsPlaying then
-				track:Play(0.1)
+				track:Play(0)
 			end
 		end
 	end)
@@ -137,7 +137,26 @@ local function watchPlayer(pl: Player)
 	pl.CharacterAdded:Connect(watchCharacter)
 end
 
+-- Preload every configured hold animation so the FIRST time a gun is equipped the pose is instant (without
+-- this, LoadAnimation fetches the asset over the network on first use — the ~1s "it takes a second to load").
+local function preloadHolds()
+	local ContentProvider = game:GetService("ContentProvider")
+	local anims = {}
+	for _, cfg in AnimationConfig.Weapons do
+		local id = cfg and AnimationConfig.Resolve(cfg.Hold)
+		if id then
+			table.insert(anims, getAnim(id)) -- reuses the same cached Animation instances applyHold plays
+		end
+	end
+	if #anims > 0 then
+		pcall(function()
+			ContentProvider:PreloadAsync(anims)
+		end)
+	end
+end
+
 function CharacterAnimController.Start()
+	task.spawn(preloadHolds)
 	if localPlayer.Character then
 		task.spawn(applyOverrides, localPlayer.Character)
 	end

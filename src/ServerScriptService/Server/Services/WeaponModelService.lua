@@ -153,6 +153,10 @@ local function attach(player: Player)
 	if not ps then
 		return
 	end
+	-- Update the hold POSE first, before any model early-returns below — otherwise switching to a gun with
+	-- no model (or a missing hand) would leave the PREVIOUS gun's pose playing (the "animation doesn't switch"
+	-- bug). The pose is independent of the in-hand model, so stamp it immediately on every equip.
+	playHold(player, ps.equippedWeapon)
 	-- Equipped SKIN first (profile skins.equipped, lobby-owned), base gun model as the fallback.
 	local template = templates[ps.equippedWeapon]
 	local data = DataService.Get(player)
@@ -256,7 +260,6 @@ local function attach(player: Player)
 	model.Parent = character
 
 	held[player.UserId] = { weld = weld, baseC0 = c0 }
-	playHold(player, ps.equippedWeapon)
 end
 
 -- ===== TEMPLATE REGISTRATION (tag-driven) =====
