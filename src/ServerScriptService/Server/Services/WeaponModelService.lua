@@ -166,20 +166,25 @@ local function attach(player: Player)
 	local model = template:Clone()
 	model.Name = HELD_NAME
 
-	-- If the model was built on an animation dummy, strip the rig so ONLY the gun welds to the hand.
-	if model:FindFirstChildWhichIsA("Humanoid", true) then
+	-- Strip ANY animation-rig leftovers so ONLY the gun welds to the hand: a Humanoid/Animator, any Motor6D
+	-- (character joints — this is what chains the gun to the rig and drags you to it), and any standard rig
+	-- body part. A clean gun model has none of these, so this is safe to always run.
+	do
 		local strip = {}
 		for _, d in model:GetDescendants() do
-			if d:IsA("Humanoid") or d:IsA("AnimationController") or (d:IsA("BasePart") and RIG_PARTS[d.Name:lower()]) then
+			if d:IsA("Humanoid") or d:IsA("Animator") or d:IsA("AnimationController") or d:IsA("Motor6D")
+				or (d:IsA("BasePart") and RIG_PARTS[d.Name:lower()]) then
 				table.insert(strip, d)
 			end
 		end
-		for _, d in strip do
-			if d.Parent then
-				d:Destroy()
+		if #strip > 0 then
+			for _, d in strip do
+				if d.Parent then
+					d:Destroy()
+				end
 			end
+			warn(("[WeaponModelService] '%s' had animation-rig leftovers (%d) — stripped so only the gun welds."):format(ps.equippedWeapon, #strip))
 		end
-		warn(("[WeaponModelService] '%s' contained an animation rig — stripped it so only the gun welds."):format(ps.equippedWeapon))
 	end
 
 	local handle = model:FindFirstChild("Handle")
