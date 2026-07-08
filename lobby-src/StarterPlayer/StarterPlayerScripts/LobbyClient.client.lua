@@ -96,11 +96,12 @@ local function lattach(screenGui)
 	local function compute()
 		local cam = workspace.CurrentCamera
 		local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
-		local sc = math.min(vp.X / 1920, vp.Y / 1080)
+		local sc = math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.55, 1.3)
+		-- touch bump AFTER the clamp — applied before, the 0.55 floor swallowed it on small phones
 		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
 			sc *= 1.12
 		end
-		return math.clamp(sc, 0.55, 1.3) * UI_SCALE_MULT
+		return sc * UI_SCALE_MULT
 	end
 	scale.Scale = compute()
 	scale.Parent = screenGui
@@ -386,7 +387,7 @@ coinsRow.AnchorPoint = Vector2.new(1, 0.5); coinsRow.Position = UDim2.new(1, -24
 coinsRow.Size = UDim2.fromOffset(320, 44); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
 local moneyLabel = Instance.new("TextLabel")
 moneyLabel.Size = UDim2.new(1, 0, 1, 0); moneyLabel.BackgroundTransparency = 1
-moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 34; moneyLabel.TextXAlignment = Enum.TextXAlignment.Right
+moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 22; moneyLabel.TextXAlignment = Enum.TextXAlignment.Right
 moneyLabel.TextColor3 = GOLD; moneyLabel.Text = ""; moneyLabel.Parent = coinsRow
 local moneyStroke = Instance.new("UIStroke")
 moneyStroke.Color = TBLACK; moneyStroke.Thickness = 2; moneyStroke.Parent = moneyLabel
@@ -401,7 +402,7 @@ end
 local bestLabel = Instance.new("TextLabel")
 bestLabel.AnchorPoint = Vector2.new(1, 0); bestLabel.Position = UDim2.new(1, 0, 1, 2)
 bestLabel.Size = UDim2.fromOffset(320, 20); bestLabel.BackgroundTransparency = 1
-bestLabel.FontFace = BODYB_FACE; bestLabel.TextSize = 15; bestLabel.TextXAlignment = Enum.TextXAlignment.Right
+bestLabel.FontFace = BODYB_FACE; bestLabel.TextSize = 14; bestLabel.TextXAlignment = Enum.TextXAlignment.Right
 bestLabel.TextColor3 = DIMTEXT; bestLabel.Text = ""; bestLabel.Parent = coinsRow
 local bestStroke = Instance.new("UIStroke")
 bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestLabel
@@ -415,9 +416,9 @@ corner(panel, 8)
 lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, HEADER_COLORS.play, 2.5, 0.05)
 
 local title = Instance.new("TextLabel")
-title.Position = UDim2.new(0, 0, 0, 14); title.Size = UDim2.new(1, 0, 0, 34); title.BackgroundTransparency = 1
+title.Position = UDim2.new(0, 0, 0, 0); title.Size = UDim2.new(1, 0, 0, 48); title.BackgroundTransparency = 1
 title.FontFace = TITLE_FACE; title.TextSize = 28; title.TextColor3 = TEXTCOL
-headerBar(panel, 44, HEADER_COLORS.play)
+headerBar(panel, 48, HEADER_COLORS.play)
 title.Text = "CHOOSE YOUR RUN"; title.Parent = panel
 
 local function sectionLabel(text, y)
@@ -457,8 +458,8 @@ local sizeRow = row(322, 48)
 -- live status line above it (the billboard over the pad shows the rest).
 local leaveBtn = Instance.new("TextButton")
 leaveBtn.AnchorPoint = Vector2.new(0.5, 1); leaveBtn.Position = UDim2.new(0.5, 0, 1, -28)
-leaveBtn.Size = UDim2.fromOffset(380, 70); leaveBtn.BackgroundColor3 = ORANGE; leaveBtn.BorderSizePixel = 0
-leaveBtn.FontFace = TITLE_FACE; leaveBtn.TextSize = 28; leaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+leaveBtn.Size = UDim2.fromOffset(240, 44); leaveBtn.BackgroundColor3 = ORANGE; leaveBtn.BorderSizePixel = 0
+leaveBtn.FontFace = TITLE_FACE; leaveBtn.TextSize = 16; leaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 leaveBtn.Text = "LEAVE PARTY"; leaveBtn.Visible = false; leaveBtn.Parent = gui
 corner(leaveBtn, 8); ldepth(leaveBtn); ledge(leaveBtn, TBLACK, 3)
 
@@ -476,8 +477,8 @@ blockedMsg.TextColor3 = TEXTCOL; blockedMsg.Text = ""; blockedMsg.Visible = fals
 local mapBtns, diffBtns, sizeBtns = {}, {}, {}
 
 local play = Instance.new("TextButton")
-play.AnchorPoint = Vector2.new(0.5, 1); play.Position = UDim2.new(0.5, 0, 1, -40); play.Size = UDim2.fromOffset(300, 60)
-play.BackgroundColor3 = ACCENT; play.FontFace = TITLE_FACE; play.TextSize = 24
+play.AnchorPoint = Vector2.new(0.5, 1); play.Position = UDim2.new(0.5, 0, 1, -40); play.Size = UDim2.fromOffset(320, 56)
+play.BackgroundColor3 = ACCENT; play.FontFace = TITLE_FACE; play.TextSize = 18
 play.TextColor3 = Color3.fromRGB(14, 22, 6); play.Text = "PLAY"; play.Parent = panel
 corner(play, 6)
 ldepth(play); ledge(play, TBLACK, 2)
@@ -519,7 +520,7 @@ local function refresh()
 		local nmSt = Instance.new("UIStroke"); nmSt.Color = TBLACK; nmSt.Thickness = 2; nmSt.Parent = nm
 		local edge = Instance.new("UIStroke") -- bright accent outline on the selected map, thin black otherwise
 		edge.Color = isSel and ACCENT or TBLACK
-		edge.Thickness = isSel and 6 or 2
+		edge.Thickness = isSel and 4 or 2
 		edge.Parent = b
 		if isSel then
 			-- A clear "SELECTED" badge across the top so there's no doubt which map is chosen.
@@ -540,7 +541,7 @@ local function refresh()
 	local worldInfo = unlocks.worlds[sel.map]
 	for _, d in unlocks.order do
 		local unlocked = worldInfo and worldInfo.diffs[d]
-		local b = button(diffRow, 100, 52, unlocked and cap(d) or (cap(d) .. " 🔒")) -- 94px: five fit (incl. Endless)
+		local b = button(diffRow, 100, 48, unlocked and cap(d) or (cap(d) .. " 🔒")) -- 94px: five fit (incl. Endless)
 		b.LayoutOrder = #diffBtns + 1
 		if not unlocked then
 			b.AutoButtonColor = false; b.BackgroundColor3 = DIM; b.TextColor3 = Color3.fromRGB(150, 150, 160)
@@ -623,9 +624,15 @@ StatsRemote.OnClientEvent:Connect(function(s)
 	-- All profile-load retries failed: this session runs on a fallback that will NEVER be saved
 	-- (opening cases / buying is blocked server-side). Tell the player instead of failing silently.
 	if s.noPersist and not saveWarn then
+		-- CRITICAL banner: its own ScreenGui above every panel (it used to live in the DisplayOrder-10
+		-- HUD gui, so the inventory panel drew over it), positioned below the Roblox topbar band.
+		local warnGui = Instance.new("ScreenGui")
+		warnGui.Name = "LobbyWarning"; warnGui.ResetOnSpawn = false; warnGui.IgnoreGuiInset = true
+		warnGui.DisplayOrder = 90; warnGui.Parent = playerGui
+		lattach(warnGui)
 		saveWarn = Instance.new("TextLabel")
 		saveWarn.AnchorPoint = Vector2.new(0.5, 0)
-		saveWarn.Position = UDim2.new(0.5, 0, 0, 8)
+		saveWarn.Position = UDim2.new(0.5, 0, 0, 60)
 		saveWarn.Size = UDim2.fromOffset(620, 36)
 		saveWarn.BackgroundColor3 = ORANGE
 		saveWarn.BorderSizePixel = 0
@@ -634,7 +641,7 @@ StatsRemote.OnClientEvent:Connect(function(s)
 		saveWarn.TextColor3 = Color3.fromRGB(255, 255, 255)
 		saveWarn.Text = "⚠  Your save data couldn't load — progress will NOT save. Please rejoin."
 		saveWarn.ZIndex = 50
-		saveWarn.Parent = gui
+		saveWarn.Parent = warnGui
 		corner(saveWarn, 8)
 	end
 end)
@@ -753,7 +760,7 @@ local CASES_ICON = "rbxassetid://83465359983310"
 local function cornerButton(imageId, caption, yOff, accent, badge)
 	local b = Instance.new("TextButton")
 	b.AnchorPoint = Vector2.new(0, 0)
-	b.Position = UDim2.new(0, 16, 0.5, yOff); b.Size = UDim2.fromOffset(76, 76)
+	b.Position = UDim2.new(0, 16, 0.5, yOff); b.Size = UDim2.fromOffset(64, 64)
 	b.BackgroundColor3 = PANEL; b.BorderSizePixel = 0
 	b.Text = ""; b.Parent = invGui; corner(b, 8)
 	lstuds(b); ldepth(b); ledge(b); ledge(b, accent, 1, 0.35); lbevel(b)
@@ -781,8 +788,8 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "GUNS", -82, GOLD, true)  -- upper
-local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 6, ACCENT, false) -- lower
+local gunsBtn = cornerButton(GUN_ICON, "GUNS", -(64 + 4), GOLD, true)  -- upper
+local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 4, ACCENT, false) -- lower
 
 local PANEL_W, PANEL_H = 940, 560
 local DETAIL_W = 280
@@ -795,7 +802,7 @@ corner(invPanel, 8)
 lstuds(invPanel); ldepth(invPanel); ledge(invPanel, TBLACK, 3)
 local invEdge = ledge(invPanel, HEADER_COLORS.guns, 2.5, 0.05)
 
-local invHeaderBar, invHeaderSq = headerBar(invPanel, 52, HEADER_COLORS.guns)
+local invHeaderBar, invHeaderSq = headerBar(invPanel, 48, HEADER_COLORS.guns)
 local invTitle = Instance.new("TextLabel")
 invTitle.Position = UDim2.fromOffset(18, 0); invTitle.Size = UDim2.fromOffset(340, 52); invTitle.BackgroundTransparency = 1
 invTitle.FontFace = TITLE_FACE; invTitle.TextSize = 28; invTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -803,17 +810,17 @@ invTitle.TextColor3 = TEXTCOL; invTitle.Text = "INVENTORY"; invTitle.Parent = in
 
 local invCoins = Instance.new("TextLabel")
 invCoins.AnchorPoint = Vector2.new(1, 0); invCoins.Position = UDim2.new(1, -64, 0, 14); invCoins.Size = UDim2.fromOffset(200, 28)
-invCoins.BackgroundTransparency = 1; invCoins.FontFace = BODYB_FACE; invCoins.TextSize = 20
+invCoins.BackgroundTransparency = 1; invCoins.FontFace = BODYB_FACE; invCoins.TextSize = 18
 invCoins.TextXAlignment = Enum.TextXAlignment.Right; invCoins.TextColor3 = GOLD; invCoins.Text = "0"; invCoins.Parent = invPanel
 
-local invClose = redX(invPanel, 46, 26)
+local invClose = redX(invPanel, 44, 26)
 invClose.Position = UDim2.new(1, -10, 0, 8)
 
 -- (No tab strip: GUNS and CASES are separate screens sharing this panel; the header shows which.)
 
 -- Same 3-region skeleton as the SHOP: card grid (left) | featured pane, always visible (middle) |
 -- action-button stack (right).
-local CONTENT_Y = 60
+local CONTENT_Y = 64 -- 48 header + 16 gap
 local invGrid = Instance.new("ScrollingFrame")
 invGrid.Position = UDim2.fromOffset(16, CONTENT_Y); invGrid.Size = UDim2.fromOffset(346, PANEL_H - CONTENT_Y - 16)
 invGrid.BackgroundTransparency = 1; invGrid.BorderSizePixel = 0; invGrid.ScrollBarThickness = 6
@@ -1017,7 +1024,7 @@ local function renderInvDetail()
 				equipped and ORANGE or ACCENT,
 				equipped and darker(ORANGE, 0.4) or darker(ACCENT, 0.5),
 				equipped and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(14, 22, 6))
-			eqBtn.Position = UDim2.fromOffset(14, 330); eqBtn.Size = UDim2.new(1, -28, 0, 50)
+			eqBtn.Position = UDim2.fromOffset(14, 330); eqBtn.Size = UDim2.new(1, -28, 0, 56)
 			eqBtn.Activated:Connect(function()
 				lplay("Equip")
 				EquipSlot:FireServer({ slot = sl, weaponId = equipped and false or id })
@@ -1092,7 +1099,7 @@ local function renderInvDetail()
 					buy = bigButton(invDetail, ("NEED 🪙 %s"):format(fmt(w.price or 0)), GHOSTA, GHOSTB, DIMTEXT)
 					buy.AutoButtonColor = false
 				end
-				buy.Position = UDim2.fromOffset(14, 356); buy.Size = UDim2.new(1, -28, 0, 46)
+				buy.Position = UDim2.fromOffset(14, 356); buy.Size = UDim2.new(1, -28, 0, 56)
 			end
 		end
 
@@ -1195,7 +1202,7 @@ local function renderInvDetail()
 			open = paneButton("NONE LEFT", GHOSTA, GHOSTB, DIMTEXT)
 			open.AutoButtonColor = false
 		end
-		open.Position = UDim2.new(0, 0, 0, 0); open.Size = UDim2.new(1, 0, 0, 60)
+		open.Position = UDim2.new(0, 0, 0, 0); open.Size = UDim2.new(1, 0, 0, 56)
 	end
 end
 
@@ -1296,7 +1303,7 @@ reel.BorderSizePixel = 0; reel.Visible = false; reel.ZIndex = 5; reel.Parent = r
 lstuds(reel); ledge(reel, TBLACK, 3); ledge(reel, ACCENT, 1, 0.45)
 local reelTitle = Instance.new("TextLabel")
 reelTitle.Position = UDim2.new(0, 0, 0, 40); reelTitle.Size = UDim2.new(1, 0, 0, 30); reelTitle.BackgroundTransparency = 1
-reelTitle.FontFace = TITLE_FACE; reelTitle.TextSize = 24; reelTitle.TextColor3 = TEXTCOL
+reelTitle.FontFace = TITLE_FACE; reelTitle.TextSize = 18; reelTitle.TextColor3 = DIMTEXT
 reelTitle.Text = "OPENING..."; reelTitle.ZIndex = 6; reelTitle.Parent = reel
 local window = Instance.new("Frame")
 window.AnchorPoint = Vector2.new(0.5, 0.5); window.Position = UDim2.fromScale(0.5, 0.5); window.Size = UDim2.fromOffset(REEL_W, REEL_H)
@@ -1309,7 +1316,7 @@ pointer.AnchorPoint = Vector2.new(0.5, 0.5); pointer.Position = UDim2.fromScale(
 pointer.BackgroundColor3 = ACCENT; pointer.BorderSizePixel = 0; pointer.ZIndex = 8; pointer.Parent = window
 local resultLabel = Instance.new("TextLabel")
 resultLabel.AnchorPoint = Vector2.new(0.5, 0); resultLabel.Position = UDim2.new(0.5, 0, 0.5, REEL_H / 2 + 16); resultLabel.Size = UDim2.fromOffset(560, 30)
-resultLabel.BackgroundTransparency = 1; resultLabel.FontFace = TITLE_FACE; resultLabel.TextSize = 22; resultLabel.Text = ""
+resultLabel.BackgroundTransparency = 1; resultLabel.FontFace = TITLE_FACE; resultLabel.TextSize = 26; resultLabel.Text = ""
 resultLabel.TextColor3 = TEXTCOL; resultLabel.ZIndex = 7; resultLabel.Parent = reel
 local reelBtn = Instance.new("TextButton") -- doubles as Skip (while rolling) and Continue (after)
 reelBtn.AnchorPoint = Vector2.new(0.5, 1); reelBtn.Position = UDim2.new(0.5, 0, 1, -34); reelBtn.Size = UDim2.fromOffset(200, 44)
@@ -1521,14 +1528,14 @@ shopPanel.BackgroundTransparency = 0.12; shopPanel.BorderSizePixel = 0; shopPane
 corner(shopPanel, 8)
 lstuds(shopPanel); ldepth(shopPanel); ledge(shopPanel, TBLACK, 3); ledge(shopPanel, HEADER_COLORS.shop, 2.5, 0.05)
 
-headerBar(shopPanel, 52, HEADER_COLORS.shop)
+headerBar(shopPanel, 48, HEADER_COLORS.shop)
 local shopTitle = Instance.new("TextLabel")
 shopTitle.Position = UDim2.fromOffset(18, 0); shopTitle.Size = UDim2.fromOffset(200, 46); shopTitle.BackgroundTransparency = 1
-shopTitle.FontFace = TITLE_FACE; shopTitle.TextSize = 24; shopTitle.TextXAlignment = Enum.TextXAlignment.Left
+shopTitle.FontFace = TITLE_FACE; shopTitle.TextSize = 28; shopTitle.TextXAlignment = Enum.TextXAlignment.Left
 shopTitle.TextColor3 = TEXTCOL; shopTitle.Text = "SHOP"; shopTitle.Parent = shopPanel
 
 local shopRestock = Instance.new("TextLabel")
-shopRestock.Position = UDim2.fromOffset(160, 0); shopRestock.Size = UDim2.fromOffset(280, 46); shopRestock.BackgroundTransparency = 1
+shopRestock.Position = UDim2.fromOffset(240, 0); shopRestock.Size = UDim2.fromOffset(240, 48); shopRestock.BackgroundTransparency = 1
 shopRestock.FontFace = BODYB_FACE; shopRestock.TextSize = 13; shopRestock.TextXAlignment = Enum.TextXAlignment.Left
 shopRestock.TextColor3 = DIMTEXT; shopRestock.Text = ""; shopRestock.Parent = shopPanel
 
@@ -1537,25 +1544,27 @@ shopCoins.AnchorPoint = Vector2.new(1, 0); shopCoins.Position = UDim2.new(1, -64
 shopCoins.BackgroundTransparency = 1; shopCoins.FontFace = BODYB_FACE; shopCoins.TextSize = 16
 shopCoins.TextXAlignment = Enum.TextXAlignment.Right; shopCoins.TextColor3 = GOLD; shopCoins.Text = ""; shopCoins.Parent = shopPanel
 
-local shopX = redX(shopPanel, 46, 26)
-shopX.Position = UDim2.new(1, -10, 0, 8)
+local shopX = redX(shopPanel, 44, 26)
+shopX.Position = UDim2.new(1, -8, 0, 2)
 
 -- Reference-image structure: crate GRID (left) | FEATURED case (middle) | BUY buttons (right).
-local shopGrid = Instance.new("Frame")
-shopGrid.Position = UDim2.fromOffset(16, 60); shopGrid.Size = UDim2.fromOffset(346, 484)
-shopGrid.BackgroundTransparency = 1; shopGrid.Parent = shopPanel
+local shopGrid = Instance.new("ScrollingFrame")
+shopGrid.Position = UDim2.fromOffset(16, 64); shopGrid.Size = UDim2.fromOffset(346, 480)
+shopGrid.BackgroundTransparency = 1; shopGrid.BorderSizePixel = 0
+shopGrid.AutomaticCanvasSize = Enum.AutomaticSize.Y; shopGrid.CanvasSize = UDim2.new()
+shopGrid.ScrollBarThickness = 6; shopGrid.ScrollBarImageColor3 = DIMTEXT; shopGrid.Parent = shopPanel
 local shopGridLayout = Instance.new("UIGridLayout")
 shopGridLayout.CellSize = UDim2.fromOffset(166, 152); shopGridLayout.CellPadding = UDim2.fromOffset(12, 12)
 shopGridLayout.SortOrder = Enum.SortOrder.LayoutOrder; shopGridLayout.Parent = shopGrid
 
 local shopDetail = Instance.new("Frame")
-shopDetail.Position = UDim2.fromOffset(378, 60); shopDetail.Size = UDim2.fromOffset(280, 484)
+shopDetail.Position = UDim2.fromOffset(378, 64); shopDetail.Size = UDim2.fromOffset(280, 480)
 shopDetail.BackgroundColor3 = PANEL2; shopDetail.BorderSizePixel = 0; shopDetail.Parent = shopPanel
 corner(shopDetail, 6); lstuds(shopDetail, 42, 0.75); ledge(shopDetail, TBLACK, 2); ledge(shopDetail, GOLD, 1, 0.55)
 
 local shopBuys = Instance.new("Frame")
-shopBuys.AnchorPoint = Vector2.new(1, 0); shopBuys.Position = UDim2.new(1, -16, 0, 60)
-shopBuys.Size = UDim2.fromOffset(250, 484); shopBuys.BackgroundTransparency = 1; shopBuys.Parent = shopPanel
+shopBuys.AnchorPoint = Vector2.new(1, 0); shopBuys.Position = UDim2.new(1, -16, 0, 64)
+shopBuys.Size = UDim2.fromOffset(250, 480); shopBuys.BackgroundTransparency = 1; shopBuys.Parent = shopPanel
 
 -- Restock flash overlay (the "new stock just landed" blink).
 local shopFlash = Instance.new("Frame")
@@ -1776,7 +1785,7 @@ local function renderShopDetail()
 		end
 	end
 	local buyAll = buyBtn("BUY ALL CRATES", "gold", anyAvail)
-	buyAll.AnchorPoint = Vector2.new(0, 1); buyAll.Position = UDim2.new(0, 0, 1, 0); buyAll.Size = UDim2.new(1, 0, 0, 60)
+	buyAll.AnchorPoint = Vector2.new(0, 1); buyAll.Position = UDim2.new(0, 0, 1, 0); buyAll.Size = UDim2.new(1, 0, 0, 56)
 	if anyAvail then
 		buyAll.Activated:Connect(function()
 			lplay("Buy")
@@ -1921,7 +1930,7 @@ do
 		local cClose = Instance.new("TextButton")
 		cClose.AnchorPoint = Vector2.new(1, 0)
 		cClose.Position = UDim2.new(1, -6, 0, 6)
-		cClose.Size = UDim2.fromOffset(22, 22)
+		cClose.Size = UDim2.fromOffset(44, 44)
 		cClose.BackgroundTransparency = 1
 		cClose.FontFace = BODYB_FACE
 		cClose.TextSize = 14
@@ -1971,13 +1980,13 @@ do
 	sPanel.BorderSizePixel = 0; sPanel.Visible = false; sPanel.Parent = setGui
 	corner(sPanel, 8); lstuds(sPanel); ldepth(sPanel); ledge(sPanel, TBLACK, 3); ledge(sPanel, HEADER_COLORS.settings, 2.5, 0.05)
 
-	headerBar(sPanel, 44, HEADER_COLORS.settings)
+	headerBar(sPanel, 48, HEADER_COLORS.settings)
 	local sTitle = Instance.new("TextLabel")
 	sTitle.Position = UDim2.fromOffset(18, 0); sTitle.Size = UDim2.fromOffset(200, 44); sTitle.BackgroundTransparency = 1
 	sTitle.FontFace = TITLE_FACE; sTitle.TextSize = 22; sTitle.TextXAlignment = Enum.TextXAlignment.Left
 	sTitle.TextColor3 = TEXTCOL; sTitle.Text = "SETTINGS"; sTitle.Parent = sPanel
 
-	local sClose = redX(sPanel, 34, 20)
+	local sClose = redX(sPanel, 44, 20)
 	sClose.Position = UDim2.new(1, -6, 0, 6)
 
 	local function sliderRow(y, labelText, get, set)
@@ -2088,13 +2097,21 @@ do
 		for _, r in renders do r() end
 	end
 
+	-- The open panel and the XP bar share the bottom band (they collided on narrow screens) —
+	-- hide the XP bar while settings is open.
+	local function syncXpBar()
+		local xg = playerGui:FindFirstChild("LobbyXP")
+		if xg then xg.Enabled = not sPanel.Visible end
+	end
 	gear.Activated:Connect(function()
 		sPanel.Visible = not sPanel.Visible
 		if sPanel.Visible then renderAll(); uiFocusOpen() else uiFocusClose() end
+		syncXpBar()
 	end)
 	sClose.Activated:Connect(function()
 		if sPanel.Visible then uiFocusClose() end
 		sPanel.Visible = false
+		syncXpBar()
 	end)
 	task.delay(3, renderAll) -- saved volumes arrive async via Stats
 end
