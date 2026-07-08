@@ -122,6 +122,19 @@ local function recoil(player: Player)
 	):Play()
 end
 
+-- Standard character rig part names. If a weapon model was built ON an animation dummy (gun welded to a
+-- rig), we strip these + the Humanoid on equip so ONLY the gun welds to the hand — otherwise the whole rig
+-- (and the player) gets dragged around.
+local RIG_PARTS: { [string]: boolean } = {}
+for _, n in {
+	"HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso",
+	"Left Arm", "Right Arm", "Left Leg", "Right Leg",
+	"LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand",
+	"LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot",
+} do
+	RIG_PARTS[n:lower()] = true
+end
+
 -- Attach the player's currently-equipped weapon model to their hand (or clear it if there's no model).
 local function attach(player: Player)
 	local character = player.Character
@@ -152,6 +165,22 @@ local function attach(player: Player)
 
 	local model = template:Clone()
 	model.Name = HELD_NAME
+
+	-- If the model was built on an animation dummy, strip the rig so ONLY the gun welds to the hand.
+	if model:FindFirstChildWhichIsA("Humanoid", true) then
+		local strip = {}
+		for _, d in model:GetDescendants() do
+			if d:IsA("Humanoid") or d:IsA("AnimationController") or (d:IsA("BasePart") and RIG_PARTS[d.Name:lower()]) then
+				table.insert(strip, d)
+			end
+		end
+		for _, d in strip do
+			if d.Parent then
+				d:Destroy()
+			end
+		end
+		warn(("[WeaponModelService] '%s' contained an animation rig — stripped it so only the gun welds."):format(ps.equippedWeapon))
+	end
 
 	local handle = model:FindFirstChild("Handle")
 		or model.PrimaryPart
