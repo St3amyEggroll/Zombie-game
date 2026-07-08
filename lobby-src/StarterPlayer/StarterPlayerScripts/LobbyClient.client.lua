@@ -346,9 +346,15 @@ local function makeGunViewport(weaponId, spin, folderName)
 	model.WorldPivot = cf
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(15)) * 1.12 + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * 0.22, dist), cf.Position)
-	-- Display orientation: side-on (per-gun yaw fixes guns built on a different axis) + a cool upward tilt.
+	-- Display orientation: GUNS get side-on + a cool upward tilt; CRATES keep their built rotation
+	-- (the gun yaw was turning crates sideways).
 	local TILT, DISP_YAW = 45, { tommygun = 90, raygun = 90, plasma = 90, freezeray = 90 }
-	local dispRot = CFrame.Angles(0, 0, math.rad(TILT)) * CFrame.Angles(0, math.rad(DISP_YAW[weaponId] or 0), 0) * cf.Rotation
+	local dispRot
+	if (folderName or "GunDisplay") == "GunDisplay" then
+		dispRot = CFrame.Angles(0, 0, math.rad(TILT)) * CFrame.Angles(0, math.rad(DISP_YAW[weaponId] or 0), 0) * cf.Rotation
+	else
+		dispRot = cf.Rotation
+	end
 	if spin ~= false then
 		table.insert(gvSpinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
 		if not gvLoop then
@@ -776,7 +782,7 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 	local cap = Instance.new("TextLabel")
 	cap.AnchorPoint = Vector2.new(0.5, 1); cap.Position = UDim2.new(0.5, 0, 1, -5)
 	cap.Size = UDim2.new(1, -6, 0, 13); cap.BackgroundTransparency = 1
-	cap.FontFace = TITLE_FACE; cap.TextSize = 11; cap.TextColor3 = TEXTCOL
+	cap.FontFace = TITLE_FACE; cap.TextSize = 12; cap.TextColor3 = TEXTCOL
 	cap.TextXAlignment = Enum.TextXAlignment.Center; cap.Text = caption; cap.Parent = b
 
 	if badge then
@@ -789,7 +795,22 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 	return b
 end
 local gunsBtn = cornerButton(GUN_ICON, "GUNS", -(64 + 4), GOLD, true)  -- upper
-local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 4, ACCENT, false) -- lower
+local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 4, ACCENT, false) -- re-anchored below
+casesBtn.AnchorPoint = Vector2.new(1, 1)
+casesBtn.Position = UDim2.new(1, -12, 1, -(12 + 48 + 8 + 56 + 8)) -- bottom-right: above the LEVEL bar
+-- SHOP button — opens the crate storefront from anywhere (stepping on the stall still works too)
+local shopBtn = cornerButton("", "SHOP", 4, GOLD, false)
+do -- no icon image yet: a big gold 🪙 fills the face (swap in an image id in cornerButton later)
+	local glyph = Instance.new("TextLabel")
+	glyph.AnchorPoint = Vector2.new(0.5, 0); glyph.Position = UDim2.new(0.5, 0, 0, 4)
+	glyph.Size = UDim2.new(1, -8, 1, -22); glyph.BackgroundTransparency = 1
+	glyph.FontFace = TITLE_FACE; glyph.TextScaled = true; glyph.TextColor3 = GOLD
+	glyph.Text = "🪙"; glyph.Parent = shopBtn
+end
+shopBtn.Activated:Connect(function()
+	lplay("Open")
+	remotes:WaitForChild("ShopSync"):FireServer()
+end)
 
 local PANEL_W, PANEL_H = 940, 560
 local DETAIL_W = 280
@@ -927,7 +948,7 @@ local GHOSTB = Color3.fromRGB(42, 47, 33)
 local function bigButton(parent, textStr, fillA, fillB, textCol)
 	local b = Instance.new("TextButton")
 	b.BackgroundColor3 = fillA; b.BorderSizePixel = 0; b.AutoButtonColor = true
-	b.FontFace = TITLE_FACE; b.TextSize = 17; b.TextColor3 = textCol; b.Text = textStr; b.Parent = parent
+	b.FontFace = TITLE_FACE; b.TextSize = 18; b.TextColor3 = textCol; b.Text = textStr; b.Parent = parent
 	corner(b, 5); ledge(b, TBLACK, 2.5)
 	local g = Instance.new("UIGradient")
 	g.Color = ColorSequence.new({
@@ -1734,7 +1755,7 @@ local function renderShopDetail()
 	local function buyBtn(textStr, style, enabled)
 		local b = Instance.new("TextButton")
 		b.BorderSizePixel = 0; b.AutoButtonColor = enabled
-		b.FontFace = TITLE_FACE; b.TextSize = 17; b.Parent = shopBuys
+		b.FontFace = TITLE_FACE; b.TextSize = 18; b.Parent = shopBuys
 		corner(b, 6); ledge(b, TBLACK, 2.5)
 		if not enabled then
 			b.BackgroundColor3 = TRACK; b.TextColor3 = DIMTEXT
@@ -1755,41 +1776,15 @@ local function renderShopDetail()
 		return b
 	end
 
+	-- ONE big BUY button (banks 1 crate — open it from SKIN CRATES). BUY & OPEN / BUY ALL are gone.
 	local canBuySel = not soldOut and afford
-	local buy1 = buyBtn(soldOut and "SOLD OUT" or "BUY 1 CRATE", "primary", canBuySel)
-	buy1.Position = UDim2.new(0, 0, 0, 0); buy1.Size = UDim2.new(1, 0, 0, 56)
+	local buy1 = buyBtn(soldOut and "SOLD OUT" or (afford and "BUY" or "NEED MORE COINS"), "primary", canBuySel)
+	buy1.Position = UDim2.new(0, 0, 0, 0); buy1.Size = UDim2.new(1, 0, 0, 72)
+	buy1.TextSize = 20
 	if canBuySel then
 		buy1.Activated:Connect(function()
 			lplay("Buy")
 			ShopBuy:FireServer({ slot = shopSelected, open = false, qty = 1 })
-		end)
-	end
-
-	local buyOpen = buyBtn(soldOut and "—" or "BUY & OPEN 1", "ghost", canBuySel)
-	buyOpen.Position = UDim2.new(0, 0, 0, 70); buyOpen.Size = UDim2.new(1, 0, 0, 56)
-	if canBuySel then
-		buyOpen.Activated:Connect(function()
-			if rolling then return end
-			rolling = true
-			armRollTimeout()
-			lplay("Buy")
-			ShopBuy:FireServer({ slot = shopSelected, open = true, qty = 1 })
-		end)
-	end
-
-	local anyAvail = false
-	for _, s in shopData.slots do
-		if (s.left or 0) > 0 and (shopData.coins or 0) >= (s.price or 0) then
-			anyAvail = true
-			break
-		end
-	end
-	local buyAll = buyBtn("BUY ALL CRATES", "gold", anyAvail)
-	buyAll.AnchorPoint = Vector2.new(0, 1); buyAll.Position = UDim2.new(0, 0, 1, 0); buyAll.Size = UDim2.new(1, 0, 0, 56)
-	if anyAvail then
-		buyAll.Activated:Connect(function()
-			lplay("Buy")
-			ShopBuy:FireServer({ all = true })
 		end)
 	end
 end
@@ -2139,7 +2134,7 @@ do
 	lattach(xpGui)
 
 	local bar = Instance.new("Frame")
-	bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.new(0.5, 0, 1, -14); bar.Size = UDim2.fromOffset(470, 56)
+	bar.AnchorPoint = Vector2.new(1, 1); bar.Position = UDim2.new(1, -12, 1, -(12 + 48 + 8)); bar.Size = UDim2.fromOffset(320, 56)
 	bar.BackgroundColor3 = PANEL; bar.BackgroundTransparency = 0.15; bar.BorderSizePixel = 0; bar.Parent = xpGui
 	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3); ledge(bar, ACCENT, 2, 0.35)
 
@@ -2152,7 +2147,7 @@ do
 	local nextLbl = Instance.new("TextLabel")
 	nextLbl.Position = UDim2.fromOffset(92, 8); nextLbl.Size = UDim2.new(1, -104, 0, 18); nextLbl.BackgroundTransparency = 1
 	nextLbl.FontFace = BODYB_FACE; nextLbl.TextSize = 14; nextLbl.TextXAlignment = Enum.TextXAlignment.Left
-	nextLbl.TextColor3 = TEXTCOL; nextLbl.Text = ""; nextLbl.Parent = bar
+	nextLbl.TextColor3 = TEXTCOL; nextLbl.Text = ""; nextLbl.TextTruncate = Enum.TextTruncate.AtEnd; nextLbl.Parent = bar
 	local nextSt = Instance.new("UIStroke"); nextSt.Color = TBLACK; nextSt.Thickness = 1.5; nextSt.Parent = nextLbl
 
 	local track = Instance.new("Frame")

@@ -17,6 +17,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
+local ProgressionConfig = require(Config.ProgressionConfig)
 local BuffConfig = require(Config.BuffConfig)     -- rarity colors
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
@@ -39,6 +40,7 @@ local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, announceLabel
+local levelLabel, levelFill
 local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
 
@@ -180,9 +182,9 @@ local function build()
 		end
 	end)
 
-	local leaveBtn = UITheme.Button(waveRow, "LEAVE", "ghost")
+	local leaveBtn = UITheme.Button(waveRow, "LEAVE", "danger")
 	leaveBtn.Name = "LeaveButton"
-	leaveBtn.Position = UDim2.fromOffset(178 + 340 + 8 + 82 + 6, 0)
+	leaveBtn.Position = UDim2.fromOffset(178 - 8 - 82, 0) -- LEFT of the bar (skip sits on the right)
 	leaveBtn.Size = UDim2.fromOffset(82, 26)
 	leaveBtn.TextSize = UITheme.Type.Caption
 	leaveBtn.Activated:Connect(function()
@@ -256,6 +258,40 @@ local function build()
 	pointsLabel.TextXAlignment = Enum.TextXAlignment.Right
 	pointsLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	pointsLabel.Text = "$0"
+
+	-- ===== BOTTOM-RIGHT: account LEVEL (above the settings gear; the SKIN CRATES button stacks above it).
+	local lp = panel(gui, "LevelPanel")
+	lp.AnchorPoint = Vector2.new(1, 1)
+	lp.Position = UDim2.new(1, -12, 1, -(12 + UITheme.Ctl.Std + 8)) -- directly above the gear
+	lp.Size = UDim2.fromOffset(220, 44)
+
+	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, UITheme.Type.Section, COL_ACCENT)
+	levelLabel.Position = UDim2.fromOffset(14, 4)
+	levelLabel.Size = UDim2.new(1, -28, 0, 20)
+	levelLabel.TextXAlignment = Enum.TextXAlignment.Left
+	levelLabel.Text = "LVL 1"
+	local lvStroke = Instance.new("UIStroke")
+	lvStroke.Color = Color3.fromRGB(0, 0, 0)
+	lvStroke.Transparency = 0.35
+	lvStroke.Thickness = 1.5
+	lvStroke.Parent = levelLabel
+
+	local lvTrack
+	lvTrack, levelFill = UITheme.Bar(lp, "XPTrack", COL_ACCENT)
+	lvTrack.Position = UDim2.fromOffset(14, 28)
+	lvTrack.Size = UDim2.new(1, -28, 0, 8)
+	levelFill.Size = UDim2.fromScale(0, 1)
+end
+
+-- Account XP -> the bottom-right level readout (shared curve with the lobby).
+local function setXP(totalXP)
+	local level, into, need = ProgressionConfig.LevelForXP(tonumber(totalXP) or 0)
+	if levelLabel then
+		levelLabel.Text = "LVL " .. level
+	end
+	if levelFill then
+		levelFill.Size = UDim2.fromScale(need > 0 and math.clamp(into / need, 0, 1) or 1, 1)
+	end
 end
 
 -- ===== ANNOUNCEMENT QUEUE ===== one slot in the top lane; events take turns. Other controllers
@@ -375,6 +411,12 @@ function HUDController.Start()
 		if typeof(data) == "table" and data.lobbyMoney then
 			coinsLabel.Text = Util.FormatNumber(data.lobbyMoney)
 		end
+		if typeof(data) == "table" and data.xp ~= nil then
+			setXP(data.xp)
+		end
+	end)
+	Remotes.Get("ProgressChanged").OnClientEvent:Connect(function(xp)
+		setXP(xp)
 	end)
 	Remotes.Get("LobbyMoneyChanged").OnClientEvent:Connect(function(total)
 		coinsLabel.Text = Util.FormatNumber(total)

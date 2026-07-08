@@ -106,10 +106,21 @@ local function gunCell(i, id)
 		vp.Parent = cell
 	end
 
+	local namePlate = Instance.new("Frame") -- dark strip so the name reads on ANY rarity color
+	namePlate.AnchorPoint = Vector2.new(0, 1)
+	namePlate.Position = UDim2.new(0, 0, 1, 0)
+	namePlate.Size = UDim2.new(1, 0, 0, 26)
+	namePlate.BackgroundColor3 = UITheme.BLACK
+	namePlate.BackgroundTransparency = 0.35
+	namePlate.BorderSizePixel = 0
+	namePlate.ZIndex = 2
+	namePlate.Parent = cell
 	local nm = UITheme.Label(cell, nil, 14, UITheme.TEXT, true)
 	nm.AnchorPoint = Vector2.new(0, 1)
 	nm.Position = UDim2.new(0, 0, 1, -4)
 	nm.Size = UDim2.new(1, 0, 0, 22)
+	nm.ZIndex = 3
+	nm.TextTruncate = Enum.TextTruncate.AtEnd
 	nm.Text = w.name
 	local nmStroke = Instance.new("UIStroke")
 	nmStroke.Color = UITheme.BLACK
@@ -118,8 +129,16 @@ local function gunCell(i, id)
 	nmStroke.Parent = nm
 
 	local chip = UITheme.Label(cell, nil, UITheme.Type.Caption, isOwned and UITheme.TOXIC or UITheme.GOLD, true)
+	chip.BackgroundColor3 = UITheme.BLACK
+	chip.BackgroundTransparency = 0.4
 	chip.Position = UDim2.fromOffset(6, 6)
-	chip.Size = UDim2.fromOffset(110, 18)
+	chip.AutomaticSize = Enum.AutomaticSize.X
+	chip.Size = UDim2.fromOffset(0, 18)
+	local chipPad = Instance.new("UIPadding")
+	chipPad.PaddingLeft = UDim.new(0, 5); chipPad.PaddingRight = UDim.new(0, 5)
+	chipPad.Parent = chip
+	local chipCorner = Instance.new("UICorner")
+	chipCorner.CornerRadius = UDim.new(0, 5); chipCorner.Parent = chip
 	chip.TextXAlignment = Enum.TextXAlignment.Left
 	chip.ZIndex = 3
 	chip.Text = isOwned and "OWNED" or ((tonumber(w.price) or 0) > 0 and ("🪙 " .. fmt(w.price)) or "STARTER")
@@ -282,7 +301,7 @@ function GunShopController.Start()
 	-- SHOP button (mobile + mouse) — a square icon button, UPPER of the LEFT-CENTER GUNS/CASES pair.
 	local shopBtn = Instance.new("TextButton")
 	shopBtn.AnchorPoint = Vector2.new(0, 0)
-	shopBtn.Position = UDim2.new(0, 16, 0.5, -(UITheme.Ctl.Launcher + 4)) -- 8px above its CASES twin at +4
+	shopBtn.Position = UDim2.new(0, 16, 0.5, -math.floor(UITheme.Ctl.Launcher / 2)) -- alone, centered on the left edge
 	shopBtn.Size = UDim2.fromOffset(UITheme.Ctl.Launcher, UITheme.Ctl.Launcher)
 	shopBtn.BackgroundColor3 = UITheme.PANEL
 	shopBtn.BorderSizePixel = 0

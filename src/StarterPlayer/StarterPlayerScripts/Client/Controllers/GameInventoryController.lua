@@ -70,10 +70,21 @@ local function caseCell(i, rarity, count)
 		vp.Parent = cell
 	end
 
+	local namePlate = Instance.new("Frame")
+	namePlate.AnchorPoint = Vector2.new(0, 1)
+	namePlate.Position = UDim2.new(0, 0, 1, 0)
+	namePlate.Size = UDim2.new(1, 0, 0, 26)
+	namePlate.BackgroundColor3 = UITheme.BLACK
+	namePlate.BackgroundTransparency = 0.35
+	namePlate.BorderSizePixel = 0
+	namePlate.ZIndex = 2
+	namePlate.Parent = cell
 	local nm = UITheme.Label(cell, nil, 14, UITheme.TEXT, true)
 	nm.AnchorPoint = Vector2.new(0, 1)
 	nm.Position = UDim2.new(0, 0, 1, -4)
 	nm.Size = UDim2.new(1, 0, 0, 22)
+	nm.ZIndex = 3
+	nm.TextTruncate = Enum.TextTruncate.AtEnd
 	nm.Text = disp and disp.name or rarity
 	local nmStroke = Instance.new("UIStroke")
 	nmStroke.Color = UITheme.BLACK
@@ -82,8 +93,16 @@ local function caseCell(i, rarity, count)
 	nmStroke.Parent = nm
 
 	local chip = UITheme.Label(cell, nil, UITheme.Type.Caption, col, true)
+	chip.BackgroundColor3 = UITheme.BLACK
+	chip.BackgroundTransparency = 0.4
 	chip.Position = UDim2.fromOffset(6, 6)
-	chip.Size = UDim2.fromOffset(60, 18)
+	chip.AutomaticSize = Enum.AutomaticSize.X
+	chip.Size = UDim2.fromOffset(0, 18)
+	local chipPad = Instance.new("UIPadding")
+	chipPad.PaddingLeft = UDim.new(0, 5); chipPad.PaddingRight = UDim.new(0, 5)
+	chipPad.Parent = chip
+	local chipCorner = Instance.new("UICorner")
+	chipCorner.CornerRadius = UDim.new(0, 5); chipCorner.Parent = chip
 	chip.TextXAlignment = Enum.TextXAlignment.Left
 	chip.ZIndex = 3
 	chip.Text = "x" .. count

@@ -459,7 +459,7 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	b.BorderSizePixel = 0
 	b.AutoButtonColor = false
 	b.FontFace = UITheme.TitleFace
-	b.TextSize = UITheme.Type.Value -- CTA text: one clear step above body
+	b.TextSize = UITheme.Type.Section -- CTA text: 18, unmissable on the big 56px buttons
 	b.TextColor3 = fill[3]
 	b.Text = string.upper(textStr)
 	b.Parent = parent

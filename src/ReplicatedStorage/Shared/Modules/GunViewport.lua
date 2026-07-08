@@ -86,7 +86,10 @@ function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(CAM_FOV / 2)) * FIT_SLACK + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * CAM_PITCH, dist), cf.Position)
 
-	local dispRot = displayRot(weaponId, cf.Rotation) -- side-on + upward tilt (see TUNABLES)
+	-- GUNS get the side-on + tilt pose; CRATES (CrateDisplay) keep their built rotation — the gun yaw
+	-- was turning crates sideways.
+	local isGun = (folderName or "GunDisplay") == "GunDisplay"
+	local dispRot = isGun and displayRot(weaponId, cf.Rotation) or cf.Rotation
 	if spin ~= false then
 		table.insert(spinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
 		startLoop()

@@ -1049,6 +1049,13 @@ local function pushShop(player, enter)
 	end
 end
 
+-- The SHOP corner button: client fires ShopSync (no payload) to ask for the storefront from anywhere.
+ShopSync.OnServerEvent:Connect(function(player)
+	if allow(player, "Shop") then
+		pushShop(player, true) -- enter=true -> the client opens the panel
+	end
+end)
+
 ShopBuy.OnServerEvent:Connect(function(player, req)
 	if typeof(req) ~= "table" then
 		return
