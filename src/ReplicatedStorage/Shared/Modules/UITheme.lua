@@ -81,7 +81,7 @@ UITheme.Ctl = {
 	CTA      = 56, -- the one biggest action per screen
 	Std      = 44, -- secondary actions, every close X, gear, arrows
 	Min      = 36, -- toggles, slider hit-strips — the touch floor
-	Launcher = 64, -- GUNS / SKIN CRATES icon-button pair (both places)
+	Launcher = 72, -- GUNS / SKIN CRATES / SHOP icon buttons (both places)
 }
 -- SPACING RHYTHM: one grid.
 UITheme.Space = { Pad = 16, Row = 8, Section = 24, Header = 48 }

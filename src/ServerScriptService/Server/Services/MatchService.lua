@@ -253,6 +253,18 @@ spawnCharacter = function(player: Player)
 	local char = player.Character or player.CharacterAdded:Wait()
 	char:WaitForChild("HumanoidRootPart", 5)
 
+	-- Cartoon BLACK OUTLINE on every player (matches the zombies' look).
+	if not char:FindFirstChild("Outline") then
+		local hl = Instance.new("Highlight")
+		hl.Name = "Outline"
+		hl.FillTransparency = 1
+		hl.OutlineColor = Color3.new(0, 0, 0)
+		hl.OutlineTransparency = 0
+		hl.DepthMode = Enum.HighlightDepthMode.Occluded
+		hl.Adornee = char
+		hl.Parent = char
+	end
+
 	local ps = state.players[player.UserId]
 	if ps then
 		ps.isDead = false

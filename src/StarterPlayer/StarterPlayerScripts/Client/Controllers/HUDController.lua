@@ -34,6 +34,7 @@ local COL_DANGER    = UITheme.ORANGE
 local COL_GOLD      = UITheme.GOLD
 local COL_TRACK     = UITheme.TRACK
 local PANEL_ALPHA   = 0.06
+local COL_XP        = Color3.fromRGB(66, 165, 245) -- XP/level is BLUE
 local LOW_HP_PCT    = 0.4
 
 local localPlayer = Players.LocalPlayer
@@ -173,6 +174,7 @@ local function build()
 	skipBtn.Position = UDim2.fromOffset(178 + 340 + 8, 0)
 	skipBtn.Size = UDim2.fromOffset(82, 26)
 	skipBtn.TextSize = UITheme.Type.Caption
+	skipBtn.TextColor3 = Color3.fromRGB(255, 255, 255) -- readable white (the variant's dark text read as black)
 	skipBtn.Activated:Connect(function()
 		local id = tonumber(GameConfig.SkipWaveProductId) or 0
 		if id > 0 then
@@ -187,6 +189,7 @@ local function build()
 	leaveBtn.Position = UDim2.fromOffset(178 - 8 - 82, 0) -- LEFT of the bar (skip sits on the right)
 	leaveBtn.Size = UDim2.fromOffset(82, 26)
 	leaveBtn.TextSize = UITheme.Type.Caption
+	leaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	leaveBtn.Activated:Connect(function()
 		Remotes.Get("LeaveRun"):FireServer()
 	end)
@@ -232,10 +235,10 @@ local function build()
 	lp.Position = UDim2.new(0, 16, 1, -(16 + 64 + 8)) -- directly above the health panel
 	lp.Size = UDim2.fromOffset(240, 44)
 
-	coinsLabel = text(gui, "LobbyMoneyLabel", UITheme.BodyBoldFace, UITheme.Type.Section, COL_GOLD)
+	coinsLabel = text(gui, "LobbyMoneyLabel", UITheme.TitleFace, 30, COL_GOLD) -- BIG coins, right above the level
 	coinsLabel.AnchorPoint = Vector2.new(0, 1)
 	coinsLabel.Position = UDim2.new(0, 16 + 14, 1, -(16 + 64 + 8 + 44 + 6)) -- right above the level bar
-	coinsLabel.Size = UDim2.fromOffset(226, 22)
+	coinsLabel.Size = UDim2.fromOffset(280, 34)
 	coinsLabel.TextXAlignment = Enum.TextXAlignment.Left
 	coinsLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	coinsLabel.Text = "🪙 0"
@@ -245,7 +248,7 @@ local function build()
 	coinStroke.Thickness = 1.5
 	coinStroke.Parent = coinsLabel
 
-	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, UITheme.Type.Section, COL_ACCENT)
+	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, UITheme.Type.Section, COL_XP)
 	levelLabel.Position = UDim2.fromOffset(14, 4)
 	levelLabel.Size = UDim2.new(1, -28, 0, 20)
 	levelLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -257,7 +260,7 @@ local function build()
 	lvStroke.Parent = levelLabel
 
 	local lvTrack
-	lvTrack, levelFill = UITheme.Bar(lp, "XPTrack", COL_ACCENT)
+	lvTrack, levelFill = UITheme.Bar(lp, "XPTrack", COL_XP)
 	lvTrack.Position = UDim2.fromOffset(14, 28)
 	lvTrack.Size = UDim2.new(1, -28, 0, 8)
 	levelFill.Size = UDim2.fromScale(0, 1)

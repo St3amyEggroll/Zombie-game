@@ -230,6 +230,11 @@ function GameInventoryController.Start()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
+	do -- match the LOBBY's rendered panel size (game UIScaleMult 1.5 vs lobby 1.2 -> 0.8 evens it out)
+		local ps = Instance.new("UIScale")
+		ps.Scale = 0.8
+		ps.Parent = panel
+	end
 	UITheme.Header(panel, "SKIN CRATES", nil, UITheme.TOXIC, UITheme.HeaderColors.cases)
 
 	local closeBtn = UITheme.Close(panel)

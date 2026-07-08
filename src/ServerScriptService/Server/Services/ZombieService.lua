@@ -422,6 +422,16 @@ local function buildZombie(typeId: string, t): Model
 	end
 	local model = asset and asset:Clone() or buildPlaceholder(t)
 	prepModel(model)
+	-- Cartoon BLACK OUTLINE (a Highlight with no fill). NOTE: Roblox renders at most ~31 Highlights at
+	-- once — deep-horde overflow zombies just skip the outline, which reads fine.
+	local hl = Instance.new("Highlight")
+	hl.Name = "Outline"
+	hl.FillTransparency = 1
+	hl.OutlineColor = Color3.new(0, 0, 0)
+	hl.OutlineTransparency = 0
+	hl.DepthMode = Enum.HighlightDepthMode.Occluded
+	hl.Adornee = model
+	hl.Parent = model
 	return model
 end
 

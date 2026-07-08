@@ -393,7 +393,7 @@ coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1
 coinsRow.Size = UDim2.fromOffset(320, 44); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
 local moneyLabel = Instance.new("TextLabel")
 moneyLabel.Size = UDim2.new(1, 0, 1, 0); moneyLabel.BackgroundTransparency = 1
-moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 22; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
+moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 34; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
 moneyLabel.TextColor3 = GOLD; moneyLabel.Text = ""; moneyLabel.Parent = coinsRow
 local moneyStroke = Instance.new("UIStroke")
 moneyStroke.Color = TBLACK; moneyStroke.Thickness = 2; moneyStroke.Parent = moneyLabel
@@ -409,7 +409,7 @@ local bestLabel = Instance.new("TextLabel")
 bestLabel.AnchorPoint = Vector2.new(0, 0); bestLabel.Position = UDim2.new(0, 0, 1, 2)
 bestLabel.Size = UDim2.fromOffset(320, 20); bestLabel.BackgroundTransparency = 1
 bestLabel.FontFace = BODYB_FACE; bestLabel.TextSize = 14; bestLabel.TextXAlignment = Enum.TextXAlignment.Left
-bestLabel.TextColor3 = DIMTEXT; bestLabel.Text = ""; bestLabel.Parent = coinsRow
+bestLabel.TextColor3 = DIMTEXT; bestLabel.Text = ""; bestLabel.Visible = false; bestLabel.Parent = coinsRow -- best-wave text removed
 local bestStroke = Instance.new("UIStroke")
 bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestLabel
 
@@ -766,7 +766,7 @@ local CASES_ICON = "rbxassetid://83465359983310"
 local function cornerButton(imageId, caption, yOff, accent, badge)
 	local b = Instance.new("TextButton")
 	b.AnchorPoint = Vector2.new(0, 0)
-	b.Position = UDim2.new(0, 16, 0.5, yOff); b.Size = UDim2.fromOffset(64, 64)
+	b.Position = UDim2.new(0, 16, 0.5, yOff); b.Size = UDim2.fromOffset(72, 72)
 	b.BackgroundColor3 = PANEL; b.BorderSizePixel = 0
 	b.Text = ""; b.Parent = invGui; corner(b, 8)
 	lstuds(b); ldepth(b); ledge(b); ledge(b, accent, 1, 0.35); lbevel(b)
@@ -794,10 +794,10 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "GUNS", -104, GOLD, true)  -- top of the LEFT trio: GUNS / SHOP / SKIN CRATES
-local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 40, ACCENT, false) -- bottom of the trio
+local gunsBtn = cornerButton(GUN_ICON, "GUNS", -116, GOLD, true)  -- top of the LEFT trio: GUNS / SHOP / SKIN CRATES
+local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 44, ACCENT, false) -- bottom of the trio
 -- SHOP button — opens the crate storefront from anywhere (stepping on the stall still works too)
-local shopBtn = cornerButton("", "SHOP", -32, GOLD, false) -- middle of the trio
+local shopBtn = cornerButton("", "SHOP", -36, GOLD, false) -- middle of the trio
 do -- no icon image yet: a big gold 🪙 fills the face (swap in an image id in cornerButton later)
 	local glyph = Instance.new("TextLabel")
 	glyph.AnchorPoint = Vector2.new(0.5, 0); glyph.Position = UDim2.new(0.5, 0, 0, 4)
@@ -2134,7 +2134,7 @@ do
 
 	local lvl = Instance.new("TextLabel")
 	lvl.Position = UDim2.fromOffset(12, 0); lvl.Size = UDim2.fromOffset(74, 56); lvl.BackgroundTransparency = 1
-	lvl.FontFace = TITLE_FACE; lvl.TextSize = 26; lvl.TextColor3 = ACCENT; lvl.Text = "LVL 1"
+	lvl.FontFace = TITLE_FACE; lvl.TextSize = 26; lvl.TextColor3 = Color3.fromRGB(66, 165, 245); lvl.Text = "LVL 1" -- XP/level is BLUE
 	lvl.TextXAlignment = Enum.TextXAlignment.Left; lvl.Parent = bar
 	local lvlSt = Instance.new("UIStroke"); lvlSt.Color = TBLACK; lvlSt.Thickness = 2; lvlSt.Parent = lvl
 
@@ -2149,7 +2149,7 @@ do
 	track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Parent = bar
 	corner(track, 8); ledge(track, TBLACK, 1.5)
 	local fill = Instance.new("Frame")
-	fill.Size = UDim2.new(0, 0, 1, 0); fill.BackgroundColor3 = ACCENT; fill.BorderSizePixel = 0; fill.Parent = track
+	fill.Size = UDim2.new(0, 0, 1, 0); fill.BackgroundColor3 = Color3.fromRGB(66, 165, 245); fill.BorderSizePixel = 0; fill.Parent = track
 	corner(fill, 8)
 	local xpTxt = Instance.new("TextLabel")
 	xpTxt.Size = UDim2.fromScale(1, 1); xpTxt.BackgroundTransparency = 1; xpTxt.ZIndex = 2

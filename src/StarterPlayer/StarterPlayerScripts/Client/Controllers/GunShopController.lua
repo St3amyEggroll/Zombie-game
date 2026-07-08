@@ -81,6 +81,102 @@ end
 
 local render -- forward decl
 
+-- ===== NEW GUN UNLOCKED showcase ===== a top-center banner: spinning 3D gun (with a black outline
+-- silhouette behind it) + name, on a soft plate that FADES OUT at the sides (no hard box).
+local function showGunUnlock(id)
+	local w = WeaponConfig[id]
+	local template = ReplicatedStorage:FindFirstChild("GunDisplay")
+	template = template and template:FindFirstChild(id)
+	local host = localPlayer:WaitForChild("PlayerGui"):FindFirstChild("GunShop")
+	if not host then
+		return
+	end
+
+	local plate = Instance.new("Frame")
+	plate.AnchorPoint = Vector2.new(0.5, 0)
+	plate.Position = UDim2.new(0.5, 0, 0, 150)
+	plate.Size = UDim2.fromOffset(520, 116)
+	plate.BackgroundColor3 = UITheme.BLACK
+	plate.BackgroundTransparency = 0.35
+	plate.BorderSizePixel = 0
+	plate.ZIndex = 5
+	plate.Parent = host
+	local fade = Instance.new("UIGradient") -- the plate dissolves at both sides instead of a hard outline
+	fade.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.22, 0),
+		NumberSequenceKeypoint.new(0.78, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	fade.Parent = plate
+
+	local cap = UITheme.Label(plate, nil, UITheme.Type.Caption, UITheme.GOLD, true)
+	cap.AnchorPoint = Vector2.new(0.5, 0)
+	cap.Position = UDim2.new(0.5, 60, 0, 22)
+	cap.Size = UDim2.fromOffset(300, 16)
+	cap.ZIndex = 6
+	cap.Text = "NEW GUN UNLOCKED"
+
+	local nm = UITheme.Title(plate, nil, UITheme.Type.Item, UITheme.TEXT)
+	nm.AnchorPoint = Vector2.new(0.5, 0)
+	nm.Position = UDim2.new(0.5, 60, 0, 44)
+	nm.Size = UDim2.fromOffset(320, 30)
+	nm.TextXAlignment = Enum.TextXAlignment.Center
+	nm.ZIndex = 6
+	nm.Text = string.upper((w and w.name) or id)
+
+	-- Spinning 3D gun with an inflated black-silhouette clone behind it = the outline.
+	local spinConn
+	if template then
+		local vp = Instance.new("ViewportFrame")
+		vp.BackgroundTransparency = 1
+		vp.AnchorPoint = Vector2.new(0.5, 0.5)
+		vp.Position = UDim2.new(0.5, -170, 0.5, 0)
+		vp.Size = UDim2.fromOffset(110, 110)
+		vp.Ambient = Color3.fromRGB(170, 170, 170)
+		vp.ZIndex = 6
+		vp.Parent = plate
+		local cam = Instance.new("Camera")
+		cam.FieldOfView = 30
+		cam.Parent = vp
+		vp.CurrentCamera = cam
+
+		local wrap = Instance.new("Model")
+		local outline = template:Clone()
+		for _, d in outline:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Size = d.Size * 1.1 -- inflated hull = the outline
+				d.Color = Color3.new(0, 0, 0)
+				d.Material = Enum.Material.SmoothPlastic
+			elseif d:IsA("SpecialMesh") or d:IsA("Texture") or d:IsA("Decal") then
+				d:Destroy()
+			end
+		end
+		outline.Parent = wrap
+		local body = template:Clone()
+		body.Parent = wrap
+		wrap.Parent = vp
+
+		local cf, size = wrap:GetBoundingBox()
+		wrap.WorldPivot = cf
+		local dist = (size.Magnitude / 2) / math.tan(math.rad(15)) * 1.15 + 0.1
+		cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * 0.18, dist), cf.Position)
+		local ang = 0
+		spinConn = game:GetService("RunService").RenderStepped:Connect(function(dt)
+			ang += dt * math.rad(60)
+			wrap:PivotTo(CFrame.new(cf.Position) * CFrame.Angles(0, ang, 0) * cf.Rotation)
+		end)
+	end
+
+	SoundController.Play("GunBought")
+	task.delay(4.5, function()
+		if spinConn then
+			spinConn:Disconnect()
+		end
+		plate:Destroy()
+	end)
+end
+
 -- One gun cell in the grid: static render fills it, name strip at the bottom, price/OWNED chip.
 local function gunCell(i, id)
 	local w = WeaponConfig[id]
@@ -319,6 +415,11 @@ function GunShopController.Start()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
+	do -- match the LOBBY's rendered panel size (game UIScaleMult 1.5 vs lobby 1.2 -> 0.8 evens it out)
+		local ps = Instance.new("UIScale")
+		ps.Scale = 0.8
+		ps.Parent = panel
+	end
 	UITheme.Header(panel, "GUNS", nil, UITheme.GOLD, UITheme.HeaderColors.guns)
 
 	coinsLabel = UITheme.Label(panel, "Coins", UITheme.Type.Section, UITheme.GOLD, true)
@@ -379,9 +480,19 @@ function GunShopController.Start()
 	-- Live updates: a purchase answers with LoadoutChanged (owned list) + LobbyMoneyChanged (coins).
 	Remotes.Get("LoadoutChanged").OnClientEvent:Connect(function(ownedList)
 		if typeof(ownedList) == "table" then
+			local before = owned
 			owned = {}
 			for _, id in ownedList do
 				owned[id] = true
+			end
+			-- A gun that wasn't owned a moment ago = fresh unlock -> showcase it (skip the initial sync).
+			if next(before) ~= nil then
+				for id in owned do
+					if not before[id] then
+						showGunUnlock(id)
+						break
+					end
+				end
 			end
 		end
 		pendingBuy = nil
