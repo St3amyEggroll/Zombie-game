@@ -101,7 +101,7 @@ AnimationConfig.Weapons = {
 	raygun      = { Hold = "129486576651262" }, -- one-handed pistol hold
 	-- Newer guns
 	m4          = { Hold = "" },
-	tommygun    = { Hold = "" },
+	tommygun    = { Hold = "101140286383332" }, -- Tommy Gun hold
 	sniper      = { Hold = "" },
 	flamethrower = { Hold = "" },
 	rocket      = { Hold = "" },
