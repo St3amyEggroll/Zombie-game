@@ -96,7 +96,7 @@ AnimationConfig.Weapons = {
 	shotgun     = { Hold = "107945513601643" }, -- Shotgun hold
 	ak47        = { Hold = "105591827404665" }, -- AK holding/shooting stance
 	crossbow    = { Hold = "" },
-	freezeray   = { Hold = "" },
+	freezeray   = { Hold = "129486576651262" }, -- one-handed pistol hold
 	minigun     = { Hold = "72374830835058" }, -- Minigun hold
 	raygun      = { Hold = "129486576651262" }, -- one-handed pistol hold
 	-- Newer guns
