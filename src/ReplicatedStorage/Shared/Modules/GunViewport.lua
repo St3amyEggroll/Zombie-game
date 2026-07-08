@@ -21,15 +21,18 @@ local FIT_SLACK  = 1.12          -- zoom-out margin around the bounding box
 
 -- DISPLAY ORIENTATION: how the gun is posed in the card/hotbar.
 --   TILT     = a global upward tilt (degrees) so every gun sits at a cool angle instead of dead-flat.
---   DISP_YAW = per-gun spin-to-side (degrees) for guns modeled on a different axis, so they show SIDE-ON
---              instead of pointing at/away from the camera. Anything not listed = 0 (already side-on).
+--   BASE_YAW = a global spin-to-side (degrees) — the game place publishes its gun models pointing at the
+--              camera, so this turns ALL of them side-on. (The lobby publishes them differently; it has its
+--              own copy of these numbers.)
+--   DISP_YAW = per-gun EXTRA yaw for any single gun still facing wrong after BASE_YAW. Empty until needed.
 local TILT     = 45
-local DISP_YAW = { tommygun = 90, raygun = 90, plasma = 90, freezeray = 90 }
+local BASE_YAW = 90
+local DISP_YAW = {}
 
 -- Build the display rotation for one gun: reorient it side-on, then tilt it up.
 local function displayRot(weaponId: string, builtRot: CFrame): CFrame
 	return CFrame.Angles(0, 0, math.rad(TILT))
-		* CFrame.Angles(0, math.rad(DISP_YAW[weaponId] or 0), 0)
+		* CFrame.Angles(0, math.rad(BASE_YAW + (DISP_YAW[weaponId] or 0)), 0)
 		* builtRot
 end
 
