@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
@@ -37,7 +38,7 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, incomingLabel, flawlessLabel
+local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, announceLabel
 local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
 
@@ -46,8 +47,6 @@ for _, r in BuffConfig.Rarities do
 	RARITY_COLOR[r.id] = r.color
 end
 local breakEndsAt = 0   -- os.clock() the wave break ends (drives the NEXT WAVE countdown)
-local incomingToken = 0 -- invalidates stale INCOMING hide timers
-local flawlessToken = 0 -- invalidates stale FLAWLESS hide timers
 
 -- ===== BUILD HELPERS =====
 local function corner(o, r)
@@ -79,78 +78,82 @@ local function build()
 	gui.Name = "GameHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 4
+	gui.DisplayOrder = UITheme.Layer.HUD
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
-	-- Health (bottom-left): "HEALTH" caption, bar, HP number.
+	-- ===== BOTTOM-LEFT: health panel (caption 12 / value 16 on the shared scale, no frame overlap) =====
 	local hp = panel(gui, "HealthPanel")
-	hp.Position = UDim2.new(0, 16, 1, -78)
-	hp.Size = UDim2.fromOffset(260, 62)
+	hp.Position = UDim2.new(0, 16, 1, -(64 + 16))
+	hp.Size = UDim2.fromOffset(240, 64)
 
-	local hpCaption = text(hp, "Caption", UITheme.BodyBoldFace, 11, COL_TEXT_DIM)
-	hpCaption.Position = UDim2.fromOffset(14, 8)
-	hpCaption.Size = UDim2.fromOffset(120, 12)
+	local hpCaption = text(hp, "Caption", UITheme.BodyBoldFace, UITheme.Type.Caption, COL_TEXT_DIM)
+	hpCaption.Position = UDim2.fromOffset(14, 6)
+	hpCaption.Size = UDim2.fromOffset(90, 14)
 	hpCaption.TextXAlignment = Enum.TextXAlignment.Left
 	hpCaption.Text = "HEALTH"
 
-	healthLabel = text(hp, "HealthLabel", UITheme.BodyBoldFace, 14, COL_TEXT)
+	healthLabel = text(hp, "HealthLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT)
 	healthLabel.AnchorPoint = Vector2.new(1, 0)
-	healthLabel.Position = UDim2.new(1, -14, 0, 6)
-	healthLabel.Size = UDim2.fromOffset(120, 16)
+	healthLabel.Position = UDim2.new(1, -14, 0, 4)
+	healthLabel.Size = UDim2.new(1, -122, 0, 18) -- starts where the caption box ends: no overlap
 	healthLabel.TextXAlignment = Enum.TextXAlignment.Right
+	healthLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	healthLabel.Text = "100 / 100"
 
 	local track
 	track, healthFill = UITheme.Bar(hp, "Track", COL_ACCENT)
-	track.Position = UDim2.fromOffset(14, 30)
+	track.Position = UDim2.fromOffset(14, 34)
 	track.Size = UDim2.new(1, -28, 0, 16)
 
+	-- ===== TOP-CENTER: ONE lane owns the whole stack ===== (enemies bar+buttons → wave → countdown →
+	-- announcements → boss bar). A UIListLayout does the spacing — no more hand-tuned magic offsets, and
+	-- hidden elements collapse instead of leaving holes.
+	local lane = Instance.new("Frame")
+	lane.Name = "TopLane"
+	lane.AnchorPoint = Vector2.new(0.5, 0)
+	lane.Position = UDim2.new(0.5, 0, 0, 14)
+	lane.Size = UDim2.fromOffset(700, 0)
+	lane.AutomaticSize = Enum.AutomaticSize.Y
+	lane.BackgroundTransparency = 1
+	lane.Parent = gui
+	local laneList = Instance.new("UIListLayout")
+	laneList.FillDirection = Enum.FillDirection.Vertical
+	laneList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	laneList.SortOrder = Enum.SortOrder.LayoutOrder
+	laneList.Padding = UDim.new(0, UITheme.Space.Row)
+	laneList.Parent = lane
 
-	-- Wave number (top-center, just below the run XP bar): plain large white text, no panel.
-	roundLabel = text(gui, "RoundLabel", UITheme.TitleFace, 34, COL_TEXT)
-	roundLabel.AnchorPoint = Vector2.new(0.5, 0)
-	roundLabel.Position = UDim2.new(0.5, 0, 0, 44) -- just below the enemies bar (12–38)
-	roundLabel.Size = UDim2.fromOffset(300, 36)
-	roundLabel.Text = "WAVE 0"
-	local waveStroke = Instance.new("UIStroke") -- thin dark outline so white text reads on bright skies
-	waveStroke.Color = Color3.fromRGB(0, 0, 0)
-	waveStroke.Transparency = 0.4
-	waveStroke.Thickness = 1.5
-	waveStroke.Parent = roundLabel
+	-- Row 1: enemies-left bar, with the small SKIP WAVE (Robux) + LEAVE pair right beside it.
+	-- The row is symmetric around the track so the bar stays exactly screen-centered.
+	local waveRow = Instance.new("Frame")
+	waveRow.Name = "WaveRow"
+	waveRow.BackgroundTransparency = 1
+	waveRow.Size = UDim2.fromOffset(178 + 340 + 178, 26)
+	waveRow.LayoutOrder = 10
+	waveRow.Parent = lane
 
-	-- NEXT WAVE countdown (under the wave number, only during the wave break).
-	breakLabel = text(gui, "BreakLabel", UITheme.BodyBoldFace, 16, COL_TEXT_DIM)
-	breakLabel.AnchorPoint = Vector2.new(0.5, 0)
-	breakLabel.Position = UDim2.new(0.5, 0, 0, 82)
-	breakLabel.Size = UDim2.fromOffset(300, 20)
-	breakLabel.Text = ""
-
-	-- Enemies-left bar (under the wave number, only during a live wave): depletes as the wave is cleared,
-	-- with the count printed on it — the "am I about to clear this?" beat, made visible.
 	enemiesTrack = Instance.new("Frame")
 	enemiesTrack.Name = "EnemiesTrack"
-	enemiesTrack.AnchorPoint = Vector2.new(0.5, 0)
-	enemiesTrack.Position = UDim2.new(0.5, 0, 0, 12) -- top center (the boss bar's old spot)
+	enemiesTrack.Position = UDim2.fromOffset(178, 0)
 	enemiesTrack.Size = UDim2.fromOffset(340, 26)
 	enemiesTrack.BackgroundColor3 = COL_TRACK
 	enemiesTrack.BackgroundTransparency = 0.15
 	enemiesTrack.BorderSizePixel = 0
 	enemiesTrack.Visible = false
-	enemiesTrack.Parent = gui
-	corner(enemiesTrack, 10)
+	enemiesTrack.Parent = waveRow
+	UITheme.Corner(enemiesTrack, 5) -- through the theme curve like every other surface (was a raw radius)
 	UITheme.Edge(enemiesTrack, UITheme.BLACK, 2)
 
 	enemiesFill = Instance.new("Frame")
 	enemiesFill.Name = "Fill"
-	enemiesFill.AnchorPoint = Vector2.new(0, 0)
 	enemiesFill.Size = UDim2.fromScale(1, 1)
 	enemiesFill.BackgroundColor3 = COL_DANGER
 	enemiesFill.BorderSizePixel = 0
 	enemiesFill.Parent = enemiesTrack
-	corner(enemiesFill, 8)
+	UITheme.Corner(enemiesFill, 5)
 
-	enemiesLabel = text(enemiesTrack, "EnemiesLabel", UITheme.BodyBoldFace, 15, COL_TEXT)
+	enemiesLabel = text(enemiesTrack, "EnemiesLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT)
 	enemiesLabel.Size = UDim2.fromScale(1, 1)
 	enemiesLabel.ZIndex = 2
 	enemiesLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -161,63 +164,122 @@ local function build()
 	enStroke.Thickness = 1.5
 	enStroke.Parent = enemiesLabel
 
-	-- INCOMING! banner (below the wave counter, above the kill-streak flair).
-	incomingLabel = text(gui, "IncomingLabel", UITheme.TitleFace, 20, COL_DANGER)
-	incomingLabel.AnchorPoint = Vector2.new(0.5, 0)
-	incomingLabel.Position = UDim2.new(0.5, 0, 0, 110) -- below the wave / boss-bar lane
-	incomingLabel.Size = UDim2.fromOffset(520, 26)
-	incomingLabel.Text = ""
-	incomingLabel.Visible = false
-	local incStroke = Instance.new("UIStroke")
-	incStroke.Color = Color3.fromRGB(0, 0, 0)
-	incStroke.Transparency = 0.4
-	incStroke.Thickness = 1.5
-	incStroke.Parent = incomingLabel
+	-- SKIP WAVE (Robux dev product) + LEAVE, small, right beside the bar. Skip prompts the purchase
+	-- (GameConfig.SkipWaveProductId — 0 = not set up yet); Leave banks the run and returns to the lobby.
+	local skipBtn = UITheme.Button(waveRow, "SKIP WAVE", "gold")
+	skipBtn.Name = "SkipWaveButton"
+	skipBtn.Position = UDim2.fromOffset(178 + 340 + 8, 0)
+	skipBtn.Size = UDim2.fromOffset(82, 26)
+	skipBtn.TextSize = UITheme.Type.Caption
+	skipBtn.Activated:Connect(function()
+		local id = tonumber(GameConfig.SkipWaveProductId) or 0
+		if id > 0 then
+			MarketplaceService:PromptProductPurchase(localPlayer, id)
+		else
+			warn("[HUD] SKIP WAVE: set GameConfig.SkipWaveProductId to your Developer Product id")
+		end
+	end)
 
-	-- FLAWLESS WAVE banner (gold, below the incoming line) — nobody downed all wave.
-	flawlessLabel = text(gui, "FlawlessLabel", UITheme.TitleFace, 20, COL_GOLD)
-	flawlessLabel.AnchorPoint = Vector2.new(0.5, 0)
-	flawlessLabel.Position = UDim2.new(0.5, 0, 0, 136) -- below INCOMING
-	flawlessLabel.Size = UDim2.fromOffset(520, 26)
-	flawlessLabel.Text = ""
-	flawlessLabel.Visible = false
-	local flStroke = Instance.new("UIStroke")
-	flStroke.Color = Color3.fromRGB(0, 0, 0)
-	flStroke.Transparency = 0.4
-	flStroke.Thickness = 1.5
-	flStroke.Parent = flawlessLabel
+	local leaveBtn = UITheme.Button(waveRow, "LEAVE", "ghost")
+	leaveBtn.Name = "LeaveButton"
+	leaveBtn.Position = UDim2.fromOffset(178 + 340 + 8 + 82 + 6, 0)
+	leaveBtn.Size = UDim2.fromOffset(82, 26)
+	leaveBtn.TextSize = UITheme.Type.Caption
+	leaveBtn.Activated:Connect(function()
+		Remotes.Get("LeaveRun"):FireServer()
+	end)
 
-	-- Currency (top-right): Coins over Cash.
+	-- Row 2: the wave number (Screen tier — the ambient anchor; alerts at Item tier now read as louder events).
+	roundLabel = text(lane, "RoundLabel", UITheme.TitleFace, UITheme.Type.Screen, COL_TEXT)
+	roundLabel.Size = UDim2.fromOffset(320, 32)
+	roundLabel.LayoutOrder = 20
+	roundLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	roundLabel.Text = "WAVE 0"
+	local waveStroke = Instance.new("UIStroke") -- thin dark outline so white text reads on bright skies
+	waveStroke.Color = Color3.fromRGB(0, 0, 0)
+	waveStroke.Transparency = 0.4
+	waveStroke.Thickness = 1.5
+	waveStroke.Parent = roundLabel
+
+	-- Row 3: NEXT WAVE countdown (collapses out of the lane whenever it's empty).
+	breakLabel = text(lane, "BreakLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT_DIM)
+	breakLabel.Size = UDim2.fromOffset(300, 20)
+	breakLabel.LayoutOrder = 30
+	breakLabel.Visible = false
+	breakLabel.Text = ""
+
+	-- Row 4: the ANNOUNCEMENT slot — one label, fed by a queue (INCOMING!, FLAWLESS, crate drops...).
+	-- Simultaneous events take turns instead of printing on top of each other.
+	announceLabel = text(lane, "AnnounceLabel", UITheme.TitleFace, UITheme.Type.Item, COL_GOLD)
+	announceLabel.Size = UDim2.fromOffset(560, 28)
+	announceLabel.LayoutOrder = 40
+	announceLabel.Visible = false
+	announceLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	announceLabel.Text = ""
+	local anStroke = Instance.new("UIStroke")
+	anStroke.Color = Color3.fromRGB(0, 0, 0)
+	anStroke.Transparency = 0.4
+	anStroke.Thickness = 1.5
+	anStroke.Parent = announceLabel
+	-- (Row 5 — LayoutOrder 50 — is the boss bar; BossController parents it into this lane.)
+
+	-- ===== TOP-RIGHT: currency panel (same recipe + metrics as the health panel) =====
 	local cur = panel(gui, "CurrencyPanel")
 	cur.AnchorPoint = Vector2.new(1, 0)
-	cur.Position = UDim2.new(1, -16, 0, 12)
-	cur.Size = UDim2.fromOffset(190, 66)
+	cur.Position = UDim2.new(1, -16, 0, 14)
+	cur.Size = UDim2.fromOffset(240, 64)
 
-	local coinsCaption = text(cur, "CoinsCaption", UITheme.BodyBoldFace, 11, COL_TEXT_DIM)
+	local coinsCaption = text(cur, "CoinsCaption", UITheme.BodyBoldFace, UITheme.Type.Caption, COL_TEXT_DIM)
 	coinsCaption.Position = UDim2.fromOffset(14, 8)
 	coinsCaption.Size = UDim2.fromOffset(90, 14)
 	coinsCaption.TextXAlignment = Enum.TextXAlignment.Left
 	coinsCaption.Text = "COINS"
 
-	coinsLabel = text(cur, "LobbyMoneyLabel", UITheme.BodyBoldFace, 15, COL_GOLD)
+	coinsLabel = text(cur, "LobbyMoneyLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_GOLD)
 	coinsLabel.AnchorPoint = Vector2.new(1, 0)
-	coinsLabel.Position = UDim2.new(1, -14, 0, 7)
-	coinsLabel.Size = UDim2.fromOffset(110, 16)
+	coinsLabel.Position = UDim2.new(1, -14, 0, 6)
+	coinsLabel.Size = UDim2.new(1, -122, 0, 18) -- no overlap with the caption; long totals truncate
 	coinsLabel.TextXAlignment = Enum.TextXAlignment.Right
+	coinsLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	coinsLabel.Text = "0"
 
-	local cashCaption = text(cur, "CashCaption", UITheme.BodyBoldFace, 11, COL_TEXT_DIM)
+	local cashCaption = text(cur, "CashCaption", UITheme.BodyBoldFace, UITheme.Type.Caption, COL_TEXT_DIM)
 	cashCaption.Position = UDim2.fromOffset(14, 36)
 	cashCaption.Size = UDim2.fromOffset(90, 14)
 	cashCaption.TextXAlignment = Enum.TextXAlignment.Left
 	cashCaption.Text = "CASH"
 
-	pointsLabel = text(cur, "PointsLabel", UITheme.BodyBoldFace, 15, COL_ACCENT)
+	pointsLabel = text(cur, "PointsLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_ACCENT)
 	pointsLabel.AnchorPoint = Vector2.new(1, 0)
-	pointsLabel.Position = UDim2.new(1, -14, 0, 35)
-	pointsLabel.Size = UDim2.fromOffset(110, 16)
+	pointsLabel.Position = UDim2.new(1, -14, 0, 34)
+	pointsLabel.Size = UDim2.new(1, -122, 0, 18)
 	pointsLabel.TextXAlignment = Enum.TextXAlignment.Right
+	pointsLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	pointsLabel.Text = "$0"
+end
+
+-- ===== ANNOUNCEMENT QUEUE ===== one slot in the top lane; events take turns. Other controllers
+-- (crate toasts etc.) can call HUDController.Announce(text, color, seconds) too.
+local announceQueue = {}
+local announceBusy = false
+function HUDController.Announce(textStr: string, color: Color3?, dur: number?)
+	table.insert(announceQueue, { text = tostring(textStr), color = color or COL_GOLD, dur = dur or 3.5 })
+	if announceBusy or not announceLabel then
+		return
+	end
+	announceBusy = true
+	task.spawn(function()
+		while #announceQueue > 0 do
+			local a = table.remove(announceQueue, 1)
+			announceLabel.Text = a.text
+			announceLabel.TextColor3 = a.color
+			announceLabel.Visible = true
+			task.wait(a.dur)
+			announceLabel.Visible = false
+			task.wait(0.15) -- a beat between back-to-back announcements
+		end
+		announceBusy = false
+	end)
 end
 
 -- ===== UPDATES =====
@@ -286,38 +348,24 @@ function HUDController.Start()
 	RunService.RenderStepped:Connect(function()
 		if breakEndsAt > 0 and os.clock() < breakEndsAt then
 			breakLabel.Text = ("NEXT WAVE IN %d"):format(math.ceil(breakEndsAt - os.clock()))
-		elseif breakLabel.Text ~= "" then
+			breakLabel.Visible = true
+		elseif breakLabel.Visible then
 			breakLabel.Text = ""
+			breakLabel.Visible = false -- collapses its lane slot
 		end
 	end)
 
-	-- "INCOMING!" — a NEW enemy type just spawned for the first time this run.
+	-- Event banners ride the announcement QUEUE — simultaneous events take turns in the one slot.
 	Remotes.Get("EnemyIncoming").OnClientEvent:Connect(function(typeName)
-		incomingLabel.Text = ("INCOMING!  New enemy: %s"):format(tostring(typeName))
-		incomingLabel.Visible = true
-		incomingToken += 1
-		local myToken = incomingToken
-		task.delay(4, function()
-			if incomingToken == myToken then
-				incomingLabel.Visible = false
-			end
-		end)
+		HUDController.Announce(("INCOMING!  New enemy: %s"):format(tostring(typeName)), COL_DANGER, 4)
 	end)
-	-- FLAWLESS WAVE: cleared with nobody downed — show the streak + boosted Coin payout.
 	Remotes.Get("FlawlessWave").OnClientEvent:Connect(function(streak, mult)
 		streak = tonumber(streak) or 1
 		mult = tonumber(mult) or 1
-		flawlessLabel.Text = (streak > 1)
+		local msg = (streak > 1)
 			and ("FLAWLESS WAVE ×%d  —  Coins ×%.2f"):format(streak, mult)
 			or "FLAWLESS WAVE!"
-		flawlessLabel.Visible = true
-		flawlessToken += 1
-		local myToken = flawlessToken
-		task.delay(3.5, function()
-			if flawlessToken == myToken then
-				flawlessLabel.Visible = false
-			end
-		end)
+		HUDController.Announce(msg, COL_GOLD, 3.5)
 	end)
 
 	Remotes.Get("PointsChanged").OnClientEvent:Connect(function(points)

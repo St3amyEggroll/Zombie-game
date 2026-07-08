@@ -99,7 +99,7 @@ local function cycle(dir: number)
 end
 
 -- While spectating we strip the HUD down to just the menu buttons. Keep = ScreenGuis that stay on.
-local KEEP = { GunShop = true, Settings = true, Spectate = true, HotbarHUD = true }
+local KEEP = { GunShop = true, Settings = true, SettingsModal = true, GameInventory = true, Spectate = true, HotbarHUD = true }
 local hiddenGuis = {}   -- gui -> its prior .Enabled
 local hiddenSlots = nil -- the hotbar's gun-slot row (hidden, but the CASES button beside it stays)
 
@@ -164,7 +164,7 @@ local function build(playerGui)
 	gui.Name = "Spectate"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 11
+	gui.DisplayOrder = UITheme.Layer.Spectate
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
@@ -193,19 +193,36 @@ local function build(playerGui)
 	local prevBtn = arrow("◄", 0, UDim2.new(0, 8, 0.5, 0))
 	local nextBtn = arrow("►", 1, UDim2.new(1, -8, 0.5, 0))
 
-	nameLabel = UITheme.Label(panel, "Name", 15, UITheme.TEXT, true)
+	nameLabel = UITheme.Label(panel, "Name", UITheme.Type.Value, UITheme.TEXT, true)
 	nameLabel.AnchorPoint = Vector2.new(0.5, 0)
 	nameLabel.Position = UDim2.new(0.5, 0, 0, 9)
 	nameLabel.Size = UDim2.new(1, -110, 0, 22)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd -- long display names no longer run onto the arrows
 	nameLabel.Text = "SPECTATING"
 
-	local hint = UITheme.Label(panel, "Hint", 11, UITheme.DIM, true)
+	local hint = UITheme.Label(panel, "Hint", UITheme.Type.Caption, UITheme.DIM, true)
 	hint.AnchorPoint = Vector2.new(0.5, 1)
 	hint.Position = UDim2.new(0.5, 0, 1, -7)
 	hint.Size = UDim2.new(1, -110, 0, 14)
 	hint.TextXAlignment = Enum.TextXAlignment.Center
 	hint.Text = "◄ ►  /  arrow keys"
+
+	-- LEAVE, floating just above the panel — dead players are exactly who wants it, and the HUD's own
+	-- LEAVE button is hidden while spectating.
+	local leaveBtn = UITheme.Button(gui, "LEAVE GAME", "ghost")
+	leaveBtn.Name = "SpectateLeave"
+	leaveBtn.AnchorPoint = Vector2.new(0.5, 1)
+	leaveBtn.Position = UDim2.new(0.5, 0, 1, -(24 + 58 + 8))
+	leaveBtn.Size = UDim2.fromOffset(150, 32)
+	leaveBtn.TextSize = UITheme.Type.Caption
+	leaveBtn.Visible = false
+	panel:GetPropertyChangedSignal("Visible"):Connect(function()
+		leaveBtn.Visible = panel.Visible
+	end)
+	leaveBtn.Activated:Connect(function()
+		Remotes.Get("LeaveRun"):FireServer()
+	end)
 
 	prevBtn.Activated:Connect(function()
 		cycle(-1)

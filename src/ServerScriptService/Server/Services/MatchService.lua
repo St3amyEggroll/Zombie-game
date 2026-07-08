@@ -619,6 +619,28 @@ function MatchService.Start()
 		state.players[player.UserId] = nil
 	end)
 
+	-- LEAVE (the small HUD button beside the wave readout): bank THIS player's run and send them home.
+	-- The run keeps going for everyone else; if they were the last one alive, the wipe check ends it.
+	Remotes.Get("LeaveRun").OnServerEvent:Connect(function(player)
+		local ps = state.players[player.UserId]
+		if not ps or not ps.inMatch then
+			return
+		end
+		ps.inMatch = false
+		local summary = bankRun(player, ps)
+		MatchService.CheckTeamWipe()
+		if LIVE then
+			task.spawn(teleportToLobby, player, summary)
+		else
+			print("[MatchService] LEAVE pressed (Studio: teleports disabled — restarting a run)")
+			task.delay(1, function()
+				if player.Parent then
+					startRunFor(player)
+				end
+			end)
+		end
+	end)
+
 	print(("[MatchService] started (%s)"):format(LIVE and "game place, teleport flow" or "studio, direct run"))
 end
 

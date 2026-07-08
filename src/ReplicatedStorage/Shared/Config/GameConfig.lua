@@ -10,6 +10,12 @@ GameConfig.PlayerCountScale    = 0.5   -- +50% zombies per extra player
 GameConfig.RoundZombieGrowth   = 1.20  -- zombie COUNT ×= this per round
 GameConfig.RoundBreakSeconds   = 5     -- prep time between rounds (clients show a NEXT WAVE countdown)
 
+-- ===== ROBUX (Developer Products) =====
+-- SKIP WAVE (the small gold button beside the enemies bar). Create a Developer Product in
+-- Creator Hub -> your experience -> Monetization -> Developer Products, then paste its id here.
+-- 0 = not set up yet (the button warns in Output instead of prompting).
+GameConfig.SkipWaveProductId = 0
+
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
 GameConfig.MaxAliveZombies   = 200     -- HARD cap on simultaneous zombies (owed extras wait for a kill,
                                        -- then spawn in — they don't despawn to make room)

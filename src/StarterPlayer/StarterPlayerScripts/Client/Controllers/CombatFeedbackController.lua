@@ -395,7 +395,11 @@ function CombatFeedbackController.Start()
 	fxFolder.Name = "CombatFX"
 	fxFolder.Parent = Workspace.CurrentCamera -- client-only, never replicated
 
-	buildHitmarker()
+	-- Only build the hitmarker GUI when the feature is actually on — it was constructing a disabled
+	-- ScreenGui + frames every session for nothing.
+	if AnimationConfig.Hitmarker.Enabled then
+		buildHitmarker()
+	end
 
 	InputController.Fired:Connect(onLocalFired)
 	Remotes.Get("ShotFired").OnClientEvent:Connect(onShotFired)

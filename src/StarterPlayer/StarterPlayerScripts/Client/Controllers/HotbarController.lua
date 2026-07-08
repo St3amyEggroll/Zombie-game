@@ -59,7 +59,7 @@ local function refresh()
 				if vp then
 					vp.AnchorPoint = Vector2.new(0.5, 0)
 					vp.Position = UDim2.new(0.5, 0, 0, 2)
-					vp.Size = UDim2.new(1, -8, 1, -22) -- fill, leaving a caption strip for the name
+					vp.Size = UDim2.new(1, -8, 1, -36) -- fill, leaving the full name strip clear (30 + margins)
 					vp.ZIndex = 2
 					vp.Parent = b.frame
 					b.vp = vp
@@ -67,7 +67,6 @@ local function refresh()
 				b.vpId = id
 			end
 			b.name.Text = weapon.name
-			b.level.Text = "" -- CHANGED: gun upgrading removed; the LV chip is retired
 			local isHeld = (id == equipped)
 			b.stroke.Color = isHeld and UITheme.TOXIC or UITheme.BLACK
 			b.stroke.Thickness = isHeld and 3 or 2
@@ -110,7 +109,7 @@ local function build()
 	gui.Name = "HotbarHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 6
+	gui.DisplayOrder = UITheme.Layer.Hotbar
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
@@ -130,43 +129,37 @@ local function build()
 		frame.Name = "Slot" .. i
 		local stroke = UITheme.Edge(frame, UITheme.BLACK, 2)
 
-		local key = Instance.new("TextLabel") -- keybind number, top-left corner
+		local key = Instance.new("TextLabel") -- keybind number, top-left corner (a HINT: never above the name)
 		key.Position = UDim2.fromOffset(7, 4)
-		key.Size = UDim2.fromOffset(20, 18)
+		key.Size = UDim2.fromOffset(20, 16)
 		key.ZIndex = 3 -- above the 3D gun viewport
 		key.BackgroundTransparency = 1
 		key.FontFace = UITheme.TitleFace
-		key.TextSize = 15
+		key.TextSize = UITheme.Type.Caption
 		key.TextXAlignment = Enum.TextXAlignment.Left
 		key.TextColor3 = UITheme.DIM
 		key.Text = tostring(i)
 		key.Parent = frame
 
-		local level = Instance.new("TextLabel") -- gold level chip, top-right corner
-		level.AnchorPoint = Vector2.new(1, 0)
-		level.Position = UDim2.new(1, -6, 0, 5)
-		level.Size = UDim2.fromOffset(36, 14)
-		level.BackgroundColor3 = UITheme.Darker(UITheme.GOLD, 0.75)
-		level.BorderSizePixel = 0
-		level.FontFace = UITheme.BodyBoldFace
-		level.TextSize = 9
-		level.TextColor3 = UITheme.GOLD
-		level.Text = ""
-		level.Parent = frame
-		UITheme.Corner(level, 3)
+		-- (The gold level chip is DELETED — gun upgrading was removed; it rendered as a permanently
+		-- empty rectangle buried under the viewport.)
 
-		local name = Instance.new("TextLabel") -- gun name along the bottom of the square
+		local name = Instance.new("TextLabel") -- gun name along the bottom of the square (the CONTENT: Body tier)
 		name.AnchorPoint = Vector2.new(0.5, 1)
-		name.Position = UDim2.new(0.5, 0, 1, -6)
-		name.Size = UDim2.new(1, -10, 0, 26)
+		name.Position = UDim2.new(0.5, 0, 1, -4)
+		name.Size = UDim2.new(1, -10, 0, 30)
 		name.ZIndex = 3 -- above the 3D gun viewport
 		name.BackgroundTransparency = 1
 		name.FontFace = UITheme.BodyBoldFace
-		name.TextSize = 11
+		name.TextSize = UITheme.Type.Body
 		name.TextWrapped = true
+		name.TextScaled = true
 		name.TextColor3 = UITheme.TEXT
 		name.Text = ""
 		name.Parent = frame
+		local nc = Instance.new("UITextSizeConstraint")
+		nc.MaxTextSize = UITheme.Type.Body
+		nc.Parent = name
 
 		frame.Activated:Connect(function()
 			local id = owned[i]
@@ -175,7 +168,7 @@ local function build()
 			end
 		end)
 
-		slotButtons[i] = { frame = frame, name = name, level = level, key = key, stroke = stroke, baseX = x }
+		slotButtons[i] = { frame = frame, name = name, key = key, stroke = stroke, baseX = x }
 	end
 
 	-- CASES button — a standalone square on the LEFT-CENTER edge, LOWER of the GUNS/CASES pair
@@ -183,8 +176,8 @@ local function build()
 	local invBtn = Instance.new("TextButton")
 	invBtn.Name = "InventoryButton"
 	invBtn.AnchorPoint = Vector2.new(0, 0)
-	invBtn.Position = UDim2.new(0, 16, 0.5, 4)
-	invBtn.Size = UDim2.fromOffset(52, 52)
+	invBtn.Position = UDim2.new(0, 16, 0.5, 4) -- lower of the pair: GUNS sits at -(Launcher+4) above
+	invBtn.Size = UDim2.fromOffset(UITheme.Ctl.Launcher, UITheme.Ctl.Launcher)
 	invBtn.BackgroundColor3 = UITheme.PANEL
 	invBtn.BackgroundTransparency = 0.05
 	invBtn.BorderSizePixel = 0

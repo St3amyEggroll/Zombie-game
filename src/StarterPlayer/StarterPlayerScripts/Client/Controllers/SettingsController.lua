@@ -18,7 +18,7 @@ local UIFocus = require(Shared.Modules.UIFocus)
 local SettingsController = {}
 
 -- ===== TUNABLES =====
-local PANEL_W, PANEL_H = 340, 300
+local PANEL_W, PANEL_H = 340, 316
 local SAVE_DEBOUNCE = 0.6 -- seconds after the last slider move before the save fires
 
 local localPlayer = Players.LocalPlayer
@@ -37,59 +37,49 @@ end
 function SettingsController.Start()
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "Settings"
-	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 30
-	gui.Parent = playerGui
-	UITheme.Attach(gui)
+	-- TWO ScreenGuis: the gear is bottom-edge CHROME (under modals), the open panel is a MODAL. This is
+	-- what stops the gear floating over an open GUNS/CRATES screen (the old single gui sat at 30).
+	local chromeGui = Instance.new("ScreenGui")
+	chromeGui.Name = "Settings"
+	chromeGui.ResetOnSpawn = false
+	chromeGui.IgnoreGuiInset = true
+	chromeGui.DisplayOrder = UITheme.Layer.Chrome
+	chromeGui.Parent = playerGui
+	UITheme.Attach(chromeGui)
 
-	-- Gear button, bottom-right corner.
+	local modalGui = Instance.new("ScreenGui")
+	modalGui.Name = "SettingsModal"
+	modalGui.ResetOnSpawn = false
+	modalGui.IgnoreGuiInset = true
+	modalGui.DisplayOrder = UITheme.Layer.SettingsModal
+	modalGui.Parent = playerGui
+	UITheme.Attach(modalGui)
+
+	-- Gear button, bottom-right corner (Std size).
 	local gear = Instance.new("TextButton")
 	gear.AnchorPoint = Vector2.new(1, 1)
 	gear.Position = UDim2.new(1, -12, 1, -12)
-	gear.Size = UDim2.fromOffset(44, 44)
+	gear.Size = UDim2.fromOffset(UITheme.Ctl.Std, UITheme.Ctl.Std)
 	gear.BackgroundColor3 = UITheme.PANEL
 	gear.BorderSizePixel = 0
 	gear.FontFace = UITheme.BodyBoldFace
 	gear.TextSize = 22
 	gear.TextColor3 = UITheme.DIM
 	gear.Text = "⚙"
-	gear.Parent = gui
+	gear.Parent = chromeGui
 	UITheme.Corner(gear, 8)
 	UITheme.Edge(gear)
 	UITheme.Studs(gear)
 
 	-- Panel.
-	local panel = UITheme.Panel(gui, "SettingsPanel", { accent = UITheme.HeaderColors.settings })
+	local panel = UITheme.Panel(modalGui, "SettingsPanel", { accent = UITheme.HeaderColors.settings })
 	panel.AnchorPoint = Vector2.new(1, 1)
-	panel.Position = UDim2.new(1, -12, 1, -64)
+	panel.Position = UDim2.new(1, -12, 1, -(12 + UITheme.Ctl.Std + 8))
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "SETTINGS", 40, UITheme.TOXIC, UITheme.HeaderColors.settings)
+	UITheme.Header(panel, "SETTINGS", nil, UITheme.TOXIC, UITheme.HeaderColors.settings)
 
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.Position = UDim2.new(1, -6, 0, 4)
-	closeBtn.Size = UDim2.fromOffset(34, 34)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(224, 34, 34)
-	closeBtn.BorderSizePixel = 0
-	closeBtn.FontFace = UITheme.TitleFace
-	closeBtn.TextSize = 20
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Text = "✕"
-	closeBtn.Parent = panel
-	UITheme.Corner(closeBtn, 6); UITheme.Edge(closeBtn, UITheme.BLACK, 2.5)
-	UITheme.WhiteX(closeBtn)
-	local closeBtnG = Instance.new("UIGradient")
-	closeBtnG.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.78, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.8, Color3.fromRGB(150, 16, 16)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
-	})
-	closeBtnG.Rotation = 90; closeBtnG.Parent = closeBtn
+	local closeBtn = UITheme.Close(panel)
 
 	-- One slider row: label + % readout + a draggable track.
 	local function sliderRow(y, labelText, getValue, setValue)
@@ -105,15 +95,24 @@ function SettingsController.Start()
 		pct.Size = UDim2.fromOffset(60, 18)
 		pct.TextXAlignment = Enum.TextXAlignment.Right
 
-		local track = Instance.new("TextButton") -- button = easy press capture on mouse + touch
-		track.Position = UDim2.fromOffset(18, y + 24)
-		track.Size = UDim2.new(1, -36, 0, 14)
+		-- HIT STRIP: full-width and 36px tall (the touch floor) — the old 14px strip was nearly undraggable
+		-- on touch. The visible 14px track sits centered inside it.
+		local hit = Instance.new("TextButton")
+		hit.Position = UDim2.fromOffset(18, y + 16)
+		hit.Size = UDim2.new(1, -36, 0, UITheme.Ctl.Min)
+		hit.BackgroundTransparency = 1
+		hit.Text = ""
+		hit.AutoButtonColor = false
+		hit:SetAttribute("NoClickSound", true)
+		hit.Parent = panel
+
+		local track = Instance.new("Frame")
+		track.AnchorPoint = Vector2.new(0, 0.5)
+		track.Position = UDim2.new(0, 0, 0.5, 0)
+		track.Size = UDim2.new(1, 0, 0, 14)
 		track.BackgroundColor3 = UITheme.TRACK
 		track.BorderSizePixel = 0
-		track.Text = ""
-		track.AutoButtonColor = false
-		track:SetAttribute("NoClickSound", true)
-		track.Parent = panel
+		track.Parent = hit
 		UITheme.Corner(track, 7)
 		UITheme.Edge(track, UITheme.BLACK, 1.5)
 
@@ -147,7 +146,7 @@ function SettingsController.Start()
 			render()
 			queueSave()
 		end
-		track.InputBegan:Connect(function(input)
+		hit.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1
 				or input.UserInputType == Enum.UserInputType.Touch then
 				dragging = true
@@ -179,8 +178,8 @@ function SettingsController.Start()
 
 		local sw = Instance.new("TextButton")
 		sw.AnchorPoint = Vector2.new(1, 0.5)
-		sw.Position = UDim2.new(1, -18, 0, y + 13)
-		sw.Size = UDim2.fromOffset(64, 30)
+		sw.Position = UDim2.new(1, -18, 0, y + 16)
+		sw.Size = UDim2.fromOffset(68, UITheme.Ctl.Min) -- 36 tall: the touch floor
 		sw.BorderSizePixel = 0
 		sw.Text = ""
 		sw.AutoButtonColor = false
@@ -191,7 +190,7 @@ function SettingsController.Start()
 
 		local knob = Instance.new("Frame")
 		knob.AnchorPoint = Vector2.new(0.5, 0.5)
-		knob.Size = UDim2.fromOffset(24, 24)
+		knob.Size = UDim2.fromOffset(28, 28)
 		knob.BackgroundColor3 = UITheme.TEXT
 		knob.BorderSizePixel = 0
 		knob.Parent = sw
@@ -201,7 +200,7 @@ function SettingsController.Start()
 		local function paint()
 			local on = get()
 			sw.BackgroundColor3 = on and UITheme.TOXIC or UITheme.TRACK
-			knob.Position = on and UDim2.new(1, -15, 0.5, 0) or UDim2.new(0, 15, 0.5, 0)
+			knob.Position = on and UDim2.new(1, -18, 0.5, 0) or UDim2.new(0, 18, 0.5, 0)
 		end
 		sw.Activated:Connect(function()
 			set(not get())
@@ -212,21 +211,21 @@ function SettingsController.Start()
 	end
 
 	local renders = {}
-	table.insert(renders, sliderRow(58, "MASTER", function()
+	table.insert(renders, sliderRow(64, "MASTER", function()
 		local m = SoundController.GetVolumes()
 		return m
 	end, function(v)
 		local _, mu, s = SoundController.GetVolumes()
 		SoundController.SetVolumes(v, mu, s)
 	end))
-	table.insert(renders, sliderRow(120, "MUSIC", function()
+	table.insert(renders, sliderRow(126, "MUSIC", function()
 		local _, mu = SoundController.GetVolumes()
 		return mu
 	end, function(v)
 		local m, _, s = SoundController.GetVolumes()
 		SoundController.SetVolumes(m, v, s)
 	end))
-	table.insert(renders, sliderRow(182, "SFX", function()
+	table.insert(renders, sliderRow(188, "SFX", function()
 		local _, _, s = SoundController.GetVolumes()
 		return s
 	end, function(v)
@@ -236,7 +235,7 @@ function SettingsController.Start()
 
 	-- CAMERA SHAKE on/off (client-side gate via a player attribute; persisted through SetShake).
 	local shakeOn = localPlayer:GetAttribute("ShakeOff") ~= true
-	local shakePaint = toggleRow(244, "CAMERA SHAKE", function()
+	local shakePaint = toggleRow(250, "CAMERA SHAKE", function()
 		return shakeOn
 	end, function(v)
 		shakeOn = v

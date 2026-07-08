@@ -34,24 +34,34 @@ local function build()
 	gui.Name = "BossHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 8
+	gui.DisplayOrder = UITheme.Layer.Boss
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
 	UITheme.Attach(gui)
 
 	barHolder = Instance.new("Frame")
 	barHolder.Name = "BossBar"
-	barHolder.AnchorPoint = Vector2.new(0.5, 0)
-	-- Fixed offset BELOW the wave number (the enemies-left bar owns the top spot now); a scale-Y would
-	-- drift onto other text on short screens.
-	barHolder.Position = UDim2.new(0.5, 0, 0, 82)
 	barHolder.Size = UDim2.fromOffset(BAR_W, BAR_H)
 	barHolder.BackgroundColor3 = UITheme.Darker(UITheme.TRACK, 0.3)
 	barHolder.BackgroundTransparency = 0.08
 	barHolder.BorderSizePixel = 0
 	barHolder.Visible = false
+	barHolder.LayoutOrder = 50 -- bottom slot of the HUD's top-center lane
 	barHolder.Parent = gui
 	UITheme.Corner(barHolder, 4)
 	UITheme.Edge(barHolder, UITheme.BLACK, 2)
+
+	-- Join the HUD's TopLane (one list-layout container owns the whole top-center stack now — no more
+	-- hand-tuned "y=82, below the wave number" offsets dodging another file's elements).
+	task.spawn(function()
+		local hud = localPlayer:WaitForChild("PlayerGui"):WaitForChild("GameHUD", 10)
+		local lane = hud and hud:WaitForChild("TopLane", 10)
+		if lane then
+			barHolder.Parent = lane
+		else -- lane missing (HUD failed?) — fall back to a fixed spot in our own gui
+			barHolder.AnchorPoint = Vector2.new(0.5, 0)
+			barHolder.Position = UDim2.new(0.5, 0, 0, 96)
+		end
+	end)
 
 	fill = Instance.new("Frame")
 	fill.Name = "BossBarFill"
@@ -87,8 +97,8 @@ local function build()
 	banner = Instance.new("TextLabel")
 	banner.Name = "BossBanner"
 	banner.AnchorPoint = Vector2.new(0.5, 0.5)
-	banner.Position = UDim2.fromScale(0.5, 0.3)
-	banner.Size = UDim2.fromOffset(760, 84)
+	banner.Position = UDim2.fromScale(0.5, 0.34) -- its own band, clear of the killstreak banner at 0.19
+	banner.Size = UDim2.fromOffset(560, 44)
 	banner.BackgroundTransparency = 1
 	banner.FontFace = UITheme.TitleFace
 	banner.TextScaled = true
@@ -97,9 +107,13 @@ local function build()
 	banner.TextTransparency = 1
 	banner.Text = ""
 	banner.Parent = gui
+	local cap = Instance.new("UITextSizeConstraint") -- Hero tier is the ceiling — no more ~80px runaway text
+	cap.MaxTextSize = UITheme.Type.Hero
+	cap.Parent = banner
 	Instance.new("UIScale").Parent = banner
 end
 
+local bannerToken = 0
 local function flashBanner(text: string, color: Color3)
 	banner.Text = text
 	banner.TextColor3 = color
@@ -109,8 +123,12 @@ local function flashBanner(text: string, color: Color3)
 	s.Parent = banner
 	s.Scale = 1.4
 	TweenService:Create(s, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	bannerToken += 1
+	local my = bannerToken -- a NEWER banner cancels this fade (back-to-back banners no longer cut short)
 	task.delay(2, function()
-		TweenService:Create(banner, TweenInfo.new(0.6), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+		if bannerToken == my then
+			TweenService:Create(banner, TweenInfo.new(0.6), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+		end
 	end)
 end
 

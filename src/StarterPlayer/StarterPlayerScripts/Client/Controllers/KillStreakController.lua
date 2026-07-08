@@ -60,13 +60,14 @@ local function ensureLabel()
 	gui.Name = "KillStreakHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = UITheme.Layer.Streak -- banners layer: reads ABOVE the ambient HUD, below modals
 	gui.Parent = playerGui
 
 	local l = Instance.new("TextLabel")
 	l.Name = "KillStreakLabel"
 	l.AnchorPoint = Vector2.new(0.5, 0)
-	l.Position = UDim2.fromScale(0.5, 0.24) -- below the wave/enemies bar + INCOMING/FLAWLESS lane
-	l.Size = UDim2.fromOffset(440, 56)
+	l.Position = UDim2.fromScale(0.5, 0.19) -- its own band: above the boss banner's 0.34 center
+	l.Size = UDim2.fromOffset(440, 48)
 	l.BackgroundTransparency = 1
 	l.FontFace = UITheme.TitleFace
 	l.TextScaled = true
@@ -74,6 +75,9 @@ local function ensureLabel()
 	l.TextTransparency = 1
 	l.Text = ""
 	l.Parent = gui
+	local cap = Instance.new("UITextSizeConstraint") -- TextScaled, but never past the Hero tier
+	cap.MaxTextSize = UITheme.Type.Hero
+	cap.Parent = l
 	builtLabel = l
 	return l
 end

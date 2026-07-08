@@ -81,7 +81,7 @@ local function caseCell(i, rarity, count)
 	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	nmStroke.Parent = nm
 
-	local chip = UITheme.Label(cell, nil, 13, col, true)
+	local chip = UITheme.Label(cell, nil, UITheme.Type.Caption, col, true)
 	chip.Position = UDim2.fromOffset(6, 6)
 	chip.Size = UDim2.fromOffset(60, 18)
 	chip.TextXAlignment = Enum.TextXAlignment.Left
@@ -118,10 +118,15 @@ render = function()
 		caseCell(i, rarity, data.cases[rarity] or 0)
 	end
 	if #ids == 0 then
-		local msg = UITheme.Label(grid, nil, 14, UITheme.DIM, true)
-		msg.Size = UDim2.fromOffset(320, 60)
+		-- parented to the PANEL, not the grid — the grid's UIGridLayout was overriding the size to one cell
+		local msg = UITheme.Label(panel, "EmptyNote", UITheme.Type.Body, UITheme.DIM, true)
+		msg.Position = UDim2.fromOffset(16, 64)
+		msg.Size = UDim2.fromOffset(346, 60)
 		msg.TextWrapped = true
 		msg.Text = "No skin crates yet — clear every 10th wave and kill BOSSES to earn them!"
+	else
+		local old = panel:FindFirstChild("EmptyNote")
+		if old then old:Destroy() end
 	end
 
 	clearChildren(detail)
@@ -146,17 +151,17 @@ render = function()
 		wellVp.Parent = well
 	end
 
-	local nm = UITheme.Title(detail, nil, 21, col)
+	local nm = UITheme.Title(detail, nil, UITheme.Type.Item, col)
 	nm.Position = UDim2.fromOffset(14, 214)
 	nm.Size = UDim2.new(1, -28, 0, 30)
 	nm.Text = string.upper(disp and disp.name or selectedId)
 
-	local have = UITheme.Label(detail, nil, 15, UITheme.TEXT, true)
+	local have = UITheme.Label(detail, nil, UITheme.Type.Value, UITheme.TEXT, true)
 	have.Position = UDim2.fromOffset(14, 248)
 	have.Size = UDim2.new(1, -28, 0, 20)
 	have.Text = ("You have: x%d"):format(data.cases[selectedId] or 0)
 
-	local note = UITheme.Label(detail, nil, 13, UITheme.DIM)
+	local note = UITheme.Label(detail, nil, UITheme.Type.Body, UITheme.DIM)
 	note.Position = UDim2.fromOffset(14, 280)
 	note.Size = UDim2.new(1, -28, 0, 60)
 	note.TextWrapped = true
@@ -164,36 +169,18 @@ render = function()
 
 	local openBtn = UITheme.Button(acts, "OPEN IN LOBBY", "ghost")
 	openBtn.Position = UDim2.new(0, 0, 0, 0)
-	openBtn.Size = UDim2.new(1, 0, 0, 60)
+	openBtn.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
 	UITheme.SetButtonEnabled(openBtn, false, "OPEN IN LOBBY")
 end
 
--- ===== CASE-DROP TOAST =====
+-- ===== CASE-DROP TOAST ===== rides the HUD's announcement queue (one slot; events take turns —
+-- the old free-floating toast landed on the boss bar and stacked on itself). GUARDED require.
+local okHud, HUDController = pcall(require, script.Parent.HUDController)
+if not okHud or type(HUDController) ~= "table" or type(HUDController.Announce) ~= "function" then
+	HUDController = { Announce = function() end }
+end
 local function showToast(textStr, color)
-	local toast = Instance.new("Frame")
-	toast.AnchorPoint = Vector2.new(0.5, 0)
-	toast.Position = UDim2.new(0.5, 0, 0, -60)
-	toast.Size = UDim2.fromOffset(340, 44)
-	toast.BackgroundColor3 = UITheme.PANEL
-	toast.BorderSizePixel = 0
-	toast.Parent = gui
-	UITheme.Corner(toast, 7)
-	UITheme.Edge(toast, color or UITheme.GOLD, 2)
-	local lbl = UITheme.Label(toast, nil, 15, color or UITheme.GOLD, true)
-	lbl.Size = UDim2.fromScale(1, 1)
-	lbl.Text = textStr
-	TweenService:Create(toast, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0.5, 0, 0, 96),
-	}):Play()
-	task.delay(3.2, function()
-		local out = TweenService:Create(toast, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			Position = UDim2.new(0.5, 0, 0, -60),
-		})
-		out.Completed:Once(function()
-			toast:Destroy()
-		end)
-		out:Play()
-	end)
+	HUDController.Announce(textStr, color or UITheme.GOLD, 3.2)
 end
 
 function GameInventoryController.Toggle()
@@ -215,7 +202,7 @@ function GameInventoryController.Start()
 	gui.Name = "GameInventory"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 8
+	gui.DisplayOrder = UITheme.Layer.CratesModal
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
@@ -224,39 +211,17 @@ function GameInventoryController.Start()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "SKIN CRATES", 44, UITheme.TOXIC, UITheme.HeaderColors.cases)
+	UITheme.Header(panel, "SKIN CRATES", nil, UITheme.TOXIC, UITheme.HeaderColors.cases)
 
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.Position = UDim2.new(1, -8, 0, 6)
-	closeBtn.Size = UDim2.fromOffset(46, 46)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(224, 34, 34)
-	closeBtn.BorderSizePixel = 0
-	closeBtn.FontFace = UITheme.TitleFace
-	closeBtn.TextSize = 26
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Text = "✕"
-	closeBtn.Parent = panel
-	UITheme.Corner(closeBtn, 7)
-	UITheme.Edge(closeBtn, UITheme.BLACK, 2.5)
-	UITheme.WhiteX(closeBtn)
-	local xg = Instance.new("UIGradient")
-	xg.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.78, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.8, Color3.fromRGB(150, 16, 16)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
-	})
-	xg.Rotation = 90
-	xg.Parent = closeBtn
+	local closeBtn = UITheme.Close(panel)
 	closeBtn.Activated:Connect(function()
 		if panel.Visible then UIFocus.Close() end
 		panel.Visible = false
 	end)
 
 	grid = Instance.new("ScrollingFrame")
-	grid.Position = UDim2.fromOffset(16, 60)
-	grid.Size = UDim2.fromOffset(346, PANEL_H - 76)
+	grid.Position = UDim2.fromOffset(16, 64)
+	grid.Size = UDim2.fromOffset(346, PANEL_H - 80)
 	grid.BackgroundTransparency = 1
 	grid.BorderSizePixel = 0
 	grid.ScrollBarThickness = 6
@@ -270,8 +235,8 @@ function GameInventoryController.Start()
 	gl.Parent = grid
 
 	detail = Instance.new("Frame")
-	detail.Position = UDim2.fromOffset(378, 60)
-	detail.Size = UDim2.fromOffset(280, PANEL_H - 76)
+	detail.Position = UDim2.fromOffset(378, 64)
+	detail.Size = UDim2.fromOffset(280, PANEL_H - 80)
 	detail.BackgroundColor3 = UITheme.PANEL2
 	detail.BorderSizePixel = 0
 	detail.Parent = panel
@@ -281,8 +246,8 @@ function GameInventoryController.Start()
 
 	acts = Instance.new("Frame")
 	acts.AnchorPoint = Vector2.new(1, 0)
-	acts.Position = UDim2.new(1, -16, 0, 60)
-	acts.Size = UDim2.fromOffset(250, PANEL_H - 76)
+	acts.Position = UDim2.new(1, -16, 0, 64)
+	acts.Size = UDim2.fromOffset(250, PANEL_H - 80)
 	acts.BackgroundTransparency = 1
 	acts.Parent = panel
 

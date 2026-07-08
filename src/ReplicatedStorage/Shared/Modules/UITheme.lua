@@ -64,6 +64,36 @@ UITheme.DIM      = Color3.fromRGB(134, 142, 116)
 UITheme.GOLD     = Color3.fromRGB(230, 180, 76)  -- currency only
 UITheme.DANGER   = UITheme.ORANGE
 
+-- ===== SIZE SYSTEM (the renovation spec — every label/control maps to ONE of these) =====
+-- TYPE SCALE: 7 sizes, period. Rule 1: alerts outrank ambient status. Rule 2: a badge/hint never
+-- outranks the thing it labels.
+UITheme.Type = {
+	Hero    = 34, -- ONE per place (banner caps)
+	Screen  = 28, -- panel/screen titles (GUNS, SETTINGS, ...)
+	Item    = 22, -- featured item names, event banners, reel result
+	Section = 18, -- section labels, big value readouts
+	Value   = 16, -- ALL button text + HP/coins/cash numbers
+	Body    = 14, -- stats, descriptions, grid-cell names
+	Caption = 12, -- captions, chips, badges, hints — nothing renders below 12
+}
+-- CONTROL HEIGHTS: 4 tokens. Nothing tappable under Min.
+UITheme.Ctl = {
+	CTA      = 56, -- the one biggest action per screen
+	Std      = 44, -- secondary actions, every close X, gear, arrows
+	Min      = 36, -- toggles, slider hit-strips — the touch floor
+	Launcher = 64, -- GUNS / SKIN CRATES icon-button pair (both places)
+}
+-- SPACING RHYTHM: one grid.
+UITheme.Space = { Pad = 16, Row = 8, Section = 24, Header = 48 }
+-- LAYER LADDER (ScreenGui.DisplayOrder registry): 0-9 ambient HUD · 10-19 overlays/banners ·
+-- 20-29 modals · 90 critical warnings · 100 crosshair. Chrome never floats over open modals.
+UITheme.Layer = {
+	HUD = 4, Hotbar = 6, Boss = 8, Chrome = 8,
+	Spectate = 11, Streak = 12, Toast = 14,
+	ShopModal = 22, CratesModal = 24, SettingsModal = 26,
+	Warning = 90, Crosshair = 100,
+}
+
 -- Studs backdrop texture (tileable). Swap the id if you prefer another studs decal.
 UITheme.StudsTexture = "rbxassetid://6965996718"
 
@@ -93,11 +123,13 @@ UITheme.UIScaleMult = 1.5 -- GLOBAL in-game size dial: every attached ScreenGui 
 local function computeScale(): number
 	local cam = Workspace.CurrentCamera
 	local vp = cam and cam.ViewportSize or Vector2.new(BASE_W, BASE_H)
-	local s = math.min(vp.X / BASE_W, vp.Y / BASE_H)
+	local s = math.clamp(math.min(vp.X / BASE_W, vp.Y / BASE_H), 0.55, 1.3)
+	-- Touch bump AFTER the clamp — applied before, the 0.55 floor swallowed it on exactly the small
+	-- phones it exists for (the audit's dead-touch-bump bug).
 	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
 		s *= 1.12 -- phones: slightly larger for touch targets
 	end
-	return math.clamp(s, 0.55, 1.3) * UITheme.UIScaleMult
+	return s * UITheme.UIScaleMult
 end
 
 function UITheme.Attach(gui: ScreenGui): UIScale
@@ -232,8 +264,10 @@ function UITheme.Label(parent: Instance, name: string?, size: number?, color: Co
 end
 
 -- The panel header strip: toxic tab on the left, stencil title, hairline underneath.
+-- ONE height (Space.Header=48) and ONE title size (Type.Screen=28) product-wide; the title's right
+-- margin reserves a slot for the standard close button (UITheme.Close) INSIDE the bar.
 function UITheme.Header(panel: GuiObject, titleText: string, height: number?, accent: Color3?, barColor: Color3?)
-	local h = height or 44
+	local h = height or UITheme.Space.Header
 	local col = accent or UITheme.TOXIC
 	-- Solid colored TOP BAR (per-screen identity). Rounded top corners, squared bottom via a cover strip.
 	if barColor then
@@ -279,11 +313,12 @@ function UITheme.Header(panel: GuiObject, titleText: string, height: number?, ac
 	tab.BorderSizePixel = 0
 	tab.ZIndex = 2
 	tab.Parent = panel
-	local title = UITheme.Title(panel, "HeaderTitle", 22, UITheme.TEXT)
+	local title = UITheme.Title(panel, "HeaderTitle", UITheme.Type.Screen, UITheme.TEXT)
 	title.ZIndex = 2
 	title.Position = UDim2.fromOffset(18, 0)
-	title.Size = UDim2.new(1, -36, 0, h)
+	title.Size = UDim2.new(1, -18 - UITheme.Ctl.Std - 20, 0, h) -- right margin reserves the close-button slot
 	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextTruncate = Enum.TextTruncate.AtEnd
 	title.Text = string.upper(titleText)
 	if not barColor then
 		local line = Instance.new("Frame")
@@ -296,6 +331,35 @@ function UITheme.Header(panel: GuiObject, titleText: string, height: number?, ac
 		line.Parent = panel
 	end
 	return title
+end
+
+-- THE close button — one size (Ctl.Std=44), one placement: inside the header bar, right side,
+-- vertically centered. Every panel uses this instead of hand-rolling its own X.
+function UITheme.Close(panel: GuiObject): TextButton
+	local size = UITheme.Ctl.Std
+	local b = Instance.new("TextButton")
+	b.Name = "CloseButton"
+	b.AnchorPoint = Vector2.new(1, 0)
+	b.Position = UDim2.new(1, -8, 0, math.floor((UITheme.Space.Header - size) / 2))
+	b.Size = UDim2.fromOffset(size, size)
+	b.BackgroundColor3 = Color3.fromRGB(224, 34, 34)
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = true
+	b.ZIndex = 3
+	b.Parent = panel
+	UITheme.Corner(b, 6)
+	UITheme.Edge(b, UITheme.BLACK, 2.5)
+	UITheme.WhiteX(b)
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
+		ColorSequenceKeypoint.new(0.78, Color3.fromRGB(224, 34, 34)),
+		ColorSequenceKeypoint.new(0.8, Color3.fromRGB(150, 16, 16)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
+	})
+	g.Rotation = 90
+	g.Parent = b
+	return b
 end
 
 -- Draw a white X inside a button (two rotated bars) — robust vs fonts that lack the ✕ glyph.
@@ -342,7 +406,7 @@ function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
 		button.Text = ""
 	end
 	local pad = opts.inset or 9
-	local capH = opts.caption and 13 or 0
+	local capH = opts.caption and 14 or 0
 	local img = Instance.new("ImageLabel")
 	img.Name = "Icon"
 	img.BackgroundTransparency = 1
@@ -353,19 +417,27 @@ function UITheme.Icon(button: GuiObject, imageId: string, opts: any?)
 	img.Position = UDim2.new(0.5, 0, 0, pad)
 	img.Size = UDim2.new(1, -pad * 2, 1, -pad * 2 - capH)
 	img.Parent = button
+	-- Caption = Type.Caption; the badge NEVER exceeds it (rule 2 of the scale). Caption scales down
+	-- rather than clipping ("SKIN CRATES" used to truncate on both sides).
 	if opts.caption then
-		local cap = UITheme.Label(button, "IconCaption", 11, opts.captionColor or UITheme.TEXT, true)
+		local cap = UITheme.Label(button, "IconCaption", UITheme.Type.Caption, opts.captionColor or UITheme.TEXT, true)
 		cap.AnchorPoint = Vector2.new(0.5, 1)
 		cap.Position = UDim2.new(0.5, 0, 1, -5)
 		cap.Size = UDim2.new(1, -6, 0, capH)
 		cap.TextXAlignment = Enum.TextXAlignment.Center
+		cap.TextScaled = true
+		local cc = Instance.new("UITextSizeConstraint")
+		cc.MaxTextSize = UITheme.Type.Caption
+		cc.Parent = cap
 		cap.Text = opts.caption
 	end
 	if opts.badge then
-		local bd = UITheme.Label(button, "IconBadge", 12, opts.badgeColor or UITheme.GOLD, true)
+		local bd = UITheme.Label(button, "IconBadge", UITheme.Type.Caption, opts.badgeColor or UITheme.GOLD, true)
 		bd.Position = UDim2.fromOffset(6, 4)
-		bd.Size = UDim2.fromOffset(18, 15)
+		bd.AutomaticSize = Enum.AutomaticSize.X -- was a fixed 18px box that two characters overflowed
+		bd.Size = UDim2.fromOffset(0, 16)
 		bd.TextXAlignment = Enum.TextXAlignment.Left
+		bd.ZIndex = (button.ZIndex or 1) + 2
 		bd.Text = opts.badge
 	end
 	return img
@@ -387,7 +459,7 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	b.BorderSizePixel = 0
 	b.AutoButtonColor = false
 	b.FontFace = UITheme.TitleFace
-	b.TextSize = 15
+	b.TextSize = UITheme.Type.Value -- CTA text: one clear step above body
 	b.TextColor3 = fill[3]
 	b.Text = string.upper(textStr)
 	b.Parent = parent
@@ -426,15 +498,22 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	return b
 end
 
--- Gray a themed button out (or restore it).
+-- Gray a themed button out (or restore it). The original fill/text colors are stashed in attributes
+-- on first disable so re-enabling actually restores them (the old version restored nothing).
 function UITheme.SetButtonEnabled(b: TextButton, enabled: boolean, disabledText: string?)
 	local g = b:FindFirstChildOfClass("UIGradient")
 	if enabled then
 		b.AutoButtonColor = false
 		b.TextTransparency = 0
 		if g then g.Enabled = true end
-		b.BackgroundColor3 = b.BackgroundColor3
+		local bg, tc = b:GetAttribute("EnabledBG"), b:GetAttribute("EnabledText")
+		if typeof(bg) == "Color3" then b.BackgroundColor3 = bg end
+		if typeof(tc) == "Color3" then b.TextColor3 = tc end
 	else
+		if b:GetAttribute("EnabledBG") == nil then
+			b:SetAttribute("EnabledBG", b.BackgroundColor3)
+			b:SetAttribute("EnabledText", b.TextColor3)
+		end
 		if g then g.Enabled = false end
 		b.BackgroundColor3 = UITheme.TRACK
 		b.TextColor3 = UITheme.DIM

@@ -49,7 +49,7 @@ local function build()
 	gui.Name = "AutoShootHUD"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 6
+	gui.DisplayOrder = UITheme.Layer.Chrome
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 

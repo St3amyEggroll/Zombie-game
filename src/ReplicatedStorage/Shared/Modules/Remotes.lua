@@ -23,6 +23,7 @@ local DEFINITIONS: { [string]: string } = {
 	-- MatchService (lifecycle + round manager)
 	MatchStateChanged = "RemoteEvent",     -- S->C: (phase, round)
 	RoundChanged      = "RemoteEvent",     -- S->C: (round)
+	LeaveRun          = "RemoteEvent",     -- C->S: the HUD's LEAVE button — bank my run + send me to the lobby
 	-- (The lobby is a SEPARATE place — lobby-src/ — with its own remotes; pressing PLAY there teleports here.)
 
 	-- ZombieService

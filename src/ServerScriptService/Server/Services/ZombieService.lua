@@ -1982,6 +1982,18 @@ function ZombieService.Hit(record, fromPos: Vector3, knockback: number?)
 	flashWhite(record)
 end
 
+-- SKIP WAVE (the Robux dev product): cancel everything still owed and drop every live zombie dead.
+-- Deaths run the normal Died flow (ragdoll, pooling, active-set removal), so the wave completes through
+-- the standard cleared check. No cash/XP is credited — there's no shooter.
+function ZombieService.SkipWave()
+	remaining = 0
+	for _, record in active do
+		if not record.dead and record.hum and record.hum.Health > 0 then
+			record.hum.Health = 0
+		end
+	end
+end
+
 -- Wipe everything (used on game over / reset). Cancels spawning and pools all live zombies.
 function ZombieService.ClearAll()
 	roundToken += 1

@@ -117,7 +117,7 @@ local function gunCell(i, id)
 	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	nmStroke.Parent = nm
 
-	local chip = UITheme.Label(cell, nil, 12, isOwned and UITheme.TOXIC or UITheme.GOLD, true)
+	local chip = UITheme.Label(cell, nil, UITheme.Type.Caption, isOwned and UITheme.TOXIC or UITheme.GOLD, true)
 	chip.Position = UDim2.fromOffset(6, 6)
 	chip.Size = UDim2.fromOffset(110, 18)
 	chip.TextXAlignment = Enum.TextXAlignment.Left
@@ -180,19 +180,19 @@ render = function()
 		l.TextWrapped = true
 		return l
 	end
-	local nm = UITheme.Title(detail, nil, 21, col)
+	local nm = UITheme.Title(detail, nil, UITheme.Type.Item, col)
 	nm.Position = UDim2.fromOffset(14, 214)
 	nm.Size = UDim2.new(1, -28, 0, 30)
 	nm.Text = string.upper(w.name)
 
 	local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
-	local stats = centered(250, 66, 14, UITheme.TEXT)
+	local stats = centered(250, 66, UITheme.Type.Body, UITheme.TEXT)
 	stats.Text = ("DMG %.0f%s\n%s shots/s   ·   RNG %s\nDPS ~%d"):format(
 		w.damage or 0, w.pellets and w.pellets > 1 and (" ×" .. w.pellets) or "",
 		tostring(w.fireRate or "?"), tostring(w.range or "?"), math.floor(dps + 0.5))
 
 	if w.ability then
-		local ab = centered(324, 70, 13, UITheme.TOXIC, true)
+		local ab = centered(324, 70, UITheme.Type.Body, UITheme.TOXIC, true)
 		ab.TextYAlignment = Enum.TextYAlignment.Top
 		ab.Text = w.ability
 	end
@@ -203,18 +203,18 @@ render = function()
 	if isOwned then
 		local b = UITheme.Button(acts, "OWNED", "ghost")
 		b.Position = UDim2.new(0, 0, 0, 0)
-		b.Size = UDim2.new(1, 0, 0, 60)
+		b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
 		UITheme.SetButtonEnabled(b, false, "OWNED ✓")
 	elseif not forSale then
 		local b = UITheme.Button(acts, "STARTER GUN", "ghost")
 		b.Position = UDim2.new(0, 0, 0, 0)
-		b.Size = UDim2.new(1, 0, 0, 60)
+		b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
 		UITheme.SetButtonEnabled(b, false, "STARTER GUN")
 	else
 		local canAfford = coins >= w.price and pendingBuy == nil
 		local b = UITheme.Button(acts, ("BUY  ·  🪙 %s"):format(fmt(w.price)), "gold")
 		b.Position = UDim2.new(0, 0, 0, 0)
-		b.Size = UDim2.new(1, 0, 0, 60)
+		b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
 		if canAfford then
 			b.Activated:Connect(function()
 				if pendingBuy then
@@ -275,15 +275,15 @@ function GunShopController.Start()
 	gui.Name = "GunShop"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 22
+	gui.DisplayOrder = UITheme.Layer.ShopModal
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
 	-- SHOP button (mobile + mouse) — a square icon button, UPPER of the LEFT-CENTER GUNS/CASES pair.
 	local shopBtn = Instance.new("TextButton")
 	shopBtn.AnchorPoint = Vector2.new(0, 0)
-	shopBtn.Position = UDim2.new(0, 16, 0.5, -56)
-	shopBtn.Size = UDim2.fromOffset(52, 52)
+	shopBtn.Position = UDim2.new(0, 16, 0.5, -(UITheme.Ctl.Launcher + 4)) -- 8px above its CASES twin at +4
+	shopBtn.Size = UDim2.fromOffset(UITheme.Ctl.Launcher, UITheme.Ctl.Launcher)
 	shopBtn.BackgroundColor3 = UITheme.PANEL
 	shopBtn.BorderSizePixel = 0
 	shopBtn.AutoButtonColor = true
@@ -300,41 +300,19 @@ function GunShopController.Start()
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
 	panel.Visible = false
-	UITheme.Header(panel, "GUNS", 44, UITheme.GOLD, UITheme.HeaderColors.guns)
+	UITheme.Header(panel, "GUNS", nil, UITheme.GOLD, UITheme.HeaderColors.guns)
 
-	coinsLabel = UITheme.Label(panel, "Coins", 18, UITheme.GOLD, true)
+	coinsLabel = UITheme.Label(panel, "Coins", UITheme.Type.Section, UITheme.GOLD, true)
 	coinsLabel.AnchorPoint = Vector2.new(1, 0)
-	coinsLabel.Position = UDim2.new(1, -66, 0, 12)
-	coinsLabel.Size = UDim2.fromOffset(180, 26)
+	coinsLabel.Position = UDim2.new(1, -(8 + UITheme.Ctl.Std + 12), 0, 0) -- clears the in-bar close button
+	coinsLabel.Size = UDim2.fromOffset(180, UITheme.Space.Header)
 	coinsLabel.TextXAlignment = Enum.TextXAlignment.Right
 
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.Position = UDim2.new(1, -8, 0, 6)
-	closeBtn.Size = UDim2.fromOffset(46, 46)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(224, 34, 34)
-	closeBtn.BorderSizePixel = 0
-	closeBtn.FontFace = UITheme.TitleFace
-	closeBtn.TextSize = 26
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Text = "✕"
-	closeBtn.Parent = panel
-	UITheme.Corner(closeBtn, 7)
-	UITheme.Edge(closeBtn, UITheme.BLACK, 2.5)
-	UITheme.WhiteX(closeBtn)
-	local xg = Instance.new("UIGradient")
-	xg.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.78, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.8, Color3.fromRGB(150, 16, 16)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
-	})
-	xg.Rotation = 90
-	xg.Parent = closeBtn
+	local closeBtn = UITheme.Close(panel)
 
 	grid = Instance.new("ScrollingFrame")
-	grid.Position = UDim2.fromOffset(16, 60)
-	grid.Size = UDim2.fromOffset(346, PANEL_H - 76)
+	grid.Position = UDim2.fromOffset(16, 64)
+	grid.Size = UDim2.fromOffset(346, PANEL_H - 80)
 	grid.BackgroundTransparency = 1
 	grid.BorderSizePixel = 0
 	grid.ScrollBarThickness = 6
@@ -348,8 +326,8 @@ function GunShopController.Start()
 	gl.Parent = grid
 
 	detail = Instance.new("Frame")
-	detail.Position = UDim2.fromOffset(378, 60)
-	detail.Size = UDim2.fromOffset(280, PANEL_H - 76)
+	detail.Position = UDim2.fromOffset(378, 64)
+	detail.Size = UDim2.fromOffset(280, PANEL_H - 80)
 	detail.BackgroundColor3 = UITheme.PANEL2
 	detail.BorderSizePixel = 0
 	detail.Parent = panel
@@ -359,8 +337,8 @@ function GunShopController.Start()
 
 	acts = Instance.new("Frame")
 	acts.AnchorPoint = Vector2.new(1, 0)
-	acts.Position = UDim2.new(1, -16, 0, 60)
-	acts.Size = UDim2.fromOffset(250, PANEL_H - 76)
+	acts.Position = UDim2.new(1, -16, 0, 64)
+	acts.Size = UDim2.fromOffset(250, PANEL_H - 80)
 	acts.BackgroundTransparency = 1
 	acts.Parent = panel
 
