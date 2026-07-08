@@ -121,20 +121,6 @@ local function applyHold(character: Model)
 		end
 	end)
 	print(("[CharacterAnimController] playing hold %s on %s"):format(id, character.Name))
-
-	-- TEMP DIAGNOSTIC: the animation plays at full weight/priority, so if it moves nothing the avatar's rig
-	-- doesn't match the animation's rig. Print the rig type to confirm (R6 anim needs an R6 character).
-	task.spawn(function()
-		task.wait(0.9)
-		if holdTracks[character] ~= track then
-			return
-		end
-		local h = character:FindFirstChildOfClass("Humanoid")
-		warn(("[hold-debug] RigType=%s  R6-part(Torso)=%s  R15-part(UpperTorso)=%s"):format(
-			h and tostring(h.RigType) or "?",
-			tostring(character:FindFirstChild("Torso") ~= nil),
-			tostring(character:FindFirstChild("UpperTorso") ~= nil)))
-	end)
 end
 
 local function watchCharacter(character: Model)
