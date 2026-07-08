@@ -20,6 +20,7 @@ export type Weapon = {
 	pin: { secs: number }?,                        -- non-lethal hits nail the zombie in place
 	chill: { slowPct: number, secs: number }?,     -- non-lethal hits slow the zombie
 	shatter: { damage: number, radius: number }?,  -- a CHILLED zombie killed = frost AoE around the corpse
+	aoe: { damage: number, radius: number }?,      -- explosion/splash on impact: AoE damage to every zombie in radius
 	ability: string?,      -- one-line ability text shown on the inventory panes
 	price: number?,        -- Coins to buy this gun (lobby inventory + the mid-run shop); 0/nil = starter
 }
@@ -40,6 +41,20 @@ local WeaponConfig: { [string]: Weapon } = {
 		ability="CRYO — chills 30%; chilled zombies SHATTER on death (frost AoE)" },
 	minigun = { id="minigun", name="Minigun",       tier=4, damage=16, fireRate=18,  range=300, pellets=1, auto=true,  spinUp=1.0, knockback=16, price=15000 },
 	raygun  = { id="raygun",  name="Ray Gun",       tier=5, damage=80, fireRate=4,   range=250, pellets=1, auto=true,  knockback=40, price=40000 },
+
+	-- ===== NEW GUNS =====
+	m4         = { id="m4",         name="M4 Carbine",         tier=3, damage=34,  fireRate=11,  range=300, pellets=1, auto=true,  knockback=22, price=7000 },
+	tommygun   = { id="tommygun",   name="Tommy Gun",          tier=2, damage=18,  fireRate=12,  range=170, pellets=1, auto=true,  knockback=18, price=3500 },
+	sniper     = { id="sniper",     name="Bolt-Action Sniper", tier=4, damage=150, fireRate=0.9, range=400, pellets=1, auto=false, knockback=40, price=12000,
+		pierce=4, ability="PIERCE — one shot punches through a whole line" },
+	-- Cone spray: many fast weak bolts across a wide short-range arc (no DoT code needed — the flames melt up close).
+	flamethrower = { id="flamethrower", name="Flamethrower",   tier=4, damage=9,   fireRate=12,  range=38,  pellets=3, maxTargets=3, spreadArc=55, auto=true, knockback=4, price=18000,
+		ability="INFERNO — sprays a short cone of fire" },
+	-- aoe = blast on impact (damages every zombie within radius; kills credit the shooter's cash/XP).
+	rocket     = { id="rocket",     name="Rocket Launcher",    tier=5, damage=20,  fireRate=0.7, range=300, pellets=1, auto=false, knockback=60, price=35000,
+		aoe={damage=95, radius=18}, ability="EXPLOSIVE — the blast damages everything nearby" },
+	plasma     = { id="plasma",     name="Plasma Rifle",       tier=5, damage=30,  fireRate=6,   range=280, pellets=1, auto=true,  knockback=20, price=30000,
+		aoe={damage=22, radius=6}, ability="PLASMA — bolts splash on impact" },
 }
 
 return WeaponConfig

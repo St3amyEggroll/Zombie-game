@@ -116,6 +116,16 @@ local WEAPONS = {
 	freezeray = { name = "Freeze Ray",   tier = 4, rarity = "epic",      damage = 10,  fireRate = 10,  range = 180, price = 20000, slot = "primary",
 		ability = "CRYO — chills 30%; chilled zombies SHATTER on death" },
 	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80,  fireRate = 4,   range = 250, price = 40000, slot = "primary" },
+	m4        = { name = "M4 Carbine",         tier = 3, rarity = "rare",      damage = 34,  fireRate = 11,  range = 300, price = 7000,  slot = "primary" },
+	tommygun  = { name = "Tommy Gun",          tier = 2, rarity = "uncommon",  damage = 18,  fireRate = 12,  range = 170, price = 3500,  slot = "primary" },
+	sniper    = { name = "Bolt-Action Sniper", tier = 4, rarity = "epic",      damage = 150, fireRate = 0.9, range = 400, price = 12000, slot = "primary",
+		ability = "PIERCE — one shot punches through a whole line" },
+	flamethrower = { name = "Flamethrower",    tier = 4, rarity = "epic",      damage = 9,   fireRate = 12,  range = 38, pellets = 3, price = 18000, slot = "primary",
+		ability = "INFERNO — sprays a short cone of fire" },
+	rocket    = { name = "Rocket Launcher",    tier = 5, rarity = "legendary", damage = 20,  fireRate = 0.7, range = 300, price = 35000, slot = "primary",
+		ability = "EXPLOSIVE — the blast damages everything nearby" },
+	plasma    = { name = "Plasma Rifle",       tier = 5, rarity = "legendary", damage = 30,  fireRate = 6,   range = 280, price = 30000, slot = "primary",
+		ability = "PLASMA — bolts splash on impact" },
 }
 
 -- Each gun belongs to a fixed loadout slot: 1 = PRIMARY, 2 = SECONDARY (WEAPONS[id].slot).

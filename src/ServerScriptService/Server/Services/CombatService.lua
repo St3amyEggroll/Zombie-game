@@ -28,6 +28,7 @@ local SecurityService = require(script.Parent.SecurityService)
 local MatchService = require(script.Parent.MatchService)
 local ZombieService = require(script.Parent.ZombieService)
 local DataService = require(script.Parent.DataService)
+local SoundFXService = require(script.Parent.SoundFXService)
 
 local CombatService = {}
 
@@ -78,6 +79,61 @@ local function falloffMult(dist: number): number
 end
 
 -- ===== FIRE =====
+-- ===== EXPLOSIONS / SPLASH (weapon.aoe: Rocket, Plasma) =====
+-- A quick server-side blast sphere (replicates to everyone) + the Explosion sound.
+local function spawnBlastVFX(center: Vector3, radius: number)
+	local ball = Instance.new("Part")
+	ball.Shape = Enum.PartType.Ball
+	ball.Anchored = true
+	ball.CanCollide = false
+	ball.CanQuery = false
+	ball.CastShadow = false
+	ball.Material = Enum.Material.Neon
+	ball.Color = Color3.fromRGB(255, 155, 45)
+	ball.Size = Vector3.new(2, 2, 2)
+	ball.CFrame = CFrame.new(center)
+	ball.Parent = Workspace
+	task.spawn(function()
+		local t = 0
+		while t < 0.3 and ball.Parent do
+			t += task.wait()
+			local a = t / 0.3
+			local s = 3 + radius * 1.8 * a
+			ball.Size = Vector3.new(s, s, s)
+			ball.Transparency = a
+		end
+		ball:Destroy()
+	end)
+end
+
+-- Damage every live zombie within cfg.radius of `center` (full at the center → 50% at the edge). Kills
+-- credit the shooter (fires killEvent) so AoE pays cash/XP exactly like a direct hit.
+local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
+	local radius = math.max(1, cfg.radius or 12)
+	local dmg = math.max(0, cfg.damage or 0)
+	if dmg > 0 then
+		for _, rec in ZombieService.GetActive() do
+			local hum, root = rec.hum, rec.root
+			if hum and root then
+				local dist = (root.Position - center).Magnitude
+				if dist <= radius then
+					local dealt = dmg * (1 - (dist / radius) * 0.5)
+					hum.Health = math.max(0, hum.Health - dealt)
+					ZombieService.NoteHit(rec, center)
+					hitEvent:Fire(player, hum, false, weaponId, dealt)
+					if hum.Health <= 0 then
+						killEvent:Fire(player, hum, false, weaponId)
+					else
+						ZombieService.Hit(rec, center, 24)
+					end
+				end
+			end
+		end
+	end
+	spawnBlastVFX(center, radius)
+	SoundFXService.Emit("Explosion", center)
+end
+
 local function onFire(player: Player, weaponId: any, origin: any, direction: any)
 	-- 1) rate limit
 	if not SecurityService.Allow(player, "Fire") then
@@ -276,6 +332,12 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	else
 		-- Miss: fan all the pellets straight ahead.
 		Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, endpoint, weaponId, pellets)
+	end
+
+	-- AoE weapons (Rocket / Plasma): blast at the impact point (a hit target, else where the shot lands).
+	if weapon.aoe then
+		local center = (#targets > 0) and targets[1].root.Position or endpoint
+		applyAoE(player, weaponId, center, weapon.aoe)
 	end
 end
 
