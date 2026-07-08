@@ -81,16 +81,6 @@ local function applyHold(character: Model)
 	if not hum then
 		return
 	end
-	-- DIAGNOSTIC: what is the LIVE avatar actually rigged as? An R6 animation can't drive an R15 body
-	-- (or vice-versa) — if the rig here doesn't match the rig the animation was built on, the track plays
-	-- but moves nothing. This prints the ground truth so we stop guessing.
-	do
-		local liveRig = (character:FindFirstChild("RightUpperArm") and "R15")
-			or (character:FindFirstChild("Right Arm") and "R6")
-			or "unknown"
-		print(("[CharacterAnimController] LIVE avatar rig = %s | Humanoid.RigType = %s"):format(
-			liveRig, tostring(hum.RigType)))
-	end
 	local animator = hum:FindFirstChildOfClass("Animator")
 	if not animator then
 		animator = Instance.new("Animator")
