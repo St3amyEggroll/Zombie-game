@@ -33,9 +33,9 @@ local function makeFace(id, weight, fallbackEnum)
 	end
 	return Font.new(Font.fromEnum(fallbackEnum).Family, weight)
 end
-local TITLE_FACE = makeFace(FONT_IDS.Title, Enum.FontWeight.Regular, Enum.Font.Sarpanch)
-local BODY_FACE  = makeFace(FONT_IDS.Body, Enum.FontWeight.Medium, Enum.Font.Michroma)
-local BODYB_FACE = makeFace(FONT_IDS.Body, Enum.FontWeight.Bold, Enum.Font.Michroma)
+local TITLE_FACE = makeFace(FONT_IDS.Title, Enum.FontWeight.Regular, Enum.Font.FredokaOne) -- chunky cartoon face
+local BODY_FACE  = makeFace(FONT_IDS.Body, Enum.FontWeight.Medium, Enum.Font.FredokaOne)
+local BODYB_FACE = makeFace(FONT_IDS.Body, Enum.FontWeight.Bold, Enum.Font.FredokaOne)
 
 local PANEL   = Color3.fromRGB(21, 24, 17)
 local PANEL2  = Color3.fromRGB(29, 33, 23)
@@ -393,10 +393,10 @@ coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1
 coinsRow.Size = UDim2.fromOffset(320, 44); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
 local moneyLabel = Instance.new("TextLabel")
 moneyLabel.Size = UDim2.new(1, 0, 1, 0); moneyLabel.BackgroundTransparency = 1
-moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 34; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
+moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 40; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
 moneyLabel.TextColor3 = GOLD; moneyLabel.Text = ""; moneyLabel.Parent = coinsRow
 local moneyStroke = Instance.new("UIStroke")
-moneyStroke.Color = TBLACK; moneyStroke.Thickness = 2; moneyStroke.Parent = moneyLabel
+moneyStroke.Color = TBLACK; moneyStroke.Thickness = 3.5; moneyStroke.Parent = moneyLabel
 local coinIcon = Instance.new("ImageLabel")
 coinIcon.AnchorPoint = Vector2.new(1, 0.5); coinIcon.Position = UDim2.new(1, -8, 0.5, 0)
 coinIcon.Size = UDim2.fromOffset(36, 36); coinIcon.BackgroundTransparency = 1
@@ -763,27 +763,33 @@ local function hideTip() end -- (legacy no-op: hover tooltips were replaced by t
 -- Owner-supplied images; the caption underneath doubles as the fallback if an image id fails to load.
 local GUN_ICON = "rbxassetid://107465960874017"
 local CASES_ICON = "rbxassetid://83465359983310"
-local function cornerButton(imageId, caption, yOff, accent, badge)
+local function cornerButton(imageId, caption, xOff, accent, badge)
+	-- TOP-CENTER NAV (sticker style): fat colored text buttons in a row, like the reference's
+	-- Weapons | Play | Classes. xOff = horizontal offset from screen center.
 	local b = Instance.new("TextButton")
-	b.AnchorPoint = Vector2.new(0, 0)
-	b.Position = UDim2.new(0, 16, 0.5, yOff); b.Size = UDim2.fromOffset(72, 72)
-	b.BackgroundColor3 = PANEL; b.BorderSizePixel = 0
-	b.Text = ""; b.Parent = invGui; corner(b, 8)
-	lstuds(b); ldepth(b); ledge(b); ledge(b, accent, 1, 0.35); lbevel(b)
+	b.AnchorPoint = Vector2.new(0.5, 0)
+	b.Position = UDim2.new(0.5, xOff, 0, 10); b.Size = UDim2.fromOffset(150, 52)
+	b.BackgroundColor3 = accent; b.BorderSizePixel = 0
+	b.Text = ""; b.Parent = invGui; corner(b, 9)
+	ldepth(b); ledge(b, TBLACK, 2.5); lbevel(b)
 
-	local img = Instance.new("ImageLabel")
+	local img = Instance.new("ImageLabel") -- small icon on the left edge of the pill
 	img.BackgroundTransparency = 1; img.Image = imageId
-	img.ImageColor3 = ACCENT -- tint the (white) icon to toxic green so it blends into the palette
+	img.ImageColor3 = Color3.new(1, 1, 1)
 	img.ScaleType = Enum.ScaleType.Fit
-	img.AnchorPoint = Vector2.new(0.5, 0)
-	img.Position = UDim2.new(0.5, 0, 0, 9); img.Size = UDim2.new(1, -18, 1, -27)
+	img.AnchorPoint = Vector2.new(0, 0.5)
+	img.Position = UDim2.new(0, 8, 0.5, 0); img.Size = UDim2.fromOffset(30, 30)
 	img.Parent = b
 
 	local cap = Instance.new("TextLabel")
-	cap.AnchorPoint = Vector2.new(0.5, 1); cap.Position = UDim2.new(0.5, 0, 1, -5)
-	cap.Size = UDim2.new(1, -6, 0, 13); cap.BackgroundTransparency = 1
-	cap.FontFace = TITLE_FACE; cap.TextSize = 12; cap.TextColor3 = TEXTCOL
-	cap.TextXAlignment = Enum.TextXAlignment.Center; cap.Text = caption; cap.Parent = b
+	cap.AnchorPoint = Vector2.new(0.5, 0.5); cap.Position = UDim2.new(0.5, imageId ~= "" and 12 or 0, 0.5, 0)
+	cap.Size = UDim2.new(1, -20, 0, 30); cap.BackgroundTransparency = 1
+	cap.FontFace = TITLE_FACE; cap.TextSize = 20; cap.TextColor3 = Color3.new(1, 1, 1)
+	cap.TextScaled = true; cap.Parent = b
+	local capC = Instance.new("UITextSizeConstraint"); capC.MaxTextSize = 20; capC.Parent = cap
+	local capS = Instance.new("UIStroke")
+	capS.Color = TBLACK; capS.Thickness = 2.5; capS.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; capS.Parent = cap
+	cap.TextXAlignment = Enum.TextXAlignment.Center; cap.Text = caption
 
 	if badge then
 		local bd = Instance.new("TextLabel")
@@ -794,17 +800,11 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "GUNS", -116, GOLD, true)  -- top of the LEFT trio: GUNS / SHOP / SKIN CRATES
-local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 44, ACCENT, false) -- bottom of the trio
+local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -160, Color3.fromRGB(214, 48, 48), true) -- red, left of center
+local casesBtn = cornerButton(CASES_ICON, "CRATES", 160, Color3.fromRGB(230, 140, 30), false) -- orange, right
 -- SHOP button — opens the crate storefront from anywhere (stepping on the stall still works too)
-local shopBtn = cornerButton("", "SHOP", -36, GOLD, false) -- middle of the trio
-do -- no icon image yet: a big gold 🪙 fills the face (swap in an image id in cornerButton later)
-	local glyph = Instance.new("TextLabel")
-	glyph.AnchorPoint = Vector2.new(0.5, 0); glyph.Position = UDim2.new(0.5, 0, 0, 4)
-	glyph.Size = UDim2.new(1, -8, 1, -22); glyph.BackgroundTransparency = 1
-	glyph.FontFace = TITLE_FACE; glyph.TextScaled = true; glyph.TextColor3 = GOLD
-	glyph.Text = "🪙"; glyph.Parent = shopBtn
-end
+local shopBtn = cornerButton("", "SHOP", 0, Color3.fromRGB(52, 168, 52), false) -- green, center
+-- (the SHOP pill carries its own label now)
 shopBtn.Activated:Connect(function()
 	lplay("Open")
 	remotes:WaitForChild("ShopSync"):FireServer()

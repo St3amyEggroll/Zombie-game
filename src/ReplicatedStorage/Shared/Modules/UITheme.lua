@@ -28,8 +28,8 @@ local FONT_IDS = {
 	Title = "", -- paste the "Black Ops One" font family asset id here (stencil military headers)
 	Body  = "", -- paste the "Orbitron" font family asset id here (tech body text)
 }
-local FALLBACK_TITLE = Enum.Font.Sarpanch  -- squared military-tech (until the real id is pasted)
-local FALLBACK_BODY  = Enum.Font.Michroma  -- wide geometric (closest built-in to Orbitron)
+local FALLBACK_TITLE = Enum.Font.FredokaOne -- chunky rounded cartoon face (the reference look)
+local FALLBACK_BODY  = Enum.Font.FredokaOne -- one face everywhere, weights differentiate
 
 local function makeFace(id: string, weight: Enum.FontWeight, fallbackEnum: Enum.Font): Font
 	if id and id ~= "" then
@@ -243,8 +243,8 @@ function UITheme.Title(parent: Instance, name: string?, size: number?, color: Co
 	l.Parent = parent
 	local s = Instance.new("UIStroke")
 	s.Color = UITheme.BLACK
-	s.Thickness = 1.6
-	s.Transparency = 0.15
+	s.Thickness = 3 -- thick sticker outline (the cartoon look)
+	s.Transparency = 0
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	s.Parent = l
 	return l
@@ -446,10 +446,10 @@ end
 -- A chunky action button: gradient fill, black edge, stencil label, press-pop.
 -- variant: "primary" (toxic) | "danger" (orange) | "ghost" (dark) | "gold"
 function UITheme.Button(parent: Instance, textStr: string, variant: string?)
-	local fills = {
-		primary = { UITheme.TOXIC, UITheme.TOXIC_DK, Color3.fromRGB(14, 26, 4) },
-		danger = { UITheme.ORANGE, UITheme.ORANGE_DK, Color3.fromRGB(30, 10, 3) },
-		gold = { UITheme.GOLD, UITheme.Darker(UITheme.GOLD, 0.45), Color3.fromRGB(34, 24, 6) },
+	local fills = { -- text is WHITE + black outline on every colored fill (sticker style)
+		primary = { UITheme.TOXIC, UITheme.TOXIC_DK, Color3.new(1, 1, 1) },
+		danger = { UITheme.ORANGE, UITheme.ORANGE_DK, Color3.new(1, 1, 1) },
+		gold = { UITheme.GOLD, UITheme.Darker(UITheme.GOLD, 0.45), Color3.new(1, 1, 1) },
 		-- ghost buttons sit ON PANEL2 panes — they need a visibly lighter fill or they read as black
 		ghost = { Color3.fromRGB(54, 60, 42), Color3.fromRGB(42, 47, 33), UITheme.TEXT },
 	}
@@ -463,12 +463,12 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	b.TextColor3 = fill[3]
 	b.Text = string.upper(textStr)
 	b.Parent = parent
-	UITheme.Corner(b, 7)
+	UITheme.Corner(b, 9)
 	UITheme.Edge(b, UITheme.BLACK, 2.5)
-	local ts = Instance.new("UIStroke") -- chunky text: dark contextual outline on the label itself
+	local ts = Instance.new("UIStroke") -- chunky text: solid black outline on the label itself
 	ts.Color = UITheme.BLACK
-	ts.Thickness = 1.4
-	ts.Transparency = 0.25
+	ts.Thickness = 2.5
+	ts.Transparency = 0
 	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	ts.Parent = b
 	-- CHANGED: hard-stop gradient = the classic cartoon bottom bevel (crisp darker strip, no children)
