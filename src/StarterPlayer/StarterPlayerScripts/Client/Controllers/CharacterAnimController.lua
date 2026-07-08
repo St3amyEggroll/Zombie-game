@@ -121,6 +121,32 @@ local function applyHold(character: Model)
 		end
 	end)
 	print(("[CharacterAnimController] playing hold %s on %s"):format(id, character.Name))
+
+	-- TEMP DIAGNOSTIC: dump the hold track + EVERY playing track (id/priority/weight) three times, so we can
+	-- see whether it's actually playing and what (if anything) is competing with it.
+	task.spawn(function()
+		for i = 1, 3 do
+			task.wait(0.9)
+			if holdTracks[character] ~= track then
+				return
+			end
+			warn(("[hold-debug #%d] hold: playing=%s len=%.2f weight=%.2f looped=%s"):format(
+				i, tostring(track.IsPlaying), track.Length, track.WeightCurrent, tostring(track.Looped)))
+			local h = character:FindFirstChildOfClass("Humanoid")
+			local anr = h and h:FindFirstChildOfClass("Animator")
+			if anr then
+				local any = false
+				for _, t in anr:GetPlayingAnimationTracks() do
+					any = true
+					warn(("   playing-track: id=%s prio=%s weight=%.2f"):format(
+						(t.Animation and t.Animation.AnimationId) or "?", tostring(t.Priority), t.WeightCurrent))
+				end
+				if not any then
+					warn("   (no animation tracks playing at all)")
+				end
+			end
+		end
+	end)
 end
 
 local function watchCharacter(character: Model)
