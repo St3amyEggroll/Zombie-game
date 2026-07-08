@@ -98,6 +98,16 @@ local function applyHold(character: Model)
 	track:Play(0.1)
 	holdTracks[character] = track
 	print(("[CharacterAnimController] playing hold %s on %s"):format(id, character.Name))
+	-- DIAGNOSTIC: after the asset finishes loading, report what the track is actually doing. length=0 means
+	-- the animation is empty / failed to resolve; playing=false means something stopped it; weight=0 means
+	-- it's being overridden. (Temporary — remove once the AK stance is confirmed working.)
+	task.spawn(function()
+		task.wait(0.7)
+		if holdTracks[character] == track then
+			warn(("[hold-debug] id=%s length=%.2fs playing=%s weight=%.2f speed=%.2f priority=%s"):format(
+				id, track.Length, tostring(track.IsPlaying), track.WeightCurrent, track.Speed, tostring(track.Priority)))
+		end
+	end)
 end
 
 local function watchCharacter(character: Model)
