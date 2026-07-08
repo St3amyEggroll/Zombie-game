@@ -96,7 +96,7 @@ AnimationConfig.Weapons = {
 	freezeray = { Hold = "" },
 	pistol  = { Hold = "", Reload = "" },
 	shotgun = { Hold = "", Reload = "" },
-	ak47    = { Hold = "102077004666874", Reload = "" }, -- AK holding/shooting stance (R15)
+	ak47    = { Hold = "102077004666874", Reload = "" }, -- AK holding/shooting stance
 	minigun = { Hold = "128207655721600", Reload = "" },
 	raygun  = { Hold = "", Reload = "" },
 }
