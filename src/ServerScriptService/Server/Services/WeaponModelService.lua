@@ -34,7 +34,7 @@ local WeaponModelService = {}
 --   pitch = tilt the muzzle up/down     (flip the sign if it's pitched the wrong way)
 --   yaw   = spin left/right             (use 180 if the gun points BACKWARDS)
 --   roll  = bank sideways               (use 180 if the gun is UPSIDE DOWN)
-local HANDLE_ROT = { pitch = 90, yaw = 180, roll = 0 }
+local HANDLE_ROT = { pitch = 90, yaw = 180, roll = 180 }
 
 local function handleRotCFrame(): CFrame
 	return CFrame.Angles(math.rad(HANDLE_ROT.pitch), math.rad(HANDLE_ROT.yaw), math.rad(HANDLE_ROT.roll))
