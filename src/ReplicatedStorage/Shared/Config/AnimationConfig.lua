@@ -91,14 +91,14 @@ AnimationConfig.Shake = {
 -- Played on the CHARACTER. "Hold" makes the character pose with the gun. (No reload — ammo is infinite.)
 -- Paste each gun's R6 hold-pose animation id below (just the number). "" = no custom pose (default hold).
 AnimationConfig.Weapons = {
-	pistol      = { Hold = "" },
-	revolver    = { Hold = "" },
+	pistol      = { Hold = "129486576651262" }, -- one-handed pistol hold
+	revolver    = { Hold = "129486576651262" }, -- one-handed pistol hold
 	shotgun     = { Hold = "" },
 	ak47        = { Hold = "105591827404665" }, -- AK holding/shooting stance
 	crossbow    = { Hold = "" },
 	freezeray   = { Hold = "" },
 	minigun     = { Hold = "128207655721600" },
-	raygun      = { Hold = "" },
+	raygun      = { Hold = "129486576651262" }, -- one-handed pistol hold
 	-- Newer guns
 	m4          = { Hold = "" },
 	tommygun    = { Hold = "" },
