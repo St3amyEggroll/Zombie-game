@@ -126,6 +126,8 @@ local WEAPONS = {
 		ability = "EXPLOSIVE — the blast damages everything nearby" },
 	plasma    = { name = "Plasma Rifle",       tier = 5, rarity = "legendary", damage = 30,  fireRate = 6,   range = 280, price = 30000, slot = "primary",
 		ability = "PLASMA — bolts splash on impact" },
+	honeybadger = { name = "Honey Badger",     tier = 3, rarity = "rare",      damage = 30,  fireRate = 10,  range = 260, price = 6500,  slot = "primary" },
+	p90       = { name = "P90",                tier = 3, rarity = "rare",      damage = 16,  fireRate = 13,  range = 180, price = 5000,  slot = "primary" },
 }
 
 -- Each gun belongs to a fixed loadout slot: 1 = PRIMARY, 2 = SECONDARY (WEAPONS[id].slot).

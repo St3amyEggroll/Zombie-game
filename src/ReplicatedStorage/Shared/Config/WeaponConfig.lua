@@ -55,6 +55,8 @@ local WeaponConfig: { [string]: Weapon } = {
 		aoe={damage=95, radius=18}, ability="EXPLOSIVE — the blast damages everything nearby" },
 	plasma     = { id="plasma",     name="Plasma Rifle",       tier=5, damage=30,  fireRate=6,   range=280, pellets=1, auto=true,  knockback=20, price=30000,
 		aoe={damage=22, radius=6}, ability="PLASMA — bolts splash on impact" },
+	honeybadger = { id="honeybadger", name="Honey Badger",     tier=3, damage=30,  fireRate=10,  range=260, pellets=1, auto=true,  knockback=20, price=6500 },
+	p90         = { id="p90",         name="P90",              tier=3, damage=16,  fireRate=13,  range=180, pellets=1, auto=true,  knockback=16, price=5000 },
 }
 
 return WeaponConfig
