@@ -389,11 +389,11 @@ lattach(gui)
 -- shows up automatically to the left of the number once set.
 local COIN_ICON_ID = ""
 local coinsRow = Instance.new("Frame")
-coinsRow.AnchorPoint = Vector2.new(1, 0.5); coinsRow.Position = UDim2.new(1, -24, 0.5, 0)
+coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -(12 + 56 + 6)) -- above the LEVEL bar
 coinsRow.Size = UDim2.fromOffset(320, 44); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
 local moneyLabel = Instance.new("TextLabel")
 moneyLabel.Size = UDim2.new(1, 0, 1, 0); moneyLabel.BackgroundTransparency = 1
-moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 22; moneyLabel.TextXAlignment = Enum.TextXAlignment.Right
+moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 22; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
 moneyLabel.TextColor3 = GOLD; moneyLabel.Text = ""; moneyLabel.Parent = coinsRow
 local moneyStroke = Instance.new("UIStroke")
 moneyStroke.Color = TBLACK; moneyStroke.Thickness = 2; moneyStroke.Parent = moneyLabel
@@ -406,9 +406,9 @@ if COIN_ICON_ID ~= "" then
 	coinIcon.Visible = true
 end
 local bestLabel = Instance.new("TextLabel")
-bestLabel.AnchorPoint = Vector2.new(1, 0); bestLabel.Position = UDim2.new(1, 0, 1, 2)
+bestLabel.AnchorPoint = Vector2.new(0, 0); bestLabel.Position = UDim2.new(0, 0, 1, 2)
 bestLabel.Size = UDim2.fromOffset(320, 20); bestLabel.BackgroundTransparency = 1
-bestLabel.FontFace = BODYB_FACE; bestLabel.TextSize = 14; bestLabel.TextXAlignment = Enum.TextXAlignment.Right
+bestLabel.FontFace = BODYB_FACE; bestLabel.TextSize = 14; bestLabel.TextXAlignment = Enum.TextXAlignment.Left
 bestLabel.TextColor3 = DIMTEXT; bestLabel.Text = ""; bestLabel.Parent = coinsRow
 local bestStroke = Instance.new("UIStroke")
 bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestLabel
@@ -794,12 +794,10 @@ local function cornerButton(imageId, caption, yOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "GUNS", -(64 + 4), GOLD, true)  -- upper
-local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 4, ACCENT, false) -- re-anchored below
-casesBtn.AnchorPoint = Vector2.new(1, 1)
-casesBtn.Position = UDim2.new(1, -12, 1, -(12 + 48 + 8 + 56 + 8)) -- bottom-right: above the LEVEL bar
+local gunsBtn = cornerButton(GUN_ICON, "GUNS", -104, GOLD, true)  -- top of the LEFT trio: GUNS / SHOP / SKIN CRATES
+local casesBtn = cornerButton(CASES_ICON, "SKIN CRATES", 40, ACCENT, false) -- bottom of the trio
 -- SHOP button — opens the crate storefront from anywhere (stepping on the stall still works too)
-local shopBtn = cornerButton("", "SHOP", 4, GOLD, false)
+local shopBtn = cornerButton("", "SHOP", -32, GOLD, false) -- middle of the trio
 do -- no icon image yet: a big gold 🪙 fills the face (swap in an image id in cornerButton later)
 	local glyph = Instance.new("TextLabel")
 	glyph.AnchorPoint = Vector2.new(0.5, 0); glyph.Position = UDim2.new(0.5, 0, 0, 4)
@@ -2092,12 +2090,8 @@ do
 		for _, r in renders do r() end
 	end
 
-	-- The open panel and the XP bar share the bottom band (they collided on narrow screens) —
-	-- hide the XP bar while settings is open.
-	local function syncXpBar()
-		local xg = playerGui:FindFirstChild("LobbyXP")
-		if xg then xg.Enabled = not sPanel.Visible end
-	end
+	-- (The XP bar lives bottom-LEFT now — no more collision with this panel; keep as a no-op hook.)
+	local function syncXpBar() end
 	gear.Activated:Connect(function()
 		sPanel.Visible = not sPanel.Visible
 		if sPanel.Visible then renderAll(); uiFocusOpen() else uiFocusClose() end
@@ -2134,7 +2128,7 @@ do
 	lattach(xpGui)
 
 	local bar = Instance.new("Frame")
-	bar.AnchorPoint = Vector2.new(1, 1); bar.Position = UDim2.new(1, -12, 1, -(12 + 48 + 8)); bar.Size = UDim2.fromOffset(320, 56)
+	bar.AnchorPoint = Vector2.new(0, 1); bar.Position = UDim2.new(0, 16, 1, -12); bar.Size = UDim2.fromOffset(320, 56)
 	bar.BackgroundColor3 = PANEL; bar.BackgroundTransparency = 0.15; bar.BorderSizePixel = 0; bar.Parent = xpGui
 	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3); ledge(bar, ACCENT, 2, 0.35)
 

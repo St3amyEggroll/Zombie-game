@@ -175,9 +175,9 @@ local function build()
 	-- (GUNS is the upper square, built by GunShopController). Matches the lobby's menu pair.
 	local invBtn = Instance.new("TextButton")
 	invBtn.Name = "InventoryButton"
-	-- BOTTOM-RIGHT stack (from the bottom): gear -> LEVEL panel -> this button.
-	invBtn.AnchorPoint = Vector2.new(1, 1)
-	invBtn.Position = UDim2.new(1, -12, 1, -(12 + UITheme.Ctl.Std + 8 + 44 + 8))
+	-- LEFT-CENTER pair: GUNS above (GunShopController), SKIN CRATES below.
+	invBtn.AnchorPoint = Vector2.new(0, 0)
+	invBtn.Position = UDim2.new(0, 16, 0.5, 4)
 	invBtn.Size = UDim2.fromOffset(UITheme.Ctl.Launcher, UITheme.Ctl.Launcher)
 	invBtn.BackgroundColor3 = UITheme.PANEL
 	invBtn.BackgroundTransparency = 0.05

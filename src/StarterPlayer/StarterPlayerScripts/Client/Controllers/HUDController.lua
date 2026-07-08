@@ -39,7 +39,7 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local healthFill, healthLabel, roundLabel, pointsLabel, coinsLabel, breakLabel, announceLabel
+local healthFill, healthLabel, roundLabel, coinsLabel, breakLabel, announceLabel
 local levelLabel, levelFill
 local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
@@ -225,45 +225,25 @@ local function build()
 	anStroke.Parent = announceLabel
 	-- (Row 5 — LayoutOrder 50 — is the boss bar; BossController parents it into this lane.)
 
-	-- ===== TOP-RIGHT: currency panel (same recipe + metrics as the health panel) =====
-	local cur = panel(gui, "CurrencyPanel")
-	cur.AnchorPoint = Vector2.new(1, 0)
-	cur.Position = UDim2.new(1, -16, 0, 14)
-	cur.Size = UDim2.fromOffset(240, 64)
-
-	local coinsCaption = text(cur, "CoinsCaption", UITheme.BodyBoldFace, UITheme.Type.Caption, COL_TEXT_DIM)
-	coinsCaption.Position = UDim2.fromOffset(14, 8)
-	coinsCaption.Size = UDim2.fromOffset(90, 14)
-	coinsCaption.TextXAlignment = Enum.TextXAlignment.Left
-	coinsCaption.Text = "COINS"
-
-	coinsLabel = text(cur, "LobbyMoneyLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_GOLD)
-	coinsLabel.AnchorPoint = Vector2.new(1, 0)
-	coinsLabel.Position = UDim2.new(1, -14, 0, 6)
-	coinsLabel.Size = UDim2.new(1, -122, 0, 18) -- no overlap with the caption; long totals truncate
-	coinsLabel.TextXAlignment = Enum.TextXAlignment.Right
-	coinsLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	coinsLabel.Text = "0"
-
-	local cashCaption = text(cur, "CashCaption", UITheme.BodyBoldFace, UITheme.Type.Caption, COL_TEXT_DIM)
-	cashCaption.Position = UDim2.fromOffset(14, 36)
-	cashCaption.Size = UDim2.fromOffset(90, 14)
-	cashCaption.TextXAlignment = Enum.TextXAlignment.Left
-	cashCaption.Text = "CASH"
-
-	pointsLabel = text(cur, "PointsLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_ACCENT)
-	pointsLabel.AnchorPoint = Vector2.new(1, 0)
-	pointsLabel.Position = UDim2.new(1, -14, 0, 34)
-	pointsLabel.Size = UDim2.new(1, -122, 0, 18)
-	pointsLabel.TextXAlignment = Enum.TextXAlignment.Right
-	pointsLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	pointsLabel.Text = "$0"
-
-	-- ===== BOTTOM-RIGHT: account LEVEL (above the settings gear; the SKIN CRATES button stacks above it).
+	-- ===== BOTTOM-LEFT stack (from the bottom): HEALTH -> LEVEL -> COINS.
+	-- (CASH is GONE — the run currency display was dead weight; guns are bought with Coins.)
 	local lp = panel(gui, "LevelPanel")
-	lp.AnchorPoint = Vector2.new(1, 1)
-	lp.Position = UDim2.new(1, -12, 1, -(12 + UITheme.Ctl.Std + 8)) -- directly above the gear
-	lp.Size = UDim2.fromOffset(220, 44)
+	lp.AnchorPoint = Vector2.new(0, 1)
+	lp.Position = UDim2.new(0, 16, 1, -(16 + 64 + 8)) -- directly above the health panel
+	lp.Size = UDim2.fromOffset(240, 44)
+
+	coinsLabel = text(gui, "LobbyMoneyLabel", UITheme.BodyBoldFace, UITheme.Type.Section, COL_GOLD)
+	coinsLabel.AnchorPoint = Vector2.new(0, 1)
+	coinsLabel.Position = UDim2.new(0, 16 + 14, 1, -(16 + 64 + 8 + 44 + 6)) -- right above the level bar
+	coinsLabel.Size = UDim2.fromOffset(226, 22)
+	coinsLabel.TextXAlignment = Enum.TextXAlignment.Left
+	coinsLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	coinsLabel.Text = "🪙 0"
+	local coinStroke = Instance.new("UIStroke")
+	coinStroke.Color = Color3.fromRGB(0, 0, 0)
+	coinStroke.Transparency = 0.35
+	coinStroke.Thickness = 1.5
+	coinStroke.Parent = coinsLabel
 
 	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, UITheme.Type.Section, COL_ACCENT)
 	levelLabel.Position = UDim2.fromOffset(14, 4)
@@ -363,7 +343,10 @@ function HUDController.Start()
 			breakEndsAt = 0
 		end
 		if enemiesTrack and phase ~= "Playing" then
-			enemiesTrack.Visible = false -- no live wave between rounds / in the lobby countdown
+			-- Between waves the bar STAYS (the run isn't over) and reads LOADING while the next wave preps.
+			enemiesTrack.Visible = true
+			enemiesLabel.Text = "LOADING..."
+			enemiesFill.Size = UDim2.fromScale(1, 1)
 		end
 	end)
 
@@ -372,7 +355,8 @@ function HUDController.Start()
 		remaining = tonumber(remaining) or 0
 		total = tonumber(total) or 0
 		if total <= 0 or remaining <= 0 then
-			enemiesTrack.Visible = false
+			enemiesLabel.Text = "LOADING..." -- wave cleared: hold the bar, full fill, until the next wave
+			enemiesFill.Size = UDim2.fromScale(1, 1)
 			return
 		end
 		enemiesTrack.Visible = true
@@ -404,12 +388,9 @@ function HUDController.Start()
 		HUDController.Announce(msg, COL_GOLD, 3.5)
 	end)
 
-	Remotes.Get("PointsChanged").OnClientEvent:Connect(function(points)
-		pointsLabel.Text = "$" .. Util.FormatNumber(points)
-	end)
 	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
 		if typeof(data) == "table" and data.lobbyMoney then
-			coinsLabel.Text = Util.FormatNumber(data.lobbyMoney)
+			coinsLabel.Text = "🪙 " .. Util.FormatNumber(data.lobbyMoney)
 		end
 		if typeof(data) == "table" and data.xp ~= nil then
 			setXP(data.xp)
@@ -419,12 +400,11 @@ function HUDController.Start()
 		setXP(xp)
 	end)
 	Remotes.Get("LobbyMoneyChanged").OnClientEvent:Connect(function(total)
-		coinsLabel.Text = Util.FormatNumber(total)
+		coinsLabel.Text = "🪙 " .. Util.FormatNumber(total)
 	end)
 
 	-- Seed initial values.
 	setHealth(GameConfig.PlayerMaxHealth, GameConfig.PlayerMaxHealth)
-	pointsLabel.Text = "$" .. Util.FormatNumber(GameConfig.StartingPoints)
 
 	print("[HUDController] started (styled HUD)")
 end

@@ -301,7 +301,7 @@ function GunShopController.Start()
 	-- SHOP button (mobile + mouse) — a square icon button, UPPER of the LEFT-CENTER GUNS/CASES pair.
 	local shopBtn = Instance.new("TextButton")
 	shopBtn.AnchorPoint = Vector2.new(0, 0)
-	shopBtn.Position = UDim2.new(0, 16, 0.5, -math.floor(UITheme.Ctl.Launcher / 2)) -- alone, centered on the left edge
+	shopBtn.Position = UDim2.new(0, 16, 0.5, -(UITheme.Ctl.Launcher + 4)) -- upper of the GUNS/SKIN CRATES pair
 	shopBtn.Size = UDim2.fromOffset(UITheme.Ctl.Launcher, UITheme.Ctl.Launcher)
 	shopBtn.BackgroundColor3 = UITheme.PANEL
 	shopBtn.BorderSizePixel = 0
