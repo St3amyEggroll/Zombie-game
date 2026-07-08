@@ -98,10 +98,8 @@ local function applyHold(character: Model)
 	track:Play(0.1)
 	holdTracks[character] = track
 
-	-- KEEP THE POSE HELD. Two safeguards, because setting Looped before the asset loads can be reset to the
-	-- animation's baked (non-looped) value — which makes it play ONCE and stop:
-	--   1) re-assert Looped once the asset has actually loaded (Length > 0), and
-	--   2) if the track ever Stops while it's still the active pose, restart it.
+	-- Setting Looped before the asset loads can be reset to the animation's baked value (play-once), so
+	-- re-assert it once the asset has actually loaded (Length > 0) — keeps the pose held indefinitely.
 	task.spawn(function()
 		local t0 = os.clock()
 		while track.Length == 0 and os.clock() - t0 < 3 and holdTracks[character] == track do
@@ -114,13 +112,6 @@ local function applyHold(character: Model)
 			end
 		end
 	end)
-	track.Stopped:Connect(function()
-		if holdTracks[character] == track then -- still the equipped pose → keep holding it
-			track.Looped = true
-			track:Play(0.1)
-		end
-	end)
-	print(("[CharacterAnimController] playing hold %s on %s"):format(id, character.Name))
 end
 
 local function watchCharacter(character: Model)
