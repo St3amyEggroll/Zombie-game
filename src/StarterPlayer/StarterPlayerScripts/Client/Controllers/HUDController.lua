@@ -269,6 +269,7 @@ end
 -- Account XP -> the bottom-right level readout (shared curve with the lobby).
 local function setXP(totalXP)
 	local level, into, need = ProgressionConfig.LevelForXP(tonumber(totalXP) or 0)
+	localPlayer:SetAttribute("AccountLevel", level) -- the GUNS screen reads this for its level locks
 	if levelLabel then
 		levelLabel.Text = "LVL " .. level
 	end

@@ -134,10 +134,11 @@ local WEAPONS = {
 -- A gun can't be bought until your ACCOUNT LEVEL reaches its unlock level (Coins still pay for it — level
 -- gates access, Coins are the price). Level comes from XP earned in runs, shared with the game place.
 -- Tune freely: raising a number pushes that gun later. pistol = 0 (free starter, always available).
+-- LADDER ORDER (matches the game place's WeaponConfig.unlock — keep in sync): pistol -> revolver -> ...
 local WEAPON_UNLOCK = {
-	pistol = 0, tommygun = 2, shotgun = 3, revolver = 4, p90 = 5, honeybadger = 6, ak47 = 7,
-	m4 = 8, crossbow = 9, sniper = 12, minigun = 14, flamethrower = 16, freezeray = 18,
-	plasma = 22, rocket = 25, raygun = 28,
+	pistol = 0, revolver = 2, shotgun = 4, tommygun = 6, ak47 = 8, crossbow = 10,
+	honeybadger = 12, m4 = 14, p90 = 16, flamethrower = 18, freezeray = 20, minigun = 22,
+	sniper = 24, plasma = 26, rocket = 28, raygun = 30,
 }
 for id, w in WEAPONS do
 	w.unlock = WEAPON_UNLOCK[id] or 0 -- rides in the catalog sent to the client (drives the "next unlock" UI)
@@ -577,6 +578,15 @@ local function readProfile(player)
 	local loadFailed = not ok
 	data = (ok and typeof(data) == "table") and data or {}
 	local owned = sanitizeOwned(data.ownedWeapons)
+	-- XP-ONLY UNLOCKS: every gun whose level the player has reached is owned automatically.
+	do
+		local lvl = accountLevel(tonumber(data.xp) or 0)
+		for id, w in WEAPONS do
+			if (w.unlock or 0) <= lvl and not table.find(owned, id) then
+				table.insert(owned, id)
+			end
+		end
+	end
 	return {
 		lobbyMoney = data.lobbyMoney or 0,
 		bestWave = data.bestWave or 0,

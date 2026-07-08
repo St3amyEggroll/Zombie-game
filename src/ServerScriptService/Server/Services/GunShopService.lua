@@ -1,68 +1,63 @@
 --!nonstrict
--- GunShopService.lua — MID-RUN gun buying (press B / the SHOP button in-game). Same Coins and the same
--- WeaponConfig.price as the lobby: the purchase is PERMANENT (written to the profile; ownedWeapons is a
--- game-owned save field so it survives the run and reaches the lobby).
--- Validation per CLAUDE.md §14: rate-limited, price/ownership checked server-side, Coins deducted here.
+-- GunShopService.lua — guns unlock by ACCOUNT LEVEL only (in ladder order; WeaponConfig.unlock).
+-- GrantUnlocks(player) adds every gun the player's level has reached to the PROFILE (permanent) and to
+-- the LIVE run state, then fires LoadoutChanged — which is what pops the client's NEW GUN UNLOCKED
+-- showcase. ProgressionService calls this after every XP award, so unlocks land mid-run, live.
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local WeaponConfig = require(Shared.Config.WeaponConfig)
+local ProgressionConfig = require(Shared.Config.ProgressionConfig)
 local Remotes = require(Shared.Modules.Remotes)
 local Util = require(Shared.Modules.Util)
 
 local DataService = require(script.Parent.DataService)
-local SecurityService = require(script.Parent.SecurityService)
 local MatchService = require(script.Parent.MatchService)
 
 local GunShopService = {}
 
-function GunShopService.Start()
-	Remotes.Get("BuyGun").OnServerEvent:Connect(function(player, req)
-		if not SecurityService.Allow(player, "Buy") then
-			return
+function GunShopService.GrantUnlocks(player: Player)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	if typeof(data.ownedWeapons) ~= "table" then
+		data.ownedWeapons = { "pistol" }
+	end
+	local level = ProgressionConfig.LevelForXP(tonumber(data.xp) or 0)
+	local granted = false
+	for id, w in WeaponConfig do
+		if (w.unlock or 0) <= level and not Util.Contains(data.ownedWeapons, id) then
+			table.insert(data.ownedWeapons, id)
+			granted = true
 		end
-		if typeof(req) ~= "table" then
-			return
-		end
-		local weaponId = tostring(req.weaponId or "")
-		local weapon = WeaponConfig[weaponId]
-		if not weapon then
-			return
-		end
-		local price = tonumber(weapon.price) or 0
-		if price <= 0 then
-			return -- starter / not for sale
-		end
-		local data = DataService.Get(player)
-		if not data then
-			return
-		end
-		if typeof(data.ownedWeapons) ~= "table" then
-			data.ownedWeapons = { "pistol" }
-		end
-		if Util.Contains(data.ownedWeapons, weaponId) then
-			return -- already owned
-		end
-		-- Single clamped spend path (checks affordability, deducts, marks dirty). Never hand-roll the deduct.
-		if not DataService.TrySpendMoney(player, price) then
-			return -- can't afford
-		end
-		table.insert(data.ownedWeapons, weaponId)
-		DataService.MarkDirty(player)
-
-		-- Make it usable THIS run: the live player state drives equip/fire validation and the hotbar.
-		local ps = MatchService.GetPlayerState(player)
-		if ps then
-			if not Util.Contains(ps.ownedWeapons, weaponId) then
-				table.insert(ps.ownedWeapons, weaponId)
+	end
+	if not granted then
+		return
+	end
+	DataService.MarkDirty(player)
+	local ps = MatchService.GetPlayerState(player)
+	if ps then
+		for _, id in data.ownedWeapons do
+			if not Util.Contains(ps.ownedWeapons, id) then
+				table.insert(ps.ownedWeapons, id)
 			end
-			Remotes.Get("LoadoutChanged"):FireClient(player, ps.ownedWeapons, ps.equippedWeapon)
 		end
-		Remotes.Get("LobbyMoneyChanged"):FireClient(player, data.lobbyMoney)
+		Remotes.Get("LoadoutChanged"):FireClient(player, ps.ownedWeapons, ps.equippedWeapon)
+	end
+end
+
+function GunShopService.Start()
+	-- Sweep everyone shortly after boot (profiles load async) so saved levels grant retroactively.
+	task.spawn(function()
+		task.wait(5)
+		for _, player in Players:GetPlayers() do
+			pcall(GunShopService.GrantUnlocks, player)
+		end
 	end)
-	print("[GunShopService] started")
+	print("[GunShopService] started (XP-level unlocks)")
 end
 
 return GunShopService

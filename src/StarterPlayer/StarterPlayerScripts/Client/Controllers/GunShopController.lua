@@ -237,7 +237,7 @@ local function gunCell(i, id)
 	chipCorner.CornerRadius = UDim.new(0, 5); chipCorner.Parent = chip
 	chip.TextXAlignment = Enum.TextXAlignment.Left
 	chip.ZIndex = 3
-	chip.Text = isOwned and "OWNED" or ((tonumber(w.price) or 0) > 0 and ("🪙 " .. fmt(w.price)) or "STARTER")
+	chip.Text = isOwned and "OWNED" or ("LV " .. tostring(w.unlock or 0))
 	local cStroke = Instance.new("UIStroke")
 	cStroke.Color = UITheme.BLACK
 	cStroke.Thickness = 1.3
@@ -326,27 +326,13 @@ render = function()
 		b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
 		UITheme.SetButtonEnabled(b, false, "STARTER GUN")
 	else
-		local canAfford = coins >= w.price and pendingBuy == nil
-		local b = UITheme.Button(acts, ("BUY  ·  🪙 %s"):format(fmt(w.price)), "gold")
+		-- XP-only unlocks: no buying. Show how far up the ladder this gun sits.
+		local myLevel = tonumber(localPlayer:GetAttribute("AccountLevel")) or 1
+		local b = UITheme.Button(acts, ("UNLOCKS AT LV %d"):format(w.unlock or 0), "ghost")
 		b.Position = UDim2.new(0, 0, 0, 0)
 		b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
-		if canAfford then
-			b.Activated:Connect(function()
-				if pendingBuy then
-					return
-				end
-				pendingBuy = id
-				SoundController.Play("GunBought")
-				Remotes.Get("BuyGun"):FireServer({ weaponId = id })
-				task.delay(3, function() -- watchdog: unlock if no reply ever lands
-					if pendingBuy == id then
-						pendingBuy = nil
-						render()
-					end
-				end)
-			end)
-		else
-			UITheme.SetButtonEnabled(b, false, ("NEED 🪙 %s"):format(fmt(w.price)))
+		do
+			UITheme.SetButtonEnabled(b, false, ("🔒 UNLOCKS AT LV %d"):format(w.unlock or 0))
 		end
 	end
 end

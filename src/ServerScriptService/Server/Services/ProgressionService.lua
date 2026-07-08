@@ -41,6 +41,7 @@ local function onKill(player: Player, humanoid: Humanoid, _isHead: boolean, _wea
 	local special = model and model:GetAttribute("IsSpecial") == true
 	local xp = ProgressionConfig.XPPerKill + (special and ProgressionConfig.XPPerSpecialKill or 0)
 	DataService.AddXP(player, xp)
+	require(script.Parent.GunShopService).GrantUnlocks(player) -- level-ups grant guns LIVE (fires the showcase)
 	DataService.IncrementStat(player, "totalKills", 1)
 	awardCoins(player, GameConfig.LobbyMoneyPerKill)
 end
@@ -70,6 +71,7 @@ function ProgressionService.Start()
 				-- Only reward players actually IN the run.
 				MatchService.ForEachPlayer(function(player)
 					DataService.AddXP(player, ProgressionConfig.XPPerRound)
+					require(script.Parent.GunShopService).GrantUnlocks(player)
 					DataService.UpdateBestWave(player, round)
 				end)
 			elseif round < lastRound then

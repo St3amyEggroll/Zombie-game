@@ -1095,31 +1095,12 @@ local function renderInvDetail()
 		if not ownsGun(id) then
 			local reqLevel = tonumber(w.unlock) or 0
 			local myLevel = localPlayer:GetAttribute("AccountLevel") or 1
-			if myLevel < reqLevel then
-				-- Level-locked: show the level requirement instead of a buy button (server enforces it too).
-				local lockLbl = centered(330, 22, BODYB_FACE, 18, DIMTEXT)
-				lockLbl.Text = "🔒 UNLOCKS AT LEVEL " .. reqLevel
-				local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), GHOSTA, GHOSTB, DIMTEXT)
-				note.AutoButtonColor = false
-				note.Position = UDim2.fromOffset(14, 356); note.Size = UDim2.new(1, -28, 0, 46)
-			else
-				-- Unlocked by level: price + BUY under the stats.
-				local priceLbl = centered(330, 22, BODYB_FACE, 18, GOLD)
-				priceLbl.Text = "🪙 " .. fmt(w.price or 0)
-				local canAfford = (invData.coins or 0) >= (w.price or 0)
-				local buy
-				if canAfford then
-					buy = bigButton(invDetail, ("BUY  ·  🪙 %s"):format(fmt(w.price or 0)), GOLD, darker(GOLD, 0.45), Color3.fromRGB(34, 24, 6))
-					buy.Activated:Connect(function()
-						lplay("Buy")
-						BuyGun:FireServer({ weaponId = id })
-					end)
-				else
-					buy = bigButton(invDetail, ("NEED 🪙 %s"):format(fmt(w.price or 0)), GHOSTA, GHOSTB, DIMTEXT)
-					buy.AutoButtonColor = false
-				end
-				buy.Position = UDim2.fromOffset(14, 356); buy.Size = UDim2.new(1, -28, 0, 56)
-			end
+			-- XP-ONLY unlocks: no buying. Reaching the level grants the gun automatically.
+			local lockLbl = centered(330, 22, BODYB_FACE, 18, DIMTEXT)
+			lockLbl.Text = "🔒 UNLOCKS AT LEVEL " .. reqLevel
+			local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), GHOSTA, GHOSTB, DIMTEXT)
+			note.AutoButtonColor = false
+			note.Position = UDim2.fromOffset(14, 356); note.Size = UDim2.new(1, -28, 0, 56)
 		end
 
 		-- RIGHT STACK: two big SLOT BOXES showing the current PRIMARY + SECONDARY guns (click to feature).
@@ -1246,7 +1227,7 @@ local function renderWeaponsGrid()
 		invCard({
 			kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity),
 			tag = slotTag, order = i, image = w.image,
-			chip = (not owned) and ("🪙 " .. fmt(w.price or 0)) or nil,
+			chip = (not owned) and ("LV " .. tostring(w.unlock or 0)) or nil,
 			locked = not owned,
 		})
 	end

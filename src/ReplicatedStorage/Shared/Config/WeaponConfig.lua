@@ -22,12 +22,21 @@ export type Weapon = {
 	shatter: { damage: number, radius: number }?,  -- a CHILLED zombie killed = frost AoE around the corpse
 	aoe: { damage: number, radius: number }?,      -- explosion/splash on impact: AoE damage to every zombie in radius
 	ability: string?,      -- one-line ability text shown on the inventory panes
-	price: number?,        -- Coins to buy this gun (lobby inventory + the mid-run shop); 0/nil = starter
+	price: number?,        -- (legacy) Coins price — guns now unlock by ACCOUNT LEVEL, not purchase
+	unlock: number?,       -- account level that PERMANENTLY unlocks this gun (0/nil = starter)
 }
 
 -- ===== WEAPON TABLE =====
 -- Add a weapon = add an entry here, give it a hand model (tag a Model "WeaponModel" named the id, or put
 -- it in ReplicatedStorage>Assets>Weapons), and add it to the lobby's WEAPONS catalog + a case pool.
+-- XP-ONLY UNLOCKS, in ladder order (pistol -> revolver -> shotgun -> ...). Reaching the level grants
+-- the gun automatically (server: GunShopService.GrantUnlocks) — Coins no longer buy guns.
+local UNLOCK_LEVELS = {
+	pistol = 0, revolver = 2, shotgun = 4, tommygun = 6, ak47 = 8, crossbow = 10,
+	honeybadger = 12, m4 = 14, p90 = 16, flamethrower = 18, freezeray = 20, minigun = 22,
+	sniper = 24, plasma = 26, rocket = 28, raygun = 30,
+}
+
 local WeaponConfig: { [string]: Weapon } = {
 	pistol  = { id="pistol",  name="M1911",         tier=1, damage=30, fireRate=5,   range=200, pellets=1, auto=false, knockback=26 },
 	revolver = { id="revolver", name="Revolver",    tier=2, damage=70, fireRate=1.8, range=220, pellets=1, auto=false, knockback=34, price=1500,
@@ -58,5 +67,9 @@ local WeaponConfig: { [string]: Weapon } = {
 	honeybadger = { id="honeybadger", name="Honey Badger",     tier=3, damage=30,  fireRate=10,  range=260, pellets=1, auto=true,  knockback=20, price=6500 },
 	p90         = { id="p90",         name="P90",              tier=3, damage=16,  fireRate=13,  range=180, pellets=1, auto=true,  knockback=16, price=5000 },
 }
+
+for id, w in WeaponConfig do
+	w.unlock = UNLOCK_LEVELS[id] or 0
+end
 
 return WeaponConfig
