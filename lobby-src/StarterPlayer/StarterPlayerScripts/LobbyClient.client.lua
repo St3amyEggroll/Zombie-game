@@ -135,16 +135,16 @@ local function lbevel(o)
 	-- 3D BUTTON TREATMENT (approved mockup): smooth two-tone fade + darker bottom LIP the button
 	-- presses down onto + top sheen. Replaced the hard-stop bevel that read as a glitch line.
 	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.72, 0.72, 0.72))
+	g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.66, 0.66, 0.66))
 	g.Rotation = 90
 	g.Parent = o
 	local lip = Instance.new("Frame")
 	lip.Name = "Lip"
 	lip.AnchorPoint = Vector2.new(0.5, 0)
-	lip.Position = UDim2.new(0.5, 0, 1, -6)
-	lip.Size = UDim2.new(1, 0, 0, 11)
-	lip.BackgroundColor3 = Color3.new(0, 0, 0)
-	lip.BackgroundTransparency = 0.5
+	lip.Position = UDim2.new(0.5, 0, 1, -4)
+	lip.Size = UDim2.new(1, 0, 0, 9) -- 4px overlap + 5px below
+	lip.BackgroundColor3 = darker(o.BackgroundColor3, 0.55) -- SOLID darker shade of THIS button's fill
+	lip.BackgroundTransparency = 0
 	lip.BorderSizePixel = 0
 	lip.Parent = o
 	local lipCorner = Instance.new("UICorner")
@@ -804,21 +804,16 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	-- Weapons | Play | Classes. xOff = horizontal offset from screen center.
 	local b = Instance.new("TextButton")
 	b.AnchorPoint = Vector2.new(0.5, 0)
-	b.Position = UDim2.new(0.5, xOff, 0, 10); b.Size = UDim2.fromOffset(150, 52)
+	b.Position = UDim2.new(0.5, xOff, 0, 10); b.Size = UDim2.fromOffset(140, 46)
 	b.BackgroundColor3 = accent; b.BorderSizePixel = 0
-	b.Text = ""; b.Parent = invGui; corner(b, 9)
-	ldepth(b); ledge(b, TBLACK, 2.5); lbevel(b)
+	b.Text = ""; b.Parent = invGui
+	local navCorner = Instance.new("UICorner") -- RAW 10px radius (the shared curve made these bulbous)
+	navCorner.CornerRadius = UDim.new(0, 10); navCorner.Parent = b
+	ledge(b, TBLACK, 2.5); lbevel(b)
 
-	local img = Instance.new("ImageLabel") -- small icon on the left edge of the pill
-	img.BackgroundTransparency = 1; img.Image = imageId
-	img.ImageColor3 = Color3.new(1, 1, 1)
-	img.ScaleType = Enum.ScaleType.Fit
-	img.AnchorPoint = Vector2.new(0, 0.5)
-	img.Position = UDim2.new(0, 8, 0.5, 0); img.Size = UDim2.fromOffset(30, 30)
-	img.Parent = b
-
+	-- TEXT-ONLY pill (the reference buttons carry no icon art — the raw images read as stickers)
 	local cap = Instance.new("TextLabel")
-	cap.AnchorPoint = Vector2.new(0.5, 0.5); cap.Position = UDim2.new(0.5, imageId ~= "" and 12 or 0, 0.5, 0)
+	cap.AnchorPoint = Vector2.new(0.5, 0.5); cap.Position = UDim2.new(0.5, 0, 0.5, -2)
 	cap.Size = UDim2.new(1, -20, 0, 30); cap.BackgroundTransparency = 1
 	cap.FontFace = TITLE_FACE; cap.TextSize = 20; cap.TextColor3 = Color3.new(1, 1, 1)
 	cap.TextScaled = true; cap.Parent = b

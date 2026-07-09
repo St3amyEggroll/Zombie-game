@@ -495,8 +495,8 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	local lip = Instance.new("Frame")
 	lip.Name = "Lip"
 	lip.AnchorPoint = Vector2.new(0.5, 0)
-	lip.Position = UDim2.new(0.5, 0, 1, -6)
-	lip.Size = UDim2.new(1, 0, 0, 11) -- overlaps the bottom 6px + extends 5px below = the lip
+	lip.Position = UDim2.new(0.5, 0, 1, -4)
+	lip.Size = UDim2.new(1, 0, 0, 9) -- overlaps the bottom 4px + extends 5px below = the lip
 	lip.BackgroundColor3 = UITheme.Darker(fill[2], 0.5)
 	lip.BorderSizePixel = 0
 	lip.Parent = b
