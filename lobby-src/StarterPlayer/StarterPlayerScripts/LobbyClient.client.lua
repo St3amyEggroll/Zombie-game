@@ -942,7 +942,7 @@ local function invCard(opts)
 	f.BackgroundColor3 = col:Lerp(BLACK, opts.locked and 0.82 or 0.62); f.AutoButtonColor = true; f.Text = ""
 	cardShade(f)
 	f.BorderSizePixel = 0; f.LayoutOrder = opts.order or 0; f.Parent = invGrid
-	corner(f, 6); ledge(f, isSel and ACCENT or TBLACK, 2)
+	corner(f, 6); ledge(f, isSel and ACCENT or (opts.nextUp and GOLD) or TBLACK, (isSel or opts.nextUp) and 3 or 2)
 	-- STATIC art fills the card (only the featured pane spins); name sits on a strip at the bottom.
 	local showedModel = false
 	if opts.kind == "weapon" or opts.kind == "case" or opts.kind == "skin" then
@@ -955,7 +955,10 @@ local function invCard(opts)
 		end
 		if vp then
 			vp.Size = UDim2.new(1, 0, 1, -26)
-			vp.ImageTransparency = opts.locked and 0.55 or 0
+			if opts.locked then
+				vp.ImageColor3 = Color3.new(0, 0, 0) -- locked = black SILHOUETTE (the darkness IS the ladder)
+				vp.ImageTransparency = 0.15
+			end
 			vp.Parent = f
 			showedModel = true
 		end
@@ -965,9 +968,14 @@ local function invCard(opts)
 		img.Size = UDim2.new(1, 0, 1, -26); img.BackgroundTransparency = 1
 		img.Image = opts.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = f
 	end
+	local nmPlate = Instance.new("Frame") -- dark strip: the name reads on ANY rarity color
+	nmPlate.AnchorPoint = Vector2.new(0, 1); nmPlate.Position = UDim2.new(0, 0, 1, 0)
+	nmPlate.Size = UDim2.new(1, 0, 0, 26); nmPlate.BackgroundColor3 = TBLACK
+	nmPlate.BackgroundTransparency = 0.35; nmPlate.BorderSizePixel = 0; nmPlate.ZIndex = 2; nmPlate.Parent = f
 	local nm = Instance.new("TextLabel")
 	nm.AnchorPoint = Vector2.new(0, 1); nm.Position = UDim2.new(0, 0, 1, -4); nm.Size = UDim2.new(1, 0, 0, 22)
-	nm.BackgroundTransparency = 1; nm.FontFace = BODYB_FACE; nm.TextSize = 14
+	nm.BackgroundTransparency = 1; nm.FontFace = BODYB_FACE; nm.TextSize = 14; nm.ZIndex = 3
+	nm.TextTruncate = Enum.TextTruncate.AtEnd
 	nm.TextColor3 = TEXTCOL; nm.Text = opts.name; nm.Parent = f
 	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
 	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4
@@ -986,6 +994,17 @@ local function invCard(opts)
 		tag.FontFace = TITLE_FACE; tag.TextSize = 12; tag.TextColor3 = Color3.fromRGB(14, 22, 6)
 		tag.Text = opts.tag; tag.Parent = f
 		corner(tag, 4)
+	end
+	if opts.lockLevel then -- big centered LV plate on locked ladder cards
+		local plate = Instance.new("TextLabel")
+		plate.AnchorPoint = Vector2.new(0.5, 0.5); plate.Position = UDim2.new(0.5, 0, 0.5, -12)
+		plate.Size = UDim2.fromOffset(110, 24); plate.BackgroundTransparency = 1; plate.ZIndex = 4
+		plate.FontFace = TITLE_FACE; plate.TextSize = 18
+		plate.TextColor3 = opts.nextUp and GOLD or TEXTCOL
+		plate.Text = "LV " .. tostring(opts.lockLevel); plate.Parent = f
+		local pStroke = Instance.new("UIStroke")
+		pStroke.Color = TBLACK; pStroke.Thickness = 2
+		pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; pStroke.Parent = plate
 	end
 	f.Activated:Connect(function()
 		invSelect(opts.kind, opts.id)
@@ -1083,8 +1102,46 @@ local function renderInvDetail()
 		nm.Text = w.name
 		local rar = centered(246, 20, BODYB_FACE, 15, wellCol)
 		rar.Text = (invData.catalog.rarities[w.rarity] or {}).name or ""
+		-- STAT BARS (normalized against the best gun) — compare at a glance instead of reading.
+		do
+			local maxD, maxR, maxRng, maxDps = 1, 1, 1, 1
+			for _, ww in invData.catalog.weapons do
+				local d = (ww.damage or 0) * (ww.pellets or 1)
+				maxD = math.max(maxD, d)
+				maxR = math.max(maxR, ww.fireRate or 0)
+				maxRng = math.max(maxRng, ww.range or 0)
+				maxDps = math.max(maxDps, d * (ww.fireRate or 0))
+			end
+			local dmgV = (w.damage or 0) * (w.pellets or 1)
+			local rows = {
+				{ "DMG", dmgV, maxD }, { "RATE", w.fireRate or 0, maxR },
+				{ "RNG", w.range or 0, maxRng }, { "DPS", dmgV * (w.fireRate or 0), maxDps },
+			}
+			for ri, r in rows do
+				local y = 272 + (ri - 1) * 14
+				local lab = Instance.new("TextLabel")
+				lab.Position = UDim2.fromOffset(14, y); lab.Size = UDim2.fromOffset(42, 12)
+				lab.BackgroundTransparency = 1; lab.FontFace = BODYB_FACE; lab.TextSize = 12
+				lab.TextXAlignment = Enum.TextXAlignment.Left; lab.TextColor3 = DIMTEXT
+				lab.Text = r[1]; lab.Parent = invDetail
+				local trk = Instance.new("Frame")
+				trk.Position = UDim2.fromOffset(60, y + 2); trk.Size = UDim2.new(1, -134, 0, 8)
+				trk.BackgroundColor3 = darker(TRACK, 0.25); trk.BorderSizePixel = 0; trk.Parent = invDetail
+				corner(trk, 2)
+				local fil = Instance.new("Frame")
+				fil.Size = UDim2.fromScale(math.clamp(r[2] / r[3], 0.02, 1), 1)
+				fil.BackgroundColor3 = wellCol; fil.BorderSizePixel = 0; fil.Parent = trk
+				corner(fil, 2)
+				local num = Instance.new("TextLabel")
+				num.AnchorPoint = Vector2.new(1, 0); num.Position = UDim2.new(1, -14, 0, y)
+				num.Size = UDim2.fromOffset(56, 12); num.BackgroundTransparency = 1
+				num.FontFace = BODYB_FACE; num.TextSize = 12; num.TextXAlignment = Enum.TextXAlignment.Right
+				num.TextColor3 = TEXTCOL; num.Text = tostring(math.floor(r[2] + 0.5)); num.Parent = invDetail
+			end
+		end
 		local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
 		local stats = centered(274, 66, BODY_FACE, 14, TEXTCOL)
+		stats.Visible = false -- replaced by the stat bars above (kept so nothing downstream breaks)
 		stats.Text = ("DMG %.0f%s\n%s shots/s   ·   RNG %s\nDPS ~%d"):format(
 			w.damage or 0, w.pellets and (" ×" .. w.pellets) or "", tostring(w.fireRate or "?"),
 			tostring(w.range or "?"), math.floor(dps + 0.5))
@@ -1267,13 +1324,23 @@ local function renderWeaponsGrid()
 	for id in invData.catalog.weapons do
 		table.insert(ids, id)
 	end
-	table.sort(ids, function(a, b)
+	table.sort(ids, function(a, b) -- LADDER order: the grid IS the unlock road
 		local wa, wb = weaponInfo(a), weaponInfo(b)
+		if (wa.unlock or 0) ~= (wb.unlock or 0) then
+			return (wa.unlock or 0) < (wb.unlock or 0)
+		end
 		if (wa.tier or 0) ~= (wb.tier or 0) then
 			return (wa.tier or 0) < (wb.tier or 0)
 		end
 		return a < b
 	end)
+	local nextUnlockId
+	for _, id in ids do -- first gun you don't own, in ladder order = the NEXT unlock (the hero card)
+		if not ownsGun(id) then
+			nextUnlockId = id
+			break
+		end
+	end
 	for i, id in ids do
 		local w = weaponInfo(id)
 		local owned = ownsGun(id)
@@ -1281,7 +1348,9 @@ local function renderWeaponsGrid()
 		invCard({
 			kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity),
 			tag = slotTag, order = i, image = w.image,
-			chip = (not owned) and ("LV " .. tostring(w.unlock or 0)) or nil,
+			nextUp = (id == nextUnlockId) or nil,
+			lockLevel = (not owned) and (w.unlock or 0) or nil,
+			chip = (id == nextUnlockId) and "NEXT UP" or nil,
 			locked = not owned,
 		})
 	end

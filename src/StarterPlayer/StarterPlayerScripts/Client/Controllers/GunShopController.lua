@@ -62,8 +62,11 @@ local function sortedGunIds()
 	for id in WeaponConfig do
 		table.insert(ids, id)
 	end
-	table.sort(ids, function(a, b)
+	table.sort(ids, function(a, b) -- LADDER order: the grid IS the unlock road
 		local wa, wb = WeaponConfig[a], WeaponConfig[b]
+		if (wa.unlock or 0) ~= (wb.unlock or 0) then
+			return (wa.unlock or 0) < (wb.unlock or 0)
+		end
 		if (wa.tier or 0) ~= (wb.tier or 0) then
 			return (wa.tier or 0) < (wb.tier or 0)
 		end
@@ -179,28 +182,48 @@ local function showGunUnlock(id)
 end
 
 -- One gun cell in the grid: static render fills it, name strip at the bottom, price/OWNED chip.
-local function gunCell(i, id)
+local function gunCell(i, id, nextId)
 	local w = WeaponConfig[id]
 	local col = gunColor(id)
 	local isOwned = owned[id] == true
 	local isSel = selectedId == id
+	local isNext = (id == nextId)
 
 	local cell = Instance.new("TextButton")
-	cell.BackgroundColor3 = col:Lerp(UITheme.BG, isOwned and 0.62 or 0.8)
+	cell.BackgroundColor3 = col:Lerp(UITheme.BG, isOwned and 0.62 or 0.85)
 	cell.AutoButtonColor = true
 	cell.Text = ""
 	cell.BorderSizePixel = 0
 	cell.LayoutOrder = i
 	cell.Parent = grid
 	UITheme.Corner(cell, 7)
-	UITheme.Edge(cell, isSel and UITheme.GOLD or UITheme.BLACK, isSel and 3 or 2.5)
+	-- state ring: selected gold > NEXT gold pulse-ish > equipped toxic > plain black
+	local ringCol = isSel and UITheme.GOLD or (isNext and UITheme.GOLD) or (id == equippedId and UITheme.TOXIC) or UITheme.BLACK
+	UITheme.Edge(cell, ringCol, (isSel or isNext) and 3 or 2.5)
 	UITheme.CardShade(cell)
 
 	local vp = GunViewport.Create(id, false)
 	if vp then
 		vp.Size = UDim2.new(1, 0, 1, -26)
-		vp.ImageTransparency = isOwned and 0 or 0.35
+		if not isOwned then
+			vp.ImageColor3 = Color3.new(0, 0, 0) -- locked = black SILHOUETTE: the darkness IS the ladder
+			vp.ImageTransparency = 0.15
+		end
 		vp.Parent = cell
+	end
+	if not isOwned then
+		local plate = UITheme.Label(cell, nil, UITheme.Type.Section, isNext and UITheme.GOLD or UITheme.TEXT, true)
+		plate.AnchorPoint = Vector2.new(0.5, 0.5)
+		plate.Position = UDim2.new(0.5, 0, 0.5, -12)
+		plate.Size = UDim2.fromOffset(120, 24)
+		plate.ZIndex = 4
+		plate.TextXAlignment = Enum.TextXAlignment.Center
+		plate.Text = "LV " .. tostring(w.unlock or 0)
+		local plStroke = Instance.new("UIStroke")
+		plStroke.Color = UITheme.BLACK
+		plStroke.Thickness = 2
+		plStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		plStroke.Parent = plate
 	end
 
 	local namePlate = Instance.new("Frame") -- dark strip so the name reads on ANY rarity color
@@ -238,7 +261,7 @@ local function gunCell(i, id)
 	chipCorner.CornerRadius = UDim.new(0, 5); chipCorner.Parent = chip
 	chip.TextXAlignment = Enum.TextXAlignment.Left
 	chip.ZIndex = 3
-	chip.Text = isOwned and "OWNED" or ("LV " .. tostring(w.unlock or 0))
+	chip.Text = (id == equippedId) and "EQUIPPED" or (isOwned and "OWNED") or (isNext and "NEXT UP" or "LOCKED")
 	local cStroke = Instance.new("UIStroke")
 	cStroke.Color = UITheme.BLACK
 	cStroke.Thickness = 1.3
@@ -261,8 +284,15 @@ render = function()
 		selectedId = ids[1]
 	end
 	clearChildren(grid)
+	local nextId
+	for _, id in ids do -- ladder order: first gun you don't own = the NEXT unlock
+		if not owned[id] then
+			nextId = id
+			break
+		end
+	end
 	for i, id in ids do
-		gunCell(i, id)
+		gunCell(i, id, nextId)
 	end
 
 	-- ===== FEATURED (middle) =====
@@ -301,11 +331,51 @@ render = function()
 	nm.Size = UDim2.new(1, -28, 0, 30)
 	nm.Text = string.upper(w.name)
 
-	local dps = (w.damage or 0) * (w.fireRate or 0) * (w.pellets or 1)
-	local stats = centered(250, 66, UITheme.Type.Body, UITheme.TEXT)
-	stats.Text = ("DMG %.0f%s\n%s shots/s   ·   RNG %s\nDPS ~%d"):format(
-		w.damage or 0, w.pellets and w.pellets > 1 and (" ×" .. w.pellets) or "",
-		tostring(w.fireRate or "?"), tostring(w.range or "?"), math.floor(dps + 0.5))
+	-- STAT BARS (normalized against the best gun in the game) — compare at a glance, no reading.
+	do
+		local maxD, maxR, maxRng, maxDps = 1, 1, 1, 1
+		for _, ww in WeaponConfig do
+			local d = (ww.damage or 0) * (ww.pellets or 1)
+			local dp = d * (ww.fireRate or 0)
+			maxD = math.max(maxD, d)
+			maxR = math.max(maxR, ww.fireRate or 0)
+			maxRng = math.max(maxRng, ww.range or 0)
+			maxDps = math.max(maxDps, dp)
+		end
+		local dmg = (w.damage or 0) * (w.pellets or 1)
+		local dps = dmg * (w.fireRate or 0)
+		local rows = {
+			{ "DMG", dmg, maxD }, { "RATE", w.fireRate or 0, maxR },
+			{ "RNG", w.range or 0, maxRng }, { "DPS", dps, maxDps },
+		}
+		for ri, r in rows do
+			local y = 250 + (ri - 1) * 16
+			local lab = UITheme.Label(detail, nil, UITheme.Type.Caption, UITheme.DIM, true)
+			lab.Position = UDim2.fromOffset(14, y)
+			lab.Size = UDim2.fromOffset(44, 12)
+			lab.TextXAlignment = Enum.TextXAlignment.Left
+			lab.Text = r[1]
+			local trackB = Instance.new("Frame")
+			trackB.Position = UDim2.fromOffset(62, y + 2)
+			trackB.Size = UDim2.new(1, -140, 0, 8)
+			trackB.BackgroundColor3 = UITheme.Darker(UITheme.TRACK, 0.25)
+			trackB.BorderSizePixel = 0
+			trackB.Parent = detail
+			UITheme.Corner(trackB, 2)
+			local fillB = Instance.new("Frame")
+			fillB.Size = UDim2.fromScale(math.clamp(r[2] / r[3], 0.02, 1), 1)
+			fillB.BackgroundColor3 = col
+			fillB.BorderSizePixel = 0
+			fillB.Parent = trackB
+			UITheme.Corner(fillB, 2)
+			local num = UITheme.Label(detail, nil, UITheme.Type.Caption, UITheme.TEXT, true)
+			num.AnchorPoint = Vector2.new(1, 0)
+			num.Position = UDim2.new(1, -14, 0, y)
+			num.Size = UDim2.fromOffset(60, 12)
+			num.TextXAlignment = Enum.TextXAlignment.Right
+			num.Text = tostring(math.floor(r[2] + 0.5))
+		end
+	end
 
 	if w.ability then
 		local ab = centered(324, 70, UITheme.Type.Body, UITheme.TOXIC, true)
