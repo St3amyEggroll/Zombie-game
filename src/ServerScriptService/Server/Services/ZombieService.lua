@@ -372,6 +372,7 @@ local function prepModel(model: Model)
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Anchored = false
+			d.CollisionGroup = "ZombieRig" -- zombies-only collisions (the ocean is solid ONLY for this group)
 			if d:GetAttribute("ZBaseColor") == nil then
 				d:SetAttribute("ZBaseColor", d.Color)
 			end
@@ -1047,6 +1048,21 @@ local bridgeParts: { BasePart } = {}
 local scannedMap: Instance? = nil
 local nextWaterScan = 0
 
+-- Ocean/zombie collision channels: the ocean is solid ONLY for zombies. "OceanZ" collides with
+-- "ZombieRig" (every zombie part rides in it — see prepModel) and nothing else, so players and props
+-- keep falling/swimming through the water exactly as the map is built.
+do
+	local PhysicsService = game:GetService("PhysicsService")
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup("OceanZ")
+		PhysicsService:RegisterCollisionGroup("ZombieRig")
+		PhysicsService:RegisterCollisionGroup("Players") -- idempotent (PlayerStateService owns it)
+		PhysicsService:CollisionGroupSetCollidable("OceanZ", "ZombieRig", true)
+		PhysicsService:CollisionGroupSetCollidable("OceanZ", "Default", false)
+		PhysicsService:CollisionGroupSetCollidable("OceanZ", "Players", false)
+	end)
+end
+
 local function isOceanPart(inst: Instance?): boolean
 	return inst ~= nil and inst:IsA("BasePart") and inst.Name:lower():find("ocean", 1, true) ~= nil
 end
@@ -1065,6 +1081,10 @@ local function scanWaterParts()
 			local n = d.Name:lower()
 			if n:find("ocean", 1, true) then
 				table.insert(oceanParts, d)
+				-- Solid for ZOMBIES ONLY (see the OceanZ collision group above): they wade on the
+				-- surface; players still pass through like the non-collidable water it was built as.
+				d.CollisionGroup = "OceanZ"
+				d.CanCollide = true
 			elseif n:find("bridge", 1, true) then
 				table.insert(bridgeParts, d)
 			end
@@ -1402,20 +1422,8 @@ local function startEmergence(record, spawnCF: CFrame)
 	if mapEmerge == "water" then
 		groundY, groundNormal = pos.Y, Vector3.yAxis -- the ZombieSpawn point is placed AT the water surface
 		placeSplash(pos.X, groundY, pos.Z)
-		-- The ocean is usually NOT collidable — park an invisible dock under the surfacing zombie so it
-		-- doesn't sink straight back into the water. It despawns after the zombie has waded ashore.
-		-- CanQuery=false keeps it out of every raycast (shoreline picker, ground probes, gunfire).
-		local dock = Instance.new("Part")
-		dock.Name = "SpawnDock"
-		dock.Anchored = true
-		dock.CanCollide = true
-		dock.CanQuery = false
-		dock.CanTouch = false
-		dock.Transparency = 1
-		dock.Size = Vector3.new(14, 1, 14)
-		dock.CFrame = CFrame.new(pos.X, groundY - 0.5, pos.Z) -- top flush with the water surface
-		dock.Parent = Workspace
-		Debris:AddItem(dock, 12)
+		-- (Footing comes from the ocean itself: ocean parts are solid for the ZombieRig collision
+		-- group only, so the zombie stands on the water surface and wades ashore.)
 	else
 		groundY, groundNormal = findGround(pos.X, pos.Z, pos.Y)
 		placeGrave(pos.X, groundY, pos.Z, groundNormal, GRAVE_TIER[record.typeId])
@@ -1993,9 +2001,14 @@ local function steer(record, now: number)
 			record.nextEdgeProbe = now2 + 0.2
 			local aheadFlat = Vector3.new(targetRoot.Position.X - root.Position.X, 0, targetRoot.Position.Z - root.Position.Z)
 			if aheadFlat.Magnitude > 0.1 then
+				local params = worldOnlyParams()
+				-- A zombie still ON the ocean must keep wading ashore (the water is solid for it) —
+				-- only steer away from water once it's standing on real land. Then it STAYS on land.
+				local under = Workspace:Raycast(root.Position + Vector3.new(0, 3, 0), Vector3.new(0, -25, 0), params)
+				local onLand = under ~= nil and not isOceanPart(under.Instance)
 				local ahead = root.Position + aheadFlat.Unit * 5
-				local probe = Workspace:Raycast(ahead + Vector3.new(0, 4, 0), Vector3.new(0, -25, 0), worldOnlyParams())
-				if (not probe) or isOceanPart(probe.Instance) then
+				local probe = onLand and Workspace:Raycast(ahead + Vector3.new(0, 4, 0), Vector3.new(0, -25, 0), params) or nil
+				if onLand and ((not probe) or isOceanPart(probe.Instance)) then
 					record.avoidWaterUntil = now2 + 1.5
 					record.mode = "path"
 					record.lastPath = 0 -- think() recomputes a route on its next tick

@@ -1,5 +1,5 @@
 --!nonstrict
--- AutoShootController.lua — toggle for auto-fire. When ON (default), your gun automatically shoots any
+-- AutoShootController.lua — toggle for auto-fire. When ON (default OFF), your gun automatically shoots any
 -- zombie the auto-aim is locked onto (no need to hold the mouse); when OFF you fire manually.
 -- A small pill sits bottom-right: press T or click it to toggle. Other code reads AutoShootController.IsOn().
 
@@ -23,7 +23,7 @@ local COL_OFF      = UITheme.DIM
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
-local on = true -- default ON
+local on = false -- CHANGED: default OFF (press T or click the pill to enable)
 local button, dot, label
 
 function AutoShootController.IsOn(): boolean
@@ -120,7 +120,7 @@ function AutoShootController.Start()
 			setOn(not on)
 		end
 	end)
-	print("[AutoShootController] started (auto-shoot default ON)")
+	print("[AutoShootController] started (auto-shoot default OFF)")
 end
 
 return AutoShootController

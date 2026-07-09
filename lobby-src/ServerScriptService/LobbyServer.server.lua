@@ -153,6 +153,16 @@ for id, w in WEAPONS do
 	w.unlock = WEAPON_UNLOCK[id] or 0 -- rides in the catalog sent to the client (drives the "next unlock" UI)
 end
 
+-- Knockback (studs/sec shove per hit) mirrors the game's WeaponConfig — drives the KNOCKBACK stat bar.
+local WEAPON_KNOCKBACK = {
+	pistol = 26, revolver = 34, shotgun = 48, ak47 = 24, crossbow = 10, freezeray = 6, minigun = 16,
+	raygun = 40, m4 = 22, tommygun = 18, sniper = 40, flamethrower = 4, rocket = 60, plasma = 20,
+	honeybadger = 20, p90 = 16,
+}
+for id, w in WEAPONS do
+	w.knockback = WEAPON_KNOCKBACK[id] or 0
+end
+
 -- Account level from cumulative XP — mirrors the game place's ProgressionConfig curve (keep in sync).
 local LEVEL_BASE_XP, LEVEL_GROWTH, LEVEL_MAX = 120, 1.18, 100
 local function accountLevel(totalXP)
@@ -200,15 +210,25 @@ local SKIN_DUP_COINS = { common = 25, uncommon = 60, rare = 150, epic = 400, leg
 -- bigger COPY payouts (see GUNLEVELS.CopyPayout). Pools are { weaponId = weight }.
 -- PHOTOS: add image = "rbxassetid://..." to any CASES entry (and to WEAPONS/POTIONS entries) and the
 -- inventory/shop UI shows the picture on cards + detail panes automatically.
--- CHANGED: crates roll a SKIN — a skin RARITY from these weights, then a uniform skin of that rarity.
+-- CHANGED: crates roll a WEAPON (gunChance of the pull, uniform from that crate's rarity-matched gun
+-- pool) or a SKIN (a skin RARITY from these weights, then a uniform skin of that rarity). The XP ladder
+-- still unlocks every gun for free at its level — a crate pull just gets you the gun EARLY. Duplicate
+-- guns pay coins exactly like duplicate skins.
 local CASES = {
-	common    = { skinWeights = { common = 70, rare = 24, legendary = 5,  divine = 1 } },
-	uncommon  = { skinWeights = { common = 60, rare = 30, legendary = 8,  divine = 2 } },
-	rare      = { skinWeights = { common = 45, rare = 38, legendary = 13, divine = 4 } },
-	epic      = { skinWeights = { common = 30, rare = 42, legendary = 20, divine = 8 } },
-	legendary = { skinWeights = { common = 18, rare = 40, legendary = 28, divine = 14 } },
-	mythic    = { skinWeights = { common = 10, rare = 32, legendary = 36, divine = 22 } },
-	divine    = { skinWeights = { common = 5,  rare = 22, legendary = 38, divine = 35 } },
+	common    = { gunChance = 0.18, guns = { "revolver", "shotgun", "tommygun" },
+		skinWeights = { common = 70, rare = 24, legendary = 5,  divine = 1 } },
+	uncommon  = { gunChance = 0.20, guns = { "shotgun", "tommygun", "ak47" },
+		skinWeights = { common = 60, rare = 30, legendary = 8,  divine = 2 } },
+	rare      = { gunChance = 0.22, guns = { "ak47", "crossbow", "honeybadger", "m4", "p90" },
+		skinWeights = { common = 45, rare = 38, legendary = 13, divine = 4 } },
+	epic      = { gunChance = 0.24, guns = { "minigun", "freezeray", "sniper", "flamethrower" },
+		skinWeights = { common = 30, rare = 42, legendary = 20, divine = 8 } },
+	legendary = { gunChance = 0.26, guns = { "raygun", "rocket", "plasma" },
+		skinWeights = { common = 18, rare = 40, legendary = 28, divine = 14 } },
+	mythic    = { gunChance = 0.28, guns = { "raygun", "rocket", "plasma" },
+		skinWeights = { common = 10, rare = 32, legendary = 36, divine = 22 } },
+	divine    = { gunChance = 0.30, guns = { "raygun", "rocket", "plasma" },
+		skinWeights = { common = 5,  rare = 22, legendary = 38, divine = 35 } },
 }
 for rarity, c in CASES do
 	c.name = RARITY[rarity].name .. " Skin Crate"
@@ -347,13 +367,26 @@ local CATALOG = {
 			for _, weight in c.skinWeights do
 				total += weight
 			end
+			local gunChance = c.gunChance or 0
 			local odds = {}
+			-- Item-level "WHAT'S INSIDE" list the featured pane renders: skin-rarity rows (their share of
+			-- the non-gun roll) + one row per gun in this crate's pool.
+			local loot = {}
 			for _, sr in RARITY_ORDER do
 				if c.skinWeights[sr] then
 					table.insert(odds, { rarity = sr, pct = (c.skinWeights[sr] / total) * 100 })
+					table.insert(loot, { kind = "skins", rarity = sr, pct = (c.skinWeights[sr] / total) * 100 * (1 - gunChance) })
 				end
 			end
-			t[rarity] = { name = c.name, rarity = rarity, poolIds = allSkinIds, odds = odds, image = c.image }
+			for _, gid in c.guns or {} do
+				table.insert(loot, { kind = "gun", id = gid, pct = (gunChance / math.max(1, #c.guns)) * 100 })
+			end
+			-- The reel pool shows guns as possible tiles too.
+			local poolIds = table.clone(allSkinIds)
+			for _, gid in c.guns or {} do
+				table.insert(poolIds, gid)
+			end
+			t[rarity] = { name = c.name, rarity = rarity, poolIds = poolIds, odds = odds, loot = loot, image = c.image }
 		end
 		return t
 	end)(),
@@ -361,6 +394,10 @@ local CATALOG = {
 
 local function rollCase(caseId)
 	local case = CASES[caseId]
+	-- WEAPON roll first: gunChance of the pull being a gun, uniform from this crate's gun pool.
+	if case.guns and #case.guns > 0 and rng:NextNumber() < (case.gunChance or 0) then
+		return case.guns[rng:NextInteger(1, #case.guns)]
+	end
 	local total = 0
 	for _, weight in case.skinWeights do
 		total += weight
@@ -989,6 +1026,25 @@ local function doOpenCase(player, prof, caseId)
 		prof.cases[caseId] = nil
 	end
 	local wonId = rollCase(caseId)
+	-- WEAPON pull: grant the gun (early unlock — the XP ladder would hand it out at level anyway);
+	-- already owned = duplicate coins, same table as skins.
+	if WEAPONS[wonId] then
+		local unlocked = not table.find(prof.ownedWeapons, wonId)
+		local coins = 0
+		if unlocked then
+			table.insert(prof.ownedWeapons, wonId)
+			prof.gunLevels[wonId] = prof.gunLevels[wonId] or 1
+			local sl = slotFor(wonId)
+			if not prof.loadout[sl] then
+				prof.loadout[sl] = wonId
+				refreshCarry(player)
+			end
+		else
+			coins = SKIN_DUP_COINS[WEAPONS[wonId].rarity] or 25
+			prof.lobbyMoney += coins
+		end
+		return { caseId = caseId, wonId = wonId, coins = coins, unlocked = unlocked, maxed = not unlocked }
+	end
 	local skin = SKINS[wonId]
 	local unlocked = not prof.skins.owned[wonId]
 	local coins = 0
