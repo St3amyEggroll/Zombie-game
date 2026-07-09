@@ -50,7 +50,7 @@ local DIMTEXT = Color3.fromRGB(134, 142, 116)
 local GOLD    = Color3.fromRGB(230, 180, 76)
 local DIM = TRACK          -- (legacy name: disabled-button fill)
 local CARD = PANEL2        -- (legacy name: card/button fill)
-local SELBG = Color3.fromRGB(52, 92, 16) -- selected-button fill: dark toxic, so text can STAY bone-white
+local SELBG = Color3.fromRGB(98, 182, 28) -- selected-button fill: BRIGHT toxic — the old dark shade rendered the same as unselected through the face gradient
 local STUDS_TEXTURE = "rbxassetid://6965996718"
 
 local function darker(c, f)
