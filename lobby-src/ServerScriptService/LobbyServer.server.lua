@@ -37,6 +37,7 @@ local STORE_NAME       = "PlayerData_v2"
 local DIFFS            = { "easy", "medium", "hard", "nightmare", "endless" } -- endless: beat Nightmare to unlock
 local FINAL_DIFF       = "nightmare" -- beating THIS unlocks the next world (Endless is a bonus mode, not a gate)
 local WORLDS           = { "forest", "islands" } -- islands unlocks after beating forest:nightmare (worldUnlocked)
+local ALL_WORLDS_OPEN  = true -- OPEN EVERY MAP for now (skips the beat-the-previous-world gate; flip to false to re-lock)
 local PARTY_WAIT       = 30   -- seconds an OPEN party waits before launching with whoever joined
 local FULL_GRACE       = 5    -- once the party is FULL (incl. solo), the countdown drops to this — a short
                               -- window to hit LEAVE before launch (nobody teleports instantly)
@@ -872,6 +873,9 @@ local function indexOf(t, v)
 end
 
 local function worldUnlocked(completed, world)
+	if ALL_WORLDS_OPEN then
+		return true
+	end
 	local i = indexOf(WORLDS, world) or 1
 	if i <= 1 then
 		return true

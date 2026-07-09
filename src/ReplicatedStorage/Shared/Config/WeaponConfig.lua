@@ -46,8 +46,8 @@ local WeaponConfig: { [string]: Weapon } = {
 	crossbow = { id="crossbow", name="Crossbow",    tier=3, damage=110, fireRate=1.0, range=260, pellets=1, auto=false, knockback=10, price=8000,
 		pin={secs=2}, ability="PIN — bolts nail zombies in place for 2s" },
 	freezeray = { id="freezeray", name="Freeze Ray", tier=4, damage=10, fireRate=10, range=180, pellets=1, auto=true, knockback=6, price=20000,
-		chill={slowPct=0.3, secs=2}, shatter={damage=45, radius=10},
-		ability="CRYO — chills 30%; chilled zombies SHATTER on death (frost AoE)" },
+		chill={slowPct=1, secs=4}, shatter={damage=45, radius=10},
+		ability="CRYO — freezes zombies SOLID in ice for 4s; frozen zombies SHATTER on death (frost AoE)" },
 	minigun = { id="minigun", name="Minigun",       tier=4, damage=16, fireRate=18,  range=300, pellets=1, auto=true,  spinUp=1.0, knockback=16, price=15000 },
 	raygun  = { id="raygun",  name="Ray Gun",       tier=5, damage=80, fireRate=4,   range=250, pellets=1, auto=true,  knockback=40, price=40000 },
 

@@ -55,6 +55,7 @@ end
 
 -- ===== WEAPON HOLD POSES (attribute-driven, played locally for EVERY character) =====
 local holdTracks: { [Model]: AnimationTrack } = {}
+local holdTokens: { [Model]: number } = {} -- generation counter: a newer applyHold cancels older waits
 local animCache: { [string]: Animation } = {}
 
 local function getAnim(id: string): Animation
@@ -68,6 +69,8 @@ local function getAnim(id: string): Animation
 end
 
 local function applyHold(character: Model)
+	local token = (holdTokens[character] or 0) + 1
+	holdTokens[character] = token
 	local prev = holdTracks[character]
 	if prev then
 		prev:Stop(0) -- instant swap (no cross-fade) so switching guns changes the pose immediately
@@ -78,13 +81,27 @@ local function applyHold(character: Model)
 		return
 	end
 	local hum = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
-	if not hum then
+	if not hum or holdTokens[character] ~= token then
 		return
 	end
+	-- The server creates every character's Animator at spawn (WeaponModelService). On a FRESH spawn it
+	-- may not have replicated yet — creating a local stand-in here loads the track into an Animator the
+	-- engine abandons once the server's copy arrives, which is why the first gun showed no pose until
+	-- you switched weapons. WAIT for the real one; only fabricate a local one if it never shows up.
 	local animator = hum:FindFirstChildOfClass("Animator")
 	if not animator then
-		animator = Instance.new("Animator")
-		animator.Parent = hum
+		local t0 = os.clock()
+		repeat
+			task.wait(0.1)
+			animator = hum:FindFirstChildOfClass("Animator")
+		until animator or os.clock() - t0 > 5 or holdTokens[character] ~= token
+		if holdTokens[character] ~= token then
+			return -- a newer equip superseded this one while we waited
+		end
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = hum
+		end
 	end
 	local ok, track = pcall(function()
 		return animator:LoadAnimation(getAnim(id))
@@ -126,6 +143,7 @@ local function watchCharacter(character: Model)
 				t:Stop()
 			end
 			holdTracks[character] = nil
+			holdTokens[character] = nil
 		end
 	end)
 end

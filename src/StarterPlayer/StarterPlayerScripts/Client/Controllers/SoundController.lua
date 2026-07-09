@@ -387,6 +387,20 @@ function SoundController.Start()
 		end
 	end)
 
+	-- Gun equip: whenever YOUR equipped weapon changes (switching guns, or the spawn-time push that
+	-- hands you your loadout). LoadoutChanged also fires on ownership changes with the same gun held —
+	-- the equippedId diff filters those out. Reset on respawn so spawning-in plays it again.
+	local lastEquipped = nil
+	Remotes.Get("LoadoutChanged").OnClientEvent:Connect(function(_owned, equippedId)
+		if typeof(equippedId) == "string" and equippedId ~= "" and equippedId ~= lastEquipped then
+			lastEquipped = equippedId
+			SoundController.Play("GunEquip")
+		end
+	end)
+	localPlayer.CharacterAdded:Connect(function()
+		lastEquipped = nil
+	end)
+
 	-- Hit feedback (2D — it's YOUR hit).
 	Remotes.Get("HitConfirmed").OnClientEvent:Connect(function(_position, _isHeadshot, _hitHumanoid, killed)
 		if killed then

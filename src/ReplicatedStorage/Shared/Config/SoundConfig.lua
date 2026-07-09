@@ -40,9 +40,21 @@ SoundConfig.Sounds = {
 	Fire_minigun   = S("130050001949841", 0.45, 170, 0.97, 1.03), -- [minigun single shot] (played per bullet)
 	Fire_raygun    = S("118709034685445", 0.6, 170, 0.95, 1.05),  -- [laser blaster zap]
 	Fire_revolver  = S("", 0.65, 170, 0.97, 1.03), -- [revolver shot]
-	Fire_crossbow  = S("", 0.6, 120, 0.97, 1.03),  -- [crossbow shot / bow release]
-	Fire_freezeray = S("", 0.5, 150, 0.97, 1.03),  -- [ice ray / frost beam zap]
-	FrostShatter   = S("", 0.75, 140, 0.95, 1.05), -- chilled zombie explodes [glass ice shatter]
+	Fire_crossbow  = S("111893570400598", 0.6, 120, 0.97, 1.03),  -- [crossbow shot / bow release]
+	Fire_freezeray = S("5536159516", 0.5, 150, 0.97, 1.03),  -- [ice ray / frost beam zap]
+	Fire_ak47      = S("123111065763587", 0.6, 170, 0.97, 1.03),  -- [ak47 gunshot]
+	Fire_tommygun  = S("105103592803331", 0.55, 160, 0.97, 1.03), -- [tommy gun shot]
+	Fire_plasma    = S("117910836796315", 0.6, 170, 0.95, 1.05),  -- [plasma rifle shot]
+	Fire_sniper    = S("138854039966754", 0.75, 220, 0.98, 1.02), -- [sniper shot]
+	Fire_honeybadger = S("", 0.55, 160, 0.97, 1.03), -- [suppressed rifle shot]
+	Fire_m4        = S("", 0.6, 170, 0.97, 1.03),  -- [m4 gunshot]
+	Fire_p90       = S("", 0.55, 160, 0.97, 1.03), -- [p90 gunshot]
+	Fire_flamethrower = S("", 0.55, 120, 0.97, 1.03), -- [flamethrower whoosh]
+	Fire_rocket    = S("", 0.7, 200, 0.97, 1.03),  -- [rocket launch]
+	GunEquip       = S("93254619475991", 0.55, 0, 0.98, 1.02), -- switching to / spawning with a gun (2D, local)
+	ZombieFrozen   = S("103076518786222", 0.6, 110, 1, 1),     -- Freeze Ray encases a zombie in ice (~4s clip)
+	IceBreak       = S("126045403165222", 0.6, 110, 0.97, 1.03), -- the ice breaks (freeze wears off)
+	FrostShatter   = S("126045403165222", 0.75, 140, 0.95, 1.05), -- frozen zombie dies -> frost nova [glass ice shatter]
 
 	-- ===== COMBAT FEEDBACK (2D, local player only) =====
 	Hitmarker      = S("80826043767749", 0.5, 0, 0.97, 1.03),    -- [hitmarker tick]
@@ -81,6 +93,7 @@ SoundConfig.Sounds = {
 	Death_necromancer = S("", 0.85, 160, 0.9, 1.0),  -- [dark magic death]
 	Roar_necromancer  = S("", 0.9, 200, 0.9, 1.0),   -- [evil laugh]
 	SummonCast        = S("", 0.75, 140, 0.95, 1.05), -- necromancer raises adds [dark magic cast]
+	RareScream        = S("134322721932099", 0.7, 180, 0.95, 1.05), -- a RARE (special) zombie spawns — its entrance scream
 
 	-- ===== PLAYER (2D) =====
 	PlayerHurt     = S("", 0.6, 0, 0.95, 1.05),    -- you took damage [hurt grunt]

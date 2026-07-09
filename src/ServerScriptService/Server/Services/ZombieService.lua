@@ -511,6 +511,10 @@ local function release(record)
 
 	-- Reset visuals/physics so the pooled model comes back clean (upright, base color, no velocity).
 	restoreColors(model)
+	local staleIce = model:FindFirstChild("IceShell")
+	if staleIce then
+		staleIce:Destroy()
+	end
 	-- Un-anchor every part (the death sink anchored them) so the rig can walk again on reuse.
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
@@ -806,12 +810,18 @@ local function sinkAndRelease(record)
 end
 
 -- ===== DEATH =====
+-- Forward declarations: these live in the STATUS EFFECTS section far below, but death (here, earlier in
+-- the file) needs them — without the forward locals these calls silently resolve to nil globals.
+local clearFrost
+local spawnShatterVFX
+
 local function onZombieDied(record)
 	if record.dead then
 		return
 	end
 	record.dead = true
 	active[record.model] = nil
+	clearFrost(record, false) -- drop the ice shell (the shatter below plays its own sound)
 	if record.root then
 		SoundFXService.Emit("ZDeath:" .. record.typeId, record.root.Position)
 	end
@@ -1324,26 +1334,8 @@ local function spawnOne(round: number, forcedType: string?)
 		return nil
 	end
 
-	-- ELITE roll: a small chance a NORMAL spawn (never a boss) is a buffed "elite" — tougher + glows yellow
-	-- + drops a potion on death. Pooled models are reused, so always clear a stale highlight first.
-	local isElite = (not forcedType) and (t.spawnWeight > 0) and (math.random() < GameConfig.EliteChance)
-	local oldHL = model:FindFirstChild("EliteHighlight")
-	if oldHL then
-		oldHL:Destroy()
-	end
-
+	-- (ELITE golden zombies REMOVED — every spawn is a plain roll of its type now.)
 	local hp = scaledHealth(round, t)
-	if isElite then
-		hp = math.floor(hp * GameConfig.EliteHealthMult)
-		local hl = Instance.new("Highlight")
-		hl.Name = "EliteHighlight"
-		hl.FillColor = GameConfig.EliteHighlightColor
-		hl.OutlineColor = GameConfig.EliteHighlightColor
-		hl.FillTransparency = 0.55
-		hl.OutlineTransparency = 0
-		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.Parent = model
-	end
 	hum.MaxHealth = hp
 	hum.Health = hp
 	hum.WalkSpeed = scaledSpeed(round, t)
@@ -1351,7 +1343,6 @@ local function spawnOne(round: number, forcedType: string?)
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)
 	model:SetAttribute("IsSpecial", t.isSpecial)
-	model:SetAttribute("IsElite", isElite)
 
 	model:PivotTo(spawnCF)
 	model.Parent = zombieFolder
@@ -1409,6 +1400,12 @@ local function spawnOne(round: number, forcedType: string?)
 	if not announcedTypes[typeId] and t.spawnWeight > 0 and (t.minRound or 1) > 1 then
 		announcedTypes[typeId] = true
 		Remotes.Get("EnemyIncoming"):FireAllClients(t.name or typeId)
+	end
+
+	-- RARE (special) zombies announce themselves with a scream from their spawn point. Bosses are
+	-- excluded (spawnWeight 0) — they get their own entrance roar when the boss wave summons them.
+	if t.isSpecial and t.spawnWeight > 0 then
+		SoundFXService.Emit("RareScream", spawnCF.Position, 220)
 	end
 
 	-- Rise up out of the ground (under a grave headstone) before the AI kicks in.
@@ -1483,17 +1480,74 @@ end
 -- ===== STATUS EFFECTS (weapon abilities) =====
 local ICE_TINT = Color3.fromRGB(130, 190, 255)
 
--- Freeze Ray: slow the zombie; remember the shatter payload so its death pops a frost AoE.
+-- Freeze Ray: freeze/slow the zombie (slowPct 1 = frozen SOLID in an ice shell); remember the shatter
+-- payload so its death pops a frost AoE. Follow-up hits while frozen just refresh the timer — the
+-- frozen sound + ice shell only trigger on the FIRST hit of a freeze.
 function ZombieService.Chill(record, chillCfg, shatterCfg)
 	if not record or record.dead then
 		return
 	end
-	record.slowPct = chillCfg.slowPct or 0.3
-	record.chilledUntil = os.clock() + (chillCfg.secs or 2)
+	local slow = chillCfg.slowPct or 0.3
+	local secs = chillCfg.secs or 2
+	-- Bosses can't be frozen SOLID (an auto freeze ray would perma-lock them) — they take a
+	-- half-strength slow instead.
+	if record.isBoss and slow >= 0.999 then
+		slow, secs = 0.5, 2
+	end
+	record.slowPct = slow
+	record.chilledUntil = os.clock() + secs
 	record.shatter = shatterCfg
 	if not record.frostTint then
 		record.frostTint = true
 		recolor(record.model, ICE_TINT)
+		local root = record.root
+		-- The ice block + frozen sound only accompany a REAL freeze (slowed zombies just tint blue).
+		if root and slow >= 0.999 then
+			SoundFXService.Emit("ZombieFrozen", root.Position, 130)
+			-- Encase the zombie in a translucent ice block sized to its body.
+			local okBB, cf, size = pcall(function()
+				return record.model:GetBoundingBox()
+			end)
+			local ice = Instance.new("Part")
+			ice.Name = "IceShell"
+			ice.Material = Enum.Material.Ice
+			ice.Color = ICE_TINT
+			ice.Transparency = 0.45
+			ice.CanCollide = false
+			ice.CanQuery = false
+			ice.CanTouch = false
+			ice.Massless = true
+			ice.CastShadow = false
+			if okBB and typeof(size) == "Vector3" then
+				ice.Size = size + Vector3.new(0.7, 0.7, 0.7)
+				ice.CFrame = cf
+			else
+				ice.Size = Vector3.new(4.7, 6.7, 3.7)
+				ice.CFrame = root.CFrame
+			end
+			local wc = Instance.new("WeldConstraint")
+			wc.Part0 = root
+			wc.Part1 = ice
+			wc.Parent = ice
+			ice.Parent = record.model
+		end
+	end
+end
+
+-- Melt a frozen zombie back to normal (thaw or death): drop the ice shell + base colors.
+-- (Assigns the forward-declared local above onZombieDied — do NOT re-localize.)
+function clearFrost(record, playBreak: boolean)
+	if not record.frostTint then
+		return
+	end
+	record.frostTint = nil
+	restoreColors(record.model)
+	local shell = record.model and record.model:FindFirstChild("IceShell")
+	if shell then
+		shell:Destroy()
+		if playBreak then -- only actual ice makes a breaking sound (slow-only chills just untint)
+			SoundFXService.Emit("IceBreak", record.root and record.root.Position or nil, 130)
+		end
 	end
 end
 
@@ -1521,13 +1575,17 @@ local function statusSpeed(record, now)
 		hum.WalkSpeed = target
 	end
 	if record.frostTint and now >= (record.chilledUntil or 0) then
-		record.frostTint = nil
-		restoreColors(record.model)
+		clearFrost(record, true) -- the ice breaks as the freeze wears off
 	end
 end
 
--- Frost nova visual for a shattered corpse.
-local function spawnShatterVFX(pos, radius)
+-- Frozen SOLID (a full Freeze Ray chill, slowPct >= 1): no walking, no diving, no biting until it breaks.
+local function isFrozen(record, now: number): boolean
+	return now < (record.chilledUntil or 0) and (record.slowPct or 0) >= 0.999
+end
+
+-- Frost nova visual for a shattered corpse. (Assigns the forward-declared local above onZombieDied.)
+function spawnShatterVFX(pos, radius)
 	local burst = Instance.new("Part")
 	burst.Shape = Enum.PartType.Ball
 	burst.Anchored = true
@@ -1679,14 +1737,16 @@ local function think(record, now: number)
 	-- Damage-on-touch is handled per-frame in steer(). Here, if we're NOT in contact, a Leaper may pounce.
 	local toPlayer = targetRoot.Position - root.Position
 	local flatDist = Vector3.new(toPlayer.X, 0, toPlayer.Z).Magnitude
-	if flatDist > ATTACK_RANGE then
+	local frozen = isFrozen(record, now) -- frozen SOLID: no pouncing, no fuse-lighting until the ice breaks
+	if flatDist > ATTACK_RANGE and not frozen then
 		tryLeap(record, now, targetRoot, flatDist)
 	end
 
 	local t = record.type
-	-- BombZombie: light the fuse when close, then detonate a couple seconds later.
+	-- BombZombie: light the fuse when close, then detonate a couple seconds later. (An ALREADY-lit fuse
+	-- still detonates through a freeze — freezing stops it lighting, not burning.)
 	if t and t.isBomb and not record.exploded then
-		if not record.fuseLit and flatDist <= BOMB_TRIGGER then
+		if not record.fuseLit and flatDist <= BOMB_TRIGGER and not frozen then
 			record.fuseLit = true
 			record.fuseEnd = now + BOMB_FUSE
 			recolor(record.model, DEATH_COLOR) -- warning flash while the fuse burns
@@ -1728,6 +1788,13 @@ local function steer(record, now: number)
 		return
 	end
 	statusSpeed(record, now) -- chills/pins apply + expire here (runs every steer frame)
+	if isFrozen(record, now) then
+		hum:Move(Vector3.zero)
+		if record.type and record.type.canFly then
+			root.AssemblyLinearVelocity = Vector3.zero -- frozen flyers hang in place instead of drifting
+		end
+		return
+	end
 	local targetRoot = record.targetRoot
 	if record.mode == "idle" or not targetRoot or not targetRoot.Parent then
 		hum:Move(Vector3.zero)

@@ -147,14 +147,7 @@ GameConfig.CaseRarities    = { "common", "uncommon", "rare", "epic", "legendary"
 GameConfig.CaseWeightsBase = { 50, 25, 12, 7, 4, 1.5, 0.5 } -- odds at wave 10 (per rarity, in order)
 GameConfig.CaseWeightGrowth = 1.5                            -- higher = deeper waves upgrade odds faster
 
--- ===== ELITE (buffed) ZOMBIES ===== a small chance any spawned zombie is an "elite": tougher, glows
--- yellow (for testing), and DROPS A POTION on death (into your persistent potion inventory → usable in the
--- lobby/game). For now the only buff is health ×EliteHealthMult.
-GameConfig.EliteChance         = 0.05                 -- 5% of normal spawns become elites
-GameConfig.EliteHealthMult     = 4                    -- elites have 4× a normal same-type zombie's health
-GameConfig.EliteHighlightColor = Color3.fromRGB(255, 225, 40) -- yellow test highlight
--- (Potion drops + effects moved to PotionConfig.lua — tiered potions with TIMED buffs; elites roll a
--- wave-weighted rarity there.)
+-- (ELITE golden zombies REMOVED — no more random 4×-HP glowing spawns.)
 
 -- ===== DOWN / REVIVE (co-op) ===== at 0 HP with a teammate still UP you go DOWNED (crawl, untargetable)
 -- instead of dying; a teammate holds E next to you to revive. Solo death — or bleeding out, or the whole
