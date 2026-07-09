@@ -143,10 +143,31 @@ local function lbevel(o)
 	face.BackgroundColor3 = white
 	face.BorderSizePixel = 0
 	local hostCorner = o:FindFirstChildOfClass("UICorner")
+	if o:IsA("GuiButton") then
+		-- COPY the game button: raw 10px corners (the shared corner() curve makes ~13px bulbous pills —
+		-- the game's read squarer), and a CHUNKY black ring scaled to these bigger lobby buttons.
+		if not hostCorner then
+			hostCorner = Instance.new("UICorner")
+			hostCorner.Parent = o
+		end
+		hostCorner.CornerRadius = UDim.new(0, 10)
+		local ring = nil
+		for _, c in o:GetChildren() do
+			if c:IsA("UIStroke") and c.Color == TBLACK then
+				ring = c
+				break
+			end
+		end
+		if ring then
+			ring.Thickness = math.max(ring.Thickness, 4)
+		else
+			ledge(o, TBLACK, 4)
+		end
+	end
 	local fc = Instance.new("UICorner")
 	fc.CornerRadius = hostCorner and hostCorner.CornerRadius or UDim.new(0, 10)
 	fc.Parent = face
-	ledge(face, TBLACK, 2.5) -- the face needs its OWN black ring (it covers the slab's)
+	ledge(face, TBLACK, o:IsA("GuiButton") and 3.5 or 2.5) -- the face needs its OWN black ring (it covers the slab's)
 	local g = Instance.new("UIGradient")
 	g.Rotation = 90
 	g.Parent = face
@@ -164,7 +185,7 @@ local function lbevel(o)
 		label.Parent = face
 		local ls = Instance.new("UIStroke")
 		ls.Color = TBLACK
-		ls.Thickness = 2.5
+		ls.Thickness = 3 -- wide sticker outline on the text, like LEAVE / SKIP WAVE
 		ls.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 		ls.Parent = label
 		o.TextTransparency = 1
