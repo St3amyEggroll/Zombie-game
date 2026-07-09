@@ -187,10 +187,10 @@ local function lbevel(o)
 		if lastSlab ~= nil and base == lastSlab then
 			return -- echo of our own slab write, not a real recolor
 		end
-		g.Color = ColorSequence.new({ -- darker read: softer top flash, deeper body/foot
-			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.28)),
-			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.08)),
-			ColorSequenceKeypoint.new(1, darker(base, 0.4)),
+		g.Color = ColorSequence.new({ -- EXACT match for the game's UITheme.Button (LEAVE / SKIP WAVE look)
+			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
+			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
+			ColorSequenceKeypoint.new(1, darker(base, 0.28)),
 		})
 		lastSlab = darker(base, 0.5) -- the slab shade
 		o.BackgroundColor3 = lastSlab
@@ -551,7 +551,7 @@ local mapBtns, diffBtns, sizeBtns = {}, {}, {}
 local play = Instance.new("TextButton")
 play.AnchorPoint = Vector2.new(0.5, 1); play.Position = UDim2.new(0.5, 0, 1, -40); play.Size = UDim2.fromOffset(320, 56)
 play.BackgroundColor3 = ACCENT; play.FontFace = TITLE_FACE; play.TextSize = 18
-play.TextColor3 = Color3.fromRGB(14, 22, 6); play.Text = "PLAY"; play.Parent = panel
+play.TextColor3 = Color3.new(1, 1, 1); play.Text = "PLAY"; play.Parent = panel -- white + black outline, like the game's CTAs
 corner(play, 6)
 ldepth(play); ledge(play, TBLACK, 2.5); lbevel(play)
 
@@ -863,11 +863,11 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(172, 34, 34), true) -- dark red, left of center
-local casesBtn = cornerButton(CASES_ICON, "CRATES", 240, Color3.fromRGB(188, 106, 20), false) -- dark orange, right
+local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(214, 48, 48), true) -- red, left of center
+local casesBtn = cornerButton(CASES_ICON, "CRATES", 240, Color3.fromRGB(230, 140, 30), false) -- orange, right
 -- PLAY button — the BIG center pill (replaces SHOP; the shop is still the stall you walk up to).
 -- Pressing it steps you onto the nearest free party pad, so the normal set-up-your-run flow takes over.
-local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(38, 128, 34), false) -- dark green, center, bigger
+local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(52, 168, 52), false) -- green, center, bigger
 playBtn.Size = UDim2.fromOffset(260, 74)
 do -- scale the caption up to match the bigger pill
 	local capL = playBtn:FindFirstChildOfClass("TextLabel")
@@ -1167,7 +1167,7 @@ local function renderInvDetail()
 				equipped and "UNEQUIP" or "EQUIP",
 				equipped and ORANGE or ACCENT,
 				equipped and darker(ORANGE, 0.4) or darker(ACCENT, 0.5),
-				equipped and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(14, 22, 6))
+				Color3.new(1, 1, 1)) -- white + black outline on every colored CTA, like the game
 			eqBtn.Position = UDim2.fromOffset(14, 330); eqBtn.Size = UDim2.new(1, -28, 0, 56)
 			eqBtn.Activated:Connect(function()
 				lplay("Equip")
@@ -1284,7 +1284,7 @@ local function renderInvDetail()
 					EquipSkin:FireServer({ weaponId = s.gun, skinId = false })
 				end)
 			else
-				btn = paneButton("EQUIP SKIN", ACCENT, darker(ACCENT, 0.5), Color3.fromRGB(14, 22, 6))
+				btn = paneButton("EQUIP SKIN", ACCENT, darker(ACCENT, 0.5), Color3.new(1, 1, 1))
 				btn.Activated:Connect(function()
 					lplay("Equip")
 					EquipSkin:FireServer({ weaponId = s.gun, skinId = s.skin })
@@ -1316,7 +1316,7 @@ local function renderInvDetail()
 
 		local open
 		if count > 0 then
-			open = paneButton("OPEN CRATE", ACCENT, darker(ACCENT, 0.5), Color3.fromRGB(14, 22, 6))
+			open = paneButton("OPEN CRATE", ACCENT, darker(ACCENT, 0.5), Color3.new(1, 1, 1))
 			open.Activated:Connect(function()
 				if rolling then return end
 				rolling = true
@@ -1876,7 +1876,7 @@ local function renderShopDetail()
 		if not enabled then
 			b.BackgroundColor3 = TRACK; b.TextColor3 = DIMTEXT
 		elseif style == "gold" then
-			b.BackgroundColor3 = GOLD; b.TextColor3 = Color3.fromRGB(34, 24, 6)
+			b.BackgroundColor3 = GOLD; b.TextColor3 = Color3.new(1, 1, 1) -- white like the game's SKIP WAVE
 			lbevel(b)
 		elseif style == "primary" then
 			b.BackgroundColor3 = SELBG; b.TextColor3 = TEXTCOL
