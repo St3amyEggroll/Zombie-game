@@ -884,11 +884,11 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(214, 48, 48), true) -- red, left of center
-local casesBtn = cornerButton(CASES_ICON, "CRATES", 240, Color3.fromRGB(230, 140, 30), false) -- orange, right
+local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(168, 32, 32), true) -- deep red, left of center
+local casesBtn = cornerButton(CASES_ICON, "CRATES", 240, Color3.fromRGB(184, 102, 18), false) -- deep orange, right
 -- PLAY button — the BIG center pill (replaces SHOP; the shop is still the stall you walk up to).
 -- Pressing it steps you onto the nearest free party pad, so the normal set-up-your-run flow takes over.
-local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(52, 168, 52), false) -- green, center, bigger
+local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(34, 122, 34), false) -- deep green, center, bigger
 playBtn.Size = UDim2.fromOffset(260, 74)
 do -- scale the caption up to match the bigger pill
 	local capL = playBtn:FindFirstChildOfClass("TextLabel")

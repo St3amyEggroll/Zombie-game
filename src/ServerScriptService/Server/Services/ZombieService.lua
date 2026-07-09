@@ -1402,6 +1402,20 @@ local function startEmergence(record, spawnCF: CFrame)
 	if mapEmerge == "water" then
 		groundY, groundNormal = pos.Y, Vector3.yAxis -- the ZombieSpawn point is placed AT the water surface
 		placeSplash(pos.X, groundY, pos.Z)
+		-- The ocean is usually NOT collidable — park an invisible dock under the surfacing zombie so it
+		-- doesn't sink straight back into the water. It despawns after the zombie has waded ashore.
+		-- CanQuery=false keeps it out of every raycast (shoreline picker, ground probes, gunfire).
+		local dock = Instance.new("Part")
+		dock.Name = "SpawnDock"
+		dock.Anchored = true
+		dock.CanCollide = true
+		dock.CanQuery = false
+		dock.CanTouch = false
+		dock.Transparency = 1
+		dock.Size = Vector3.new(14, 1, 14)
+		dock.CFrame = CFrame.new(pos.X, groundY - 0.5, pos.Z) -- top flush with the water surface
+		dock.Parent = Workspace
+		Debris:AddItem(dock, 12)
 	else
 		groundY, groundNormal = findGround(pos.X, pos.Z, pos.Y)
 		placeGrave(pos.X, groundY, pos.Z, groundNormal, GRAVE_TIER[record.typeId])
@@ -1842,12 +1856,16 @@ local function think(record, now: number)
 		end
 	end
 
-	if blocked or stuck then
+	-- Water maps: steer's edge probe flags open water ahead — treat it like blocked sight so the
+	-- zombie pathfinds AROUND the ocean (over bridges / along the shore) instead of walking into it.
+	local waterAhead = mapEmerge == "water" and now < (record.avoidWaterUntil or 0)
+
+	if blocked or stuck or waterAhead then
 		-- Navigate AROUND geometry. Recompute toward the player's CURRENT position; retry fast after a
 		-- failure or while wedged, otherwise sparsely (perf).
 		record.mode = "path"
 		local interval = record.pathFailed and PATH_RETRY or GameConfig.PathRecompute
-		if stuck then
+		if stuck or waterAhead then
 			interval = math.min(interval, PATH_RETRY)
 		end
 		if not record.computing and (now - record.lastPath) >= interval then
@@ -1965,6 +1983,28 @@ local function steer(record, now: number)
 	end
 
 	local dist = (root.Position - targetRoot.Position).Magnitude
+
+	-- Water maps: never chase INTO the ocean. In direct mode, probe the ground one step ahead a few
+	-- times a second — open water (or a sheer drop) ahead flips this zombie to pathfinding via
+	-- record.avoidWaterUntil (think() treats it like blocked sight) and halts it this frame.
+	if mapEmerge == "water" and record.mode == "direct" and not record.emerging then
+		local now2 = os.clock()
+		if now2 >= (record.nextEdgeProbe or 0) then
+			record.nextEdgeProbe = now2 + 0.2
+			local aheadFlat = Vector3.new(targetRoot.Position.X - root.Position.X, 0, targetRoot.Position.Z - root.Position.Z)
+			if aheadFlat.Magnitude > 0.1 then
+				local ahead = root.Position + aheadFlat.Unit * 5
+				local probe = Workspace:Raycast(ahead + Vector3.new(0, 4, 0), Vector3.new(0, -25, 0), worldOnlyParams())
+				if (not probe) or isOceanPart(probe.Instance) then
+					record.avoidWaterUntil = now2 + 1.5
+					record.mode = "path"
+					record.lastPath = 0 -- think() recomputes a route on its next tick
+					hum:Move(Vector3.zero)
+					return
+				end
+			end
+		end
+	end
 
 	-- Goal = the player's LIVE position (direct) or the current path waypoint (path).
 	local goal = targetRoot.Position
