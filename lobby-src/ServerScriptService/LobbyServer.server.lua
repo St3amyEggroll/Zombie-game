@@ -1249,6 +1249,7 @@ end)
 local parties = {}
 local playerParty = {}  -- userId -> party
 local inZonePart = {}   -- userId -> zone Part they're standing in
+local profileRetryAt = {} -- userId -> os.clock() before which we won't re-kick a stuck profile load
 local lastMode = {}     -- userId -> last ZoneEnter signature sent (avoids respamming the client)
 
 local zoneParts = {}
@@ -1477,6 +1478,25 @@ local function evaluateZone(player, zone)
 
 	if not prof then
 		sendMode(player, "loading", { mode = "blocked", reason = "Loading your profile..." })
+		-- A load that errored out would strand this player here forever — re-kick it (throttled).
+		local nowT = os.clock()
+		if nowT >= (profileRetryAt[player.UserId] or 0) then
+			profileRetryAt[player.UserId] = nowT + 8
+			warn(("[LobbyPads] %s has no profile yet — retrying the load"):format(player.Name))
+			task.spawn(function()
+				if not profileCache[player.UserId] and player.Parent then
+					local profile = readProfile(player)
+					if not profileCache[player.UserId] then
+						profileCache[player.UserId] = profile
+						StatsRemote:FireClient(player, profile)
+						pushInv(player)
+						refreshCarry(player)
+						-- (no refreshPlayerTag here: it's declared later in the file, so this closure
+						-- can't see it — the next respawn refreshes the tag anyway)
+					end
+				end
+			end)
+		end
 		return
 	end
 
@@ -1563,8 +1583,14 @@ mk("GoPlay").OnServerEvent:Connect(function(player)
 	if not allow(player, "Party") then
 		return
 	end
-	if playerParty[player.UserId] then
-		return -- already on a pad / in a party
+	local pp = playerParty[player.UserId]
+	if pp and parties[pp.zone] ~= pp then
+		playerParty[player.UserId] = nil -- stale link to a dissolved party: clear it, PLAY works again
+		setPartyPassThrough(player, false)
+		pp = nil
+	end
+	if pp then
+		return -- genuinely on a pad / in a party
 	end
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -1646,6 +1672,17 @@ local function tick()
 	if os.clock() - lastZoneScan > 3 then
 		lastZoneScan = os.clock()
 		refreshZones()
+		-- Ghost-wall sweep: a pad with NO party must never keep a forcefield up (an orphaned wall
+		-- physically blocks the party builder and reads as "pads are broken").
+		for _, zone in zoneParts do
+			if not parties[zone] then
+				local ghost = zone:FindFirstChild("PadWall")
+				if ghost then
+					warn("[LobbyPads] destroyed an orphaned pad wall on " .. zone.Name)
+					ghost:Destroy()
+				end
+			end
+		end
 	end
 
 	-- Restock rollover: reroll the stock and live-swap it for everyone browsing.
@@ -1687,7 +1724,10 @@ local function tick()
 			end
 		end
 		if currentZone then
-			evaluateZone(player, currentZone)
+			local okZ, errZ = pcall(evaluateZone, player, currentZone)
+			if not okZ then
+				warn("[LobbyPads] evaluateZone failed for " .. player.Name .. ": " .. tostring(errZ))
+			end
 		end
 
 		-- Shop zone presence (independent of the party pads).
