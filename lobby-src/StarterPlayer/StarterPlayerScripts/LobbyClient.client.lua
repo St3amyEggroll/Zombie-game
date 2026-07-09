@@ -261,7 +261,7 @@ end
 
 -- Per-screen header COLORS (mirror the game's UITheme.HeaderColors).
 local HEADER_COLORS = {
-	guns     = Color3.fromRGB(64, 28, 102),   -- dark purple
+	guns     = Color3.fromRGB(168, 32, 32),   -- RED — matches the WEAPONS nav pill
 	cases    = Color3.fromRGB(150, 66, 16),   -- dark orange
 	shop     = Color3.fromRGB(140, 100, 22),  -- gold / amber
 	settings = Color3.fromRGB(36, 66, 104),   -- steel blue
@@ -974,7 +974,7 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	return b
 end
 local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(168, 32, 32), true) -- deep red, left of center
-local casesBtn = cornerButton(CASES_ICON, "INVENTORY", 240, Color3.fromRGB(184, 102, 18), false) -- deep orange, right
+local casesBtn = cornerButton(CASES_ICON, "INVENTORY", 240, Color3.fromRGB(18, 69, 90), false) -- BLUE — matches its panel's header
 -- PLAY button — the BIG center pill (replaces SHOP; the shop is still the stall you walk up to).
 -- Pressing it steps you onto the nearest free party pad, so the normal set-up-your-run flow takes over.
 local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(34, 122, 34), false) -- deep green, center, bigger
