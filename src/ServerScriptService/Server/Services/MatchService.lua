@@ -251,7 +251,23 @@ end
 spawnCharacter = function(player: Player)
 	player:LoadCharacter()
 	local char = player.Character or player.CharacterAdded:Wait()
-	char:WaitForChild("HumanoidRootPart", 5)
+	local root = char:WaitForChild("HumanoidRootPart", 5)
+
+	-- FALL-THROUGH GUARD: fresh arrivals could drop through the map in the first second (the client
+	-- hasn't streamed the ground in yet). Ask the engine to stream the spawn area, and hold the
+	-- character anchored for a beat while the world settles under their feet.
+	if root then
+		root.Anchored = true
+		task.spawn(function()
+			pcall(function()
+				player:RequestStreamAroundAsync(root.Position, 2)
+			end)
+			task.wait(1.25)
+			if root.Parent then
+				root.Anchored = false
+			end
+		end)
+	end
 
 	-- Cartoon BLACK OUTLINE on every player (matches the zombies' look).
 	if not char:FindFirstChild("Outline") then
@@ -549,6 +565,15 @@ local function handleArrival(player: Player)
 		end
 	end
 	if startRun then
+		startRunFor(player)
+	elseif game.PrivateServerId ~= "" then
+		-- RESERVED server = the lobby teleported them here, even if the TeleportData got lost in transit
+		-- (Roblox drops it sometimes — this was the "my friend never joined the run" bug: legit party
+		-- members were being bounced back to the lobby). On a reserved game server, everyone plays.
+		warn(("[MatchService] %s arrived on a reserved server without TeleportData — joining the run anyway"):format(player.Name))
+		startRunFor(player)
+	elseif state.difficulty ~= nil or anyInMatch() then
+		-- A run is already configured/underway on this server: treat the data-less arrival as a joiner.
 		startRunFor(player)
 	elseif game.PlaceId == Places.Lobby then
 		-- SAFETY: this place is configured as the lobby but is running the GAME code. Never teleport a

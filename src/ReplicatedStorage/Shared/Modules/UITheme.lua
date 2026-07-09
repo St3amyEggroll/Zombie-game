@@ -500,6 +500,7 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	local fc = Instance.new("UICorner")
 	fc.CornerRadius = UDim.new(0, 10)
 	fc.Parent = face
+	UITheme.Edge(face, UITheme.BLACK, 2.5) -- the face needs its OWN black ring (it covers the slab's)
 	local g = Instance.new("UIGradient") -- gradients only multiply, so the face is white and the
 	g.Color = ColorSequence.new({        -- gradient carries ABSOLUTE colors (bright top flash baked in)
 		ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),

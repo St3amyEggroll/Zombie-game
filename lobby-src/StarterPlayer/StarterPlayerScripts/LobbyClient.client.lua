@@ -146,6 +146,7 @@ local function lbevel(o)
 	local fc = Instance.new("UICorner")
 	fc.CornerRadius = hostCorner and hostCorner.CornerRadius or UDim.new(0, 10)
 	fc.Parent = face
+	ledge(face, TBLACK, 2.5) -- the face needs its OWN black ring (it covers the slab's)
 	local g = Instance.new("UIGradient")
 	g.Rotation = 90
 	g.Parent = face
