@@ -938,7 +938,6 @@ playBtn.Activated:Connect(function()
 end)
 
 local PANEL_W, PANEL_H = 940, 560
-local DETAIL_W = 280
 
 local invPanel = Instance.new("Frame")
 invPanel.AnchorPoint = Vector2.new(0.5, 0.5); invPanel.Position = UDim2.fromScale(0.5, 0.5)
@@ -967,22 +966,26 @@ invClose.Position = UDim2.new(1, -10, 0, 8)
 -- Same 3-region skeleton as the SHOP: card grid (left) | featured pane, always visible (middle) |
 -- action-button stack (right).
 local CONTENT_Y = 64 -- 48 header + 16 gap
--- MOCKUP LAYOUT: wide grid (left, ~4 columns) + the INFO SHEET (right) that SLIDES OUT of the panel's
--- right edge when something is selected (the panel clips it, so it emerges smoothly from inside).
+-- INSPECT-VIEW LAYOUT (approved plan): GRID mode = a full-width 6-column grid; clicking a card flips
+-- the panel into INSPECT mode — a full-size page for that item. Two sibling frames, one Visible toggle.
 local invGrid = Instance.new("ScrollingFrame")
-invGrid.Position = UDim2.fromOffset(16, CONTENT_Y); invGrid.Size = UDim2.fromOffset(500, PANEL_H - CONTENT_Y - 16)
+invGrid.Position = UDim2.fromOffset(16, CONTENT_Y); invGrid.Size = UDim2.fromOffset(PANEL_W - 32, PANEL_H - CONTENT_Y - 16 - 24)
 invGrid.BackgroundTransparency = 1; invGrid.BorderSizePixel = 0; invGrid.ScrollBarThickness = 6
 invGrid.CanvasSize = UDim2.new(); invGrid.AutomaticCanvasSize = Enum.AutomaticSize.Y; invGrid.Parent = invPanel
 local invGridLayout = Instance.new("UIGridLayout")
-invGridLayout.CellSize = UDim2.fromOffset(115, 115); invGridLayout.CellPadding = UDim2.fromOffset(10, 10); invGridLayout.Parent = invGrid
+invGridLayout.CellSize = UDim2.fromOffset(138, 138); invGridLayout.CellPadding = UDim2.fromOffset(11, 11); invGridLayout.Parent = invGrid
 
-local invDetail = Instance.new("Frame")
-invDetail.Size = UDim2.fromOffset(392, PANEL_H - CONTENT_Y - 16)
-invDetail.Position = UDim2.fromOffset(PANEL_W - 16 - 392, CONTENT_Y) -- its final spot, INSIDE the panel
-invDetail.Visible = false -- hidden until something is selected (the reveal slides it in)
-invDetail.ZIndex = 5 -- rides above the grid
-invDetail.BackgroundColor3 = PANEL2; invDetail.BorderSizePixel = 0; invDetail.Parent = invPanel
-corner(invDetail, 6); lstuds(invDetail, 42, 0.75); ledge(invDetail, TBLACK, 2.5); ledge(invDetail, LINE, 1, 0.5)
+local invHint = Instance.new("TextLabel") -- "CLICK A GUN TO INSPECT IT" strip under the grid
+invHint.AnchorPoint = Vector2.new(0, 1); invHint.Position = UDim2.new(0, 16, 1, -12)
+invHint.Size = UDim2.fromOffset(PANEL_W - 32, 18); invHint.BackgroundTransparency = 1
+invHint.FontFace = BODYB_FACE; invHint.TextSize = 12; invHint.TextColor3 = DIMTEXT
+invHint.Text = "CLICK SOMETHING TO INSPECT IT"; invHint.Parent = invPanel
+
+local invDetail = Instance.new("Frame") -- INSPECT mode: fills the whole panel body
+invDetail.Position = UDim2.fromOffset(16, CONTENT_Y)
+invDetail.Size = UDim2.fromOffset(PANEL_W - 32, PANEL_H - CONTENT_Y - 16)
+invDetail.Visible = false -- GRID mode by default; selecting a card flips this on (and the grid off)
+invDetail.BackgroundTransparency = 1; invDetail.BorderSizePixel = 0; invDetail.Parent = invPanel
 
 local invActs = Instance.new("Frame") -- (legacy right stack — the sheet owns all actions now)
 invActs.AnchorPoint = Vector2.new(1, 0); invActs.Position = UDim2.new(1, -16, 0, CONTENT_Y)
@@ -1117,81 +1120,119 @@ end
 local function renderInvDetail()
 	clearChildren(invDetail)
 	clearChildren(invActs)
-	-- REVEAL: the sheet lives at its final spot inside the panel; selecting something SHOWS it with a
-	-- short slide-in. Visibility comes first — even if the tween can't run, the sheet still appears.
-	do
-		local showX = PANEL_W - 16 - invDetail.Size.X.Offset
-		if not (invData and selectedInv) then
-			invDetail.Visible = false
-			return -- nothing to feature: keep the sheet tucked away
-		end
-		print(("[LobbyInv] sheet -> %s %s"):format(tostring(selectedInv.kind), tostring(selectedInv.id)))
-		if not invDetail.Visible then
-			invDetail.Visible = true
-			invDetail.Position = UDim2.fromOffset(showX + 48, CONTENT_Y) -- start a touch right, slide home
-		end
-		TweenService:Create(invDetail, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ Position = UDim2.fromOffset(showX, CONTENT_Y) }):Play()
-	end
-	local kind, id = selectedInv.kind, selectedInv.id
-
-	-- Big render well (spins here — the grid cards stay static).
-	local well = Instance.new("Frame")
-	well.Position = UDim2.fromOffset(14, 14); well.Size = UDim2.new(1, -28, 0, 190)
-	well.BackgroundColor3 = darker(PANEL2, 0.25); well.BorderSizePixel = 0; well.Parent = invDetail
-	corner(well, 6); ledge(well, TBLACK, 2)
-	well.Size = UDim2.new(1, -28, 0, 150) -- mockup: shorter view well, room for stats + skins below
-
-	local entry, wellCol
-	if kind == "weapon" then entry = weaponInfo(id); wellCol = entry and rarityColor(entry.rarity)
-	elseif kind == "case" then entry = invData.catalog.cases[id]; wellCol = rarityColor(id)
-	elseif kind == "skin" then entry = skinInfo(id); wellCol = entry and rarityColor(entry.rarity) end
-	if not entry then
+	-- MODE FLIP — the whole mechanism: inspecting shows this frame and hides the grid. One boolean.
+	local showing = invData ~= nil and selectedInv ~= nil
+	invDetail.Visible = showing
+	invGrid.Visible = not showing
+	invHint.Visible = not showing
+	if not showing then
 		return
 	end
-	well.BackgroundColor3 = wellCol:Lerp(BLACK, 0.7)
+	local kind, id = selectedInv.kind, selectedInv.id
+	print(("[LobbyInv] inspect -> %s %s"):format(tostring(kind), tostring(id)))
 
-	local wellVp
-	if kind == "skin" then
-		wellVp = makeGunViewport(id, true) or makeGunViewport(entry.gun, true) -- skin model, else base gun
-	elseif kind ~= "potion" then
-		wellVp = makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
+	local entry, tint
+	if kind == "weapon" then entry = weaponInfo(id); tint = entry and rarityColor(entry.rarity)
+	elseif kind == "case" then entry = invData.catalog.cases[id]; tint = rarityColor(id) end
+	if not entry then
+		selectedInv = nil
+		invDetail.Visible = false
+		invGrid.Visible = true
+		invHint.Visible = true
+		return
 	end
+
+	local W = PANEL_W - 32
+	local H = PANEL_H - CONTENT_Y - 16
+	local LEFT_W = 380
+	local RIGHT_X = LEFT_W + 14
+	local RIGHT_W = W - RIGHT_X
+
+	-- LEFT: the display well — big spinning model, rarity line, BACK, prev/next arrows.
+	local ileft = Instance.new("Frame")
+	ileft.Size = UDim2.fromOffset(LEFT_W, H)
+	ileft.BackgroundColor3 = tint:Lerp(BLACK, 0.72); ileft.BorderSizePixel = 0; ileft.Parent = invDetail
+	corner(ileft, 8); ledge(ileft, TBLACK, 2.5); cardShade(ileft, 0.3)
+
+	local wellVp = makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
 	if wellVp then
-		wellVp.Size = UDim2.fromScale(1, 1); wellVp.Parent = well
+		wellVp.Position = UDim2.fromOffset(14, 44); wellVp.Size = UDim2.new(1, -28, 1, -134); wellVp.Parent = ileft
 	elseif typeof(entry.image) == "string" and entry.image ~= "" then
 		local img = Instance.new("ImageLabel")
-		img.BackgroundTransparency = 1; img.Size = UDim2.fromScale(1, 1)
-		img.Image = entry.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = well
+		img.Position = UDim2.fromOffset(14, 44); img.Size = UDim2.new(1, -28, 1, -134)
+		img.BackgroundTransparency = 1; img.Image = entry.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = ileft
 	else
 		local plate = Instance.new("TextLabel")
-		plate.Size = UDim2.fromScale(1, 1); plate.BackgroundTransparency = 1
-		plate.FontFace = TITLE_FACE; plate.TextSize = 24; plate.TextColor3 = wellCol
-		plate.Text = (kind == "potion") and "POTION" or "?"; plate.Parent = well
+		plate.Position = UDim2.fromOffset(14, 44); plate.Size = UDim2.new(1, -28, 1, -134)
+		plate.BackgroundTransparency = 1; plate.FontFace = TITLE_FACE; plate.TextSize = 26
+		plate.TextColor3 = tint; plate.Text = "NO MODEL YET"; plate.Parent = ileft
 	end
 
-	-- Centered info column under the well (same rhythm as the shop's featured pane).
-	local function centered(y, h, face, size, colr)
-		local l = Instance.new("TextLabel")
-		l.Position = UDim2.fromOffset(14, y); l.Size = UDim2.new(1, -28, 0, h); l.BackgroundTransparency = 1
-		l.FontFace = face; l.TextSize = size; l.TextWrapped = true; l.TextColor3 = colr; l.Parent = invDetail
-		return l
+	local rar = Instance.new("TextLabel")
+	rar.AnchorPoint = Vector2.new(0.5, 1); rar.Position = UDim2.new(0.5, 0, 1, -62)
+	rar.Size = UDim2.new(1, -20, 0, 20); rar.BackgroundTransparency = 1
+	rar.FontFace = BODYB_FACE; rar.TextSize = 13; rar.TextColor3 = tint:Lerp(Color3.new(1, 1, 1), 0.35)
+	if kind == "weapon" then
+		rar.Text = (((invData.catalog.rarities[entry.rarity] or {}).name or ""):upper())
+			.. " · " .. ((entry.slot == "secondary") and "SECONDARY" or "PRIMARY")
+	else
+		rar.Text = ("YOU HAVE ×%d"):format(invData.cases[id] or 0)
 	end
+	rar.Parent = ileft
 
-	local nm = centered(170, 26, TITLE_FACE, 20, wellCol)
-	nm.TextXAlignment = Enum.TextXAlignment.Left
+	local back = bigButton(ileft, "← BACK", GHOSTA, GHOSTB, TEXTCOL)
+	back.Position = UDim2.fromOffset(10, 10); back.Size = UDim2.fromOffset(96, 34); back.TextSize = 14
+	back.Activated:Connect(function()
+		lplay("Close")
+		selectedInv = nil
+		renderActive()
+	end)
+
+	-- ◀ ▶ flip through the SAME list the grid shows (renderActive stashes it on the snapshot).
+	local entries = (invData and invData._entries) or {}
+	local function arrow(sym, xOff, dir)
+		local a = bigButton(ileft, sym, GHOSTA, GHOSTB, TEXTCOL)
+		a.AnchorPoint = Vector2.new(0.5, 1); a.Position = UDim2.new(0.5, xOff, 1, -12)
+		a.Size = UDim2.fromOffset(46, 34); a.TextSize = 15
+		a.Activated:Connect(function()
+			if #entries == 0 then
+				return
+			end
+			local idx
+			for i, e in entries do
+				if e.kind == kind and e.id == id then
+					idx = i
+					break
+				end
+			end
+			idx = ((idx or 1) - 1 + dir) % #entries + 1
+			lplay("Click")
+			selectedInv = { kind = entries[idx].kind, id = entries[idx].id }
+			renderActive()
+		end)
+		return a
+	end
+	arrow("◀", -30, -1)
+	arrow("▶", 30, 1)
+
+	-- RIGHT: everything about the item.
+	local nm = Instance.new("TextLabel")
+	nm.Position = UDim2.fromOffset(RIGHT_X, 2); nm.Size = UDim2.fromOffset(RIGHT_W, 32)
+	nm.BackgroundTransparency = 1; nm.FontFace = TITLE_FACE; nm.TextSize = 24
+	nm.TextXAlignment = Enum.TextXAlignment.Left; nm.TextColor3 = tint
+	nm.Text = entry.name; nm.Parent = invDetail
 	local nmStroke = Instance.new("UIStroke")
-	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.5; nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; nmStroke.Parent = nm
+	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.6
+	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; nmStroke.Parent = nm
 
 	if kind == "weapon" then
 		local w = entry
-		nm.Text = w.name
-		-- STATE CHIP right after the name (EQUIPPED / OWNED / NEXT UP / LOCKED), like the mockup.
+		-- STATE CHIP after the name.
 		do
 			local owned = ownsGun(id)
 			local isEq = invData.loadout[1] == id or invData.loadout[2] == id
 			local nextUnlockId
-			do -- first un-owned gun in ladder order = NEXT UP
+			do
 				local ladder = {}
 				for gid in invData.catalog.weapons do
 					table.insert(ladder, gid)
@@ -1221,19 +1262,19 @@ local function renderInvDetail()
 				chipText, chipCol = "LOCKED", DIMTEXT
 			end
 			local chip = Instance.new("TextLabel")
-			chip.Size = UDim2.fromOffset(math.max(58, #chipText * 8 + 18), 20)
+			chip.Size = UDim2.fromOffset(math.max(60, #chipText * 8 + 20), 20)
 			chip.BackgroundColor3 = darker(chipCol, 0.72); chip.BorderSizePixel = 0
 			chip.FontFace = BODYB_FACE; chip.TextSize = 11; chip.TextColor3 = chipCol
-			chip.Text = chipText; chip.ZIndex = 2; chip.Parent = invDetail
+			chip.Text = chipText; chip.Parent = invDetail
 			corner(chip, 8); ledge(chip, TBLACK, 2)
-			chip.Position = UDim2.fromOffset(210, 173)
-			task.defer(function() -- hug the name's right edge once TextBounds is real
+			chip.Position = UDim2.fromOffset(RIGHT_X + 220, 8)
+			task.defer(function()
 				if chip.Parent then
-					chip.Position = UDim2.fromOffset(16 + math.min(nm.TextBounds.X, 250) + 10, 173)
+					chip.Position = UDim2.fromOffset(RIGHT_X + math.min(nm.TextBounds.X, RIGHT_W - 90) + 12, 8)
 				end
 			end)
 		end
-		-- STAT BARS — DAMAGE / FIRE RATE / RANGE / KNOCKBACK, normalized against the best gun.
+		-- STAT BARS — DAMAGE / FIRE RATE / RANGE / KNOCKBACK.
 		do
 			local maxD, maxR, maxRng, maxK = 1, 1, 1, 1
 			for _, ww in invData.catalog.weapons do
@@ -1246,38 +1287,41 @@ local function renderInvDetail()
 				{ "DAMAGE", (w.damage or 0) * (w.pellets or 1), maxD },
 				{ "FIRE RATE", w.fireRate or 0, maxR },
 				{ "RANGE", w.range or 0, maxRng },
-				{ "KNOCKBACK", w.knockback or 0, maxK, GOLD }, -- gold bar, like the mockup
+				{ "KNOCKBACK", w.knockback or 0, maxK, GOLD },
 			}
 			for ri, r in rows do
-				local y = 210 + (ri - 1) * 24
+				local y = 56 + (ri - 1) * 27
 				local lab = Instance.new("TextLabel")
-				lab.Position = UDim2.fromOffset(14, y); lab.Size = UDim2.fromOffset(88, 14)
-				lab.BackgroundTransparency = 1; lab.FontFace = BODYB_FACE; lab.TextSize = 12
+				lab.Position = UDim2.fromOffset(RIGHT_X, y); lab.Size = UDim2.fromOffset(92, 15)
+				lab.BackgroundTransparency = 1; lab.FontFace = BODYB_FACE; lab.TextSize = 13
 				lab.TextXAlignment = Enum.TextXAlignment.Left; lab.TextColor3 = DIMTEXT
 				lab.Text = r[1]; lab.Parent = invDetail
 				local trk = Instance.new("Frame")
-				trk.Position = UDim2.fromOffset(108, y + 2); trk.Size = UDim2.new(1, -168, 0, 10)
+				trk.Position = UDim2.fromOffset(RIGHT_X + 100, y + 2)
+				trk.Size = UDim2.fromOffset(RIGHT_W - 100 - 56, 11)
 				trk.BackgroundColor3 = darker(TRACK, 0.25); trk.BorderSizePixel = 0; trk.Parent = invDetail
-				corner(trk, 2); ledge(trk, TBLACK, 1.6)
+				corner(trk, 2); ledge(trk, TBLACK, 1.8)
 				local fil = Instance.new("Frame")
 				fil.Size = UDim2.fromScale(math.clamp(r[2] / r[3], 0.03, 1), 1)
 				fil.BackgroundColor3 = r[4] or ACCENT; fil.BorderSizePixel = 0; fil.Parent = trk
 				corner(fil, 2)
 				local num = Instance.new("TextLabel")
-				num.AnchorPoint = Vector2.new(1, 0); num.Position = UDim2.new(1, -14, 0, y)
-				num.Size = UDim2.fromOffset(46, 14); num.BackgroundTransparency = 1
-				num.FontFace = BODYB_FACE; num.TextSize = 12; num.TextXAlignment = Enum.TextXAlignment.Right
+				num.AnchorPoint = Vector2.new(1, 0); num.Position = UDim2.fromOffset(RIGHT_X + RIGHT_W, y)
+				num.Size = UDim2.fromOffset(50, 15); num.BackgroundTransparency = 1
+				num.FontFace = BODYB_FACE; num.TextSize = 13; num.TextXAlignment = Enum.TextXAlignment.Right
 				num.TextColor3 = TEXTCOL; num.Text = tostring(math.floor(r[2] * 10 + 0.5) / 10); num.Parent = invDetail
 			end
 		end
 		if ownsGun(id) then
-			-- SKINS — click to equip (the gun's swatches live right on the sheet, like the mockup).
+			-- SKINS — click to equip.
 			if invData.catalog.skins then
-				local cap = centered(312, 14, BODYB_FACE, 11, DIMTEXT)
-				cap.TextXAlignment = Enum.TextXAlignment.Left
-				cap.Text = "SKINS — CLICK TO EQUIP"
+				local cap = Instance.new("TextLabel")
+				cap.Position = UDim2.fromOffset(RIGHT_X, 178); cap.Size = UDim2.fromOffset(RIGHT_W, 14)
+				cap.BackgroundTransparency = 1; cap.FontFace = BODYB_FACE; cap.TextSize = 11
+				cap.TextXAlignment = Enum.TextXAlignment.Left; cap.TextColor3 = DIMTEXT
+				cap.Text = "SKINS — CLICK TO EQUIP"; cap.Parent = invDetail
 				local strip = Instance.new("Frame")
-				strip.Position = UDim2.fromOffset(14, 332); strip.Size = UDim2.new(1, -28, 0, 50)
+				strip.Position = UDim2.fromOffset(RIGHT_X, 198); strip.Size = UDim2.fromOffset(RIGHT_W, 54)
 				strip.BackgroundTransparency = 1; strip.Parent = invDetail
 				local slay = Instance.new("UIListLayout")
 				slay.FillDirection = Enum.FillDirection.Horizontal; slay.Padding = UDim.new(0, 8); slay.Parent = strip
@@ -1293,7 +1337,7 @@ local function renderInvDetail()
 					local sOwned = ownsSkin(sid)
 					local isOn = sOwned and invData.skins.equipped and invData.skins.equipped[id] == sk.skin
 					local sw = Instance.new("TextButton")
-					sw.Size = UDim2.fromOffset(48, 48); sw.Text = ""
+					sw.Size = UDim2.fromOffset(52, 52); sw.Text = ""
 					sw.BackgroundColor3 = rarityColor(sk.rarity):Lerp(BLACK, sOwned and 0.55 or 0.82)
 					sw.BorderSizePixel = 0; sw.AutoButtonColor = sOwned; sw.Parent = strip
 					corner(sw, 5); ledge(sw, isOn and ACCENT or TBLACK, isOn and 2.5 or 2)
@@ -1301,11 +1345,11 @@ local function renderInvDetail()
 					if svp then
 						svp.Size = UDim2.new(1, 0, 1, -6)
 						if not sOwned then
-							svp.ImageColor3 = Color3.fromRGB(70, 70, 70) -- locked = greyed out
+							svp.ImageColor3 = Color3.fromRGB(70, 70, 70)
 						end
 						svp.Parent = sw
 					end
-					local rbar = Instance.new("Frame") -- rarity underline, like the mockup
+					local rbar = Instance.new("Frame")
 					rbar.AnchorPoint = Vector2.new(0, 1); rbar.Position = UDim2.new(0, 4, 1, -3)
 					rbar.Size = UDim2.new(1, -8, 0, 4); rbar.BackgroundColor3 = rarityColor(sk.rarity)
 					rbar.BorderSizePixel = 0; rbar.ZIndex = 3; rbar.Parent = sw
@@ -1318,7 +1362,7 @@ local function renderInvDetail()
 					end
 				end
 			end
-			-- EQUIP / UNEQUIP pinned to the sheet's foot. Each gun has a fixed slot (primary/secondary).
+			-- EQUIP / UNEQUIP — the page's big CTA.
 			local slIdx = (w.slot == "secondary") and 2 or 1
 			local equipped = (invData.loadout[slIdx] == id)
 			local eqBtn = bigButton(invDetail,
@@ -1326,89 +1370,47 @@ local function renderInvDetail()
 				equipped and ORANGE or ACCENT,
 				equipped and darker(ORANGE, 0.4) or darker(ACCENT, 0.5),
 				Color3.new(1, 1, 1))
-			eqBtn.Position = UDim2.new(0, 14, 1, -66); eqBtn.Size = UDim2.new(1, -28, 0, 52)
+			eqBtn.Position = UDim2.fromOffset(RIGHT_X, H - 62); eqBtn.Size = UDim2.fromOffset(RIGHT_W, 54)
 			eqBtn.Activated:Connect(function()
 				lplay("Equip")
 				EquipSlot:FireServer({ slot = slIdx, weaponId = equipped and false or id })
 			end)
 		else
-			-- XP-ONLY unlocks (a crate pull can hand it over early — the card shows the crate mark).
 			local reqLevel = tonumber(w.unlock) or 0
-			local lockLbl = centered(322, 22, BODYB_FACE, 17, DIMTEXT)
-			lockLbl.Text = "🔒 UNLOCKS AT LEVEL " .. reqLevel
+			local lockLbl = Instance.new("TextLabel")
+			lockLbl.Position = UDim2.fromOffset(RIGHT_X, 190); lockLbl.Size = UDim2.fromOffset(RIGHT_W, 22)
+			lockLbl.BackgroundTransparency = 1; lockLbl.FontFace = BODYB_FACE; lockLbl.TextSize = 17
+			lockLbl.TextXAlignment = Enum.TextXAlignment.Left; lockLbl.TextColor3 = DIMTEXT
+			lockLbl.Text = "🔒 UNLOCKS AT LEVEL " .. reqLevel; lockLbl.Parent = invDetail
 			local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), GHOSTA, GHOSTB, DIMTEXT)
 			note.AutoButtonColor = false
-			note.Position = UDim2.new(0, 14, 1, -66); note.Size = UDim2.new(1, -28, 0, 52)
-		end
-	elseif kind == "skin" then
-		local s = entry
-		nm.Text = s.name
-		local rar = centered(202, 20, BODYB_FACE, 15, wellCol)
-		rar.TextXAlignment = Enum.TextXAlignment.Left
-		rar.Text = ((invData.catalog.rarities[s.rarity] or {}).name or "") .. " SKIN"
-		local forGun = centered(228, 20, BODY_FACE, 14, TEXTCOL)
-		forGun.TextXAlignment = Enum.TextXAlignment.Left
-		local gw = weaponInfo(s.gun)
-		forGun.Text = "For: " .. (gw and gw.name or s.gun)
-		local owned = ownsSkin(id)
-		local status = centered(256, 20, BODYB_FACE, 13, owned and ACCENT or DIMTEXT)
-		status.TextXAlignment = Enum.TextXAlignment.Left
-		local isOn = owned and invData.skins.equipped and invData.skins.equipped[s.gun] == s.skin
-		status.Text = isOn and "EQUIPPED" or (owned and "OWNED" or "LOCKED — pull it from a skin crate")
-
-		if owned and ownsGun(s.gun) then
-			local btn
-			if isOn then
-				btn = paneButton("REMOVE SKIN", GHOSTA, GHOSTB, TEXTCOL)
-				btn.Activated:Connect(function()
-					lplay("Equip")
-					EquipSkin:FireServer({ weaponId = s.gun, skinId = false })
-				end)
-			else
-				btn = paneButton("EQUIP SKIN", ACCENT, darker(ACCENT, 0.5), Color3.new(1, 1, 1))
-				btn.Activated:Connect(function()
-					lplay("Equip")
-					EquipSkin:FireServer({ weaponId = s.gun, skinId = s.skin })
-				end)
-			end
-			btn.Position = UDim2.new(0, 14, 1, -66); btn.Size = UDim2.new(1, -28, 0, 52)
-		elseif owned then
-			local note = paneButton("UNLOCK THE GUN FIRST", GHOSTA, GHOSTB, DIMTEXT)
-			note.AutoButtonColor = false
-			note.Position = UDim2.new(0, 14, 1, -66); note.Size = UDim2.new(1, -28, 0, 52)
-		else
-			local note = paneButton("FIND IT IN CRATES", GHOSTA, GHOSTB, DIMTEXT)
-			note.AutoButtonColor = false
-			note.Position = UDim2.new(0, 14, 1, -66); note.Size = UDim2.new(1, -28, 0, 52)
+			note.Position = UDim2.fromOffset(RIGHT_X, H - 62); note.Size = UDim2.fromOffset(RIGHT_W, 54)
 		end
 	elseif kind == "case" then
-		nm.Text = entry.name
 		local count = invData.cases[id] or 0
-		local have = centered(202, 20, BODYB_FACE, 15, TEXTCOL)
-		have.TextXAlignment = Enum.TextXAlignment.Left
-		have.Text = ("YOU HAVE ×%d"):format(count)
-		local oddsHead = centered(230, 16, BODYB_FACE, 12, DIMTEXT)
-		oddsHead.TextXAlignment = Enum.TextXAlignment.Left
-		oddsHead.Text = "WHAT'S INSIDE"
-		-- Scrolling loot list: skin-rarity rows + a GOLD row per weapon + the duplicate rule.
+		local oddsHead = Instance.new("TextLabel")
+		oddsHead.Position = UDim2.fromOffset(RIGHT_X, 44); oddsHead.Size = UDim2.fromOffset(RIGHT_W, 16)
+		oddsHead.BackgroundTransparency = 1; oddsHead.FontFace = BODYB_FACE; oddsHead.TextSize = 12
+		oddsHead.TextXAlignment = Enum.TextXAlignment.Left; oddsHead.TextColor3 = DIMTEXT
+		oddsHead.Text = "WHAT'S INSIDE"; oddsHead.Parent = invDetail
 		local list = Instance.new("ScrollingFrame")
-		list.Position = UDim2.fromOffset(14, 250); list.Size = UDim2.new(1, -28, 0, 96) -- stops above OPEN 1
+		list.Position = UDim2.fromOffset(RIGHT_X, 66); list.Size = UDim2.fromOffset(RIGHT_W, H - 66 - 132)
 		list.BackgroundTransparency = 1; list.BorderSizePixel = 0; list.ScrollBarThickness = 4
 		list.CanvasSize = UDim2.new(); list.AutomaticCanvasSize = Enum.AutomaticSize.Y; list.Parent = invDetail
 		local ll = Instance.new("UIListLayout")
-		ll.Padding = UDim.new(0, 4); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.Parent = list
+		ll.Padding = UDim.new(0, 5); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.Parent = list
 		local function lootRow(order, leftText, leftCol, rightText)
 			local row = Instance.new("Frame")
-			row.Size = UDim2.new(1, -6, 0, 20); row.BackgroundColor3 = darker(PANEL2, 0.35)
+			row.Size = UDim2.new(1, -6, 0, 22); row.BackgroundColor3 = darker(PANEL2, 0.35)
 			row.BorderSizePixel = 0; row.LayoutOrder = order; row.Parent = list
 			corner(row, 4); ledge(row, TBLACK, 1.5)
 			local lt = Instance.new("TextLabel")
-			lt.Position = UDim2.fromOffset(8, 0); lt.Size = UDim2.new(1, -70, 1, 0); lt.BackgroundTransparency = 1
-			lt.FontFace = BODYB_FACE; lt.TextSize = 12; lt.TextXAlignment = Enum.TextXAlignment.Left
+			lt.Position = UDim2.fromOffset(9, 0); lt.Size = UDim2.new(1, -74, 1, 0); lt.BackgroundTransparency = 1
+			lt.FontFace = BODYB_FACE; lt.TextSize = 13; lt.TextXAlignment = Enum.TextXAlignment.Left
 			lt.TextTruncate = Enum.TextTruncate.AtEnd; lt.TextColor3 = leftCol; lt.Text = leftText; lt.Parent = row
 			local rt = Instance.new("TextLabel")
-			rt.AnchorPoint = Vector2.new(1, 0); rt.Position = UDim2.new(1, -8, 0, 0); rt.Size = UDim2.fromOffset(56, 20)
-			rt.BackgroundTransparency = 1; rt.FontFace = BODYB_FACE; rt.TextSize = 12
+			rt.AnchorPoint = Vector2.new(1, 0); rt.Position = UDim2.new(1, -9, 0, 0); rt.Size = UDim2.fromOffset(58, 22)
+			rt.BackgroundTransparency = 1; rt.FontFace = BODYB_FACE; rt.TextSize = 13
 			rt.TextXAlignment = Enum.TextXAlignment.Right; rt.TextColor3 = DIMTEXT; rt.Text = rightText; rt.Parent = row
 		end
 		local order = 0
@@ -1426,7 +1428,7 @@ local function renderInvDetail()
 
 		if count > 0 then
 			local open1 = paneButton("OPEN 1", GOLD, darker(GOLD, 0.45), Color3.new(1, 1, 1))
-			open1.Position = UDim2.new(0, 14, 1, -124); open1.Size = UDim2.new(1, -28, 0, 52)
+			open1.Position = UDim2.fromOffset(RIGHT_X, H - 124); open1.Size = UDim2.fromOffset(RIGHT_W, 54)
 			open1.Activated:Connect(function()
 				if rolling then return end
 				rolling = true
@@ -1436,12 +1438,12 @@ local function renderInvDetail()
 			end)
 			if count > 1 then
 				local openAll = paneButton(("OPEN ALL (%d)"):format(count), GHOSTA, GHOSTB, TEXTCOL)
-				openAll.Position = UDim2.new(0, 14, 1, -64); openAll.Size = UDim2.new(1, -28, 0, 48)
+				openAll.Position = UDim2.fromOffset(RIGHT_X, H - 60); openAll.Size = UDim2.fromOffset(RIGHT_W, 50)
 				openAll.Activated:Connect(function()
 					if rolling then return end
 					rolling = true
 					invPanel:SetAttribute("QueueCase", id)
-					invPanel:SetAttribute("OpenQueue", count - 1) -- the reel chains the rest on CONTINUE
+					invPanel:SetAttribute("OpenQueue", count - 1)
 					armRollTimeout()
 					OpenCase:FireServer({ caseId = id })
 				end)
@@ -1449,7 +1451,7 @@ local function renderInvDetail()
 		else
 			local open = paneButton("NONE LEFT", GHOSTA, GHOSTB, DIMTEXT)
 			open.AutoButtonColor = false
-			open.Position = UDim2.new(0, 14, 1, -64); open.Size = UDim2.new(1, -28, 0, 52)
+			open.Position = UDim2.fromOffset(RIGHT_X, H - 60); open.Size = UDim2.fromOffset(RIGHT_W, 54)
 		end
 	end
 end
@@ -1555,7 +1557,7 @@ local function showTab(id)
 	activeTab = id
 	selectedInv = nil -- switching screens resets the featured pane
 	invTitle.Text = (id == "weapons") and "WEAPONS" or "INVENTORY"
-	invDetail.Visible = false -- the sheet re-reveals for the new screen
+	invDetail.Visible = false; invGrid.Visible = true; invHint.Visible = true -- back to GRID mode
 	local hc = (id == "weapons") and HEADER_COLORS.guns or Color3.fromRGB(18, 69, 90) -- mockup: blue INVENTORY header
 	invHeaderBar.BackgroundColor3 = hc
 	invHeaderSq.BackgroundColor3 = hc
@@ -1565,8 +1567,6 @@ end
 renderActive = function()
 	invCoins.Text = "🪙 " .. fmt(invData and invData.coins or 0)
 	if not invData then return end
-	-- The sheet defaults to the screen's first item whenever nothing valid is selected. Two passes
-	-- because selection paints the card outline. Grids return mixed {kind, id} entries now.
 	local function paintGrid()
 		clearChildren(invGrid)
 		if activeTab == "weapons" then return renderWeaponsGrid()
@@ -1577,22 +1577,26 @@ renderActive = function()
 		warn("[LobbyInv] grid render failed: " .. tostring(entries))
 		entries = {}
 	end
-	local valid = false
+	invData._entries = entries -- the inspect page's ◀ ▶ arrows flip through exactly what the grid shows
+	-- Drop a selection that no longer exists. NO auto-select: the panel's default view is the GRID.
 	if selectedInv then
+		local valid = false
 		for _, e in entries do
 			if e.kind == selectedInv.kind and e.id == selectedInv.id then
 				valid = true
 				break
 			end
 		end
-	end
-	if not valid then
-		selectedInv = entries[1] and { kind = entries[1].kind, id = entries[1].id } or nil
-		pcall(paintGrid)
+		if not valid then
+			selectedInv = nil
+		end
 	end
 	local okD, errD = pcall(renderInvDetail)
 	if not okD then
-		warn("[LobbyInv] info sheet render failed: " .. tostring(errD))
+		warn("[LobbyInv] inspect render failed: " .. tostring(errD))
+		invDetail.Visible = false -- fail SAFE: never strand the panel in a half-built inspect view
+		invGrid.Visible = true
+		invHint.Visible = true
 	end
 end
 
@@ -1826,6 +1830,7 @@ CaseResult.OnClientEvent:Connect(function(res)
 	end
 	if invPanel.Visible then
 		showTab("cases") -- make sure we're on the cases view behind the reel
+		selectedInv = { kind = "case", id = res.caseId } -- CONTINUE lands back on this crate's page
 	end
 	playReel(res.caseId, res.wonId, res)
 end)
