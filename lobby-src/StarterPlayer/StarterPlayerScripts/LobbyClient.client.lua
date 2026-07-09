@@ -132,47 +132,77 @@ end
 -- The classic cartoon bottom bevel: a hard-stop WHITE->dark gradient multiplies whatever the
 -- background color is, so it works on recolored (selected) buttons too.
 local function lbevel(o)
-	-- 3D BUTTON TREATMENT (approved mockup): smooth two-tone fade + darker bottom LIP the button
-	-- presses down onto + top sheen. Replaced the hard-stop bevel that read as a glitch line.
+	-- 3D BUTTON (mockup-accurate): gradients only MULTIPLY, so the base goes WHITE and the gradient
+	-- carries ABSOLUTE colors — bright flash at the top, lighter-than-nominal body, darker foot. The
+	-- LIP is a SIBLING SLAB behind the button (same size/corners, +5px down) the button presses onto.
+	local white = Color3.new(1, 1, 1)
 	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.66, 0.66, 0.66))
 	g.Rotation = 90
 	g.Parent = o
 	local lip = Instance.new("Frame")
-	lip.Name = "Lip"
-	lip.AnchorPoint = Vector2.new(0.5, 0)
-	lip.Position = UDim2.new(0.5, 0, 1, -4)
-	lip.Size = UDim2.new(1, 0, 0, 9) -- 4px overlap + 5px below
-	lip.BackgroundColor3 = darker(o.BackgroundColor3, 0.55) -- SOLID darker shade of THIS button's fill
-	lip.BackgroundTransparency = 0
+	lip.Name = "ButtonLip"
 	lip.BorderSizePixel = 0
-	lip.Parent = o
+	lip.ZIndex = (o.ZIndex or 1) - 1
+	local hostCorner = o:FindFirstChildOfClass("UICorner")
 	local lipCorner = Instance.new("UICorner")
-	lipCorner.CornerRadius = UDim.new(0, 5)
+	lipCorner.CornerRadius = hostCorner and hostCorner.CornerRadius or UDim.new(0, 10)
 	lipCorner.Parent = lip
-	local sheen = Instance.new("Frame")
-	sheen.Name = "Sheen"
-	sheen.Position = UDim2.new(0, 6, 0, 3)
-	sheen.Size = UDim2.new(1, -12, 0, 3)
-	sheen.BackgroundColor3 = Color3.new(1, 1, 1)
-	sheen.BackgroundTransparency = 0.65
-	sheen.BorderSizePixel = 0
-	sheen.Parent = o
-	local sheenCorner = Instance.new("UICorner")
-	sheenCorner.CornerRadius = UDim.new(1, 0)
-	sheenCorner.Parent = sheen
+	ledge(lip, TBLACK, 2.5)
+	lip.Parent = o.Parent
+	local function applyFill()
+		local base = o.BackgroundColor3
+		if base == white then
+			return -- our own write, or already converted
+		end
+		o.BackgroundColor3 = white
+		g.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.65)),
+			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.35)),
+			ColorSequenceKeypoint.new(1, darker(base, 0.15)),
+		})
+		lip.BackgroundColor3 = darker(base, 0.5)
+	end
+	applyFill()
+	o:GetPropertyChangedSignal("BackgroundColor3"):Connect(applyFill) -- selection recolors re-derive everything
+	local pressed = false
+	local function syncLip()
+		lip.AnchorPoint = o.AnchorPoint
+		lip.Position = o.Position + UDim2.fromOffset(0, pressed and 1 or 5)
+		lip.Size = o.Size
+		lip.Visible = o.Visible
+		lip.ZIndex = (o.ZIndex or 1) - 1
+	end
+	syncLip()
+	o:GetPropertyChangedSignal("Position"):Connect(syncLip)
+	o:GetPropertyChangedSignal("Size"):Connect(syncLip)
+	o:GetPropertyChangedSignal("Visible"):Connect(syncLip)
+	o:GetPropertyChangedSignal("Parent"):Connect(function()
+		if o.Parent then
+			lip.Parent = o.Parent
+			syncLip()
+		end
+	end)
+	o.Destroying:Connect(function()
+		lip:Destroy()
+	end)
 	if o:IsA("GuiButton") then
 		local base
 		o.MouseButton1Down:Connect(function()
+			if pressed then
+				return
+			end
+			pressed = true
 			base = o.Position
 			o.Position = base + UDim2.fromOffset(0, 4)
-			lip.Visible = false
 		end)
 		local function up()
-			if base then
-				o.Position = base
+			if pressed then
+				pressed = false
+				if base then
+					o.Position = base
+				end
+				syncLip()
 			end
-			lip.Visible = true
 		end
 		o.MouseButton1Up:Connect(up)
 		o.MouseLeave:Connect(up)

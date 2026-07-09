@@ -478,55 +478,85 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	b.TextColor3 = fill[3]
 	b.Text = string.upper(textStr)
 	b.Parent = parent
-	UITheme.Corner(b, 9)
-	UITheme.Edge(b, UITheme.BLACK, 2.5)
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, 10) -- raw 10px (the theme curve made buttons bulbous)
+	bc.Parent = b
+	UITheme.Edge(b, UITheme.BLACK, 3)
 	local ts = Instance.new("UIStroke") -- chunky text: solid black outline on the label itself
 	ts.Color = UITheme.BLACK
 	ts.Thickness = 2.5
 	ts.Transparency = 0
 	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	ts.Parent = b
-	-- 3D BUTTON RECIPE: smooth two-tone fade (no more hard-stop "glitch line") + a darker bottom LIP
-	-- the button physically presses down onto + a top sheen.
+	-- ONE continuous fill, sheen baked in: gradients only MULTIPLY (can never brighten the base color),
+	-- so the base goes WHITE and the gradient carries ABSOLUTE colors — bright flash at the very top,
+	-- lighter-than-nominal upper body, darker foot. No stacked bars.
+	local white = Color3.new(1, 1, 1)
+	local base = fill[1]
+	b.BackgroundColor3 = white
 	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(fill[1], fill[2])
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, base:Lerp(white, 0.65)),
+		ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.35)),
+		ColorSequenceKeypoint.new(1, UITheme.Darker(base, 0.15)),
+	})
 	g.Rotation = 90
 	g.Parent = b
+	-- The LIP is a SIBLING SLAB behind the button — same size + corners, shifted 5px down — so the
+	-- button visibly sits ON it (the old child-strip covered the fill and read as a color band).
 	local lip = Instance.new("Frame")
-	lip.Name = "Lip"
-	lip.AnchorPoint = Vector2.new(0.5, 0)
-	lip.Position = UDim2.new(0.5, 0, 1, -4)
-	lip.Size = UDim2.new(1, 0, 0, 9) -- overlaps the bottom 4px + extends 5px below = the lip
-	lip.BackgroundColor3 = UITheme.Darker(fill[2], 0.5)
+	lip.Name = "ButtonLip"
+	lip.BackgroundColor3 = UITheme.Darker(fill[2], 0.35)
 	lip.BorderSizePixel = 0
-	lip.Parent = b
-	UITheme.Corner(lip, 3)
-	local sheen = Instance.new("Frame")
-	sheen.Name = "Sheen"
-	sheen.Position = UDim2.new(0, 6, 0, 3)
-	sheen.Size = UDim2.new(1, -12, 0, 3)
-	sheen.BackgroundColor3 = Color3.new(1, 1, 1)
-	sheen.BackgroundTransparency = 0.65
-	sheen.BorderSizePixel = 0
-	sheen.Parent = b
-	local shc = Instance.new("UICorner")
-	shc.CornerRadius = UDim.new(1, 0)
-	shc.Parent = sheen
+	lip.ZIndex = (b.ZIndex or 1) - 1
+	local lipCorner = Instance.new("UICorner")
+	lipCorner.CornerRadius = UDim.new(0, 10)
+	lipCorner.Parent = lip
+	UITheme.Edge(lip, UITheme.BLACK, 3)
+	lip.Parent = b.Parent
+	local pressed = false
+	local function syncLip()
+		lip.AnchorPoint = b.AnchorPoint
+		lip.Position = b.Position + UDim2.fromOffset(0, pressed and 1 or 5)
+		lip.Size = b.Size
+		lip.Visible = b.Visible
+		lip.ZIndex = (b.ZIndex or 1) - 1
+	end
+	syncLip()
+	b:GetPropertyChangedSignal("Position"):Connect(syncLip)
+	b:GetPropertyChangedSignal("Size"):Connect(syncLip)
+	b:GetPropertyChangedSignal("Visible"):Connect(syncLip)
+	b:GetPropertyChangedSignal("ZIndex"):Connect(syncLip)
+	b:GetPropertyChangedSignal("Parent"):Connect(function()
+		if b.Parent then
+			lip.Parent = b.Parent
+			syncLip()
+		end
+	end)
+	b.Destroying:Connect(function()
+		lip:Destroy()
+	end)
 	if variant == "ghost" then
 		UITheme.Edge(b, UITheme.LINE, 1, 0.5)
 	end
-	-- Press = push DOWN onto the lip (not a shrink).
+	-- Press = the button slides DOWN onto its slab.
 	local basePos
 	b.MouseButton1Down:Connect(function()
+		if pressed then
+			return
+		end
+		pressed = true
 		basePos = b.Position
 		b.Position = basePos + UDim2.fromOffset(0, 4)
-		lip.Visible = false
 	end)
 	local function up()
-		if basePos then
-			b.Position = basePos
+		if pressed then
+			pressed = false
+			if basePos then
+				b.Position = basePos
+			end
+			syncLip()
 		end
-		lip.Visible = true
 	end
 	b.MouseButton1Up:Connect(up)
 	b.MouseLeave:Connect(up)
