@@ -1024,7 +1024,7 @@ invGrid.Position = UDim2.fromOffset(16, CONTENT_Y); invGrid.Size = UDim2.fromOff
 invGrid.BackgroundTransparency = 1; invGrid.BorderSizePixel = 0; invGrid.ScrollBarThickness = 6
 invGrid.CanvasSize = UDim2.new(); invGrid.AutomaticCanvasSize = Enum.AutomaticSize.Y; invGrid.Parent = invPanel
 local invGridLayout = Instance.new("UIGridLayout")
-invGridLayout.CellSize = UDim2.fromOffset(138, 138); invGridLayout.CellPadding = UDim2.fromOffset(11, 11); invGridLayout.Parent = invGrid
+invGridLayout.CellSize = UDim2.fromOffset(138, 164); invGridLayout.CellPadding = UDim2.fromOffset(11, 11); invGridLayout.Parent = invGrid -- trophy-shelf cards are taller than wide
 
 local invHint = Instance.new("TextLabel") -- "CLICK A GUN TO INSPECT IT" strip under the grid
 invHint.AnchorPoint = Vector2.new(0, 1); invHint.Position = UDim2.new(0, 16, 1, -12)
@@ -1060,30 +1060,76 @@ local function clearChildren(container)
 	end
 end
 
--- Compact square card in the grid.
+-- TROPHY SHELF card (the approved pick): dark card, the item on a glowing pedestal in its rarity
+-- color, name on a black strip in that color. Locked = black silhouette on a dead, glowless shelf.
 local function invCard(opts)
 	local col = opts.color
 	local isSel = selectedInv and selectedInv.kind == opts.kind and selectedInv.id == opts.id
+	local STRIP_H = 26
+
 	local f = Instance.new("TextButton")
-	f.BackgroundColor3 = col:Lerp(BLACK, opts.locked and 0.82 or 0.62); f.AutoButtonColor = true; f.Text = ""
-	cardShade(f)
-	f.BorderSizePixel = 0; f.LayoutOrder = opts.order or 0; f.Parent = invGrid
-	corner(f, 6); ledge(f, isSel and ACCENT or (opts.nextUp and GOLD) or TBLACK, (isSel or opts.nextUp) and 3 or 2)
-	-- STATIC art fills the card (only the featured pane spins); name sits on a strip at the bottom.
+	f.BackgroundColor3 = Color3.fromRGB(32, 38, 26)
+	f.AutoButtonColor = true
+	f.Text = ""
+	f.BorderSizePixel = 0
+	f.ClipsDescendants = true -- the strip + glow stay inside the rounded card
+	f.LayoutOrder = opts.order or 0
+	f.Parent = invGrid
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(0, 12)
+	fc.Parent = f
+	ledge(f, isSel and ACCENT or (opts.nextUp and GOLD) or TBLACK, (isSel or opts.nextUp) and 3.5 or 3)
+	cardShade(f, 0.25)
+
+	-- PEDESTAL GLOW: two squashed ellipses in the rarity color (locked shelves stay dead).
+	if not opts.locked then
+		local function blob(w, h, tr)
+			local b = Instance.new("Frame")
+			b.AnchorPoint = Vector2.new(0.5, 1)
+			b.Position = UDim2.new(0.5, 0, 1, -(STRIP_H + 2))
+			b.Size = UDim2.fromOffset(w, h)
+			b.BackgroundColor3 = col
+			b.BackgroundTransparency = tr
+			b.BorderSizePixel = 0
+			b.ZIndex = 1
+			b.Parent = f
+			local bc = Instance.new("UICorner")
+			bc.CornerRadius = UDim.new(1, 0)
+			bc.Parent = b
+		end
+		blob(112, 46, 0.6)
+		blob(72, 26, 0.42)
+	end
+
+	-- PEDESTAL line the item stands on.
+	local ped = Instance.new("Frame")
+	ped.AnchorPoint = Vector2.new(0, 1)
+	ped.Position = UDim2.new(0, 0, 1, -STRIP_H)
+	ped.Size = UDim2.new(1, 0, 0, 4)
+	ped.BackgroundColor3 = col
+	ped.BackgroundTransparency = opts.locked and 0.75 or 0.05
+	ped.BorderSizePixel = 0
+	ped.ZIndex = 3
+	ped.Parent = f
+
+	-- The item, standing on the shelf (static — only the inspect page spins).
 	local showedModel = false
 	if opts.kind == "weapon" or opts.kind == "case" or opts.kind == "skin" then
 		local vp
 		if opts.kind == "skin" then
-			local s = skinInfo(opts.id)
-			vp = makeGunViewport(opts.id, false) or (s and makeGunViewport(s.gun, false)) -- skin model, else base gun
+			local sk = skinInfo(opts.id)
+			vp = makeGunViewport(opts.id, false) or (sk and makeGunViewport(sk.gun, false))
 		else
 			vp = makeGunViewport(opts.id, false, opts.kind == "case" and "CrateDisplay" or nil)
 		end
 		if vp then
-			vp.Size = UDim2.new(1, 0, 1, -26)
+			vp.AnchorPoint = Vector2.new(0.5, 0)
+			vp.Position = UDim2.new(0.5, 0, 0, 6)
+			vp.Size = UDim2.new(1, -10, 1, -(STRIP_H + 14))
+			vp.ZIndex = 2
 			if opts.locked then
-				vp.ImageColor3 = Color3.new(0, 0, 0) -- locked = black SILHOUETTE (the darkness IS the ladder)
-				vp.ImageTransparency = 0.15
+				vp.ImageColor3 = Color3.new(0, 0, 0) -- locked = black SILHOUETTE on a dead shelf
+				vp.ImageTransparency = 0.1
 			end
 			vp.Parent = f
 			showedModel = true
@@ -1091,60 +1137,129 @@ local function invCard(opts)
 	end
 	if not showedModel and typeof(opts.image) == "string" and opts.image ~= "" then
 		local img = Instance.new("ImageLabel")
-		img.Size = UDim2.new(1, 0, 1, -26); img.BackgroundTransparency = 1
-		img.Image = opts.image; img.ScaleType = Enum.ScaleType.Fit; img.Parent = f
+		img.AnchorPoint = Vector2.new(0.5, 0)
+		img.Position = UDim2.new(0.5, 0, 0, 6)
+		img.Size = UDim2.new(1, -10, 1, -(STRIP_H + 14))
+		img.BackgroundTransparency = 1
+		img.Image = opts.image
+		img.ScaleType = Enum.ScaleType.Fit
+		img.ZIndex = 2
+		img.Parent = f
 	end
-	local nmPlate = Instance.new("Frame") -- dark strip: the name reads on ANY rarity color
-	nmPlate.AnchorPoint = Vector2.new(0, 1); nmPlate.Position = UDim2.new(0, 0, 1, 0)
-	nmPlate.Size = UDim2.new(1, 0, 0, 26); nmPlate.BackgroundColor3 = TBLACK
-	nmPlate.BackgroundTransparency = 0.35; nmPlate.BorderSizePixel = 0; nmPlate.ZIndex = 2; nmPlate.Parent = f
+
+	-- NAME STRIP: black shelf front, the name in the rarity color.
+	local strip = Instance.new("Frame")
+	strip.AnchorPoint = Vector2.new(0, 1)
+	strip.Position = UDim2.new(0, 0, 1, 0)
+	strip.Size = UDim2.new(1, 0, 0, STRIP_H)
+	strip.BackgroundColor3 = Color3.fromRGB(17, 21, 13)
+	strip.BorderSizePixel = 0
+	strip.ZIndex = 3
+	strip.Parent = f
 	local nm = Instance.new("TextLabel")
-	nm.AnchorPoint = Vector2.new(0, 1); nm.Position = UDim2.new(0, 0, 1, -4); nm.Size = UDim2.new(1, 0, 0, 22)
-	nm.BackgroundTransparency = 1; nm.FontFace = BODYB_FACE; nm.TextSize = 14; nm.ZIndex = 3
+	nm.Size = UDim2.new(1, -8, 1, 0)
+	nm.Position = UDim2.fromOffset(4, 0)
+	nm.BackgroundTransparency = 1
+	nm.FontFace = BODYB_FACE
+	nm.TextSize = 13
+	nm.ZIndex = 4
 	nm.TextTruncate = Enum.TextTruncate.AtEnd
-	nm.TextColor3 = TEXTCOL; nm.Text = opts.name; nm.Parent = f
-	local nmStroke = Instance.new("UIStroke") -- keeps the name readable over the art
-	nmStroke.Color = TBLACK; nmStroke.Thickness = 1.4
-	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; nmStroke.Parent = nm
-	if opts.chip then
+	nm.TextColor3 = opts.locked and DIMTEXT or col
+	nm.Text = opts.name
+	nm.Parent = strip
+	local nmStroke = Instance.new("UIStroke")
+	nmStroke.Color = TBLACK
+	nmStroke.Thickness = 1.5
+	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	nmStroke.Parent = nm
+
+	if opts.chip then -- state chip, top-left (EQUIPPED / NEXT UP)
 		local chip = Instance.new("TextLabel")
-		chip.Position = UDim2.fromOffset(6, 6); chip.Size = UDim2.fromOffset(48, 18)
-		chip.BackgroundColor3 = darker(col, 0.7); chip.BorderSizePixel = 0; chip.ZIndex = 3
-		chip.FontFace = BODYB_FACE; chip.TextSize = 12; chip.TextColor3 = col; chip.Text = opts.chip; chip.Parent = f
-		corner(chip, 4)
+		chip.Position = UDim2.fromOffset(6, 6)
+		chip.AutomaticSize = Enum.AutomaticSize.X
+		chip.Size = UDim2.fromOffset(0, 18)
+		chip.BackgroundColor3 = darker(col, 0.7)
+		chip.BorderSizePixel = 0
+		chip.ZIndex = 4
+		chip.FontFace = BODYB_FACE
+		chip.TextSize = 11
+		chip.TextColor3 = col
+		chip.Text = opts.chip
+		chip.Parent = f
+		local chPad = Instance.new("UIPadding")
+		chPad.PaddingLeft = UDim.new(0, 5)
+		chPad.PaddingRight = UDim.new(0, 5)
+		chPad.Parent = chip
+		local chc = Instance.new("UICorner")
+		chc.CornerRadius = UDim.new(0, 5)
+		chc.Parent = chip
 	end
-	if opts.tag then -- short badge (e.g. "S1"), top-right like the shop's deal badge
+	if opts.tag then -- loadout slot badge (PRIM / SEC), top-right
 		local tag = Instance.new("TextLabel")
-		tag.AnchorPoint = Vector2.new(1, 0); tag.Position = UDim2.new(1, -6, 0, 6); tag.Size = UDim2.fromOffset(36, 18)
-		tag.BackgroundColor3 = ACCENT; tag.BorderSizePixel = 0; tag.ZIndex = 3
-		tag.FontFace = TITLE_FACE; tag.TextSize = 12; tag.TextColor3 = Color3.fromRGB(14, 22, 6)
-		tag.Text = opts.tag; tag.Parent = f
-		corner(tag, 4)
+		tag.AnchorPoint = Vector2.new(1, 0)
+		tag.Position = UDim2.new(1, -6, 0, 6)
+		tag.Size = UDim2.fromOffset(38, 18)
+		tag.BackgroundColor3 = ACCENT
+		tag.BorderSizePixel = 0
+		tag.ZIndex = 4
+		tag.FontFace = TITLE_FACE
+		tag.TextSize = 11
+		tag.TextColor3 = Color3.new(1, 1, 1)
+		tag.Text = opts.tag
+		tag.Parent = f
+		local tc = Instance.new("UICorner")
+		tc.CornerRadius = UDim.new(0, 5)
+		tc.Parent = tag
+		ledge(tag, TBLACK, 2)
 	end
 	if opts.count then -- gold ×n pill, top-right (crate counts)
 		local cnt = Instance.new("TextLabel")
-		cnt.AnchorPoint = Vector2.new(1, 0); cnt.Position = UDim2.new(1, -5, 0, 5); cnt.Size = UDim2.fromOffset(34, 18)
-		cnt.BackgroundColor3 = GOLD; cnt.BorderSizePixel = 0; cnt.ZIndex = 4
-		cnt.FontFace = TITLE_FACE; cnt.TextSize = 12; cnt.TextColor3 = TBLACK
-		cnt.Text = "×" .. tostring(opts.count); cnt.Parent = f
-		corner(cnt, 4); ledge(cnt, TBLACK, 2)
+		cnt.AnchorPoint = Vector2.new(1, 0)
+		cnt.Position = UDim2.new(1, -6, 0, 6)
+		cnt.Size = UDim2.fromOffset(34, 18)
+		cnt.BackgroundColor3 = GOLD
+		cnt.BorderSizePixel = 0
+		cnt.ZIndex = 4
+		cnt.FontFace = TITLE_FACE
+		cnt.TextSize = 12
+		cnt.TextColor3 = TBLACK
+		cnt.Text = "×" .. tostring(opts.count)
+		cnt.Parent = f
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(0, 8)
+		cc.Parent = cnt
+		ledge(cnt, TBLACK, 2)
 	end
 	if opts.crateMark then -- this locked gun can ALSO drop from a crate
 		local cm = Instance.new("TextLabel")
-		cm.AnchorPoint = Vector2.new(1, 0); cm.Position = UDim2.new(1, -4, 0, 4); cm.Size = UDim2.fromOffset(20, 18)
-		cm.BackgroundTransparency = 1; cm.TextSize = 13; cm.Text = "📦"; cm.ZIndex = 4; cm.Parent = f
+		cm.AnchorPoint = Vector2.new(1, 0)
+		cm.Position = UDim2.new(1, -5, 0, 5)
+		cm.Size = UDim2.fromOffset(20, 18)
+		cm.BackgroundTransparency = 1
+		cm.TextSize = 13
+		cm.Text = "📦"
+		cm.ZIndex = 4
+		cm.Parent = f
 	end
-	if opts.lockLevel then -- big centered LV plate on locked ladder cards
+	if opts.lockLevel then -- centered LV plate on locked ladder cards
 		local plate = Instance.new("TextLabel")
-		plate.AnchorPoint = Vector2.new(0.5, 0.5); plate.Position = UDim2.new(0.5, 0, 0.5, -12)
-		plate.Size = UDim2.fromOffset(110, 24); plate.BackgroundTransparency = 1; plate.ZIndex = 4
-		plate.FontFace = TITLE_FACE; plate.TextSize = 18
-		plate.TextColor3 = opts.nextUp and GOLD or TEXTCOL
-		plate.Text = "LV " .. tostring(opts.lockLevel); plate.Parent = f
+		plate.AnchorPoint = Vector2.new(0.5, 0.5)
+		plate.Position = UDim2.new(0.5, 0, 0.42, 0)
+		plate.Size = UDim2.fromOffset(110, 24)
+		plate.BackgroundTransparency = 1
+		plate.ZIndex = 4
+		plate.FontFace = TITLE_FACE
+		plate.TextSize = 18
+		plate.TextColor3 = opts.nextUp and GOLD or GOLD
+		plate.Text = "LV " .. tostring(opts.lockLevel)
+		plate.Parent = f
 		local pStroke = Instance.new("UIStroke")
-		pStroke.Color = TBLACK; pStroke.Thickness = 2
-		pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; pStroke.Parent = plate
+		pStroke.Color = TBLACK
+		pStroke.Thickness = 2.5
+		pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		pStroke.Parent = plate
 	end
+
 	f.Activated:Connect(function()
 		invSelect(opts.kind, opts.id)
 	end)
@@ -1940,7 +2055,7 @@ shopGrid.BackgroundTransparency = 1; shopGrid.BorderSizePixel = 0
 shopGrid.AutomaticCanvasSize = Enum.AutomaticSize.Y; shopGrid.CanvasSize = UDim2.new()
 shopGrid.ScrollBarThickness = 6; shopGrid.ScrollBarImageColor3 = DIMTEXT; shopGrid.Parent = shopPanel
 local shopGridLayout = Instance.new("UIGridLayout")
-shopGridLayout.CellSize = UDim2.fromOffset(166, 152); shopGridLayout.CellPadding = UDim2.fromOffset(12, 12)
+shopGridLayout.CellSize = UDim2.fromOffset(166, 176); shopGridLayout.CellPadding = UDim2.fromOffset(12, 12) -- trophy-shelf cards are taller
 shopGridLayout.SortOrder = Enum.SortOrder.LayoutOrder; shopGridLayout.Parent = shopGrid
 
 local shopDetail = Instance.new("Frame")
@@ -1972,28 +2087,56 @@ local renderShop -- forward decl
 
 -- One crate CELL in the grid (like the reference): the crate render fills the card, price under it.
 local function shopCell(i, slot)
+	-- TROPHY SHELF (same card as the weapons/inventory grids): dark card, crate on a glowing pedestal,
+	-- the PRICE on the black shelf front. Sold out = a dead, glowless shelf.
 	local col = rarityColor(slot.caseId)
 	local soldOut = (slot.left or 0) < 1
 	local isSel = (shopSelected == i)
+	local STRIP_H = 24
 	local cell = Instance.new("TextButton")
-	cell.BackgroundColor3 = soldOut and darker(PANEL2, 0.25) or col:Lerp(BLACK, 0.62)
-	cardShade(cell)
-	cell.AutoButtonColor = true; cell.Text = ""; cell.BorderSizePixel = 0; cell.LayoutOrder = i; cell.Parent = shopGrid
-	corner(cell, 7); ledge(cell, isSel and GOLD or TBLACK, isSel and 3 or 2.5)
+	cell.BackgroundColor3 = Color3.fromRGB(32, 38, 26)
+	cardShade(cell, 0.25)
+	cell.AutoButtonColor = true; cell.Text = ""; cell.BorderSizePixel = 0
+	cell.ClipsDescendants = true
+	cell.LayoutOrder = i; cell.Parent = shopGrid
+	local cc0 = Instance.new("UICorner"); cc0.CornerRadius = UDim.new(0, 12); cc0.Parent = cell
+	ledge(cell, isSel and GOLD or TBLACK, isSel and 3.5 or 3)
+	if not soldOut then
+		local function blob(w, h, tr)
+			local b = Instance.new("Frame")
+			b.AnchorPoint = Vector2.new(0.5, 1); b.Position = UDim2.new(0.5, 0, 1, -(STRIP_H + 2))
+			b.Size = UDim2.fromOffset(w, h); b.BackgroundColor3 = col; b.BackgroundTransparency = tr
+			b.BorderSizePixel = 0; b.ZIndex = 1; b.Parent = cell
+			local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(1, 0); bc.Parent = b
+		end
+		blob(130, 44, 0.6)
+		blob(84, 26, 0.42)
+	end
+	local ped = Instance.new("Frame")
+	ped.AnchorPoint = Vector2.new(0, 1); ped.Position = UDim2.new(0, 0, 1, -STRIP_H)
+	ped.Size = UDim2.new(1, 0, 0, 4); ped.BackgroundColor3 = col
+	ped.BackgroundTransparency = soldOut and 0.75 or 0.05
+	ped.BorderSizePixel = 0; ped.ZIndex = 3; ped.Parent = cell
 	local vp = makeGunViewport(slot.caseId, false, "CrateDisplay") -- static: only the featured pane spins
 	if vp then
-		vp.Size = UDim2.new(1, 0, 1, -26)
+		vp.AnchorPoint = Vector2.new(0.5, 0); vp.Position = UDim2.new(0.5, 0, 0, 6)
+		vp.Size = UDim2.new(1, -10, 1, -(STRIP_H + 14))
 		vp.ImageTransparency = soldOut and 0.6 or 0
-		vp.Parent = cell
+		vp.ZIndex = 2; vp.Parent = cell
 	else
 		local plate = Instance.new("TextLabel")
-		plate.Size = UDim2.new(1, -12, 1, -30); plate.Position = UDim2.fromOffset(6, 4); plate.BackgroundTransparency = 1
-		plate.FontFace = TITLE_FACE; plate.TextSize = 15; plate.TextWrapped = true
+		plate.Size = UDim2.new(1, -12, 1, -(STRIP_H + 10)); plate.Position = UDim2.fromOffset(6, 4)
+		plate.BackgroundTransparency = 1; plate.FontFace = TITLE_FACE; plate.TextSize = 15
+		plate.TextWrapped = true; plate.ZIndex = 2
 		plate.TextColor3 = soldOut and DIMTEXT or col; plate.Text = slot.name or "Case"; plate.Parent = cell
 	end
+	local strip = Instance.new("Frame")
+	strip.AnchorPoint = Vector2.new(0, 1); strip.Position = UDim2.new(0, 0, 1, 0)
+	strip.Size = UDim2.new(1, 0, 0, STRIP_H); strip.BackgroundColor3 = Color3.fromRGB(17, 21, 13)
+	strip.BorderSizePixel = 0; strip.ZIndex = 3; strip.Parent = cell
 	local price = Instance.new("TextLabel")
-	price.AnchorPoint = Vector2.new(0, 1); price.Position = UDim2.new(0, 0, 1, -4); price.Size = UDim2.new(1, 0, 0, 22)
-	price.BackgroundTransparency = 1; price.FontFace = BODYB_FACE; price.TextSize = 15
+	price.Size = UDim2.new(1, -8, 1, 0); price.Position = UDim2.fromOffset(4, 0)
+	price.BackgroundTransparency = 1; price.FontFace = BODYB_FACE; price.TextSize = 14; price.ZIndex = 4
 	price.TextColor3 = soldOut and DIMTEXT or GOLD
 	if slot.basePrice and slot.basePrice ~= slot.price then
 		price.RichText = true
@@ -2001,17 +2144,17 @@ local function shopCell(i, slot)
 	else
 		price.Text = "🪙 " .. fmt(slot.price or 0)
 	end
-	price.Parent = cell
+	price.Parent = strip
 	local pStroke = Instance.new("UIStroke")
-	pStroke.Color = TBLACK; pStroke.Thickness = 1.3; pStroke.Transparency = 0.3
+	pStroke.Color = TBLACK; pStroke.Thickness = 1.5; pStroke.Transparency = 0.2
 	pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; pStroke.Parent = price
 	local chip = Instance.new("TextLabel")
 	chip.Position = UDim2.fromOffset(6, 6); chip.Size = UDim2.fromOffset(52, 18)
-	chip.BackgroundColor3 = soldOut and TRACK or darker(col, 0.7); chip.BorderSizePixel = 0; chip.ZIndex = 3
+	chip.BackgroundColor3 = soldOut and TRACK or darker(col, 0.7); chip.BorderSizePixel = 0; chip.ZIndex = 4
 	chip.FontFace = BODYB_FACE; chip.TextSize = 10
 	chip.TextColor3 = soldOut and DIMTEXT or col
 	chip.Text = soldOut and "OUT" or (slot.left .. " LEFT"); chip.Parent = cell
-	corner(chip, 4)
+	local chc = Instance.new("UICorner"); chc.CornerRadius = UDim.new(0, 5); chc.Parent = chip
 	if slot.dealPct then
 		local badge = Instance.new("TextLabel")
 		badge.AnchorPoint = Vector2.new(1, 0); badge.Position = UDim2.new(1, -6, 0, 6); badge.Size = UDim2.fromOffset(48, 18)
