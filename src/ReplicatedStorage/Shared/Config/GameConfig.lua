@@ -19,8 +19,8 @@ GameConfig.SkipWaveProductId = 0
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
 GameConfig.MaxAliveZombies   = 200     -- HARD cap on simultaneous zombies (owed extras wait for a kill,
                                        -- then spawn in — they don't despawn to make room)
-GameConfig.ZombieAITickRate  = 0.35    -- seconds between AI re-targets (staggered across zombies)
-GameConfig.PathRecompute     = 2.5    -- seconds between a zombie's path recomputes
+GameConfig.ZombieAITickRate  = 0.45    -- seconds between AI re-targets (staggered across zombies)
+GameConfig.PathRecompute     = 3.5    -- seconds between a zombie's path recomputes
 GameConfig.MaxZombiesPerWave = 300    -- cap on a single wave's OWED count (deep Endless waves would
                                       -- otherwise owe thousands and never end)
 

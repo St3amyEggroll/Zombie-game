@@ -76,6 +76,7 @@ local DEATH_FLASH_TIME = 0.12   -- seconds a zombie flashes red on death (same q
 local RAGDOLL_TIME     = 1.4    -- seconds the limp body flops/settles after death
 local SURFACE_HOLD     = 1.0    -- extra seconds the body lies still ON the surface before it starts sinking
 local SINK_TIME        = 3.2    -- seconds the corpse SLOWLY sinks into the ground (bigger = slower/eerier)
+local MAX_CORPSES      = 12     -- ragdoll corpses settling at once; extras pool fast (each runs its own loop)
 local SINK_DEPTH       = 4      -- studs the corpse sinks before it's pooled
 local RAGDOLL_LIMB_ANGLE = 40   -- BallSocket cone limit (deg); too BIG = limbs splay/dislocate, too small = stiff
 local STUCK_DIST       = 2      -- studs of movement counted as "making progress"
@@ -89,6 +90,7 @@ local MAX_LIFETIME     = 120    -- backstop: a zombie alive this long is force-k
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
 local SPAWNPOINT_NEAR  = 160    -- studs: prefer ZombieSpawn parts within this range of a living player (Islands)
 -- Shoreline spawns (Islands): zombies surface IN parts named "ocean", just past the water's edge.
+local LOD_DISTANCE     = 130    -- studs: beyond this from its target a zombie thinks/steers at HALF rate
 local SHORE_MAX_MARCH  = 260    -- studs: how far out from a player we hunt for the water's edge
 local SHORE_STEP       = 6      -- studs per outward march step while hunting the shoreline
 local SHORE_OUT        = 6      -- studs past the water's edge a zombie surfaces (in the water, near shore)
@@ -428,16 +430,9 @@ local function buildZombie(typeId: string, t): Model
 	end
 	local model = asset and asset:Clone() or buildPlaceholder(t)
 	prepModel(model)
-	-- Cartoon BLACK OUTLINE (a Highlight with no fill). NOTE: Roblox renders at most ~31 Highlights at
-	-- once — deep-horde overflow zombies just skip the outline, which reads fine.
-	local hl = Instance.new("Highlight")
-	hl.Name = "Outline"
-	hl.FillTransparency = 1
-	hl.OutlineColor = Color3.new(0, 0, 0)
-	hl.OutlineTransparency = 0
-	hl.DepthMode = Enum.HighlightDepthMode.Occluded
-	hl.Adornee = model
-	hl.Parent = model
+	-- (No per-zombie Highlight anymore: Roblox renders at most ~31 at once, so a horde's worth mostly
+	-- dropped while still costing memory. ZombieOutlineController on each CLIENT owns a small pool and
+	-- outlines only the nearest zombies.)
 	return model
 end
 
@@ -778,10 +773,21 @@ end
 
 -- After the limp body has flopped and settled, freeze each part in its settled pose and lower the whole
 -- pile straight down — slowly — so the corpse appears to sink into the earth, then pool it.
+local corpseCount = 0 -- live flop+sink loops (capped at MAX_CORPSES; the overflow fast-pools)
+
 local function sinkAndRelease(record)
 	local model = record.model
+	corpseCount += 1
+	if corpseCount > MAX_CORPSES then
+		-- Over the corpse budget: a short beat so the kill still reads, then pool immediately.
+		task.wait(0.35)
+		corpseCount -= 1
+		release(record)
+		return
+	end
 	task.wait(RAGDOLL_TIME)
 	if not model.Parent then
+		corpseCount -= 1
 		release(record)
 		return
 	end
@@ -798,6 +804,7 @@ local function sinkAndRelease(record)
 	-- Let the body lie on the surface a beat before it begins to sink.
 	task.wait(SURFACE_HOLD)
 	if not model.Parent then
+		corpseCount -= 1
 		release(record)
 		return
 	end
@@ -812,6 +819,7 @@ local function sinkAndRelease(record)
 			end
 		end
 	end
+	corpseCount -= 1
 	release(record)
 end
 
@@ -1060,6 +1068,9 @@ do
 		PhysicsService:CollisionGroupSetCollidable("OceanZ", "ZombieRig", true)
 		PhysicsService:CollisionGroupSetCollidable("OceanZ", "Default", false)
 		PhysicsService:CollisionGroupSetCollidable("OceanZ", "Players", false)
+		-- PERF: zombies do NOT collide with EACH OTHER — packed hordes were spending most of the
+		-- physics budget shoving one another (they still hit players, the map, and the ocean).
+		PhysicsService:CollisionGroupSetCollidable("ZombieRig", "ZombieRig", false)
 	end)
 end
 
@@ -1933,7 +1944,8 @@ local function think(record, now: number)
 		end
 	end
 
-	record.nextThink = now + GameConfig.ZombieAITickRate
+	-- DISTANCE LOD: far zombies re-think at half rate (they still walk at you, they just plan less).
+	record.nextThink = now + GameConfig.ZombieAITickRate * (dist > LOD_DISTANCE and 2 or 1)
 end
 
 -- STEER (every frame): drive toward the live goal + hop obstacles. Cheap (no pathfinding here).
@@ -1994,6 +2006,15 @@ local function steer(record, now: number)
 	end
 
 	local dist = (root.Position - targetRoot.Position).Magnitude
+
+	-- DISTANCE LOD: far zombies steer every OTHER frame — the Humanoid keeps walking on its last Move
+	-- direction between skipped frames, so the approach looks identical at range.
+	if dist > LOD_DISTANCE then
+		record.lodFlip = not record.lodFlip
+		if record.lodFlip then
+			return
+		end
+	end
 
 	-- Water maps: never chase INTO the ocean. In direct mode, probe the ground one step ahead a few
 	-- times a second — open water (or a sheer drop) ahead flips this zombie to pathfinding via

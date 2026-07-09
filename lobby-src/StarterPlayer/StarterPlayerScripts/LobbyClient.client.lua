@@ -519,7 +519,7 @@ title.Text = "CHOOSE YOUR RUN"; title.Parent = panel
 local function sectionLabel(text, y)
 	local l = Instance.new("TextLabel")
 	l.Position = UDim2.new(0, 24, 0, y); l.Size = UDim2.new(1, -48, 0, 20); l.BackgroundTransparency = 1
-	l.FontFace = BODYB_FACE; l.TextSize = 18; l.TextXAlignment = Enum.TextXAlignment.Left
+	l.FontFace = BODYB_FACE; l.TextSize = 18; l.TextXAlignment = Enum.TextXAlignment.Center -- centered column
 	l.TextColor3 = DIMTEXT; l.Text = text; l.Parent = panel
 	return l
 end
@@ -527,7 +527,9 @@ local function row(y, h)
 	local f = Instance.new("Frame")
 	f.Position = UDim2.new(0, 24, 0, y); f.Size = UDim2.new(1, -48, 0, h); f.BackgroundTransparency = 1; f.Parent = panel
 	local list = Instance.new("UIListLayout")
-	list.FillDirection = Enum.FillDirection.Horizontal; list.Padding = UDim.new(0, 10); list.Parent = f
+	list.FillDirection = Enum.FillDirection.Horizontal; list.Padding = UDim.new(0, 10)
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Center -- centered column (was hugging the left)
+	list.Parent = f
 	return f
 end
 local function button(parent, w, h, text)

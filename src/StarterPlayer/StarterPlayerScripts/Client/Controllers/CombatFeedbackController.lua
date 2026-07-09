@@ -154,6 +154,9 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	end
 
 	local cfg = projectileCfgFor(weaponId)
+	if #activeBolts >= 40 then
+		return -- FX budget: minigun spam + a full party can't flood the client with parts/trails
+	end
 	local delta = to - from
 	local dist = delta.Magnitude
 	if dist < 0.5 or dist ~= dist then
@@ -377,6 +380,14 @@ local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vec
 	local muzzleCF = gunMuzzleCF(character)
 	-- Bolts + flash both start at the gun barrel (the "Muzzle" attachment, or the gun in-hand).
 	local from = muzzleCF and muzzleCF.Position or origin
+	-- FX budget: OTHER players' shots beyond ~140 studs of the camera skip their tracer + flash
+	-- entirely (you can't see them anyway; your own shots always draw).
+	if shooterUserId ~= localPlayer.UserId then
+		local cam = Workspace.CurrentCamera
+		if cam and (from - cam.CFrame.Position).Magnitude > 140 then
+			return
+		end
+	end
 	if shooterUserId ~= localPlayer.UserId and muzzleCF then
 		muzzleFlash(muzzleCF, weaponId) -- others' muzzle flash (the local player already flashed on fire)
 	end
