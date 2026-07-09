@@ -39,6 +39,7 @@ local localPlayer = Players.LocalPlayer
 
 local panel, grid, detail, acts, coinsLabel
 local owned = {}   -- [weaponId] = true
+local equippedId = "pistol" -- kept live via LoadoutChanged (drives the EQUIP / EQUIPPED button)
 local coins = 0
 local selectedId = nil
 local pendingBuy = nil
@@ -316,10 +317,20 @@ render = function()
 	local isOwned = owned[id] == true
 	local forSale = (tonumber(w.price) or 0) > 0
 	if isOwned then
-		local b = UITheme.Button(acts, "OWNED", "ghost")
-		b.Position = UDim2.new(0, 0, 0, 0)
-		b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
-		UITheme.SetButtonEnabled(b, false, "OWNED ✓")
+		if id == equippedId then
+			local b = UITheme.Button(acts, "EQUIPPED ✓", "ghost")
+			b.Position = UDim2.new(0, 0, 0, 0)
+			b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
+			UITheme.SetButtonEnabled(b, false, "EQUIPPED ✓")
+		else
+			-- Equip straight from the panel: the server swaps it into your hotbar slot.
+			local b = UITheme.Button(acts, "EQUIP", "primary")
+			b.Position = UDim2.new(0, 0, 0, 0)
+			b.Size = UDim2.new(1, 0, 0, UITheme.Ctl.CTA)
+			b.Activated:Connect(function()
+				Remotes.Get("EquipWeapon"):FireServer(id)
+			end)
+		end
 	elseif not forSale then
 		local b = UITheme.Button(acts, "STARTER GUN", "ghost")
 		b.Position = UDim2.new(0, 0, 0, 0)
@@ -464,7 +475,10 @@ function GunShopController.Start()
 	end)
 
 	-- Live updates: a purchase answers with LoadoutChanged (owned list) + LobbyMoneyChanged (coins).
-	Remotes.Get("LoadoutChanged").OnClientEvent:Connect(function(ownedList)
+	Remotes.Get("LoadoutChanged").OnClientEvent:Connect(function(ownedList, eq)
+		if typeof(eq) == "string" then
+			equippedId = eq
+		end
 		if typeof(ownedList) == "table" then
 			local before = owned
 			owned = {}

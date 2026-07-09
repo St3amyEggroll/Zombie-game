@@ -378,7 +378,17 @@ local function applyEquip(player: Player, weaponId: string): boolean
 	if ps.equippedWeapon == weaponId then
 		return true -- already holding it
 	end
+	local prev = ps.equippedWeapon
 	ps.equippedWeapon = weaponId
+	-- Keep the 2-slot hotbar honest: equipping a gun from deeper in the owned list (the GUNS panel)
+	-- swaps it into the hotbar slot the previous gun occupied.
+	local newIdx = table.find(ps.ownedWeapons, weaponId)
+	if newIdx and newIdx > 2 then
+		local slot = table.find(ps.ownedWeapons, prev)
+		if slot and slot <= 2 then
+			ps.ownedWeapons[newIdx], ps.ownedWeapons[slot] = ps.ownedWeapons[slot], ps.ownedWeapons[newIdx]
+		end
+	end
 	fireLoadout(player, ps)
 	return true
 end

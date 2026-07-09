@@ -360,7 +360,11 @@ function DataService.Start()
 		if not SecurityService.Allow(player, "GetData") then
 			return nil
 		end
-		return clientSnapshot(getData(player))
+		-- WAIT for the profile: clients call this once at startup, usually BEFORE the DataStore load
+		-- lands. Returning nil here was why saved settings/volumes weren't applied after a teleport —
+		-- the save pipeline was fine, the game just never read it. WaitFor always resolves (template
+		-- fallback), so this can't hang the invoke.
+		return clientSnapshot(getData(player) or DataService.WaitFor(player))
 	end
 
 	-- Periodic autosave of dirty sessions.
