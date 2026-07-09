@@ -83,6 +83,29 @@ function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string
 
 	local cf, size = model:GetBoundingBox()
 	model.WorldPivot = cf -- spin around the true center, not wherever the pivot happened to be
+	-- Cartoon OUTLINE: Highlights don't render inside ViewportFrames, so an inflated all-black clone
+	-- hugs the model from behind and reads as the same black outline the world models get.
+	local wrap = Instance.new("Model")
+	wrap.Parent = vp
+	pcall(function()
+		local outline = model:Clone()
+		for _, d in outline:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Color = Color3.new(0, 0, 0)
+				d.Material = Enum.Material.SmoothPlastic
+				d.Reflectance = 0
+			elseif d:IsA("SpecialMesh") then
+				d.TextureId = ""
+			elseif d:IsA("Texture") or d:IsA("Decal") or d:IsA("SurfaceAppearance") then
+				d:Destroy()
+			end
+		end
+		outline:ScaleTo(outline:GetScale() * 1.08)
+		outline:PivotTo(cf)
+		outline.Parent = wrap
+	end)
+	model.Parent = wrap
+	wrap.WorldPivot = cf
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(CAM_FOV / 2)) * FIT_SLACK + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * CAM_PITCH, dist), cf.Position)
 
@@ -91,10 +114,10 @@ function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string
 	local isGun = (folderName or "GunDisplay") == "GunDisplay"
 	local dispRot = isGun and displayRot(weaponId, cf.Rotation) or cf.Rotation
 	if spin ~= false then
-		table.insert(spinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
+		table.insert(spinning, { vp = vp, model = wrap, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
 		startLoop()
 	else
-		model:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once
+		wrap:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once (outline rides along)
 	end
 	return vp
 end

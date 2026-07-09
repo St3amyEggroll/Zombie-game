@@ -431,6 +431,29 @@ local function makeGunViewport(weaponId, spin, folderName)
 	vp.CurrentCamera = cam
 	local cf, size = model:GetBoundingBox()
 	model.WorldPivot = cf
+	-- Cartoon OUTLINE: Highlights don't render inside ViewportFrames, so an inflated all-black clone
+	-- hugs the model from behind and reads as the same black outline the world models get.
+	local wrap = Instance.new("Model")
+	wrap.Parent = vp
+	pcall(function()
+		local outline = model:Clone()
+		for _, d in outline:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Color = Color3.new(0, 0, 0)
+				d.Material = Enum.Material.SmoothPlastic
+				d.Reflectance = 0
+			elseif d:IsA("SpecialMesh") then
+				d.TextureId = ""
+			elseif d:IsA("Texture") or d:IsA("Decal") or d:IsA("SurfaceAppearance") then
+				d:Destroy()
+			end
+		end
+		outline:ScaleTo(outline:GetScale() * 1.08)
+		outline:PivotTo(cf)
+		outline.Parent = wrap
+	end)
+	model.Parent = wrap
+	wrap.WorldPivot = cf
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(15)) * 1.12 + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * 0.22, dist), cf.Position)
 	-- Display orientation: GUNS get side-on + a cool upward tilt; CRATES keep their built rotation
@@ -443,7 +466,7 @@ local function makeGunViewport(weaponId, spin, folderName)
 		dispRot = cf.Rotation
 	end
 	if spin ~= false then
-		table.insert(gvSpinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
+		table.insert(gvSpinning, { vp = vp, model = wrap, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
 		if not gvLoop then
 			gvLoop = true
 			RunService.RenderStepped:Connect(function(dt)
@@ -460,7 +483,7 @@ local function makeGunViewport(weaponId, spin, folderName)
 			end)
 		end
 	else
-		model:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once, side-on + tilted
+		wrap:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once, side-on + tilted
 	end
 	return vp
 end
@@ -1477,21 +1500,18 @@ local function renderWeaponsGrid()
 end
 
 local function renderCasesGrid()
-	-- The INVENTORY screen lists EVERYTHING you own: crates first (every rarity — empty ones sit dim),
-	-- then your guns, then your skins. Clicking anything slides its info sheet out on the right.
+	-- The INVENTORY screen: the crates you HAVE (only owned ones — no empty placeholders), then your
+	-- guns. Skins are NOT separate items — they live on their gun's info sheet as swatches.
 	local out = {}
 	for _, caseId in invData.catalog.rarityOrder do
 		local disp = invData.catalog.cases[caseId]
-		if disp then
-			local count = invData.cases[caseId] or 0
+		local count = invData.cases[caseId] or 0
+		if disp and count > 0 then
 			table.insert(out, { kind = "case", id = caseId })
 			local rname = ((invData.catalog.rarities[caseId] or {}).name or caseId):upper()
 			invCard({
 				kind = "case", id = caseId, order = #out, image = disp.image,
-				name = count > 0 and rname or (rname .. " · NONE"),
-				color = rarityColor(caseId),
-				count = count > 0 and count or nil,
-				locked = count == 0,
+				name = rname, color = rarityColor(caseId), count = count,
 			})
 		end
 	end
@@ -1514,17 +1534,11 @@ local function renderCasesGrid()
 		local slotTag = (invData.loadout[1] == id and "PRIM") or (invData.loadout[2] == id and "SEC") or nil
 		invCard({ kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity), tag = slotTag, order = #out, image = w.image })
 	end
-	local skinIds = {}
-	for sid in invData.catalog.skins or {} do
-		if ownsSkin(sid) then
-			table.insert(skinIds, sid)
-		end
-	end
-	table.sort(skinIds)
-	for _, sid in skinIds do
-		local sk = skinInfo(sid)
-		table.insert(out, { kind = "skin", id = sid })
-		invCard({ kind = "skin", id = sid, name = sk.name, color = rarityColor(sk.rarity), order = #out })
+	if #out == 0 then
+		local msg = Instance.new("TextLabel")
+		msg.Size = UDim2.fromOffset(320, 60); msg.BackgroundTransparency = 1; msg.FontFace = BODYB_FACE
+		msg.TextSize = 14; msg.TextWrapped = true; msg.TextColor3 = DIMTEXT
+		msg.Text = "No crates right now — kill BOSSES in runs (or hit the SHOP stall) to get more!"; msg.Parent = invGrid
 	end
 	return out
 end
@@ -1551,7 +1565,11 @@ renderActive = function()
 		if activeTab == "weapons" then return renderWeaponsGrid()
 		else return renderCasesGrid() end
 	end
-	local entries = paintGrid()
+	local okG, entries = pcall(paintGrid)
+	if not okG then
+		warn("[LobbyInv] grid render failed: " .. tostring(entries))
+		entries = {}
+	end
 	local valid = false
 	if selectedInv then
 		for _, e in entries do
@@ -1563,9 +1581,12 @@ renderActive = function()
 	end
 	if not valid then
 		selectedInv = entries[1] and { kind = entries[1].kind, id = entries[1].id } or nil
-		paintGrid()
+		pcall(paintGrid)
 	end
-	renderInvDetail()
+	local okD, errD = pcall(renderInvDetail)
+	if not okD then
+		warn("[LobbyInv] info sheet render failed: " .. tostring(errD))
+	end
 end
 
 -- ===== CASE-OPENING REEL (CS:GO-style horizontal scroll) =====
