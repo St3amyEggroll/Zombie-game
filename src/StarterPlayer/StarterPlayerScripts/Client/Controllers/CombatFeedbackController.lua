@@ -161,14 +161,16 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	end
 	local dir = delta.Unit
 
-	-- THIN LASER BOLT: a skinny bright streak. The core is deliberately tiny (cfg.Width studs).
+	-- THIN BOLT: a skinny streak. Neon laser by default; cfg.Material makes it a solid physical
+	-- projectile instead (the crossbow's wooden shaft).
+	local isSolid = cfg.Material ~= nil and cfg.Material ~= "Neon"
 	local bolt = Instance.new("Part")
 	bolt.Anchored = true
 	bolt.CanCollide = false
 	bolt.CanQuery = false
 	bolt.CanTouch = false
 	bolt.CastShadow = false
-	bolt.Material = Enum.Material.Neon
+	bolt.Material = Enum.Material[cfg.Material or "Neon"]
 	bolt.Color = cfg.Color
 	bolt.Size = Vector3.new(cfg.Width, cfg.Width, math.min(cfg.Length, dist))
 	bolt.CFrame = CFrame.lookAt(from, from + dir)
@@ -182,10 +184,10 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	trail.Attachment0 = a0
 	trail.Attachment1 = a1
 	trail.Color = ColorSequence.new(cfg.Color)
-	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) })
-	trail.Lifetime = 0.07
+	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, isSolid and 0.6 or 0.35), NumberSequenceKeypoint.new(1, 1) })
+	trail.Lifetime = cfg.Trail or 0.07
 	trail.FaceCamera = true
-	trail.LightEmission = 1
+	trail.LightEmission = isSolid and 0.15 or 1 -- solid bolts leave a faint wake, not a glow ribbon
 	trail.WidthScale = NumberSequence.new(1, 0.2)
 	trail.Parent = bolt
 
@@ -193,6 +195,7 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	table.insert(activeBolts, {
 		part = bolt, from = from, dir = dir, dist = dist,
 		speed = cfg.Speed, life = cfg.Life or 0.05, t = 0,
+		burstColor = cfg.BurstColor, -- optional colored pop where the bolt lands (freeze ray frost)
 	})
 end
 
@@ -211,6 +214,23 @@ local function updateBolts(dt: number)
 				b.part.CFrame = CFrame.lookAt(pos, pos + b.dir)
 				TweenService:Create(b.part, TweenInfo.new(b.life), { Transparency = 1 }):Play()
 				Debris:AddItem(b.part, b.life + 0.08) -- + a beat for the tail to finish fading
+				if b.burstColor then -- landing pop (the freeze ray's frost puff)
+					local puff = Instance.new("Part")
+					puff.Shape = Enum.PartType.Ball
+					puff.Size = Vector3.new(0.7, 0.7, 0.7)
+					puff.Anchored = true
+					puff.CanCollide = false
+					puff.CanQuery = false
+					puff.CanTouch = false
+					puff.CastShadow = false
+					puff.Material = Enum.Material.Neon
+					puff.Color = b.burstColor
+					puff.Transparency = 0.15
+					puff.CFrame = CFrame.new(pos)
+					puff.Parent = fxFolder
+					TweenService:Create(puff, TweenInfo.new(0.22), { Transparency = 1, Size = Vector3.new(2.2, 2.2, 2.2) }):Play()
+					Debris:AddItem(puff, 0.25)
+				end
 				table.remove(activeBolts, i)
 			else
 				local pos = b.from + b.dir * traveled
@@ -220,11 +240,16 @@ local function updateBolts(dt: number)
 	end
 end
 
-local function muzzleFlash(cf: CFrame)
+local function muzzleFlash(cf: CFrame, weaponId: string?)
 	local cfg = AnimationConfig.MuzzleFlash
 	if not cfg.Enabled then
 		return
 	end
+	local ov = weaponId and cfg.PerWeapon and cfg.PerWeapon[weaponId]
+	if ov and ov.Enabled == false then
+		return -- e.g. the crossbow: no gunpowder, no flash
+	end
+	local flashColor = (ov and ov.Color) or cfg.Color
 	-- Just the small neon flash — NO PointLight (the per-shot light burst on the player was distracting).
 	local ball = Instance.new("Part")
 	ball.Shape = Enum.PartType.Ball
@@ -234,7 +259,7 @@ local function muzzleFlash(cf: CFrame)
 	ball.CanQuery = false
 	ball.CastShadow = false
 	ball.Material = Enum.Material.Neon
-	ball.Color = cfg.Color
+	ball.Color = flashColor
 	ball.CFrame = cf
 	ball.Parent = fxFolder
 	TweenService:Create(ball, TweenInfo.new(cfg.Life), { Transparency = 1, Size = Vector3.new(0.1, 0.1, 0.1) }):Play()
@@ -338,7 +363,7 @@ local function onLocalFired(weaponId: string)
 	addShake(weaponId) -- screen shake + camera kick, scaled per weapon
 	local muzzleCF = gunMuzzleCF(localPlayer.Character)
 	if muzzleCF then
-		muzzleFlash(muzzleCF)
+		muzzleFlash(muzzleCF, weaponId)
 	end
 end
 
@@ -353,7 +378,7 @@ local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vec
 	-- Bolts + flash both start at the gun barrel (the "Muzzle" attachment, or the gun in-hand).
 	local from = muzzleCF and muzzleCF.Position or origin
 	if shooterUserId ~= localPlayer.UserId and muzzleCF then
-		muzzleFlash(muzzleCF) -- others' muzzle flash (the local player already flashed on fire)
+		muzzleFlash(muzzleCF, weaponId) -- others' muzzle flash (the local player already flashed on fire)
 	end
 
 	local count = math.clamp(tonumber(pellets) or 1, 1, MAX_VISUAL_PELLETS)

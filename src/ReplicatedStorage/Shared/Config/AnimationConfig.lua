@@ -14,6 +14,9 @@ local AnimationConfig = {}
 -- distance/Speed seconds, then fades over Life. PerWeapon overrides Default.
 --   Color = bolt/tail color   Length = streak length (studs, along travel)   Width = thickness (studs)
 --   Speed = studs/sec         Life  = fade time once it lands
+-- Optional extras (any weapon): Material = part material name (default "Neon" — "SmoothPlastic" makes a
+-- solid physical bolt, e.g. the crossbow's wooden shaft) · Trail = tail lifetime seconds (default 0.07)
+-- · BurstColor = a little colored pop where the bolt lands (the freeze ray's frost puff).
 AnimationConfig.Projectile = {
 	Enabled = true,
 	Default = { Color = Color3.fromRGB(255, 235, 170), Length = 3.5, Width = 0.18, Speed = 420, Life = 0.05 },
@@ -23,6 +26,14 @@ AnimationConfig.Projectile = {
 		ak47    = { Color = Color3.fromRGB(255, 242, 180), Length = 4.0, Width = 0.18, Speed = 480, Life = 0.05 },
 		minigun = { Color = Color3.fromRGB(255, 180, 100), Length = 4.0, Width = 0.14, Speed = 520, Life = 0.04 },
 		raygun  = { Color = Color3.fromRGB(120, 255, 140), Length = 4.5, Width = 0.3,  Speed = 300, Life = 0.08 },
+		-- FREEZE RAY: an icy blue beam-bolt — longer frosty tail, slower flight so it reads, and a
+		-- frost puff where it lands.
+		freezeray = { Color = Color3.fromRGB(120, 205, 255), Length = 4.5, Width = 0.26, Speed = 300, Life = 0.10,
+			Trail = 0.16, BurstColor = Color3.fromRGB(170, 225, 255) },
+		-- CROSSBOW: a wooden BOLT, not a laser — solid brown shaft (no neon glow), slower so you can
+		-- watch it fly, with a faint short tail.
+		crossbow = { Color = Color3.fromRGB(158, 108, 58), Length = 3.0, Width = 0.12, Speed = 240, Life = 0.06,
+			Material = "SmoothPlastic", Trail = 0.05 },
 	},
 }
 
@@ -57,6 +68,11 @@ AnimationConfig.ImpactSpread = {
 AnimationConfig.MuzzleFlash = {
 	Enabled = true,
 	Color = Color3.fromRGB(255, 221, 150),
+	-- Per-weapon overrides: { Color = ... } recolors the flash, { Enabled = false } removes it.
+	PerWeapon = {
+		freezeray = { Color = Color3.fromRGB(150, 215, 255) }, -- icy blue puff
+		crossbow  = { Enabled = false },                       -- no gunpowder, no flash
+	},
 	Brightness = 5,
 	Range = 10,
 	Life = 0.045,
