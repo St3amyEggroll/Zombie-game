@@ -517,6 +517,9 @@ local function worldUnlocked(completed, world): boolean
 	if not i then
 		return false
 	end
+	if GameConfig.AllWorldsOpen then
+		return true -- every (known) map open for now — matches the lobby's ALL_WORLDS_OPEN
+	end
 	if i <= 1 then
 		return true
 	end

@@ -105,6 +105,8 @@ GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for comp
 GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare", "endless" }
 GameConfig.Worlds          = { "forest", "islands" }
 GameConfig.DefaultMap      = "forest"
+GameConfig.AllWorldsOpen   = true -- OPEN EVERY MAP for now (must mirror the lobby's ALL_WORLDS_OPEN, or the
+                                  -- game re-validates the teleport and silently swaps the map back to Default)
 
 -- ===== MAPS / WORLDS ===== how each world plays.
 --   emerge         = how zombies surface: "grave" (dig out of the ground) | "water" (rise from the ocean).

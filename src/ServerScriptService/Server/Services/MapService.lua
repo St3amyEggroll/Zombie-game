@@ -52,7 +52,27 @@ local function consider(inst: Instance)
 	end
 end
 
+-- Maps built directly IN WORKSPACE (named "<world>Map" or tagged "Map") get ADOPTED: moved into
+-- ServerStorage as templates. Otherwise BOTH worlds sit live at once and players spawn on whichever
+-- map's PlayerSpawn is found first — the chosen world must be the ONLY one in Workspace.
+local function adoptWorkspaceTemplates()
+	for _, c in Workspace:GetChildren() do
+		if c.Name ~= ACTIVE_NAME and (c:IsA("Model") or c:IsA("Folder")) then
+			local isMap = CollectionService:HasTag(c, "Map")
+			if not isMap then
+				local w = norm(c.Name):match("^(.-)map$")
+				isMap = (w ~= nil and w ~= "")
+			end
+			if isMap then
+				c.Parent = ServerStorage
+				print(("[MapService] adopted Workspace map '%s' into ServerStorage (Activate clones the chosen one back)"):format(c.Name))
+			end
+		end
+	end
+end
+
 local function scan()
+	adoptWorkspaceTemplates()
 	templates = {}
 	local function recurse(inst: Instance, depth: number)
 		for _, c in inst:GetChildren() do
