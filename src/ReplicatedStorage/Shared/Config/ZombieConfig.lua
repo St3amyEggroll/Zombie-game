@@ -57,9 +57,11 @@ local ZombieConfig: { [string]: any } = {
 	brinebrute = { id="brinebrute", name="Brine Brute", healthMult=3,    speedMult=0.8,  damage=40, pointsMult=2.0, isSpecial=true,  minRound=6,  spawnWeight=20,  tint=Color3.fromRGB(40,90,90),    worlds={islands=true} },
 
 	-- ===== BOSSES (spawnWeight 0 — only spawned by BossWaves) =====
-	boss        = { id="boss",        name="Boss",        healthMult=100, speedMult=0.7,  damage=75, pointsMult=10, isSpecial=true, minRound=10, spawnWeight=0, tint=Color3.fromRGB(40,10,50) },
-	lumberjack  = { id="lumberjack",  name="Lumberjack",  healthMult=140, speedMult=0.95, damage=80, pointsMult=12, isSpecial=true, minRound=20, spawnWeight=0, tint=Color3.fromRGB(120,70,40) },
-	necromancer = { id="necromancer", name="Necromancer", healthMult=200, speedMult=0.7,  damage=60, pointsMult=18, isSpecial=true, minRound=30, spawnWeight=0, tint=Color3.fromRGB(70,20,90), summons=true },
+	-- CHANGED: boss healthMults HALVED across the board (were 100/140/200) — bosses were way too tanky
+	-- in every party mode. Party scaling (×playerCount in ZombieService.SpawnBoss) still applies on top.
+	boss        = { id="boss",        name="Boss",        healthMult=50,  speedMult=0.7,  damage=75, pointsMult=10, isSpecial=true, minRound=10, spawnWeight=0, tint=Color3.fromRGB(40,10,50) },
+	lumberjack  = { id="lumberjack",  name="Lumberjack",  healthMult=70,  speedMult=0.95, damage=80, pointsMult=12, isSpecial=true, minRound=20, spawnWeight=0, tint=Color3.fromRGB(120,70,40) },
+	necromancer = { id="necromancer", name="Necromancer", healthMult=100, speedMult=0.7,  damage=60, pointsMult=18, isSpecial=true, minRound=30, spawnWeight=0, tint=Color3.fromRGB(70,20,90), summons=true },
 }
 
 -- ===== BOSS SCHEDULE ===== (wave -> boss id). Wave 25 intentionally has none.
