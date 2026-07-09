@@ -581,13 +581,20 @@ corner(play, 6)
 ldepth(play); ledge(play, TBLACK, 2.5); lbevel(play)
 
 local status = Instance.new("TextLabel")
-status.AnchorPoint = Vector2.new(0.5, 1); status.Position = UDim2.new(0.5, 0, 1, -12); status.Size = UDim2.new(1, -40, 0, 24)
-status.BackgroundTransparency = 1; status.FontFace = BODYB_FACE; status.TextSize = 15
+-- LIVE RUN SUMMARY — sits ABOVE the PLAY button (it used to hide underneath it), spelling out exactly
+-- what you're launching: "FOREST · MEDIUM · PARTY OF 2". refresh() keeps it current.
+status.AnchorPoint = Vector2.new(0.5, 1); status.Position = UDim2.new(0.5, 0, 1, -104); status.Size = UDim2.new(1, -40, 0, 22)
+status.BackgroundTransparency = 1; status.FontFace = BODYB_FACE; status.TextSize = 16
 status.TextColor3 = DIMTEXT; status.Text = ""; status.Parent = panel
+local statusStroke = Instance.new("UIStroke")
+statusStroke.Color = TBLACK; statusStroke.Thickness = 1.5
+statusStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; statusStroke.Parent = status
 
 -- ===== RENDER =====
 local function refresh()
 	if not unlocks then return end
+	status.Text = ("%s  ·  %s  ·  PARTY OF %d"):format(
+		cap(sel.map or "?"):upper(), cap(sel.difficulty or "?"):upper(), tonumber(sel.size) or 1)
 	-- map buttons — each is a SQUARE PHOTO of the map itself (owner-supplied; add a line per world)
 	local MAP_IMAGES = { forest = "rbxassetid://85349059800026" }
 	for _, b in mapBtns do b:Destroy() end
