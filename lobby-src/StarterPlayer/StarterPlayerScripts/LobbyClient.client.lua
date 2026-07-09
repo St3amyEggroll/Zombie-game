@@ -187,10 +187,10 @@ local function lbevel(o)
 		if lastSlab ~= nil and base == lastSlab then
 			return -- echo of our own slab write, not a real recolor
 		end
-		g.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
-			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
-			ColorSequenceKeypoint.new(1, darker(base, 0.28)),
+		g.Color = ColorSequence.new({ -- darker read: softer top flash, deeper body/foot
+			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.28)),
+			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.08)),
+			ColorSequenceKeypoint.new(1, darker(base, 0.4)),
 		})
 		lastSlab = darker(base, 0.5) -- the slab shade
 		o.BackgroundColor3 = lastSlab
@@ -863,14 +863,26 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -200, Color3.fromRGB(214, 48, 48), true) -- red, left of center
-local casesBtn = cornerButton(CASES_ICON, "CRATES", 200, Color3.fromRGB(230, 140, 30), false) -- orange, right
--- SHOP button — opens the crate storefront from anywhere (stepping on the stall still works too)
-local shopBtn = cornerButton("", "SHOP", 0, Color3.fromRGB(52, 168, 52), false) -- green, center
--- (the SHOP pill carries its own label now)
-shopBtn.Activated:Connect(function()
+local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(172, 34, 34), true) -- dark red, left of center
+local casesBtn = cornerButton(CASES_ICON, "CRATES", 240, Color3.fromRGB(188, 106, 20), false) -- dark orange, right
+-- PLAY button — the BIG center pill (replaces SHOP; the shop is still the stall you walk up to).
+-- Pressing it steps you onto the nearest free party pad, so the normal set-up-your-run flow takes over.
+local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(38, 128, 34), false) -- dark green, center, bigger
+playBtn.Size = UDim2.fromOffset(260, 74)
+do -- scale the caption up to match the bigger pill
+	local capL = playBtn:FindFirstChildOfClass("TextLabel")
+	if capL then
+		capL.Size = UDim2.new(1, -24, 0, 48)
+		capL.TextSize = 38
+		local con = capL:FindFirstChildOfClass("UITextSizeConstraint")
+		if con then
+			con.MaxTextSize = 38
+		end
+	end
+end
+playBtn.Activated:Connect(function()
 	lplay("Open")
-	remotes:WaitForChild("ShopSync"):FireServer()
+	remotes:WaitForChild("GoPlay"):FireServer()
 end)
 
 local PANEL_W, PANEL_H = 940, 560

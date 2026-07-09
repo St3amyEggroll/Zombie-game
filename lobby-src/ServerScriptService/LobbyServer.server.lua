@@ -1431,6 +1431,42 @@ LeaveParty.OnServerEvent:Connect(function(player)
 	end
 end)
 
+-- Nav PLAY button: step the player onto the best pad and let the normal pad flow take over.
+-- Prefers the nearest EMPTY pad (they become the host + get the setup menu); if every pad is
+-- busy, the nearest OPEN party with room (they join it). No pads placed = quietly does nothing.
+mk("GoPlay").OnServerEvent:Connect(function(player)
+	if not allow(player, "Party") then
+		return
+	end
+	if playerParty[player.UserId] then
+		return -- already on a pad / in a party
+	end
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	refreshZones()
+	local best, bestD
+	for _, zone in zoneParts do
+		if zone.Parent then
+			local party = parties[zone]
+			local usable = (party == nil) or (party.state == "open" and #party.members < party.size)
+			if usable then
+				local d = (zone.Position - root.Position).Magnitude
+				if party == nil then
+					d -= 100000 -- empty pads ALWAYS beat joinable parties (PLAY = set up your own run)
+				end
+				if not best or d < bestD then
+					best, bestD = zone, d
+				end
+			end
+		end
+	end
+	if best then
+		root.CFrame = CFrame.new(best.Position + Vector3.new(0, best.Size.Y * 0.5 + 3.5, 0))
+	end
+end)
+
 -- ===== SHOP ZONE + BILLBOARD =====
 local inShopZone = {} -- userId -> shop zone Part they're standing in
 local lastShopWindow = shopWindow()
