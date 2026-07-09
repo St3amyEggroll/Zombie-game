@@ -178,20 +178,22 @@ local function lbevel(o)
 			label.TextColor3 = o.TextColor3
 		end)
 	end
-	local internal = false
+	-- Signals fire deferred, so a boolean re-entry flag can't stop us reacting to
+	-- our own slab write (every recolor would re-darken and spiral toward black).
+	-- Instead remember the exact color we wrote and skip the echo by value.
+	local lastSlab = nil
 	local function applyFill()
-		if internal then
-			return
-		end
 		local base = o.BackgroundColor3
-		internal = true
+		if lastSlab ~= nil and base == lastSlab then
+			return -- echo of our own slab write, not a real recolor
+		end
 		g.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
 			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
 			ColorSequenceKeypoint.new(1, darker(base, 0.28)),
 		})
-		o.BackgroundColor3 = darker(base, 0.5) -- the slab shade
-		internal = false
+		lastSlab = darker(base, 0.5) -- the slab shade
+		o.BackgroundColor3 = lastSlab
 	end
 	applyFill()
 	o:GetPropertyChangedSignal("BackgroundColor3"):Connect(applyFill) -- selection recolors re-derive
