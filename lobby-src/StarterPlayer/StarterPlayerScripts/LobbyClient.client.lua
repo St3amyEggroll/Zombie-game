@@ -303,22 +303,80 @@ local function cardShade(frame, strength)
 	return g
 end
 
--- NEW: OVERSIZED floating header (the reference chrome): a fat title bar WIDER than the panel, hanging
--- over its top edge, carrying the giant title (and whatever the caller parents into it — coins, the red
--- X riding the corner). One solid color + a multiplying vertical shade, so recoloring a shared panel is
--- just setting .BackgroundColor3 (showTab does exactly that).
-local function bigHeader(panel, barColor)
+-- REDONE (matched to the reference image): the panel chrome as ONE root assembly — a fat colored
+-- HEADER BAR wider than the body (big white title with a NAVY outline on the left, the red X sitting
+-- INSIDE the bar's right end) and the dark BODY panel tucked underneath it. Everything lives inside
+-- the root, so the header can never hang off-screen. Toggle the BODY's Visible (callers own it) and
+-- mirror it onto the root. Returns root, body, title, closeX, recolor(c).
+local NAVY = Color3.fromRGB(21, 36, 58) -- the reference title outline is navy, not black
+local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
+	local OVER, HDR_H, TUCK = 22, 64, 14 -- header overhang per side · header height · body tuck-under
+	local root = Instance.new("Frame")
+	root.Name = "Chrome" .. titleText:gsub("%s", "")
+	root.AnchorPoint = Vector2.new(0.5, 0.5)
+	root.Position = UDim2.fromScale(0.5, 0.5)
+	root.Size = UDim2.fromOffset(bodyW + OVER * 2, HDR_H - TUCK + bodyH)
+	root.BackgroundTransparency = 1
+	root.Visible = false
+	root.Parent = parentGui
+
+	local body = Instance.new("Frame")
+	body.Name = "Body"
+	body.Position = UDim2.fromOffset(OVER, HDR_H - TUCK)
+	body.Size = UDim2.fromOffset(bodyW, bodyH)
+	body.BackgroundColor3 = Color3.fromRGB(19, 21, 15) -- near-black like the reference (map peeks through)
+	body.BackgroundTransparency = 0.08
+	body.BorderSizePixel = 0
+	body.ZIndex = 1
+	body.Parent = root
+	corner(body, 8)
+	lstuds(body)
+	ldepth(body)
+	ledge(body, TBLACK, 3.5)
+
 	local bar = Instance.new("Frame")
-	bar.Name = "BigHeader"
-	bar.AnchorPoint = Vector2.new(0.5, 0)
-	bar.Position = UDim2.new(0.5, 0, 0, -32) -- hangs ABOVE the body
-	bar.Size = UDim2.new(1, 56, 0, 66)       -- and WIDER than it, per the reference
-	bar.BackgroundColor3 = barColor; bar.BorderSizePixel = 0
-	bar.ZIndex = 6; bar.Parent = panel
-	local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 14); bc.Parent = bar
+	bar.Name = "HeaderBar"
+	bar.Size = UDim2.new(1, 0, 0, HDR_H)
+	bar.BorderSizePixel = 0
+	bar.ZIndex = 3
+	bar.Parent = root
+	corner(bar, 7)
 	ledge(bar, TBLACK, 3.5)
-	cardShade(bar, 0.34)
-	return bar
+	bar.BackgroundColor3 = Color3.new(1, 1, 1) -- white base: the gradient carries the ABSOLUTE colors
+	local grad = Instance.new("UIGradient")
+	grad.Rotation = 90
+	grad.Parent = bar
+	local function recolor(c) -- bright flash up top, deep foot — the reference's gold falloff
+		grad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, c:Lerp(Color3.new(1, 1, 1), 0.5)),
+			ColorSequenceKeypoint.new(0.45, c),
+			ColorSequenceKeypoint.new(1, darker(c, 0.3)),
+		})
+	end
+	recolor(colr)
+
+	local title = Instance.new("TextLabel")
+	title.Position = UDim2.new(0, 24, 0, 0)
+	title.Size = UDim2.new(1, -100, 1, 0)
+	title.BackgroundTransparency = 1
+	title.FontFace = TITLE_FACE
+	title.TextSize = 40
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextColor3 = Color3.new(1, 1, 1)
+	title.ZIndex = 4
+	title.Text = titleText
+	title.Parent = bar
+	local ts = Instance.new("UIStroke")
+	ts.Color = NAVY
+	ts.Thickness = 3.5
+	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	ts.Parent = title
+
+	local x = redX(bar, 46, 24)
+	x.AnchorPoint = Vector2.new(1, 0.5)
+	x.Position = UDim2.new(1, -9, 0.5, 0)
+	x.ZIndex = 4
+	return root, body, title, x, recolor
 end
 
 -- Subtle FOV "lean back" while a panel is open (refcounted; eases in/out).
@@ -992,14 +1050,12 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	end
 	return b
 end
--- NEW: LEFT RAIL (the reference layout) — the nav pills stack down the screen's LEFT edge:
--- WEAPONS / INVENTORY / SHOP (the SHOP pill is created by the Exclusive Shop section below).
--- Same sticker buttons as before, just re-hung. PLAY stays big at the top-center.
-local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", 0, Color3.fromRGB(168, 32, 32), true) -- deep red
-gunsBtn.AnchorPoint = Vector2.new(0, 0.5); gunsBtn.Position = UDim2.new(0, 14, 0.5, -72)
-local casesBtn = cornerButton(CASES_ICON, "INVENTORY", 0, Color3.fromRGB(18, 69, 90), false) -- BLUE — matches its panel's header
-casesBtn.AnchorPoint = Vector2.new(0, 0.5); casesBtn.Position = UDim2.new(0, 14, 0.5, 0)
--- PLAY button — the BIG center pill (the shop is the stall you walk up to, or the rail pill below).
+-- CHANGED: nav pills back at the TOP-CENTER where they were: WEAPONS | PLAY | INVENTORY. The SHOP
+-- button is separate — an IMAGE button on the screen's LEFT edge (built by the Exclusive Shop section;
+-- owner supplies the image).
+local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(168, 32, 32), true) -- deep red, left of center
+local casesBtn = cornerButton(CASES_ICON, "INVENTORY", 240, Color3.fromRGB(18, 69, 90), false) -- BLUE — matches its panel's header
+-- PLAY button — the BIG center pill.
 -- Pressing it steps you onto the nearest free party pad, so the normal set-up-your-run flow takes over.
 local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(34, 122, 34), false) -- deep green, center, bigger
 playBtn.Size = UDim2.fromOffset(260, 74)
@@ -1019,44 +1075,27 @@ playBtn.Activated:Connect(function()
 	remotes:WaitForChild("GoPlay"):FireServer()
 end)
 
-local PANEL_W, PANEL_H = 940, 560
+local PANEL_W, PANEL_H = 940, 540
 
-local invPanel = Instance.new("Frame")
-invPanel.AnchorPoint = Vector2.new(0.5, 0.5); invPanel.Position = UDim2.fromScale(0.5, 0.5)
-invPanel.Size = UDim2.fromOffset(PANEL_W, PANEL_H); invPanel.BackgroundColor3 = PANEL
-invPanel.BackgroundTransparency = 0.12; invPanel.BorderSizePixel = 0; invPanel.Visible = false; invPanel.Parent = invGui
-corner(invPanel, 8)
-lstuds(invPanel); ldepth(invPanel); ledge(invPanel, TBLACK, 3)
-local invEdge = ledge(invPanel, HEADER_COLORS.guns, 2.5, 0.05)
-
--- NEW CHROME: the oversized floating header owns the title, the coin count, and the corner X.
-local invHeaderBar = bigHeader(invPanel, HEADER_COLORS.guns)
-local invTitle = Instance.new("TextLabel")
-invTitle.Position = UDim2.new(0, 26, 0, 0); invTitle.Size = UDim2.new(1, -300, 1, 0); invTitle.BackgroundTransparency = 1
-invTitle.FontFace = TITLE_FACE; invTitle.TextSize = 38; invTitle.TextXAlignment = Enum.TextXAlignment.Left
-invTitle.TextColor3 = Color3.new(1, 1, 1); invTitle.ZIndex = 7; invTitle.Text = "INVENTORY"; invTitle.Parent = invHeaderBar
+-- REDONE CHROME (matched to the reference image): one root assembly — the wide colored header bar
+-- (title left, red X inside its right end) with the dark body tucked underneath. invPanel is the BODY;
+-- its Visible flag stays the open/closed source of truth (openScreen and friends toggle it) and the
+-- root mirrors it so the header follows. Coins live in the always-on top-left counter, not the header.
+local invPanel, invTitle, invClose, invRecolor
 do
-	local st = Instance.new("UIStroke")
-	st.Color = TBLACK; st.Thickness = 3; st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; st.Parent = invTitle
+	local root
+	root, invPanel, invTitle, invClose, invRecolor = chromePanel(invGui, PANEL_W, PANEL_H, HEADER_COLORS.guns, "WEAPONS")
+	invPanel.Visible = false
+	invPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+		root.Visible = invPanel.Visible
+	end)
 end
-
-local invCoins = Instance.new("TextLabel")
-invCoins.AnchorPoint = Vector2.new(1, 0.5); invCoins.Position = UDim2.new(1, -74, 0.5, 0); invCoins.Size = UDim2.fromOffset(200, 28)
-invCoins.BackgroundTransparency = 1; invCoins.FontFace = TITLE_FACE; invCoins.TextSize = 20; invCoins.ZIndex = 7
-invCoins.TextXAlignment = Enum.TextXAlignment.Right; invCoins.TextColor3 = GOLD; invCoins.Text = "0"; invCoins.Parent = invHeaderBar
-do
-	local st = Instance.new("UIStroke")
-	st.Color = TBLACK; st.Thickness = 2.5; st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; st.Parent = invCoins
-end
-
-local invClose = redX(invHeaderBar, 50, 26)
-invClose.Position = UDim2.new(1, -6, 0, -8) -- rides the header's corner, like the reference
 
 -- (No tab strip: GUNS and CASES are separate screens sharing this panel; the header shows which.)
 
 -- Same 3-region skeleton as the SHOP: card grid (left) | featured pane, always visible (middle) |
 -- action-button stack (right).
-local CONTENT_Y = 64 -- 48 header + 16 gap
+local CONTENT_Y = 24 -- the header lives ABOVE the body now, so content starts near the top
 -- INSPECT-VIEW LAYOUT (approved plan): GRID mode = a full-width 6-column grid; clicking a card flips
 -- the panel into INSPECT mode — a full-size page for that item. Two sibling frames, one Visible toggle.
 local invGrid = Instance.new("ScrollingFrame")
@@ -1777,12 +1816,10 @@ local function showTab(id)
 	invTitle.Text = (id == "weapons") and "WEAPONS" or "INVENTORY"
 	invDetail.Visible = false; invGrid.Visible = true; invHint.Visible = true -- back to GRID mode
 	local hc = (id == "weapons") and HEADER_COLORS.guns or Color3.fromRGB(18, 69, 90) -- mockup: blue INVENTORY header
-	invHeaderBar.BackgroundColor3 = hc
-	invEdge.Color = hc
+	invRecolor(hc)
 end
 
 renderActive = function()
-	invCoins.Text = "🪙 " .. fmt(invData and invData.coins or 0)
 	if not invData then return end
 	local function paintGrid()
 		clearChildren(invGrid)
@@ -2053,10 +2090,14 @@ CaseResult.OnClientEvent:Connect(function(res)
 end)
 
 -- =====================================================================================================
--- ===== EXCLUSIVE SHOP ===== (the approved reference copy) — one featured PACK per rotation with its
--- REAL odds (two rarest pulls big under LIMITED ribbons + a 2×2 pool), Open ×1/×3/×10 Coin pills that
--- chain the case reel, a GONE IN restock countdown, a GAMEPASSES row, and an Enter Code → REDEEM bar.
--- Everything lives in this do-block (the 200-local ceiling: only upvalues leak out, no new top-levels).
+-- ===== EXCLUSIVE SHOP ===== rebuilt 1:1 against the owner's reference image:
+--   · gold header bar (wider than the body, white title/NAVY outline, red X inside the bar) — chromePanel
+--   · featured PACK box: gold title band, two big pulls over SUNBURSTS with red LIMITED ribbons crossing
+--     the art + big odds under them, a 2×2 pool grid (orange-ringed) with odds bottom-right
+--   · gold pack footer: GONE IN countdown + Open x1/x3/x10 (green coin pills + pink gift squares)
+--   · GAMEPASSES row on the dark body · Enter Code → REDEEM hanging BELOW the body, right-aligned
+-- The left-edge SHOP button is an IMAGE button (owner supplies the image; gold tile until then).
+-- Everything is scoped in this do-block (the 200-local ceiling — no new top-level locals).
 -- =====================================================================================================
 do
 	local ShopSync   = remotes:WaitForChild("ShopSync")
@@ -2066,24 +2107,26 @@ do
 	local MarketplaceService = game:GetService("MarketplaceService")
 
 	-- ===== TUNABLES =====
-	-- Paste each gamepass id when you create it (Creator Hub → Passes). 0 = the button answers "SOON".
+	local SHOP_ICON = "" -- <- paste the shop BUTTON image here ("rbxassetid://..." or just the number)
+	local SHOP_GOLD = Color3.fromRGB(240, 165, 10) -- the reference's bright header gold
+	-- Paste each gamepass id when you create it (Creator Hub → Passes). 0 = the button answers SOON.
 	local GAMEPASSES = {
 		{ name = "2x COINS", id = 0, color = Color3.fromRGB(35, 144, 201) },
 		{ name = "2x XP",    id = 0, color = Color3.fromRGB(217, 154, 0) },
 		{ name = "VIP",      id = 0, color = Color3.fromRGB(217, 100, 28) },
 	}
-	local W, H = 700, 560 -- panel size (the oversized header hangs wider than this)
+	local BODY_W, BODY_H = 660, 414
 
-	local S = { data = nil, deadline = 0 } -- every element + the live state, one local
+	local S = { data = nil, deadline = 0 } -- all elements + live state ride in one local
 
-	-- Absolute vertical gradient over a white base (UIGradient multiplies, so white = exact colors).
+	-- Absolute vertical gradient over a white base (UIGradient multiplies; white = exact colors).
 	local function absGrad(o, c0, c1, mid)
 		o.BackgroundColor3 = Color3.new(1, 1, 1)
 		local g = Instance.new("UIGradient")
 		if mid then
 			g.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, c0),
-				ColorSequenceKeypoint.new(0.6, mid),
+				ColorSequenceKeypoint.new(0.55, mid),
 				ColorSequenceKeypoint.new(1, c1),
 			})
 		else
@@ -2094,7 +2137,7 @@ do
 		return g
 	end
 
-	-- White sticker text with the fat black outline (the reference's lettering).
+	-- White sticker text with the fat dark outline (the reference's lettering).
 	local function sticker(parent, textStr, textSize, colr)
 		local l = Instance.new("TextLabel")
 		l.BackgroundTransparency = 1
@@ -2112,6 +2155,31 @@ do
 		return l
 	end
 
+	-- Flat gold coin (drawn, not an emoji — emoji glyphs don't render reliably in the title font).
+	local function coinDisc(parent, d)
+		local disc = Instance.new("Frame")
+		disc.Size = UDim2.fromOffset(d, d)
+		disc.BackgroundColor3 = GOLD
+		disc.BorderSizePixel = 0
+		disc.ZIndex = 6
+		disc.Parent = parent
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = disc
+		ledge(disc, TBLACK, 2)
+		local shine = Instance.new("Frame")
+		shine.Position = UDim2.fromScale(0.2, 0.14)
+		shine.Size = UDim2.fromScale(0.32, 0.24)
+		shine.BackgroundColor3 = Color3.fromRGB(255, 240, 190)
+		shine.BorderSizePixel = 0
+		shine.ZIndex = 7
+		shine.Parent = disc
+		local sc = Instance.new("UICorner")
+		sc.CornerRadius = UDim.new(1, 0)
+		sc.Parent = shine
+		return disc
+	end
+
 	S.gui = Instance.new("ScreenGui")
 	S.gui.Name = "LobbyShop"
 	S.gui.ResetOnSpawn = false
@@ -2120,69 +2188,57 @@ do
 	S.gui.Parent = playerGui
 	lattach(S.gui)
 
-	S.panel = Instance.new("Frame")
-	S.panel.AnchorPoint = Vector2.new(0.5, 0.5)
-	S.panel.Position = UDim2.fromScale(0.5, 0.5)
-	S.panel.Size = UDim2.fromOffset(W, H)
-	S.panel.BackgroundColor3 = PANEL
-	S.panel.BackgroundTransparency = 0.12
-	S.panel.BorderSizePixel = 0
-	S.panel.Visible = false
-	S.panel.Parent = S.gui
-	corner(S.panel, 8)
-	lstuds(S.panel)
-	ldepth(S.panel)
-	ledge(S.panel, TBLACK, 3)
-	ledge(S.panel, HEADER_COLORS.shop, 2.5, 0.05)
+	S.root, S.panel, S.title, S.x = chromePanel(S.gui, BODY_W, BODY_H, SHOP_GOLD, "EXCLUSIVE SHOP")
+	S.root.Size += UDim2.fromOffset(0, 62) -- room for the code bar hanging UNDER the body (reference)
 
-	-- Oversized gold header: EXCLUSIVE SHOP + coins + the corner X (same chrome as WEAPONS/INVENTORY).
-	S.header = bigHeader(S.panel, HEADER_COLORS.shop)
-	do
-		local t = sticker(S.header, "EXCLUSIVE SHOP", 38)
-		t.Position = UDim2.new(0, 26, 0, 0)
-		t.Size = UDim2.new(1, -300, 1, 0)
-		t.TextXAlignment = Enum.TextXAlignment.Left
-		t.ZIndex = 7
-	end
-	S.coins = sticker(S.header, "🪙 0", 20, GOLD)
-	S.coins.AnchorPoint = Vector2.new(1, 0.5)
-	S.coins.Position = UDim2.new(1, -78, 0.5, 0)
-	S.coins.Size = UDim2.fromOffset(200, 28)
-	S.coins.TextXAlignment = Enum.TextXAlignment.Right
-	S.coins.ZIndex = 7
-	S.x = redX(S.header, 50, 26)
-	S.x.Position = UDim2.new(1, -6, 0, -8)
-
-	-- ===== THE FEATURED PACK BOX (orange frame, dark well, gold footer) =====
+	-- ===== THE FEATURED PACK BOX =====
 	S.pack = Instance.new("Frame")
-	S.pack.Position = UDim2.fromOffset(20, 44)
-	S.pack.Size = UDim2.fromOffset(W - 40, 306)
+	S.pack.Position = UDim2.fromOffset(16, 14)
+	S.pack.Size = UDim2.fromOffset(BODY_W - 32, 300)
 	S.pack.BorderSizePixel = 0
 	S.pack.ClipsDescendants = true
+	S.pack.ZIndex = 2
 	S.pack.Parent = S.panel
-	corner(S.pack, 12)
-	absGrad(S.pack, Color3.fromRGB(36, 26, 8), Color3.fromRGB(18, 13, 4))
+	corner(S.pack, 6)
+	absGrad(S.pack, Color3.fromRGB(32, 24, 8), Color3.fromRGB(14, 11, 4))
 	ledge(S.pack, ORANGE, 3.5)
 
-	S.packTitle = sticker(S.pack, "PACK", 20)
-	S.packTitle.Position = UDim2.fromOffset(14, 4)
-	S.packTitle.Size = UDim2.fromOffset(400, 26)
-	S.packTitle.TextXAlignment = Enum.TextXAlignment.Left
+	do -- gold TITLE BAND across the pack's top (the reference's "CONQUERORS PACK" strip)
+		local band = Instance.new("Frame")
+		band.Size = UDim2.new(1, 0, 0, 34)
+		band.BorderSizePixel = 0
+		band.ZIndex = 3
+		band.Parent = S.pack
+		absGrad(band, Color3.fromRGB(255, 210, 62), Color3.fromRGB(212, 138, 0))
+		local seam = Instance.new("Frame")
+		seam.AnchorPoint = Vector2.new(0, 1)
+		seam.Position = UDim2.new(0, 0, 1, 0)
+		seam.Size = UDim2.new(1, 0, 0, 2)
+		seam.BackgroundColor3 = TBLACK
+		seam.BorderSizePixel = 0
+		seam.ZIndex = 4
+		seam.Parent = band
+		S.packTitle = sticker(band, "PACK", 20)
+		S.packTitle.Position = UDim2.fromOffset(14, 0)
+		S.packTitle.Size = UDim2.new(1, -28, 1, -2)
+		S.packTitle.TextXAlignment = Enum.TextXAlignment.Left
+	end
 
 	S.items = Instance.new("Frame") -- rebuilt every render: 2 big pulls + the 2×2 pool
-	S.items.Position = UDim2.fromOffset(0, 32)
-	S.items.Size = UDim2.new(1, 0, 1, -32 - 66)
+	S.items.Position = UDim2.fromOffset(0, 34)
+	S.items.Size = UDim2.new(1, 0, 0, 210)
 	S.items.BackgroundTransparency = 1
+	S.items.ZIndex = 2
 	S.items.Parent = S.pack
 
-	S.foot = Instance.new("Frame")
+	S.foot = Instance.new("Frame") -- gold footer: GONE IN + the three Open stacks
 	S.foot.AnchorPoint = Vector2.new(0, 1)
 	S.foot.Position = UDim2.new(0, 0, 1, 0)
-	S.foot.Size = UDim2.new(1, 0, 0, 66)
+	S.foot.Size = UDim2.new(1, 0, 0, 56)
 	S.foot.BorderSizePixel = 0
 	S.foot.ZIndex = 3
 	S.foot.Parent = S.pack
-	absGrad(S.foot, Color3.fromRGB(216, 160, 52), Color3.fromRGB(150, 100, 20))
+	absGrad(S.foot, Color3.fromRGB(224, 165, 46), Color3.fromRGB(150, 102, 14))
 	do
 		local seam = Instance.new("Frame")
 		seam.Size = UDim2.new(1, 0, 0, 3)
@@ -2191,51 +2247,62 @@ do
 		seam.ZIndex = 4
 		seam.Parent = S.foot
 		local g1 = sticker(S.foot, "GONE IN:", 12, Color3.fromRGB(255, 210, 62))
-		g1.Position = UDim2.fromOffset(12, 10)
-		g1.Size = UDim2.fromOffset(140, 14)
+		g1.Position = UDim2.fromOffset(12, 6)
+		g1.Size = UDim2.fromOffset(130, 14)
 		g1.TextXAlignment = Enum.TextXAlignment.Left
 	end
-	S.timer = sticker(S.foot, "--:--:--", 18, Color3.fromRGB(255, 233, 122))
-	S.timer.Position = UDim2.fromOffset(12, 26)
-	S.timer.Size = UDim2.fromOffset(140, 22)
+	S.timer = sticker(S.foot, "--:--:--", 20, Color3.fromRGB(255, 90, 46)) -- red-orange like the reference
+	S.timer.Position = UDim2.fromOffset(12, 20)
+	S.timer.Size = UDim2.fromOffset(130, 30)
 	S.timer.TextXAlignment = Enum.TextXAlignment.Left
 
-	-- One "Open xN" stack: tiny label over [green Coins pill][pink gift square]. Returns the pill
-	-- (its Text carries the live price) — stored on S so render can update it.
+	S.msg = sticker(S.gui, "", 13) -- verdict line (codes / not-enough-coins); sits left of the code bar
+	S.say = function(textStr, colr)
+		S.msg.Text = textStr
+		S.msg.TextColor3 = colr or TEXTCOL
+	end
+
+	-- One "Open xN" stack: label over [green coin pill][pink gift square]. Returns the price label.
 	local function mkOpen(count, x)
 		local stack = Instance.new("Frame")
 		stack.Position = UDim2.fromOffset(x, 0)
-		stack.Size = UDim2.fromOffset(160, 66)
+		stack.Size = UDim2.fromOffset(150, 56)
 		stack.BackgroundTransparency = 1
 		stack.ZIndex = 4
 		stack.Parent = S.foot
 		local lbl = sticker(stack, "Open x" .. count, 13)
 		lbl.Position = UDim2.fromOffset(0, 3)
-		lbl.Size = UDim2.fromOffset(114, 14)
+		lbl.Size = UDim2.fromOffset(106, 14)
 		local pill = Instance.new("TextButton")
-		pill.Position = UDim2.fromOffset(0, 21)
-		pill.Size = UDim2.fromOffset(114, 38)
+		pill.Position = UDim2.fromOffset(0, 20)
+		pill.Size = UDim2.fromOffset(106, 30)
 		pill.BorderSizePixel = 0
 		pill.AutoButtonColor = true
-		pill.FontFace = TITLE_FACE
-		pill.TextSize = 16
-		pill.TextColor3 = Color3.new(1, 1, 1)
-		pill.Text = "🪙 --"
+		pill.Text = ""
 		pill.ZIndex = 5
 		pill.Parent = stack
-		corner(pill, 10)
+		corner(pill, 5)
 		absGrad(pill, Color3.fromRGB(198, 247, 122), Color3.fromRGB(47, 138, 16), Color3.fromRGB(89, 193, 34))
-		ledge(pill, TBLACK, 3)
-		do
-			local st = Instance.new("UIStroke")
-			st.Color = TBLACK
-			st.Thickness = 2.5
-			st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-			st.Parent = pill
-		end
+		ledge(pill, TBLACK, 2.5)
+		local wrap = Instance.new("Frame") -- centers [coin][price] as a group
+		wrap.Size = UDim2.fromScale(1, 1)
+		wrap.BackgroundTransparency = 1
+		wrap.ZIndex = 6
+		wrap.Parent = pill
+		local ll = Instance.new("UIListLayout")
+		ll.FillDirection = Enum.FillDirection.Horizontal
+		ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		ll.VerticalAlignment = Enum.VerticalAlignment.Center
+		ll.Padding = UDim.new(0, 5)
+		ll.Parent = wrap
+		coinDisc(wrap, 15)
+		local price = sticker(wrap, "--", 17)
+		price.AutomaticSize = Enum.AutomaticSize.X
+		price.Size = UDim2.fromOffset(0, 24)
+		price.ZIndex = 6
 		local gift = Instance.new("TextButton")
-		gift.Position = UDim2.fromOffset(120, 21)
-		gift.Size = UDim2.fromOffset(38, 38)
+		gift.Position = UDim2.fromOffset(112, 20)
+		gift.Size = UDim2.fromOffset(30, 30)
 		gift.BorderSizePixel = 0
 		gift.FontFace = TITLE_FACE
 		gift.TextSize = 16
@@ -2243,12 +2310,12 @@ do
 		gift.Text = "🎁"
 		gift.ZIndex = 5
 		gift.Parent = stack
-		corner(gift, 9)
+		corner(gift, 5)
 		absGrad(gift, Color3.fromRGB(255, 122, 226), Color3.fromRGB(160, 22, 130))
-		ledge(gift, TBLACK, 3)
-		gift.Activated:Connect(function() -- gifting = phase 2 (needs Robux products); says so politely
+		ledge(gift, TBLACK, 2.5)
+		gift.Activated:Connect(function() -- gifting = phase 2 (needs Robux products per pack)
 			gift.Text = "SOON"
-			gift.TextSize = 11
+			gift.TextSize = 10
 			task.delay(1.2, function()
 				gift.Text = "🎁"
 				gift.TextSize = 16
@@ -2259,8 +2326,8 @@ do
 			if rolling or not d or not d.pack then
 				return
 			end
-			local price = tonumber(d.pack["price" .. count]) or math.huge
-			if (d.coins or 0) < price then
+			local cost = tonumber(d.pack["price" .. count]) or math.huge
+			if (d.coins or 0) < cost then
 				lplay("Error")
 				S.say("NOT ENOUGH COINS", ORANGE)
 				return
@@ -2274,38 +2341,38 @@ do
 			lplay("Buy")
 			ShopBuy:FireServer({ pack = true, count = count })
 		end)
-		return pill
+		return price
 	end
-	S.p1 = mkOpen(1, 156)
-	S.p3 = mkOpen(3, 324)
-	S.p10 = mkOpen(10, 492)
+	S.p1 = mkOpen(1, 150)
+	S.p3 = mkOpen(3, 312)
+	S.p10 = mkOpen(10, 474)
 
-	-- ===== GAMEPASSES ROW =====
+	-- ===== GAMEPASSES ROW (on the dark body, under the pack) =====
 	do
 		local gpTitle = sticker(S.panel, "GAMEPASSES", 20)
-		gpTitle.Position = UDim2.fromOffset(20, 356)
-		gpTitle.Size = UDim2.fromOffset(W - 40, 24)
+		gpTitle.Position = UDim2.fromOffset(16, 324)
+		gpTitle.Size = UDim2.fromOffset(BODY_W - 32, 22)
+		gpTitle.ZIndex = 2
 		for i, gp in GAMEPASSES do
 			local b = Instance.new("TextButton")
-			b.Position = UDim2.fromOffset(20 + (i - 1) * 225, 386)
-			b.Size = UDim2.fromOffset(209, 48)
+			b.Position = UDim2.fromOffset(16 + (i - 1) * 216, 352)
+			b.Size = UDim2.fromOffset(196, 46)
 			b.BackgroundColor3 = gp.color
 			b.BorderSizePixel = 0
 			b.FontFace = TITLE_FACE
 			b.TextSize = 19
 			b.TextColor3 = Color3.new(1, 1, 1)
+			b.ZIndex = 2
 			b.Parent = S.panel
-			corner(b, 10)
+			corner(b, 5)
 			ledge(b, TBLACK, 3)
 			lbevel(b)
 			b.Text = gp.name
-			do
-				local st = Instance.new("UIStroke")
-				st.Color = TBLACK
-				st.Thickness = 2.5
-				st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-				st.Parent = b
-			end
+			local st = Instance.new("UIStroke")
+			st.Color = TBLACK
+			st.Thickness = 2.5
+			st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+			st.Parent = b
 			b.Activated:Connect(function()
 				if gp.id and gp.id > 0 then
 					MarketplaceService:PromptGamePassPurchase(localPlayer, gp.id)
@@ -2317,40 +2384,41 @@ do
 		end
 	end
 
-	-- ===== ENTER CODE → REDEEM =====
-	S.codeBox = Instance.new("TextBox")
-	S.codeBox.Position = UDim2.fromOffset(20, 448)
-	S.codeBox.Size = UDim2.fromOffset(470, 46)
-	S.codeBox.BackgroundColor3 = Color3.fromRGB(13, 17, 9)
-	S.codeBox.BorderSizePixel = 0
-	S.codeBox.FontFace = BODYB_FACE
-	S.codeBox.TextSize = 16
-	S.codeBox.TextColor3 = TEXTCOL
-	S.codeBox.PlaceholderText = "Enter Code..."
-	S.codeBox.PlaceholderColor3 = DIMTEXT
-	S.codeBox.ClearTextOnFocus = false
-	S.codeBox.Text = ""
-	S.codeBox.Parent = S.panel
-	corner(S.codeBox, 10)
-	ledge(S.codeBox, TBLACK, 3)
+	-- ===== ENTER CODE → REDEEM ===== hangs BELOW the body, right-aligned (exactly like the reference).
 	do
+		local Y = 50 + BODY_H + 12 -- root-space: body top (50) + body height + gap
+		S.codeBox = Instance.new("TextBox")
+		S.codeBox.Position = UDim2.fromOffset(214, Y)
+		S.codeBox.Size = UDim2.fromOffset(310, 44)
+		S.codeBox.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
+		S.codeBox.BackgroundTransparency = 0.05
+		S.codeBox.BorderSizePixel = 0
+		S.codeBox.FontFace = TITLE_FACE
+		S.codeBox.TextSize = 17
+		S.codeBox.TextColor3 = TEXTCOL
+		S.codeBox.PlaceholderText = "Enter Code..."
+		S.codeBox.PlaceholderColor3 = DIMTEXT
+		S.codeBox.ClearTextOnFocus = false
+		S.codeBox.Text = ""
+		S.codeBox.ZIndex = 2
+		S.codeBox.Parent = S.root
+		corner(S.codeBox, 10)
+		ledge(S.codeBox, TBLACK, 3)
 		local b = Instance.new("TextButton")
-		b.Position = UDim2.fromOffset(506, 448)
-		b.Size = UDim2.fromOffset(174, 46)
+		b.Position = UDim2.fromOffset(532, Y)
+		b.Size = UDim2.fromOffset(150, 44)
 		b.BorderSizePixel = 0
 		b.FontFace = TITLE_FACE
-		b.TextSize = 18
+		b.TextSize = 19
 		b.TextColor3 = Color3.new(1, 1, 1)
-		b.Parent = S.panel
+		b.Text = ""
+		b.ZIndex = 2
+		b.Parent = S.root
 		corner(b, 10)
 		absGrad(b, Color3.fromRGB(198, 247, 122), Color3.fromRGB(47, 138, 16), Color3.fromRGB(89, 193, 34))
 		ledge(b, TBLACK, 3)
-		b.Text = "REDEEM"
-		local st = Instance.new("UIStroke")
-		st.Color = TBLACK
-		st.Thickness = 2.5
-		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-		st.Parent = b
+		local bl = sticker(b, "REDEEM", 19)
+		bl.Size = UDim2.fromScale(1, 1)
 		b.Activated:Connect(function()
 			local code = S.codeBox.Text
 			if #code:gsub("%s", "") < 1 then
@@ -2359,23 +2427,38 @@ do
 			S.say("CHECKING...", DIMTEXT)
 			ShopRedeem:FireServer(code)
 		end)
+		S.msg.Position = UDim2.fromOffset(22, Y)
+		S.msg.Size = UDim2.fromOffset(184, 44)
+		S.msg.TextWrapped = true
+		S.msg.TextXAlignment = Enum.TextXAlignment.Left
+		S.msg.Parent = S.root
 	end
 
-	S.msg = sticker(S.panel, "", 14)
-	S.msg.Position = UDim2.fromOffset(20, 500)
-	S.msg.Size = UDim2.fromOffset(W - 40, 20)
-	S.say = function(textStr, colr)
-		S.msg.Text = textStr
-		S.msg.TextColor3 = colr or TEXTCOL
+	-- Cheap sunburst behind a featured pull: crossed warm bars = an 8-point glow (no image needed).
+	local function burst(parent, cx, cy)
+		for _, rot in { 0, 45, 90, 135 } do
+			local bar = Instance.new("Frame")
+			bar.AnchorPoint = Vector2.new(0.5, 0.5)
+			bar.Position = UDim2.fromOffset(cx, cy)
+			bar.Size = UDim2.fromOffset(150, 14)
+			bar.Rotation = rot
+			bar.BackgroundColor3 = Color3.fromRGB(255, 223, 110)
+			bar.BackgroundTransparency = 0.85
+			bar.BorderSizePixel = 0
+			bar.ZIndex = 2
+			bar.Parent = parent
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(1, 0)
+			c.Parent = bar
+		end
 	end
 
-	-- One pool item's art: the gun's spinning render if it has a model, else its (or the skin tier's)
-	-- name as a colored placard — never a hole.
-	local function itemArt(parent, e, spin)
+	-- One pool item's art: the gun's render if it has a model, else a colored name placard — no holes.
+	local function itemArt(parent, e, spin, textSize)
 		if e.kind == "gun" then
 			local vp = makeGunViewport(e.id, spin)
 			if vp then
-				vp.Size = UDim2.new(1, 0, 1, 0)
+				vp.Size = UDim2.fromScale(1, 1)
 				vp.ZIndex = 3
 				vp.Parent = parent
 				return
@@ -2384,14 +2467,15 @@ do
 		local l
 		if e.kind == "gun" then
 			local w = weaponInfo(e.id)
-			l = sticker(parent, (w and w.name or e.id):upper(), spin and 18 or 13, w and rarityColor(w.rarity) or TEXTCOL)
+			l = sticker(parent, (w and w.name or e.id):upper(), textSize, w and rarityColor(w.rarity) or TEXTCOL)
 		else
 			local rname = (invData and invData.catalog.rarities[e.rarity] or {}).name or e.rarity
-			l = sticker(parent, (rname .. " SKINS"):upper(), spin and 18 or 13, rarityColor(e.rarity))
+			l = sticker(parent, (rname .. " SKINS"):upper(), textSize, rarityColor(e.rarity))
 		end
 		l.Position = UDim2.fromOffset(4, 4)
 		l.Size = UDim2.new(1, -8, 1, -8)
 		l.TextWrapped = true
+		l.ZIndex = 3
 	end
 
 	S.render = function()
@@ -2399,16 +2483,15 @@ do
 		if not d then
 			return
 		end
-		S.coins.Text = "🪙 " .. fmt(d.coins or 0)
 		local pk = d.pack
 		if not pk then
 			return
 		end
-		local base = (pk.name or "PACK"):upper():gsub("%s*SKIN%s*CRATE", ""):gsub("%s*CASE", "")
-		S.packTitle.Text = base .. " PACK"
-		S.p1.Text = "🪙 " .. fmt(pk.price1 or 0)
-		S.p3.Text = "🪙 " .. fmt(pk.price3 or 0)
-		S.p10.Text = "🪙 " .. fmt(pk.price10 or 0)
+		-- "Legendary Skin Crate" -> "LEGENDARY PACK"
+		S.packTitle.Text = (pk.name or "PACK"):upper():gsub("%s*SKIN%s*CRATE", ""):gsub("%s*CASE", "") .. " PACK"
+		S.p1.Text = fmt(pk.price1 or 0)
+		S.p3.Text = fmt(pk.price3 or 0)
+		S.p10.Text = fmt(pk.price10 or 0)
 
 		clearChildren(S.items)
 		local disp = invData and invData.catalog.cases[pk.caseId]
@@ -2419,8 +2502,8 @@ do
 			l.Size = UDim2.fromOffset(300, 24)
 			return
 		end
-		-- TRUE odds, rarest first: the two longest shots go BIG under LIMITED ribbons, the next four
-		-- fill the 2×2 pool grid — exactly the reference layout.
+		-- TRUE odds, rarest first: the two longest shots go BIG over sunbursts with LIMITED ribbons,
+		-- the next four fill the 2×2 pool grid — the reference layout exactly.
 		local entries = {}
 		for _, e in disp.loot do
 			table.insert(entries, e)
@@ -2431,51 +2514,53 @@ do
 		for i = 1, math.min(2, #entries) do
 			local e = entries[i]
 			local well = Instance.new("Frame")
-			well.Position = UDim2.fromOffset(14 + (i - 1) * 178, 4)
-			well.Size = UDim2.fromOffset(168, 196)
+			well.Position = UDim2.fromOffset(18 + (i - 1) * 178, 6)
+			well.Size = UDim2.fromOffset(164, 198)
 			well.BackgroundTransparency = 1
 			well.Parent = S.items
+			burst(well, 82, 62)
 			local art = Instance.new("Frame")
-			art.Size = UDim2.fromOffset(168, 128)
+			art.Size = UDim2.fromOffset(164, 124)
 			art.BackgroundTransparency = 1
 			art.Parent = well
-			itemArt(art, e, true)
-			local rib = Instance.new("Frame")
+			itemArt(art, e, true, 18)
+			local rib = Instance.new("Frame") -- red LIMITED ribbon crossing the art's foot
 			rib.AnchorPoint = Vector2.new(0.5, 0)
-			rib.Position = UDim2.new(0.5, 0, 0, 132)
-			rib.Size = UDim2.fromOffset(96, 20)
+			rib.Position = UDim2.new(0.5, 0, 0, 106)
+			rib.Size = UDim2.fromOffset(118, 22)
 			rib.BorderSizePixel = 0
-			rib.ZIndex = 3
+			rib.ZIndex = 5
 			rib.Parent = well
-			corner(rib, 4)
-			absGrad(rib, Color3.fromRGB(255, 61, 46), Color3.fromRGB(150, 18, 18))
+			corner(rib, 3)
+			absGrad(rib, Color3.fromRGB(255, 90, 60), Color3.fromRGB(150, 18, 18))
 			ledge(rib, TBLACK, 2)
-			local rl = sticker(rib, "LIMITED", 12)
+			local rl = sticker(rib, "LIMITED", 13)
 			rl.Size = UDim2.fromScale(1, 1)
-			local pct = sticker(well, ("%.1f%%"):format(e.pct or 0), 22)
-			pct.Position = UDim2.fromOffset(0, 156)
-			pct.Size = UDim2.fromOffset(168, 26)
+			rl.ZIndex = 6
+			local pct = sticker(well, ("%.1f%%"):format(e.pct or 0), 27)
+			pct.Position = UDim2.fromOffset(0, 132)
+			pct.Size = UDim2.fromOffset(164, 32)
 		end
 		for i = 3, math.min(6, #entries) do
 			local e = entries[i]
 			local k = i - 3 -- 0..3 into the 2×2
 			local mini = Instance.new("Frame")
-			mini.Position = UDim2.fromOffset(374 + (k % 2) * 146, 4 + math.floor(k / 2) * 98)
-			mini.Size = UDim2.fromOffset(132, 92)
-			mini.BackgroundColor3 = Color3.fromRGB(26, 20, 8)
+			mini.Position = UDim2.fromOffset(372 + (k % 2) * 124, 6 + math.floor(k / 2) * 96)
+			mini.Size = UDim2.fromOffset(116, 88)
 			mini.BorderSizePixel = 0
 			mini.Parent = S.items
-			corner(mini, 10)
+			corner(mini, 5)
+			absGrad(mini, Color3.fromRGB(26, 20, 8), Color3.fromRGB(15, 12, 4))
 			ledge(mini, ORANGE, 2.5)
 			local art = Instance.new("Frame")
-			art.Size = UDim2.new(1, -6, 1, -6)
 			art.Position = UDim2.fromOffset(3, 3)
+			art.Size = UDim2.new(1, -6, 1, -6)
 			art.BackgroundTransparency = 1
 			art.Parent = mini
-			itemArt(art, e, false)
+			itemArt(art, e, false, 12)
 			local pct = sticker(mini, ("%.1f%%"):format(e.pct or 0), 14)
 			pct.AnchorPoint = Vector2.new(1, 1)
-			pct.Position = UDim2.new(1, -6, 1, -3)
+			pct.Position = UDim2.new(1, -7, 1, -4)
 			pct.Size = UDim2.fromOffset(70, 16)
 			pct.TextXAlignment = Enum.TextXAlignment.Right
 			pct.ZIndex = 5
@@ -2483,17 +2568,17 @@ do
 	end
 
 	local function closeShop()
-		if S.panel.Visible then
+		if S.root.Visible then
 			uiFocusClose()
 		end
-		S.panel.Visible = false
+		S.root.Visible = false
 	end
 
-	-- GONE IN countdown (dd:hh:mm:ss collapses to hh:mm:ss for our 30-minute windows).
+	-- GONE IN countdown (hh:mm:ss — our windows are 30 minutes).
 	task.spawn(function()
 		while true do
 			task.wait(0.5)
-			if S.panel.Visible then
+			if S.root.Visible then
 				local left = math.max(0, S.deadline - os.clock())
 				S.timer.Text = ("%02d:%02d:%02d"):format(math.floor(left / 3600), math.floor(left / 60) % 60, math.floor(left) % 60)
 			end
@@ -2510,22 +2595,22 @@ do
 			if not invData then
 				InvRequest:FireServer() -- the pack pool renders from the catalog; make sure it's coming
 			end
-			if not S.panel.Visible then
+			if not S.root.Visible then
 				lplay("Open")
 				uiFocusOpen()
-				S.panel.Visible = true
+				S.root.Visible = true
 			end
-			if invPanel.Visible and not rolling then -- one panel at a time, like the reference
+			if invPanel.Visible and not rolling then -- one panel at a time
 				invPanel.Visible = false
 				uiFocusClose()
 			end
 		end
-		if S.panel.Visible then
+		if S.root.Visible then
 			S.render()
 		end
 	end)
 	InvSync.OnClientEvent:Connect(function() -- the catalog just landed: fill in the pack pool
-		if S.panel.Visible then
+		if S.root.Visible then
 			S.render()
 		end
 	end)
@@ -2548,20 +2633,51 @@ do
 		end
 	end)
 
-	-- The SHOP rail pill (your sticker buttons, third on the left rail). Toggles: closed → ask the
-	-- server for the storefront (it replies enter=true), open → just close.
-	local shopBtn = cornerButton("", "SHOP", 0, Color3.fromRGB(140, 100, 22), false)
-	shopBtn.AnchorPoint = Vector2.new(0, 0.5)
-	shopBtn.Position = UDim2.new(0, 14, 0.5, 72)
-	shopBtn.Activated:Connect(function()
-		if S.panel.Visible then
+	-- ===== THE LEFT-EDGE SHOP BUTTON (your image; a gold SHOP tile stands in until it arrives) =====
+	S.btn = Instance.new("ImageButton")
+	S.btn.Name = "ShopButton"
+	S.btn.AnchorPoint = Vector2.new(0, 0.5)
+	S.btn.Position = UDim2.new(0, 16, 0.5, 0)
+	S.btn.Size = UDim2.fromOffset(100, 100)
+	S.btn.BackgroundTransparency = 1
+	S.btn.ScaleType = Enum.ScaleType.Fit
+	S.btn.Parent = S.gui
+	if SHOP_ICON ~= "" then
+		S.btn.Image = SHOP_ICON:match("^%d+$") and ("rbxassetid://" .. SHOP_ICON) or SHOP_ICON
+	else
+		S.btn.BackgroundTransparency = 0
+		S.btn.BackgroundColor3 = SHOP_GOLD
+		corner(S.btn, 7)
+		ledge(S.btn, TBLACK, 3.5)
+		cardShade(S.btn, 0.3)
+		local t = sticker(S.btn, "SHOP", 24)
+		t.Size = UDim2.fromScale(1, 1)
+	end
+	do -- hover/press squash so the raw image still feels like a button
+		local press = Instance.new("UIScale")
+		press.Parent = S.btn
+		S.btn.MouseEnter:Connect(function()
+			press.Scale = 1.06
+		end)
+		S.btn.MouseLeave:Connect(function()
+			press.Scale = 1
+		end)
+		S.btn.MouseButton1Down:Connect(function()
+			press.Scale = 0.92
+		end)
+		S.btn.MouseButton1Up:Connect(function()
+			press.Scale = 1.06
+		end)
+	end
+	S.btn.Activated:Connect(function()
+		if S.root.Visible then
 			lplay("Close")
 			closeShop()
 		else
-			ShopSync:FireServer()
+			ShopSync:FireServer() -- server replies with enter=true → opens the panel
 		end
 	end)
-	-- Opening WEAPONS/INVENTORY (rail or the B key) puts the shop away — one panel at a time.
+	-- Opening WEAPONS/INVENTORY (buttons or the B key) puts the shop away — one panel at a time.
 	gunsBtn.Activated:Connect(closeShop)
 	casesBtn.Activated:Connect(closeShop)
 	UserInputService.InputBegan:Connect(function(input, processed)
