@@ -586,9 +586,7 @@ local status = Instance.new("TextLabel")
 status.AnchorPoint = Vector2.new(0.5, 1); status.Position = UDim2.new(0.5, 0, 1, -104); status.Size = UDim2.new(1, -40, 0, 22)
 status.BackgroundTransparency = 1; status.FontFace = BODYB_FACE; status.TextSize = 16
 status.TextColor3 = DIMTEXT; status.Text = ""; status.Parent = panel
-local statusStroke = Instance.new("UIStroke")
-statusStroke.Color = TBLACK; statusStroke.Thickness = 1.5
-statusStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; statusStroke.Parent = status
+ledge(status, TBLACK, 1.5) -- text outline (no named local: this file sits at Luau's 200-local ceiling)
 
 -- ===== RENDER =====
 local function refresh()
