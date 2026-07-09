@@ -977,9 +977,10 @@ local invGridLayout = Instance.new("UIGridLayout")
 invGridLayout.CellSize = UDim2.fromOffset(115, 115); invGridLayout.CellPadding = UDim2.fromOffset(10, 10); invGridLayout.Parent = invGrid
 
 local invDetail = Instance.new("Frame")
-invDetail.Position = UDim2.fromOffset(PANEL_W + 12, CONTENT_Y) -- starts OFF the panel's right edge
 invDetail.Size = UDim2.fromOffset(392, PANEL_H - CONTENT_Y - 16)
-invDetail.ZIndex = 5 -- rides above the grid while sliding
+invDetail.Position = UDim2.fromOffset(PANEL_W - 16 - 392, CONTENT_Y) -- its final spot, INSIDE the panel
+invDetail.Visible = false -- hidden until something is selected (the reveal slides it in)
+invDetail.ZIndex = 5 -- rides above the grid
 invDetail.BackgroundColor3 = PANEL2; invDetail.BorderSizePixel = 0; invDetail.Parent = invPanel
 corner(invDetail, 6); lstuds(invDetail, 42, 0.75); ledge(invDetail, TBLACK, 2.5); ledge(invDetail, LINE, 1, 0.5)
 
@@ -1116,24 +1117,21 @@ end
 local function renderInvDetail()
 	clearChildren(invDetail)
 	clearChildren(invActs)
-	-- SLIDE: the info sheet springs OUT of the panel's right edge when something is selected and tucks
-	-- back in when nothing is. The panel clips descendants, so it emerges smoothly from inside.
+	-- REVEAL: the sheet lives at its final spot inside the panel; selecting something SHOWS it with a
+	-- short slide-in. Visibility comes first — even if the tween can't run, the sheet still appears.
 	do
-		local target = (invData and selectedInv) and (PANEL_W - 16 - invDetail.Size.X.Offset) or (PANEL_W + 12)
-		if invDetail.Position.X.Offset ~= target then
-			TweenService:Create(invDetail, TweenInfo.new(0.33, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-				{ Position = UDim2.fromOffset(target, CONTENT_Y) }):Play()
+		local showX = PANEL_W - 16 - invDetail.Size.X.Offset
+		if not (invData and selectedInv) then
+			invDetail.Visible = false
+			return -- nothing to feature: keep the sheet tucked away
 		end
-	end
-	if not invData then
-		return
-	end
-	if not selectedInv then
-		local hint = Instance.new("TextLabel")
-		hint.Size = UDim2.fromScale(1, 1); hint.BackgroundTransparency = 1
-		hint.FontFace = TITLE_FACE; hint.TextSize = 18; hint.TextColor3 = DIMTEXT
-		hint.Text = "NOTHING HERE YET"; hint.Parent = invDetail
-		return
+		print(("[LobbyInv] sheet -> %s %s"):format(tostring(selectedInv.kind), tostring(selectedInv.id)))
+		if not invDetail.Visible then
+			invDetail.Visible = true
+			invDetail.Position = UDim2.fromOffset(showX + 48, CONTENT_Y) -- start a touch right, slide home
+		end
+		TweenService:Create(invDetail, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{ Position = UDim2.fromOffset(showX, CONTENT_Y) }):Play()
 	end
 	local kind, id = selectedInv.kind, selectedInv.id
 
@@ -1557,7 +1555,7 @@ local function showTab(id)
 	activeTab = id
 	selectedInv = nil -- switching screens resets the featured pane
 	invTitle.Text = (id == "weapons") and "WEAPONS" or "INVENTORY"
-	invDetail.Position = UDim2.fromOffset(PANEL_W + 12, CONTENT_Y) -- the sheet re-slides in per screen
+	invDetail.Visible = false -- the sheet re-reveals for the new screen
 	local hc = (id == "weapons") and HEADER_COLORS.guns or Color3.fromRGB(18, 69, 90) -- mockup: blue INVENTORY header
 	invHeaderBar.BackgroundColor3 = hc
 	invHeaderSq.BackgroundColor3 = hc
