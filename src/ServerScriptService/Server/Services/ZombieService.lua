@@ -88,6 +88,11 @@ local MAX_LIFETIME     = 120    -- backstop: a zombie alive this long is force-k
                                -- High so big hordes don't get culled mid-chase; STUCK_TIMEOUT handles real wedges.
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
 local SPAWNPOINT_NEAR  = 160    -- studs: prefer ZombieSpawn parts within this range of a living player (Islands)
+-- Shoreline spawns (Islands): zombies surface IN parts named "ocean", just past the water's edge.
+local SHORE_MAX_MARCH  = 260    -- studs: how far out from a player we hunt for the water's edge
+local SHORE_STEP       = 6      -- studs per outward march step while hunting the shoreline
+local SHORE_OUT        = 6      -- studs past the water's edge a zombie surfaces (in the water, near shore)
+local BRIDGE_CLEAR     = 25     -- studs: never surface within this range of a part named "bridge"
 local GRAVE_STAND_HEIGHT = 3.5 -- studs the zombie's root sits above the ground when fully risen (feet land
                                -- just above ground so it settles cleanly instead of toppling)
 local MIN_SPAWN_DIST   = 10    -- min studs between a new spawn and any active grave (no stacking spawns)
@@ -1034,9 +1039,131 @@ local function getSpawnPointCFrame(): CFrame?
 	return CFrame.new(part.Position.X + ox, top + SPAWN_HEIGHT, part.Position.Z + oz)
 end
 
--- Pick where the next zombie surfaces. Islands (useSpawnPoints) uses ZombieSpawn parts; Forest spawns ~35
--- studs from a random living player, clear of active graves and outside the out-of-bounds fog.
+-- ===== SHORELINE SPAWNS (water maps) ===== the owner names the water parts "ocean" (and any crossings
+-- "bridge"). Zombies surface IN the ocean just past the water's edge nearest a player — never on land and
+-- never beside a bridge — then wade ashore. Parts are re-scanned whenever the active map changes.
+local oceanParts: { BasePart } = {}
+local bridgeParts: { BasePart } = {}
+local scannedMap: Instance? = nil
+local nextWaterScan = 0
+
+local function isOceanPart(inst: Instance?): boolean
+	return inst ~= nil and inst:IsA("BasePart") and inst.Name:lower():find("ocean", 1, true) ~= nil
+end
+
+local function scanWaterParts()
+	local map = Workspace:FindFirstChild("ActiveMap") or Workspace
+	local now = os.clock()
+	if scannedMap == map and (#oceanParts > 0 or now < nextWaterScan) then
+		return -- cached (empty results retry on a cooldown, not per spawn)
+	end
+	scannedMap = map
+	nextWaterScan = now + 5
+	oceanParts, bridgeParts = {}, {}
+	for _, d in map:GetDescendants() do
+		if d:IsA("BasePart") then
+			local n = d.Name:lower()
+			if n:find("ocean", 1, true) then
+				table.insert(oceanParts, d)
+			elseif n:find("bridge", 1, true) then
+				table.insert(bridgeParts, d)
+			end
+		end
+	end
+end
+
+-- Distance from `pos` to the closest point on any bridge part's box.
+local function nearBridge(pos: Vector3): boolean
+	for _, b in bridgeParts do
+		if b.Parent then
+			local lp = b.CFrame:PointToObjectSpace(pos)
+			local half = b.Size * 0.5
+			local clamped = Vector3.new(
+				math.clamp(lp.X, -half.X, half.X),
+				math.clamp(lp.Y, -half.Y, half.Y),
+				math.clamp(lp.Z, -half.Z, half.Z)
+			)
+			if (b.CFrame:PointToWorldSpace(clamped) - pos).Magnitude < BRIDGE_CLEAR then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- March outward from a random player until the downcast first lands on an "ocean" part — that's the
+-- water's edge on the side nearest them. Surface just PAST the edge, on the water, clear of bridges.
+-- (A bridge deck over the water reads as land, so the march naturally skips water under bridges.)
+local function getShorelineCFrame(): CFrame?
+	scanWaterParts()
+	if #oceanParts == 0 then
+		return nil -- no "ocean"-named parts on this map
+	end
+	local roots = {}
+	for _, pl in Players:GetPlayers() do
+		local char = pl.Character
+		local r = char and char:FindFirstChild("HumanoidRootPart")
+		local h = char and char:FindFirstChildOfClass("Humanoid")
+		if r and h and h.Health > 0 then
+			table.insert(roots, r)
+		end
+	end
+	if #roots == 0 then
+		return nil
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.IgnoreWater = true
+	local filter: { Instance } = { zombieFolder, graveFolder }
+	for _, pl in Players:GetPlayers() do
+		if pl.Character then
+			table.insert(filter, pl.Character)
+		end
+	end
+	params.FilterDescendantsInstances = filter
+
+	local function oceanBelow(x: number, z: number, castY: number): RaycastResult?
+		local hit = Workspace:Raycast(Vector3.new(x, castY, z), Vector3.new(0, -300, 0), params)
+		return (hit and isOceanPart(hit.Instance)) and hit or nil
+	end
+
+	for _ = 1, 14 do -- random player + random direction per attempt
+		local origin = roots[math.random(#roots)].Position
+		local castY = origin.Y + 90
+		local ang = math.random() * 2 * math.pi
+		local dir = Vector3.new(math.cos(ang), 0, math.sin(ang))
+		local t = SHORE_STEP
+		while t <= SHORE_MAX_MARCH do
+			local p = origin + dir * t
+			local hit = Workspace:Raycast(Vector3.new(p.X, castY, p.Z), Vector3.new(0, -300, 0), params)
+			if not hit then
+				break -- marched off the map — try another direction
+			end
+			if isOceanPart(hit.Instance) then
+				-- Found the water's edge. Surface a touch further out (still confirmed over ocean).
+				local out = oceanBelow(p.X + dir.X * SHORE_OUT, p.Z + dir.Z * SHORE_OUT, castY)
+				local surface = (out or hit).Position
+				if not nearBridge(surface) and not SpawnZones.IsBlocked(surface) then
+					return CFrame.new(surface)
+				end
+				break -- edge found but blocked (bridge/fog) — try another direction
+			end
+			t += SHORE_STEP
+		end
+	end
+	return nil
+end
+
+-- Pick where the next zombie surfaces. Water maps (Islands) surface at the ocean's edge nearest a player
+-- (parts named "ocean"), then ZombieSpawn-tagged parts, then the Forest near-player fallback — so the map
+-- still functions while it's half-built.
 local function getSpawnCFrame(): CFrame?
+	if mapEmerge == "water" then
+		local cf = getShorelineCFrame()
+		if cf then
+			return cf
+		end
+	end
 	if mapUseSpawnPoints then
 		local cf = getSpawnPointCFrame()
 		if cf then
