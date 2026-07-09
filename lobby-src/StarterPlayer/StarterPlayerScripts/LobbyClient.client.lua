@@ -433,30 +433,8 @@ local function makeGunViewport(weaponId, spin, folderName)
 	model.WorldPivot = cf
 	local dist = (size.Magnitude / 2) / math.tan(math.rad(15)) * 1.12 + 0.1
 	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * 0.22, dist), cf.Position)
-	-- Cartoon OUTLINE: Highlights don't render inside ViewportFrames, so a slightly bigger all-black
-	-- clone sits BEHIND the gun along the CAMERA axis — the gun draws in front, the black rim peeks
-	-- out around its edges. (Centering the shell on the gun swallowed it whole: everything went black.)
-	local outline
-	local outlinePos = cf.Position
-	pcall(function()
-		outline = model:Clone()
-		for _, d in outline:GetDescendants() do
-			if d:IsA("BasePart") then
-				d.Color = Color3.new(0, 0, 0)
-				d.Material = Enum.Material.SmoothPlastic
-				d.Reflectance = 0
-			elseif d:IsA("SpecialMesh") then
-				d.TextureId = ""
-			elseif d:IsA("Texture") or d:IsA("Decal") or d:IsA("SurfaceAppearance") then
-				d:Destroy()
-			end
-		end
-		outline:ScaleTo(outline:GetScale() * 1.14)
-		local backDir = (cf.Position - cam.CFrame.Position).Unit
-		outlinePos = cf.Position + backDir * (size.Magnitude * 0.12)
-		outline:PivotTo(CFrame.new(outlinePos) * cf.Rotation)
-		outline.Parent = vp
-	end)
+	-- (No outline here: Roblox Highlights don't render inside ViewportFrames, and the fake black-clone
+	-- rim looked wrong — UI previews render the plain model.)
 	-- Display orientation: GUNS get side-on + a cool upward tilt; CRATES keep their built rotation
 	-- (the gun yaw was turning crates sideways).
 	local TILT, DISP_YAW = 45, { tommygun = 90, raygun = 90, plasma = 90, freezeray = 90 }
@@ -467,11 +445,7 @@ local function makeGunViewport(weaponId, spin, folderName)
 		dispRot = cf.Rotation
 	end
 	if spin ~= false then
-		local startAng = math.random() * math.pi * 2
-		table.insert(gvSpinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = startAng })
-		if outline then -- same speed + same start angle = the rim spins in lockstep with the gun
-			table.insert(gvSpinning, { vp = vp, model = outline, pos = outlinePos, rot = dispRot, ang = startAng })
-		end
+		table.insert(gvSpinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
 		if not gvLoop then
 			gvLoop = true
 			RunService.RenderStepped:Connect(function(dt)
@@ -489,9 +463,6 @@ local function makeGunViewport(weaponId, spin, folderName)
 		end
 	else
 		model:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once, side-on + tilted
-		if outline then
-			outline:PivotTo(CFrame.new(outlinePos) * dispRot)
-		end
 	end
 	return vp
 end
