@@ -1134,6 +1134,9 @@ local function getShorelineCFrame(): CFrame?
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.IgnoreWater = true
+	-- Raycast AS A ZOMBIE: ocean parts live in the OceanZ group which does NOT collide with Default,
+	-- so a default-group ray passes straight through the water and never finds the shoreline.
+	params.CollisionGroup = "ZombieRig"
 	local filter: { Instance } = { zombieFolder, graveFolder }
 	for _, pl in Players:GetPlayers() do
 		if pl.Character then
@@ -2002,6 +2005,7 @@ local function steer(record, now: number)
 			local aheadFlat = Vector3.new(targetRoot.Position.X - root.Position.X, 0, targetRoot.Position.Z - root.Position.Z)
 			if aheadFlat.Magnitude > 0.1 then
 				local params = worldOnlyParams()
+				params.CollisionGroup = "ZombieRig" -- see the ocean (OceanZ ignores Default-group rays)
 				-- A zombie still ON the ocean must keep wading ashore (the water is solid for it) —
 				-- only steer away from water once it's standing on real land. Then it STAYS on land.
 				local under = Workspace:Raycast(root.Position + Vector3.new(0, 3, 0), Vector3.new(0, -25, 0), params)
