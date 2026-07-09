@@ -300,6 +300,30 @@ local SHOP = {
 	-- Robux-ready: map a rarity to a developer product id later and the buy path can branch to Robux
 	-- without a rework (ids ride along in every ShopSync slot).
 	RobuxProducts = {},
+	-- NEW: THE EXCLUSIVE PACK — the featured crate the EXCLUSIVE SHOP panel opens directly (×1/×3/×10).
+	-- One seeded rarity per rotation (always an exciting tier), no stock cap: this is the big Coin sink.
+	PackWeights = { rare = 14, epic = 42, legendary = 30, mythic = 10, divine = 4 },
+	PackX3OffPct  = 11, -- multi-open discounts (×3 ≈ 11% off, ×10 ≈ 21% off)
+	PackX10OffPct = 21,
+}
+
+-- Coin price of opening the featured pack `count` times (1, 3 or 10 — discounts baked in).
+local function packPrice(rarity, count)
+	local base = SHOP.Prices[rarity] or 100
+	if count == 3 then
+		return math.max(1, math.floor(base * 3 * (100 - SHOP.PackX3OffPct) / 100 + 0.5))
+	elseif count == 10 then
+		return math.max(1, math.floor(base * 10 * (100 - SHOP.PackX10OffPct) / 100 + 0.5))
+	end
+	return base
+end
+
+-- ===== REDEEM CODES (the EXCLUSIVE SHOP's "Enter Code" bar) =====
+-- Add a code = add a row (keys UPPERCASE, no spaces). Each pays coins and/or crates, ONCE per player
+-- (redeemed codes live in the profile). Retire a code by deleting its row.
+local CODES = {
+	WELCOME = { coins = 500 },
+	ROTTEN  = { case = "rare", caseCount = 1 },
 }
 
 local shopCache = nil -- { window, slots } for the current rotation
@@ -345,7 +369,24 @@ local function currentShop()
 		end
 		slots[i] = slot
 	end
-	shopCache = { window = window, slots = slots }
+	-- NEW: the featured EXCLUSIVE PACK for this window — same seeded roll, so every server agrees.
+	local packTotal = 0
+	for _, w in SHOP.PackWeights do
+		packTotal += w
+	end
+	local packRoll = r:NextNumber(0, packTotal)
+	local packAcc, packRarity = 0, "epic"
+	for _, rid in RARITY_ORDER do
+		local w = SHOP.PackWeights[rid]
+		if w then
+			packAcc += w
+			if packRoll <= packAcc then
+				packRarity = rid
+				break
+			end
+		end
+	end
+	shopCache = { window = window, slots = slots, pack = packRarity }
 	return shopCache
 end
 
@@ -439,9 +480,10 @@ local OpenCase      = mk("OpenCase")      -- C->S: {caseId} open a case (caseId 
 local CaseResult    = mk("CaseResult")    -- S->C: {caseId, wonId, duplicate, coins} the roll (drives the reel)
                                           --       or {failed=true} — ALWAYS replied so the client never sticks
 -- Shop
-local ShopSync      = mk("ShopSync")      -- S->C: {enter?, window, endsIn, coins, slots} storefront snapshot
+local ShopSync      = mk("ShopSync")      -- S->C: {enter?, window, endsIn, coins, slots, pack} storefront snapshot
 local ShopClose     = mk("ShopClose")     -- S->C: you left the shop zone; close the panel
-local ShopBuy       = mk("ShopBuy")       -- C->S: {slot=1..6, open=bool} buy (and optionally reel-open) a case
+local ShopBuy       = mk("ShopBuy")       -- C->S: {slot=1..6, open=bool} buy a case | {pack=true, count=1|3|10} open the featured pack
+local ShopRedeem    = mk("ShopRedeem")    -- C->S: (code string) redeem · S->C: {ok, msg} the verdict
 -- Guns & skins
 local BuyGun    = mk("BuyGun")    -- C->S: {weaponId} buy a gun outright with Coins
 local EquipSkin = mk("EquipSkin") -- C->S: {weaponId, skinId?} equip a skin (nil/false = back to base look)
@@ -648,6 +690,17 @@ local function readProfile(player)
 		shop = sanitizeShop(data.shop),
 		skins = sanitizeSkins(data.skins),
 		settings = sanitizeSettings(data.settings),
+		redeemed = (function() -- codes this player already claimed: { CODE = true }
+			local out = {}
+			if typeof(data.redeemed) == "table" then
+				for k, v in data.redeemed do
+					if typeof(k) == "string" and v == true then
+						out[k] = true
+					end
+				end
+			end
+			return out
+		end)(),
 		noPersist = loadFailed, -- fallback profile: NEVER write it back
 	}
 end
@@ -679,6 +732,7 @@ local function persist(player)
 			old.shop = prof.shop
 			old.skins = prof.skins
 			old.settings = prof.settings
+			old.redeemed = prof.redeemed
 			return old
 		end)
 	end)
@@ -1118,6 +1172,14 @@ local function shopSnapshot(prof, enter)
 		endsIn = SHOP.RestockSeconds - (os.time() % SHOP.RestockSeconds),
 		coins = prof.lobbyMoney,
 		slots = slots,
+		-- NEW: the featured EXCLUSIVE PACK (opened directly from the panel, no stock cap).
+		pack = {
+			caseId = shop.pack,
+			name = CASES[shop.pack].name,
+			price1 = packPrice(shop.pack, 1),
+			price3 = packPrice(shop.pack, 3),
+			price10 = packPrice(shop.pack, 10),
+		},
 	}
 end
 
@@ -1139,7 +1201,7 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	if typeof(req) ~= "table" then
 		return
 	end
-	local wantOpen = req.open == true
+	local wantOpen = req.open == true or req.pack == true -- pack opens set the client's reel lock too
 	if not allow(player, "Shop") then
 		if wantOpen then
 			CaseResult:FireClient(player, { failed = true }) -- unstick the reel lock, but no resync spam
@@ -1158,6 +1220,33 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	end
 	if prof.noPersist then
 		return fail()
+	end
+	-- NEW: EXCLUSIVE PACK open — pay once for ×1/×3/×10, bank that many featured crates, and open the
+	-- FIRST right now (CaseResult spins the reel); the client's CONTINUE chain opens the rest from
+	-- inventory exactly like OPEN ALL, so a disconnect mid-chain loses nothing.
+	if req.pack == true then
+		local count = tonumber(req.count)
+		if count ~= 1 and count ~= 3 and count ~= 10 then
+			return fail()
+		end
+		local shop = ensureShopState(prof)
+		local caseId = shop.pack
+		if not caseId or not CASES[caseId] then
+			return fail()
+		end
+		local price = packPrice(caseId, count)
+		if prof.lobbyMoney < price then
+			return fail()
+		end
+		prof.lobbyMoney -= price
+		prof.cases[caseId] = (prof.cases[caseId] or 0) + count
+		local result = doOpenCase(player, prof, caseId)
+		markDirty(player)
+		CaseResult:FireClient(player, result)
+		pushShop(player)
+		pushInv(player)
+		StatsRemote:FireClient(player, prof)
+		return
 	end
 	-- BUY ALL: sweep every slot's remaining stock cheapest-first until the coins run out.
 	if req.all == true then
@@ -1242,6 +1331,47 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	pushShop(player)
 	pushInv(player)
 	StatsRemote:FireClient(player, prof)
+end)
+
+-- NEW: promo codes — validate, pay out, remember (one redeem per code per player, saved in the profile).
+ShopRedeem.OnServerEvent:Connect(function(player, code)
+	local function reply(ok, msg)
+		ShopRedeem:FireClient(player, { ok = ok, msg = msg })
+	end
+	if not allow(player, "Shop") then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return reply(false, "TRY AGAIN LATER")
+	end
+	if typeof(code) ~= "string" or #code < 1 or #code > 32 then
+		return reply(false, "INVALID CODE")
+	end
+	local clean = code:upper():gsub("%s", "")
+	local def = CODES[clean]
+	if not def then
+		return reply(false, "INVALID CODE")
+	end
+	if prof.redeemed[clean] then
+		return reply(false, "ALREADY REDEEMED")
+	end
+	prof.redeemed[clean] = true
+	local parts = {}
+	if typeof(def.coins) == "number" and def.coins > 0 then
+		prof.lobbyMoney += def.coins
+		table.insert(parts, "🪙 " .. def.coins)
+	end
+	if def.case and CASES[def.case] then
+		local n = tonumber(def.caseCount) or 1
+		prof.cases[def.case] = (prof.cases[def.case] or 0) + n
+		table.insert(parts, (n > 1 and (n .. "× ") or "") .. CASES[def.case].name)
+	end
+	markDirty(player)
+	pushInv(player)
+	pushShop(player)
+	StatsRemote:FireClient(player, prof)
+	reply(true, "REDEEMED!  +" .. table.concat(parts, "  +"))
 end)
 
 -- ===== PARTY PADS =====
@@ -1640,7 +1770,7 @@ local function updateShopBillboard(part)
 		title.FontFace = BB_TITLE
 		title.TextSize = 20
 		title.TextColor3 = BB_GOLD
-		title.Text = "SHOP"
+		title.Text = "EXCLUSIVE SHOP"
 		title.Parent = bb
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(0, 8)
