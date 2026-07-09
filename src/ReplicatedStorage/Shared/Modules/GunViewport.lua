@@ -83,12 +83,16 @@ function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string
 
 	local cf, size = model:GetBoundingBox()
 	model.WorldPivot = cf -- spin around the true center, not wherever the pivot happened to be
-	-- Cartoon OUTLINE: Highlights don't render inside ViewportFrames, so an inflated all-black clone
-	-- hugs the model from behind and reads as the same black outline the world models get.
-	local wrap = Instance.new("Model")
-	wrap.Parent = vp
+	local dist = (size.Magnitude / 2) / math.tan(math.rad(CAM_FOV / 2)) * FIT_SLACK + 0.1
+	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * CAM_PITCH, dist), cf.Position)
+
+	-- Cartoon OUTLINE: Highlights don't render inside ViewportFrames, so a slightly bigger all-black
+	-- clone sits BEHIND the gun along the CAMERA axis — the gun draws in front, the black rim peeks
+	-- out around its edges. (Centering the shell on the gun swallowed it whole: everything went black.)
+	local outline
+	local outlinePos = cf.Position
 	pcall(function()
-		local outline = model:Clone()
+		outline = model:Clone()
 		for _, d in outline:GetDescendants() do
 			if d:IsA("BasePart") then
 				d.Color = Color3.new(0, 0, 0)
@@ -100,24 +104,29 @@ function GunViewport.Create(weaponId: string, spin: boolean?, folderName: string
 				d:Destroy()
 			end
 		end
-		outline:ScaleTo(outline:GetScale() * 1.08)
-		outline:PivotTo(cf)
-		outline.Parent = wrap
+		outline:ScaleTo(outline:GetScale() * 1.14)
+		local backDir = (cf.Position - cam.CFrame.Position).Unit
+		outlinePos = cf.Position + backDir * (size.Magnitude * 0.12)
+		outline:PivotTo(CFrame.new(outlinePos) * cf.Rotation)
+		outline.Parent = vp
 	end)
-	model.Parent = wrap
-	wrap.WorldPivot = cf
-	local dist = (size.Magnitude / 2) / math.tan(math.rad(CAM_FOV / 2)) * FIT_SLACK + 0.1
-	cam.CFrame = CFrame.new(cf.Position + Vector3.new(0, dist * CAM_PITCH, dist), cf.Position)
 
 	-- GUNS get the side-on + tilt pose; CRATES (CrateDisplay) keep their built rotation — the gun yaw
 	-- was turning crates sideways.
 	local isGun = (folderName or "GunDisplay") == "GunDisplay"
 	local dispRot = isGun and displayRot(weaponId, cf.Rotation) or cf.Rotation
 	if spin ~= false then
-		table.insert(spinning, { vp = vp, model = wrap, pos = cf.Position, rot = dispRot, ang = math.random() * math.pi * 2 })
+		local startAng = math.random() * math.pi * 2
+		table.insert(spinning, { vp = vp, model = model, pos = cf.Position, rot = dispRot, ang = startAng })
+		if outline then -- same speed + same start angle = the rim spins in lockstep with the gun
+			table.insert(spinning, { vp = vp, model = outline, pos = outlinePos, rot = dispRot, ang = startAng })
+		end
 		startLoop()
 	else
-		wrap:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once (outline rides along)
+		model:PivotTo(CFrame.new(cf.Position) * dispRot) -- static: pose it once
+		if outline then
+			outline:PivotTo(CFrame.new(outlinePos) * dispRot)
+		end
 	end
 	return vp
 end

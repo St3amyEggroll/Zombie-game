@@ -311,6 +311,7 @@ local function endRun(win: boolean)
 			if win then
 				DataService.AddMoney(player, GameConfig.VictoryBonusCoins)
 				DataService.MarkCompleted(player, state.map or GameConfig.DefaultMap, state.difficulty) -- unlock next
+				DataService.AddWin(player) -- overhead tag + Wins leaderboard column
 			end
 			local summary = bankRun(player, ps)
 			if win then

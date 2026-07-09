@@ -636,6 +636,7 @@ local function readProfile(player)
 	return {
 		lobbyMoney = data.lobbyMoney or 0,
 		bestWave = data.bestWave or 0,
+		wins = tonumber(data.wins) or 0, -- runs won (game-owned; drives the overhead tag + leaderboard)
 		xp = tonumber(data.xp) or 0, -- account XP (game-owned; read-only here, drives level-gated unlocks)
 		completed = (typeof(data.completed) == "table") and data.completed or {},
 		ownedWeapons = owned,
@@ -1749,8 +1750,60 @@ local function tick()
 	end
 end
 
+-- ===== OVERHEAD TAG + LEADERBOARD ===== plain floating text over each player: "N WINS" (gold, top)
+-- over "LVL n" (white) — no panel behind it — plus the WINS column on the Roblox leaderboard.
+local function refreshPlayerTag(player)
+	local prof = profileCache[player.UserId]
+	if not prof then
+		return
+	end
+	local wins = tonumber(prof.wins) or 0
+	local lvl = accountLevel(prof.xp)
+	local ls = player:FindFirstChild("leaderstats")
+	local winsStat = ls and ls:FindFirstChild("Wins")
+	if winsStat then
+		winsStat.Value = wins
+	end
+	local char = player.Character
+	local head = char and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart"))
+	if not head then
+		return
+	end
+	local bb = head:FindFirstChild("PlayerTag")
+	if not bb then
+		bb = Instance.new("BillboardGui")
+		bb.Name = "PlayerTag"
+		bb.Size = UDim2.fromOffset(200, 40)
+		bb.StudsOffset = Vector3.new(0, 2.1, 0)
+		bb.MaxDistance = 90
+		bb.Parent = head
+		local function line(name, y, h, size, color)
+			local l = Instance.new("TextLabel")
+			l.Name = name; l.Position = UDim2.fromOffset(0, y); l.Size = UDim2.new(1, 0, 0, h)
+			l.BackgroundTransparency = 1
+			l.FontFace = Font.fromEnum(Enum.Font.FredokaOne)
+			l.TextSize = size; l.TextColor3 = color; l.Text = ""
+			l.Parent = bb
+			local st = Instance.new("UIStroke")
+			st.Color = Color3.new(0, 0, 0); st.Thickness = 2
+			st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; st.Parent = l
+		end
+		line("Wins", 0, 20, 16, Color3.fromRGB(230, 180, 76))
+		line("Level", 20, 16, 13, Color3.fromRGB(255, 255, 255))
+	end
+	bb.Wins.Text = ("%d WINS"):format(wins)
+	bb.Level.Text = ("LVL %d"):format(lvl)
+end
+
 -- ===== LIFECYCLE =====
 local function onJoin(player)
+	-- WINS on the Roblox leaderboard (filled in once the profile loads).
+	local lstats = Instance.new("Folder")
+	lstats.Name = "leaderstats"
+	lstats.Parent = player
+	local winsStat = Instance.new("IntValue")
+	winsStat.Name = "Wins"
+	winsStat.Parent = lstats
 	player.CharacterAdded:Connect(function(character)
 		setCollisionGroup(character)
 		if playerParty[player.UserId] then
@@ -1768,6 +1821,7 @@ local function onJoin(player)
 			hl.Parent = character
 		end
 		task.defer(refreshCarry, player)
+		task.defer(refreshPlayerTag, player)
 	end)
 	if player.Character then
 		setCollisionGroup(player.Character)
@@ -1778,6 +1832,7 @@ local function onJoin(player)
 		StatsRemote:FireClient(player, profile)
 		pushInv(player)
 		refreshCarry(player)
+		refreshPlayerTag(player)
 	end)
 end
 

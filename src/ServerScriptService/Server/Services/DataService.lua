@@ -59,6 +59,7 @@ local TEMPLATE = {
 	gunLevels    = { pistol = 1 },    -- [weaponId] = persistent level 1..10 (Clash-Royale copies system;
 	gunCopies    = {},                --   upgraded in the LOBBY — the game only READS these for combat stats)
 	bestWave     = 0,
+	wins         = 0,                 -- runs WON (drives the overhead tag + the Wins leaderboard column)
 	completed    = {},                -- ["forest:easy"] = true — difficulties beaten (drives unlocks)
 	stats        = { totalKills = 0, matchesPlayed = 0 },
 	cosmetics    = {},
@@ -131,7 +132,7 @@ end
 -- (lobbyMoney, potions) are ours to write here because a player is only ever in ONE place at a time and
 -- the lobby saves them before teleporting the player to us.
 local GAME_OWNED_FIELDS = {
-	"dataVersion", "xp", "level", "bestWave", "completed", "stats", "cosmetics", "settings",
+	"dataVersion", "xp", "level", "bestWave", "wins", "completed", "stats", "cosmetics", "settings",
 	"lobbyMoney", "cases", -- cases: wave/boss case drops earned in-run must reach the lobby
 	"ownedWeapons", -- mid-run gun purchases (GunShopService) must reach the lobby too
 }
@@ -313,6 +314,16 @@ function DataService.UpdateBestWave(player: Player, wave: number): boolean
 end
 
 -- Mark a (world, difficulty) as beaten — this is what unlocks the next difficulty / next world.
+function DataService.AddWin(player: Player): number
+	local data = getData(player)
+	if not data then
+		return 0
+	end
+	data.wins = (tonumber(data.wins) or 0) + 1
+	markDirty(player)
+	return data.wins
+end
+
 function DataService.MarkCompleted(player: Player, world: string, difficulty: string)
 	local data = getData(player)
 	if data then
