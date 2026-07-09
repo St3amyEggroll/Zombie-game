@@ -1512,7 +1512,7 @@ local function spawnOne(round: number, forcedType: string?)
 		typeId = typeId,
 		type = t,
 		baseSpeed = hum.WalkSpeed, -- statusSpeed() restores to this after chills/pins expire
-		damage = t.damage * difficultyMult,
+		damage = t.damage * difficultyMult * (GameConfig.ZombieDamageMult or 1),
 		target = nil,
 		targetRoot = nil,
 		mode = "idle",          -- "idle" | "direct" (live chase) | "path" (navigating obstacles)
@@ -1604,7 +1604,7 @@ local function explode(record)
 			if hrp and hum and hum.Health > 0 then
 				local d = (hrp.Position - pos).Magnitude
 				if d <= BOMB_RADIUS then
-					local dmg = BOMB_DAMAGE * (1 - d / BOMB_RADIUS)
+					local dmg = BOMB_DAMAGE * (1 - d / BOMB_RADIUS) * (GameConfig.ZombieDamageMult or 1)
 					if dmg > 0 then
 						PlayerStateService.Damage(pl, dmg, "explosion", pos)
 					end

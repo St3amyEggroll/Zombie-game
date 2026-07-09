@@ -35,13 +35,23 @@ local function awardCoins(player: Player, amount: number)
 	Remotes.Get("LobbyMoneyChanged"):FireClient(player, DataService.GetMoney(player))
 end
 
+-- Grant XP + push it LIVE: the HUD's blue level bar listens to ProgressChanged (without this push it
+-- only refreshed on spawn — the bar looked frozen all run).
+local function awardXP(player: Player, amount: number)
+	DataService.AddXP(player, amount)
+	require(script.Parent.GunShopService).GrantUnlocks(player) -- level-ups grant guns LIVE (fires the showcase)
+	local data = DataService.Get(player)
+	if data then
+		Remotes.Get("ProgressChanged"):FireClient(player, data.xp, data.level, data.lobbyMoney)
+	end
+end
+
 -- XP + Coins per kill (+ special bonus) — fires on every zombie kill.
 local function onKill(player: Player, humanoid: Humanoid, _isHead: boolean, _weaponId: string)
 	local model = humanoid.Parent
 	local special = model and model:GetAttribute("IsSpecial") == true
 	local xp = ProgressionConfig.XPPerKill + (special and ProgressionConfig.XPPerSpecialKill or 0)
-	DataService.AddXP(player, xp)
-	require(script.Parent.GunShopService).GrantUnlocks(player) -- level-ups grant guns LIVE (fires the showcase)
+	awardXP(player, xp)
 	DataService.IncrementStat(player, "totalKills", 1)
 	awardCoins(player, GameConfig.LobbyMoneyPerKill)
 end
@@ -70,8 +80,7 @@ function ProgressionService.Start()
 				lastRound = round
 				-- Only reward players actually IN the run.
 				MatchService.ForEachPlayer(function(player)
-					DataService.AddXP(player, ProgressionConfig.XPPerRound)
-					require(script.Parent.GunShopService).GrantUnlocks(player)
+					awardXP(player, ProgressionConfig.XPPerRound)
 					DataService.UpdateBestWave(player, round)
 				end)
 			elseif round < lastRound then

@@ -48,6 +48,7 @@ GameConfig.CritBaseBonus = 0.5   -- a crit does +50% damage baseline; the Crit D
 
 -- ===== HEALTH =====
 GameConfig.PlayerMaxHealth  = 100
+GameConfig.ZombieDamageMult = 0.55 -- GLOBAL bite/explosion damage dial (zombies hit way too hard at 1)
 GameConfig.HealthRegenDelay = 5        -- seconds undamaged before regen
 GameConfig.HealthRegenRate  = 25       -- HP/sec once regenerating
 GameConfig.LowHealthPct     = 0.4      -- at/below this fraction of max HP the red vignette + heartbeat kick in
