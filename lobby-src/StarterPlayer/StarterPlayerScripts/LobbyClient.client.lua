@@ -155,10 +155,10 @@ local function lbevel(o)
 			return -- our own write, or already converted
 		end
 		o.BackgroundColor3 = white
-		g.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.65)),
-			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.35)),
-			ColorSequenceKeypoint.new(1, darker(base, 0.15)),
+		g.Color = ColorSequence.new({ -- darker per request: softer top flash, deeper foot
+			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
+			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
+			ColorSequenceKeypoint.new(1, darker(base, 0.28)),
 		})
 		lip.BackgroundColor3 = darker(base, 0.5)
 	end
@@ -218,12 +218,12 @@ local function redX(parentGui, size, tsize)
 	x.FontFace = TITLE_FACE; x.TextSize = tsize
 	x.TextColor3 = Color3.fromRGB(255, 255, 255); x.Text = "✕"; x.Parent = parentGui
 	corner(x, 6); ledge(x, TBLACK, 2.5)
-	local g = Instance.new("UIGradient")
+	x.BackgroundColor3 = Color3.new(1, 1, 1)
+	local g = Instance.new("UIGradient") -- one-surface fill, matches the button family
 	g.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.78, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.8, Color3.fromRGB(150, 16, 16)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34):Lerp(Color3.new(1, 1, 1), 0.42)),
+		ColorSequenceKeypoint.new(0.07, Color3.fromRGB(224, 34, 34):Lerp(Color3.new(1, 1, 1), 0.18)),
+		ColorSequenceKeypoint.new(1, darker(Color3.fromRGB(224, 34, 34), 0.28)),
 	})
 	g.Rotation = 90; g.Parent = x
 	-- Drawn white X (robust vs fonts lacking the glyph).
@@ -834,23 +834,25 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	-- Weapons | Play | Classes. xOff = horizontal offset from screen center.
 	local b = Instance.new("TextButton")
 	b.AnchorPoint = Vector2.new(0.5, 0)
-	b.Position = UDim2.new(0.5, xOff, 0, 10); b.Size = UDim2.fromOffset(140, 46)
+	b.Position = UDim2.new(0.5, xOff, 0, 10); b.Size = UDim2.fromOffset(180, 56)
 	b.BackgroundColor3 = accent; b.BorderSizePixel = 0
 	b.Text = ""; b.Parent = invGui
 	local navCorner = Instance.new("UICorner") -- RAW 10px radius (the shared curve made these bulbous)
 	navCorner.CornerRadius = UDim.new(0, 10); navCorner.Parent = b
-	ledge(b, TBLACK, 2.5); lbevel(b)
+	ledge(b, TBLACK, 3); lbevel(b) -- full black ring like the mockup
 
 	-- TEXT-ONLY pill (the reference buttons carry no icon art — the raw images read as stickers)
 	local cap = Instance.new("TextLabel")
 	cap.AnchorPoint = Vector2.new(0.5, 0.5); cap.Position = UDim2.new(0.5, 0, 0.5, -2)
-	cap.Size = UDim2.new(1, -20, 0, 30); cap.BackgroundTransparency = 1
-	cap.FontFace = TITLE_FACE; cap.TextSize = 20; cap.TextColor3 = Color3.new(1, 1, 1)
+	cap.Size = UDim2.new(1, -20, 0, 36); cap.BackgroundTransparency = 1
+	cap.FontFace = TITLE_FACE; cap.TextSize = 26; cap.TextColor3 = Color3.new(1, 1, 1)
 	cap.TextScaled = true; cap.Parent = b
-	local capC = Instance.new("UITextSizeConstraint"); capC.MaxTextSize = 20; capC.Parent = cap
+	local capC = Instance.new("UITextSizeConstraint"); capC.MaxTextSize = 26; capC.Parent = cap
 	local capS = Instance.new("UIStroke")
 	capS.Color = TBLACK; capS.Thickness = 2.5; capS.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; capS.Parent = cap
 	cap.TextXAlignment = Enum.TextXAlignment.Center; cap.Text = caption
+	local capS2 = cap:FindFirstChildOfClass("UIStroke")
+	if capS2 then capS2.Thickness = 3 end
 
 	if badge then
 		local bd = Instance.new("TextLabel")
@@ -861,8 +863,8 @@ local function cornerButton(imageId, caption, xOff, accent, badge)
 	end
 	return b
 end
-local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -160, Color3.fromRGB(214, 48, 48), true) -- red, left of center
-local casesBtn = cornerButton(CASES_ICON, "CRATES", 160, Color3.fromRGB(230, 140, 30), false) -- orange, right
+local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -200, Color3.fromRGB(214, 48, 48), true) -- red, left of center
+local casesBtn = cornerButton(CASES_ICON, "CRATES", 200, Color3.fromRGB(230, 140, 30), false) -- orange, right
 -- SHOP button — opens the crate storefront from anywhere (stepping on the stall still works too)
 local shopBtn = cornerButton("", "SHOP", 0, Color3.fromRGB(52, 168, 52), false) -- green, center
 -- (the SHOP pill carries its own label now)
@@ -1008,15 +1010,8 @@ local function bigButton(parent, textStr, fillA, fillB, textCol)
 	local b = Instance.new("TextButton")
 	b.BackgroundColor3 = fillA; b.BorderSizePixel = 0; b.AutoButtonColor = true
 	b.FontFace = TITLE_FACE; b.TextSize = 18; b.TextColor3 = textCol; b.Text = textStr; b.Parent = parent
-	corner(b, 5); ledge(b, TBLACK, 2.5)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, fillA),
-		ColorSequenceKeypoint.new(0.78, fillA),
-		ColorSequenceKeypoint.new(0.8, fillB),
-		ColorSequenceKeypoint.new(1, fillB),
-	})
-	g.Rotation = 90; g.Parent = b
+	corner(b, 5); ledge(b, TBLACK, 3)
+	lbevel(b) -- full 3D treatment (gradient + slab lip + press) derived from fillA
 	return b
 end
 local function paneButton(textStr, fillA, fillB, textCol)

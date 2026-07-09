@@ -350,12 +350,13 @@ function UITheme.Close(panel: GuiObject): TextButton
 	UITheme.Corner(b, 6)
 	UITheme.Edge(b, UITheme.BLACK, 2.5)
 	UITheme.WhiteX(b)
-	local g = Instance.new("UIGradient")
+	local red = Color3.fromRGB(224, 34, 34)
+	b.BackgroundColor3 = Color3.new(1, 1, 1)
+	local g = Instance.new("UIGradient") -- same one-surface fill as UITheme.Button
 	g.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.78, Color3.fromRGB(224, 34, 34)),
-		ColorSequenceKeypoint.new(0.8, Color3.fromRGB(150, 16, 16)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 16, 16)),
+		ColorSequenceKeypoint.new(0, red:Lerp(Color3.new(1, 1, 1), 0.42)),
+		ColorSequenceKeypoint.new(0.07, red:Lerp(Color3.new(1, 1, 1), 0.18)),
+		ColorSequenceKeypoint.new(1, UITheme.Darker(red, 0.28)),
 	})
 	g.Rotation = 90
 	g.Parent = b
@@ -495,10 +496,10 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	local base = fill[1]
 	b.BackgroundColor3 = white
 	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, base:Lerp(white, 0.65)),
-		ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.35)),
-		ColorSequenceKeypoint.new(1, UITheme.Darker(base, 0.15)),
+	g.Color = ColorSequence.new({ -- darker per request: softer top flash, deeper foot
+		ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
+		ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
+		ColorSequenceKeypoint.new(1, UITheme.Darker(base, 0.28)),
 	})
 	g.Rotation = 90
 	g.Parent = b
