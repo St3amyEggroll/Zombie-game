@@ -60,6 +60,10 @@ end
 
 local function panel(parent, name)
 	local f = UITheme.Panel(parent, name, { alpha = PANEL_ALPHA, radius = 6 })
+	local c = f:FindFirstChildOfClass("UICorner")
+	if c then
+		c.CornerRadius = UDim.new(0, 8) -- crisp RECTANGLES (the theme curve made these pill-ish)
+	end
 	return f
 end
 

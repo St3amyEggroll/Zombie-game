@@ -98,7 +98,9 @@ local function makeSquare(holder, x)
 	frame.Text = ""
 	frame.AutoButtonColor = true
 	frame.Parent = holder
-	UITheme.Corner(frame, 8)
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(0, 8) -- crisp rectangle slots (raw 8px, not the chunky curve)
+	fc.Parent = frame
 	UITheme.Studs(frame, 30)
 	UITheme.Depth(frame)
 	return frame

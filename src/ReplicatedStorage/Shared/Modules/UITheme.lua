@@ -479,85 +479,71 @@ function UITheme.Button(parent: Instance, textStr: string, variant: string?)
 	b.TextColor3 = fill[3]
 	b.Text = string.upper(textStr)
 	b.Parent = parent
-	local bc = Instance.new("UICorner")
-	bc.CornerRadius = UDim.new(0, 10) -- raw 10px (the theme curve made buttons bulbous)
-	bc.Parent = b
-	UITheme.Edge(b, UITheme.BLACK, 3)
-	local ts = Instance.new("UIStroke") -- chunky text: solid black outline on the label itself
-	ts.Color = UITheme.BLACK
-	ts.Thickness = 2.5
-	ts.Transparency = 0
-	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-	ts.Parent = b
-	-- ONE continuous fill, sheen baked in: gradients only MULTIPLY (can never brighten the base color),
-	-- so the base goes WHITE and the gradient carries ABSOLUTE colors — bright flash at the very top,
-	-- lighter-than-nominal upper body, darker foot. No stacked bars.
+	-- ARCHITECTURE: the TextButton itself is the dark SLAB (so layouts see ONE element); a child "Face"
+	-- carries the bright surface, and the visible text lives ON the face (a parent's own text renders
+	-- under its children). The face slides down on press. No sibling frames — layout-safe.
 	local white = Color3.new(1, 1, 1)
 	local base = fill[1]
-	b.BackgroundColor3 = white
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new({ -- darker per request: softer top flash, deeper foot
+	b.BackgroundColor3 = UITheme.Darker(fill[2], 0.35) -- slab color
+	b.TextTransparency = 1 -- real text is mirrored onto the face's label
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, 10)
+	bc.Parent = b
+	UITheme.Edge(b, UITheme.BLACK, 3)
+
+	local face = Instance.new("Frame")
+	face.Name = "Face"
+	face.Size = UDim2.new(1, 0, 1, -5) -- the slab shows as a 5px lip below
+	face.BackgroundColor3 = white
+	face.BorderSizePixel = 0
+	face.Parent = b
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(0, 10)
+	fc.Parent = face
+	local g = Instance.new("UIGradient") -- gradients only multiply, so the face is white and the
+	g.Color = ColorSequence.new({        -- gradient carries ABSOLUTE colors (bright top flash baked in)
 		ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
 		ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
 		ColorSequenceKeypoint.new(1, UITheme.Darker(base, 0.28)),
 	})
 	g.Rotation = 90
-	g.Parent = b
-	-- The LIP is a SIBLING SLAB behind the button — same size + corners, shifted 5px down — so the
-	-- button visibly sits ON it (the old child-strip covered the fill and read as a color band).
-	local lip = Instance.new("Frame")
-	lip.Name = "ButtonLip"
-	lip.BackgroundColor3 = UITheme.Darker(fill[2], 0.35)
-	lip.BorderSizePixel = 0
-	lip.ZIndex = (b.ZIndex or 1) - 1
-	local lipCorner = Instance.new("UICorner")
-	lipCorner.CornerRadius = UDim.new(0, 10)
-	lipCorner.Parent = lip
-	UITheme.Edge(lip, UITheme.BLACK, 3)
-	lip.Parent = b.Parent
-	local pressed = false
-	local function syncLip()
-		lip.AnchorPoint = b.AnchorPoint
-		lip.Position = b.Position + UDim2.fromOffset(0, pressed and 1 or 5)
-		lip.Size = b.Size
-		lip.Visible = b.Visible
-		lip.ZIndex = (b.ZIndex or 1) - 1
-	end
-	syncLip()
-	b:GetPropertyChangedSignal("Position"):Connect(syncLip)
-	b:GetPropertyChangedSignal("Size"):Connect(syncLip)
-	b:GetPropertyChangedSignal("Visible"):Connect(syncLip)
-	b:GetPropertyChangedSignal("ZIndex"):Connect(syncLip)
-	b:GetPropertyChangedSignal("Parent"):Connect(function()
-		if b.Parent then
-			lip.Parent = b.Parent
-			syncLip()
-		end
+	g.Parent = face
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.FontFace = b.FontFace
+	label.TextSize = b.TextSize
+	label.TextColor3 = fill[3]
+	label.Text = b.Text
+	label.Parent = face
+	local ts = Instance.new("UIStroke")
+	ts.Color = UITheme.BLACK
+	ts.Thickness = 2.5
+	ts.Transparency = 0
+	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	ts.Parent = label
+	-- Callers keep talking to the BUTTON (b.Text / b.TextSize / b.TextColor3); the face label mirrors.
+	b:GetPropertyChangedSignal("Text"):Connect(function()
+		label.Text = b.Text
 	end)
-	b.Destroying:Connect(function()
-		lip:Destroy()
+	b:GetPropertyChangedSignal("TextSize"):Connect(function()
+		label.TextSize = b.TextSize
 	end)
+	b:GetPropertyChangedSignal("TextColor3"):Connect(function()
+		label.TextColor3 = b.TextColor3
+	end)
+
 	if variant == "ghost" then
 		UITheme.Edge(b, UITheme.LINE, 1, 0.5)
 	end
-	-- Press = the button slides DOWN onto its slab.
-	local basePos
+	-- Press = the face slides DOWN onto the slab.
 	b.MouseButton1Down:Connect(function()
-		if pressed then
-			return
-		end
-		pressed = true
-		basePos = b.Position
-		b.Position = basePos + UDim2.fromOffset(0, 4)
+		face.Position = UDim2.fromOffset(0, 4)
 	end)
 	local function up()
-		if pressed then
-			pressed = false
-			if basePos then
-				b.Position = basePos
-			end
-			syncLip()
-		end
+		face.Position = UDim2.new()
 	end
 	b.MouseButton1Up:Connect(up)
 	b.MouseLeave:Connect(up)
@@ -567,21 +553,23 @@ end
 -- Gray a themed button out (or restore it). The original fill/text colors are stashed in attributes
 -- on first disable so re-enabling actually restores them (the old version restored nothing).
 function UITheme.SetButtonEnabled(b: TextButton, enabled: boolean, disabledText: string?)
-	local g = b:FindFirstChildOfClass("UIGradient")
+	local face = b:FindFirstChild("Face")
+	local target = face or b
+	local g = target:FindFirstChildOfClass("UIGradient")
 	if enabled then
 		b.AutoButtonColor = false
 		b.TextTransparency = 0
 		if g then g.Enabled = true end
 		local bg, tc = b:GetAttribute("EnabledBG"), b:GetAttribute("EnabledText")
-		if typeof(bg) == "Color3" then b.BackgroundColor3 = bg end
+		if typeof(bg) == "Color3" then target.BackgroundColor3 = bg end
 		if typeof(tc) == "Color3" then b.TextColor3 = tc end
 	else
 		if b:GetAttribute("EnabledBG") == nil then
-			b:SetAttribute("EnabledBG", b.BackgroundColor3)
+			b:SetAttribute("EnabledBG", target.BackgroundColor3)
 			b:SetAttribute("EnabledText", b.TextColor3)
 		end
 		if g then g.Enabled = false end
-		b.BackgroundColor3 = UITheme.TRACK
+		target.BackgroundColor3 = UITheme.TRACK
 		b.TextColor3 = UITheme.DIM
 		if disabledText then
 			b.Text = string.upper(disabledText)

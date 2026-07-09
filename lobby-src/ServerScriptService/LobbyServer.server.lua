@@ -1589,6 +1589,17 @@ end
 local function onJoin(player)
 	player.CharacterAdded:Connect(function(character)
 		setCollisionGroup(character)
+		-- Cartoon BLACK OUTLINE, same as the game place.
+		if not character:FindFirstChild("Outline") then
+			local hl = Instance.new("Highlight")
+			hl.Name = "Outline"
+			hl.FillTransparency = 1
+			hl.OutlineColor = Color3.new(0, 0, 0)
+			hl.OutlineTransparency = 0
+			hl.DepthMode = Enum.HighlightDepthMode.Occluded
+			hl.Adornee = character
+			hl.Parent = character
+		end
 		task.defer(refreshCarry, player)
 	end)
 	if player.Character then

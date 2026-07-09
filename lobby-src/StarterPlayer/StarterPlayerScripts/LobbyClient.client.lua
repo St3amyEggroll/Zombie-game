@@ -132,77 +132,74 @@ end
 -- The classic cartoon bottom bevel: a hard-stop WHITE->dark gradient multiplies whatever the
 -- background color is, so it works on recolored (selected) buttons too.
 local function lbevel(o)
-	-- 3D BUTTON (mockup-accurate): gradients only MULTIPLY, so the base goes WHITE and the gradient
-	-- carries ABSOLUTE colors — bright flash at the top, lighter-than-nominal body, darker foot. The
-	-- LIP is a SIBLING SLAB behind the button (same size/corners, +5px down) the button presses onto.
+	-- FACE/SLAB button (layout-safe): the element ITSELF is the dark slab — a child "Face" carries the
+	-- bright surface and the text. (The old sibling-lip version became an extra row item inside
+	-- UIListLayouts: those empty ghost tiles in the run-setup panel.) Gradients only multiply, so the
+	-- face is white and the gradient carries ABSOLUTE colors.
 	local white = Color3.new(1, 1, 1)
+	local face = Instance.new("Frame")
+	face.Name = "Face"
+	face.Size = UDim2.new(1, 0, 1, -5) -- the slab shows as a 5px lip below
+	face.BackgroundColor3 = white
+	face.BorderSizePixel = 0
+	local hostCorner = o:FindFirstChildOfClass("UICorner")
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = hostCorner and hostCorner.CornerRadius or UDim.new(0, 10)
+	fc.Parent = face
 	local g = Instance.new("UIGradient")
 	g.Rotation = 90
-	g.Parent = o
-	local lip = Instance.new("Frame")
-	lip.Name = "ButtonLip"
-	lip.BorderSizePixel = 0
-	lip.ZIndex = (o.ZIndex or 1) - 1
-	local hostCorner = o:FindFirstChildOfClass("UICorner")
-	local lipCorner = Instance.new("UICorner")
-	lipCorner.CornerRadius = hostCorner and hostCorner.CornerRadius or UDim.new(0, 10)
-	lipCorner.Parent = lip
-	ledge(lip, TBLACK, 2.5)
-	lip.Parent = o.Parent
+	g.Parent = face
+	face.Parent = o
+	if o:IsA("TextButton") then
+		-- the button's own text renders UNDER children — mirror it onto a label on the face
+		local label = Instance.new("TextLabel")
+		label.Name = "Label"
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.FontFace = o.FontFace
+		label.TextSize = o.TextSize
+		label.TextColor3 = o.TextColor3
+		label.Text = o.Text
+		label.Parent = face
+		local ls = Instance.new("UIStroke")
+		ls.Color = TBLACK
+		ls.Thickness = 2.5
+		ls.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		ls.Parent = label
+		o.TextTransparency = 1
+		o:GetPropertyChangedSignal("Text"):Connect(function()
+			label.Text = o.Text
+		end)
+		o:GetPropertyChangedSignal("TextSize"):Connect(function()
+			label.TextSize = o.TextSize
+		end)
+		o:GetPropertyChangedSignal("TextColor3"):Connect(function()
+			label.TextColor3 = o.TextColor3
+		end)
+	end
+	local internal = false
 	local function applyFill()
-		local base = o.BackgroundColor3
-		if base == white then
-			return -- our own write, or already converted
+		if internal then
+			return
 		end
-		o.BackgroundColor3 = white
-		g.Color = ColorSequence.new({ -- darker per request: softer top flash, deeper foot
+		local base = o.BackgroundColor3
+		internal = true
+		g.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
 			ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
 			ColorSequenceKeypoint.new(1, darker(base, 0.28)),
 		})
-		lip.BackgroundColor3 = darker(base, 0.5)
+		o.BackgroundColor3 = darker(base, 0.5) -- the slab shade
+		internal = false
 	end
 	applyFill()
-	o:GetPropertyChangedSignal("BackgroundColor3"):Connect(applyFill) -- selection recolors re-derive everything
-	local pressed = false
-	local function syncLip()
-		lip.AnchorPoint = o.AnchorPoint
-		lip.Position = o.Position + UDim2.fromOffset(0, pressed and 1 or 5)
-		lip.Size = o.Size
-		lip.Visible = o.Visible
-		lip.ZIndex = (o.ZIndex or 1) - 1
-	end
-	syncLip()
-	o:GetPropertyChangedSignal("Position"):Connect(syncLip)
-	o:GetPropertyChangedSignal("Size"):Connect(syncLip)
-	o:GetPropertyChangedSignal("Visible"):Connect(syncLip)
-	o:GetPropertyChangedSignal("Parent"):Connect(function()
-		if o.Parent then
-			lip.Parent = o.Parent
-			syncLip()
-		end
-	end)
-	o.Destroying:Connect(function()
-		lip:Destroy()
-	end)
+	o:GetPropertyChangedSignal("BackgroundColor3"):Connect(applyFill) -- selection recolors re-derive
 	if o:IsA("GuiButton") then
-		local base
 		o.MouseButton1Down:Connect(function()
-			if pressed then
-				return
-			end
-			pressed = true
-			base = o.Position
-			o.Position = base + UDim2.fromOffset(0, 4)
+			face.Position = UDim2.fromOffset(0, 4) -- press = face slides down onto the slab
 		end)
 		local function up()
-			if pressed then
-				pressed = false
-				if base then
-					o.Position = base
-				end
-				syncLip()
-			end
+			face.Position = UDim2.new()
 		end
 		o.MouseButton1Up:Connect(up)
 		o.MouseLeave:Connect(up)
