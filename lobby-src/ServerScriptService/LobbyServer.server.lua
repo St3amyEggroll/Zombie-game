@@ -75,6 +75,14 @@ local PLAYER_GROUP = "Players"
 pcall(function()
 	PhysicsService:RegisterCollisionGroup(PLAYER_GROUP)
 	PhysicsService:CollisionGroupSetCollidable(PLAYER_GROUP, PLAYER_GROUP, false)
+	-- Pad walls: a busy pad (being set up, or its party is full — solo included) is fenced off with a
+	-- forcefield that blocks OUTSIDERS. Party members ride in the "PartyMember" group, which passes
+	-- through the wall (so the host can still step off to cancel) but otherwise acts like PLAYER_GROUP.
+	PhysicsService:RegisterCollisionGroup("PadWall")
+	PhysicsService:RegisterCollisionGroup("PartyMember")
+	PhysicsService:CollisionGroupSetCollidable("PadWall", "PartyMember", false)
+	PhysicsService:CollisionGroupSetCollidable("PartyMember", PLAYER_GROUP, false)
+	PhysicsService:CollisionGroupSetCollidable("PartyMember", "PartyMember", false)
 end)
 local function setCollisionGroup(character)
 	for _, d in character:GetDescendants() do
@@ -1215,7 +1223,63 @@ local function cap(s)
 	return s:sub(1, 1):upper() .. s:sub(2)
 end
 
+-- Flip a player's character between the normal player group and the wall-passing PartyMember group.
+local function setPartyPassThrough(player, isMember)
+	local char = player.Character
+	if not char then
+		return
+	end
+	local group = isMember and "PartyMember" or PLAYER_GROUP
+	for _, d in char:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CollisionGroup = group
+		end
+	end
+end
+
+-- The pad's forcefield fence: UP while the pad is being set up OR its party is full (a solo party is
+-- full instantly, so nobody can join until the host leaves); DOWN when the party is open with room.
+local WALL_HEIGHT = 14
+local function updatePadWall(zone, party)
+	local blocked = party ~= nil and (party.state == "config" or #party.members >= (party.size or 1))
+	local wall = zone:FindFirstChild("PadWall")
+	if not blocked then
+		if wall then
+			wall:Destroy()
+		end
+		return
+	end
+	if wall then
+		return
+	end
+	wall = Instance.new("Model")
+	wall.Name = "PadWall"
+	local sx, sz = zone.Size.X, zone.Size.Z
+	local y = zone.Size.Y * 0.5 + WALL_HEIGHT * 0.5
+	local defs = {
+		{ CFrame.new(0, y, -sz * 0.5 - 0.5), Vector3.new(sx + 2, WALL_HEIGHT, 1) },
+		{ CFrame.new(0, y, sz * 0.5 + 0.5), Vector3.new(sx + 2, WALL_HEIGHT, 1) },
+		{ CFrame.new(-sx * 0.5 - 0.5, y, 0), Vector3.new(1, WALL_HEIGHT, sz + 2) },
+		{ CFrame.new(sx * 0.5 + 0.5, y, 0), Vector3.new(1, WALL_HEIGHT, sz + 2) },
+	}
+	for _, def in defs do
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.CanQuery = false
+		p.CanTouch = false
+		p.Material = Enum.Material.ForceField
+		p.Color = Color3.fromRGB(255, 70, 70)
+		p.Transparency = 0.25
+		p.Size = def[2]
+		p.CFrame = zone.CFrame * def[1]
+		p.CollisionGroup = "PadWall"
+		p.Parent = wall
+	end
+	wall.Parent = zone
+end
+
 local function updateBillboard(zone, party)
+	updatePadWall(zone, party)
 	local bb = zone:FindFirstChild("PartyBillboard")
 	if not party then
 		if bb then
@@ -1271,6 +1335,7 @@ local function removeFromParty(player)
 		return
 	end
 	playerParty[player.UserId] = nil
+	setPartyPassThrough(player, false)
 	for i = #party.members, 1, -1 do
 		if party.members[i] == player then
 			table.remove(party.members, i)
@@ -1293,6 +1358,7 @@ local function dissolveAndLaunch(party)
 		if pl.Parent then
 			table.insert(list, pl)
 			playerParty[pl.UserId] = nil
+			setPartyPassThrough(pl, false)
 			ZoneLeave:FireClient(pl)
 		end
 	end
@@ -1362,6 +1428,7 @@ local function evaluateZone(player, zone)
 		party = { zone = zone, state = "config", host = player, members = { player } }
 		parties[zone] = party
 		playerParty[player.UserId] = party
+		setPartyPassThrough(player, true) -- BEFORE the wall goes up, so the host can step out to cancel
 		updateBillboard(zone, party)
 		sendMode(player, "config", { mode = "config", unlocks = unlockPayload(prof) })
 	elseif party.state == "config" then
@@ -1377,7 +1444,8 @@ local function evaluateZone(player, zone)
 		else
 			table.insert(party.members, player)
 			playerParty[player.UserId] = party
-			updateBillboard(zone, party)
+			setPartyPassThrough(player, true)
+			updateBillboard(zone, party) -- joining the last open slot raises the wall behind them
 			sendMode(player, "party", {
 				mode = "party",
 				map = party.map, difficulty = party.difficulty, size = party.size,
@@ -1629,6 +1697,9 @@ end
 local function onJoin(player)
 	player.CharacterAdded:Connect(function(character)
 		setCollisionGroup(character)
+		if playerParty[player.UserId] then
+			setPartyPassThrough(player, true) -- respawned mid-party: keep passing through the pad wall
+		end
 		-- Cartoon BLACK OUTLINE, same as the game place.
 		if not character:FindFirstChild("Outline") then
 			local hl = Instance.new("Highlight")
