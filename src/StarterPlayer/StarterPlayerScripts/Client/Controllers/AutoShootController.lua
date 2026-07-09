@@ -1,7 +1,9 @@
 --!nonstrict
 -- AutoShootController.lua — toggle for auto-fire. When ON (default OFF), your gun automatically shoots any
 -- zombie the auto-aim is locked onto (no need to hold the mouse); when OFF you fire manually.
--- A small pill sits bottom-right: press T or click it to toggle. Other code reads AutoShootController.IsOn().
+-- Two stacked sticker buttons (per the approved plan): toxic "AUTOFIRE: ON" / greyed "AUTOFIRE: OFF",
+-- with the T keybind riding as a gold corner chip. Press T or click to toggle.
+-- Other code reads AutoShootController.IsOn().
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -13,35 +15,49 @@ local AutoShootController = {}
 
 -- ===== TUNABLES =====
 local TOGGLE_KEY = Enum.KeyCode.T
-
--- ===== STYLE (UITheme — gritty apocalypse) =====
-local COL_PANEL    = UITheme.PANEL
-local COL_TEXT     = UITheme.TEXT
-local COL_TEXT_DIM = UITheme.DIM
-local COL_ACCENT   = UITheme.TOXIC
-local COL_OFF      = UITheme.DIM
+local BTN_W, BTN_H = 178, 46
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
-local on = false -- CHANGED: default OFF (press T or click the pill to enable)
-local button, dot, label
+local on = false -- default OFF (press T or click the sticker to enable)
+local onBtn, offBtn
 
 function AutoShootController.IsOn(): boolean
 	return on
 end
 
 local function refresh()
-	if not button then
-		return
+	if onBtn then
+		onBtn.Visible = on
+		offBtn.Visible = not on
 	end
-	dot.BackgroundColor3 = on and COL_ACCENT or COL_OFF
-	label.Text = on and "AUTO FIRE  ·  ON" or "AUTO FIRE  ·  OFF"
-	label.TextColor3 = on and COL_TEXT or COL_TEXT_DIM
 end
 
 local function setOn(v: boolean)
 	on = v
 	refresh()
+end
+
+-- The gold T chip riding the button's top-right corner (matches the plan's keybind chips).
+local function keyChip(parent)
+	local chip = Instance.new("TextLabel")
+	chip.Name = "KeyChip"
+	chip.AnchorPoint = Vector2.new(1, 0)
+	chip.Position = UDim2.new(1, 8, 0, -8)
+	chip.Size = UDim2.fromOffset(24, 20)
+	chip.BackgroundColor3 = UITheme.GOLD
+	chip.BorderSizePixel = 0
+	chip.FontFace = UITheme.TitleFace
+	chip.TextSize = 12
+	chip.TextColor3 = UITheme.BLACK
+	chip.Text = "T"
+	chip.ZIndex = 6
+	chip.Parent = parent
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 7)
+	c.Parent = chip
+	UITheme.Edge(chip, UITheme.BLACK, 2.5)
+	return chip
 end
 
 local function build()
@@ -53,60 +69,30 @@ local function build()
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
-	button = Instance.new("TextButton")
-	button.Name = "AutoShootButton"
-	button.AnchorPoint = Vector2.new(1, 1)
-	button.Position = UDim2.new(1, -72, 1, -16) -- clear of the settings gear in the corner
-	button.Size = UDim2.fromOffset(170, 38)
-	button.BackgroundColor3 = COL_PANEL
-	button.BackgroundTransparency = 0.06
-	button.BorderSizePixel = 0
-	button.Text = ""
-	button.AutoButtonColor = true
-	button.Parent = gui
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 6)
-	c.Parent = button
-	UITheme.Studs(button)
-	UITheme.Depth(button)
-	UITheme.Edge(button)
-
-	dot = Instance.new("Frame")
-	dot.Name = "Dot"
-	dot.AnchorPoint = Vector2.new(0, 0.5)
-	dot.Position = UDim2.new(0, 14, 0.5, 0)
-	dot.Size = UDim2.fromOffset(9, 9)
-	dot.BorderSizePixel = 0
-	dot.Parent = button
-	local dc = Instance.new("UICorner")
-	dc.CornerRadius = UDim.new(1, 0)
-	dc.Parent = dot
-
-	label = Instance.new("TextLabel")
-	label.Name = "Label"
-	label.Position = UDim2.fromOffset(32, 0)
-	label.Size = UDim2.new(1, -40, 1, 0)
-	label.BackgroundTransparency = 1
-	label.FontFace = UITheme.BodyBoldFace
-	label.TextSize = 13
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = button
-
-	local hint = Instance.new("TextLabel")
-	hint.Name = "Hint"
-	hint.AnchorPoint = Vector2.new(1, 0.5)
-	hint.Position = UDim2.new(1, -12, 0.5, 0)
-	hint.Size = UDim2.fromOffset(20, 16)
-	hint.BackgroundTransparency = 1
-	hint.FontFace = UITheme.BodyBoldFace
-	hint.TextSize = 11
-	hint.TextColor3 = COL_TEXT_DIM
-	hint.Text = "T"
-	hint.Parent = button
-
-	button.Activated:Connect(function()
-		setOn(not on)
-	end)
+	-- Two full sticker buttons occupying the same spot; `on` decides which one shows.
+	local function stateButton(textStr, variant)
+		local b = UITheme.Button(gui, textStr, variant)
+		b.Name = "AutoShoot_" .. textStr:gsub("[^%w]", "")
+		b.AnchorPoint = Vector2.new(1, 1)
+		b.Position = UDim2.new(1, -72, 1, -20) -- clear of the settings gear in the corner
+		b.Size = UDim2.fromOffset(BTN_W, BTN_H)
+		b.TextSize = 15
+		keyChip(b)
+		b.Activated:Connect(function()
+			setOn(not on)
+		end)
+		return b
+	end
+	onBtn = stateButton("AUTOFIRE: ON", "primary")
+	offBtn = stateButton("AUTOFIRE: OFF", "ghost")
+	-- The OFF state reads clearly "asleep": dim the face + label a step further than plain ghost.
+	do
+		local face = offBtn:FindFirstChild("Face")
+		local label = face and face:FindFirstChild("Label")
+		if label then
+			label.TextColor3 = UITheme.DIM
+		end
+	end
 	refresh()
 end
 
@@ -120,7 +106,7 @@ function AutoShootController.Start()
 			setOn(not on)
 		end
 	end)
-	print("[AutoShootController] started (auto-shoot default OFF)")
+	print("[AutoShootController] started (auto-shoot default OFF, sticker toggle)")
 end
 
 return AutoShootController

@@ -9,17 +9,6 @@ local UserInputService = game:GetService("UserInputService")
 
 local InputController = require(script.Parent.InputController)
 
--- UI panels that need the real cursor (GUARDED: a broken panel controller must never brick the crosshair).
-local okInv, GameInventoryController = pcall(require, script.Parent.GameInventoryController)
-if not okInv or type(GameInventoryController) ~= "table" then
-	GameInventoryController = { IsOpen = function() return false end }
-end
--- (The buff-draft panel is gone; GunShopController is the other panel that shows the OS cursor.)
-local okShop, GunShopController = pcall(require, script.Parent.GunShopController)
-if not okShop or type(GunShopController) ~= "table" then
-	GunShopController = { IsOpen = function() return false end }
-end
-
 local CrosshairController = {}
 
 -- ===== TUNABLES =====
@@ -82,12 +71,10 @@ local function update(dt: number)
 	if not holder then
 		return
 	end
-	-- Hide the OS mouse icon during gameplay (the crosshair replaces it). While ANY panel is open — the
-	-- inventory, the buff draft — or there's no character, back off: show the real OS cursor ABOVE the UI
-	-- and hide our crosshair (it draws under the panels and just looks stuck).
-	local uiOpen = (GameInventoryController.IsOpen and GameInventoryController.IsOpen())
-		or (GunShopController.IsOpen and GunShopController.IsOpen())
-	if uiOpen or not localPlayer.Character then
+	-- Hide the OS mouse icon during gameplay (the crosshair replaces it). No character (spectating a
+	-- teammate, loading in) = back off and show the real cursor. (The in-game GUNS/CRATES panels are
+	-- gone — weapons and crates live in the lobby now, so there's no panel check anymore.)
+	if not localPlayer.Character then
 		holder.Visible = false
 		UserInputService.MouseIconEnabled = true
 		return

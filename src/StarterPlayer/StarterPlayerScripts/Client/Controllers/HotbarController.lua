@@ -17,19 +17,11 @@ local Remotes = require(Modules.Remotes)
 local UITheme = require(Modules.UITheme)
 local GunViewport = require(Modules.GunViewport)
 
--- The inventory panel (its INVENTORY button lives on this hotbar). GUARDED: a broken inventory
--- controller must never brick the hotbar.
-local okInv, GameInventoryController = pcall(require, script.Parent.GameInventoryController)
-if not okInv or type(GameInventoryController) ~= "table" then
-	GameInventoryController = { Toggle = function() end }
-end
-
 local HotbarController = {}
 
 -- ===== TUNABLES =====
 local SLOT = 84      -- square slot size (px) — finger-sized on phones after the responsive scale
 local GAP = 10
-local CASES_ICON = "rbxassetid://83465359983310" -- owner-supplied CASES button image
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -177,29 +169,7 @@ local function build()
 		slotButtons[i] = { frame = frame, name = name, key = key, stroke = stroke, baseX = x }
 	end
 
-	-- CASES button — a standalone square on the LEFT-CENTER edge, LOWER of the GUNS/CASES pair
-	-- (GUNS is the upper square, built by GunShopController). Matches the lobby's menu pair.
-	local invBtn = Instance.new("TextButton")
-	invBtn.Name = "InventoryButton"
-	-- LEFT-CENTER pair: GUNS above (GunShopController), SKIN CRATES below.
-	invBtn.AnchorPoint = Vector2.new(0, 0)
-	invBtn.Position = UDim2.new(0, 16, 0.5, 4)
-	invBtn.Size = UDim2.fromOffset(UITheme.Ctl.Launcher, UITheme.Ctl.Launcher)
-	invBtn.BackgroundColor3 = UITheme.PANEL
-	invBtn.BackgroundTransparency = 0.05
-	invBtn.BorderSizePixel = 0
-	invBtn.Text = ""
-	invBtn.AutoButtonColor = true
-	invBtn.Parent = gui
-	UITheme.Corner(invBtn, 8)
-	UITheme.Studs(invBtn, 30)
-	UITheme.Depth(invBtn)
-	UITheme.Edge(invBtn, UITheme.BLACK, 2)
-	UITheme.Edge(invBtn, UITheme.TOXIC, 1, 0.4)
-	UITheme.Icon(invBtn, CASES_ICON, { caption = "SKIN CRATES", captionColor = UITheme.TOXIC })
-	invBtn.Activated:Connect(function()
-		GameInventoryController.Toggle()
-	end)
+	-- (The GUNS / SKIN CRATES launchers are DELETED — weapons and crates live in the LOBBY now.)
 end
 
 -- ===== LIFECYCLE =====

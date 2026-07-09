@@ -17,20 +17,22 @@ local PlayerTagService = {}
 -- ===== TUNABLES =====
 local TAG_OFFSET   = Vector3.new(0, 2.1, 0) -- studs above the head (sits above the default name)
 local TAG_MAX_DIST = 90                     -- studs the tag stays readable from
-local WINS_SIZE    = 16
-local LVL_SIZE     = 13
+-- STUDS-based size: the tag lives IN the world, so it scales with the character — bigger as you zoom
+-- in, smaller as you zoom out (a pixel-based tag stayed constant, which read backwards).
+local TAG_W_STUDS  = 6
+local TAG_H_STUDS  = 1.5
 local WINS_COLOR   = Color3.fromRGB(230, 180, 76) -- gold
 local LVL_COLOR    = Color3.fromRGB(255, 255, 255)
 local BLACK        = Color3.new(0, 0, 0)
 
-local function stickerText(parent, name, y, h, size, color)
+local function stickerText(parent, name, yScale, hScale, color)
 	local l = Instance.new("TextLabel")
 	l.Name = name
-	l.Position = UDim2.fromOffset(0, y)
-	l.Size = UDim2.new(1, 0, 0, h)
+	l.Position = UDim2.fromScale(0, yScale)
+	l.Size = UDim2.fromScale(1, hScale)
 	l.BackgroundTransparency = 1
 	l.FontFace = Font.fromEnum(Enum.Font.FredokaOne) -- same chunky face as the rest of the UI
-	l.TextSize = size
+	l.TextScaled = true -- the billboard is studs-sized; the text fills whatever that renders as
 	l.TextColor3 = color
 	l.Text = ""
 	l.Parent = parent
@@ -52,13 +54,13 @@ local function ensureTag(character)
 	if not bb then
 		bb = Instance.new("BillboardGui")
 		bb.Name = "PlayerTag"
-		bb.Size = UDim2.fromOffset(200, 40)
+		bb.Size = UDim2.new(TAG_W_STUDS, 0, TAG_H_STUDS, 0) -- scale components = STUDS on a billboard
 		bb.StudsOffset = TAG_OFFSET
 		bb.MaxDistance = TAG_MAX_DIST
 		bb.AlwaysOnTop = false
 		bb.Parent = head
-		stickerText(bb, "Wins", 0, 20, WINS_SIZE, WINS_COLOR)
-		stickerText(bb, "Level", 20, 16, LVL_SIZE, LVL_COLOR)
+		stickerText(bb, "Wins", 0, 0.55, WINS_COLOR)
+		stickerText(bb, "Level", 0.55, 0.45, LVL_COLOR)
 	end
 	return bb
 end

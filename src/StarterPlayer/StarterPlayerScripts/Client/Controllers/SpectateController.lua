@@ -11,6 +11,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SharedFolder = ReplicatedStorage:WaitForChild("Shared")
@@ -25,6 +26,7 @@ local downedSet = {}       -- [userId] = true — server-broadcast down state (s
 local spectating = false
 local targetPlayer = nil
 local panel, nameLabel
+local vignette, diedLabel, diedSub, deathToken = nil, nil, nil, 0
 local playerGuiRef = nil
 
 -- A player is a valid spectate target if it isn't me, isn't downed, and has a living character.
@@ -72,7 +74,7 @@ local function setSubject(pl)
 		cam.CameraSubject = hum
 		targetPlayer = pl
 		if nameLabel then
-			nameLabel.Text = "SPECTATING  " .. pl.DisplayName
+			nameLabel.Text = "WATCHING: " .. pl.DisplayName:upper()
 		end
 	end
 end
@@ -81,8 +83,8 @@ end
 local function cycle(dir: number)
 	local list = liveTargets()
 	if #list == 0 then
-		if nameLabel and nameLabel.Text ~= "NO TEAMMATES TO SPECTATE" then
-			nameLabel.Text = "NO TEAMMATES TO SPECTATE"
+		if nameLabel and nameLabel.Text ~= "NO TEAMMATES LEFT" then
+			nameLabel.Text = "NO TEAMMATES LEFT"
 		end
 		restoreSubject()
 		return
@@ -99,7 +101,7 @@ local function cycle(dir: number)
 end
 
 -- While spectating we strip the HUD down to just the menu buttons. Keep = ScreenGuis that stay on.
-local KEEP = { GunShop = true, Settings = true, SettingsModal = true, GameInventory = true, Spectate = true, HotbarHUD = true }
+local KEEP = { GunShop = true, Settings = true, SettingsModal = true, Spectate = true, HotbarHUD = true }
 local hiddenGuis = {}   -- gui -> its prior .Enabled
 local hiddenSlots = nil -- the hotbar's gun-slot row (hidden, but the CASES button beside it stays)
 
@@ -135,14 +137,19 @@ local function restoreHud()
 	hiddenSlots = nil
 end
 
+local enterDeathFx -- assigned in Start() once build() has made the vignette
+
 local function enter()
 	if spectating then
 		return
 	end
 	spectating = true
-	hideHud() -- leave only GUNS / CASES / Settings (+ this overlay)
+	hideHud() -- leave only the settings/showcase layers (+ this overlay)
 	if panel then
 		panel.Visible = true
+	end
+	if enterDeathFx then
+		enterDeathFx()
 	end
 	cycle(0)
 end
@@ -152,8 +159,12 @@ local function exit()
 		return
 	end
 	spectating = false
+	deathToken += 1 -- cancel any pending fade
 	if panel then
 		panel.Visible = false
+	end
+	if vignette then
+		vignette.Visible = false
 	end
 	restoreHud()
 	restoreSubject()
@@ -168,67 +179,171 @@ local function build(playerGui)
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
-	panel = UITheme.Panel(gui, "SpectatePanel", { alpha = 0.1 })
+	-- Bottom chrome (the approved plan): [ ◀  WATCHING: NAME  ▶ ] pill + red LEAVE RUN beside it.
+	panel = Instance.new("Frame")
+	panel.Name = "SpectatePanel"
 	panel.AnchorPoint = Vector2.new(0.5, 1)
 	panel.Position = UDim2.new(0.5, 0, 1, -24)
-	panel.Size = UDim2.fromOffset(360, 58)
+	panel.Size = UDim2.fromOffset(510, 46)
+	panel.BackgroundTransparency = 1
 	panel.Visible = false
+	panel.Parent = gui
 
-	local function arrow(txt, ax, pos)
+	local pill = UITheme.Button(panel, "WATCHING: —", "ghost")
+	pill.Name = "WatchPill"
+	pill.Position = UDim2.fromOffset(0, 0)
+	pill.Size = UDim2.fromOffset(350, 46)
+	pill.TextSize = 15
+	pill.AutoButtonColor = false
+	nameLabel = pill -- cycle() writes pill.Text (the face label mirrors it)
+
+	local function arrow(txt, xPos, dir)
 		local b = Instance.new("TextButton")
-		b.AnchorPoint = Vector2.new(ax, 0.5)
-		b.Position = pos
-		b.Size = UDim2.fromOffset(44, 40)
-		b.BackgroundColor3 = UITheme.PANEL2
-		b.BorderSizePixel = 0
+		b.AnchorPoint = Vector2.new(0, 0.5)
+		b.Position = UDim2.new(0, xPos, 0.5, -2)
+		b.Size = UDim2.fromOffset(34, 32)
+		b.BackgroundTransparency = 1
 		b.FontFace = UITheme.TitleFace
-		b.TextSize = 22
+		b.TextSize = 20
 		b.TextColor3 = UITheme.TOXIC
 		b.Text = txt
-		b.Parent = panel
-		UITheme.Corner(b, 8)
-		UITheme.Edge(b, UITheme.BLACK, 2)
+		b.ZIndex = 8 -- above the pill's face
+		b.Parent = pill
+		local st = Instance.new("UIStroke")
+		st.Color = UITheme.BLACK
+		st.Thickness = 2.5
+		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		st.Parent = b
+		b.Activated:Connect(function()
+			cycle(dir)
+		end)
 		return b
 	end
-	local prevBtn = arrow("◄", 0, UDim2.new(0, 8, 0.5, 0))
-	local nextBtn = arrow("►", 1, UDim2.new(1, -8, 0.5, 0))
+	arrow("◀", 8, -1)
+	arrow("▶", 350 - 42, 1)
 
-	nameLabel = UITheme.Label(panel, "Name", UITheme.Type.Value, UITheme.TEXT, true)
-	nameLabel.AnchorPoint = Vector2.new(0.5, 0)
-	nameLabel.Position = UDim2.new(0.5, 0, 0, 9)
-	nameLabel.Size = UDim2.new(1, -110, 0, 22)
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
-	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd -- long display names no longer run onto the arrows
-	nameLabel.Text = "SPECTATING"
-
-	local hint = UITheme.Label(panel, "Hint", UITheme.Type.Caption, UITheme.DIM, true)
-	hint.AnchorPoint = Vector2.new(0.5, 1)
-	hint.Position = UDim2.new(0.5, 0, 1, -7)
-	hint.Size = UDim2.new(1, -110, 0, 14)
-	hint.TextXAlignment = Enum.TextXAlignment.Center
-	hint.Text = "◄ ►  /  arrow keys"
-
-	-- LEAVE, floating just above the panel — dead players are exactly who wants it, and the HUD's own
-	-- LEAVE button is hidden while spectating.
-	local leaveBtn = UITheme.Button(gui, "LEAVE GAME", "ghost")
+	local leaveBtn = UITheme.Button(panel, "LEAVE RUN", "danger")
 	leaveBtn.Name = "SpectateLeave"
-	leaveBtn.AnchorPoint = Vector2.new(0.5, 1)
-	leaveBtn.Position = UDim2.new(0.5, 0, 1, -(24 + 58 + 8))
-	leaveBtn.Size = UDim2.fromOffset(150, 32)
-	leaveBtn.TextSize = UITheme.Type.Caption
-	leaveBtn.Visible = false
-	panel:GetPropertyChangedSignal("Visible"):Connect(function()
-		leaveBtn.Visible = panel.Visible
-	end)
+	leaveBtn.Position = UDim2.fromOffset(362, 0)
+	leaveBtn.Size = UDim2.fromOffset(148, 46)
+	leaveBtn.TextSize = 15
 	leaveBtn.Activated:Connect(function()
 		Remotes.Get("LeaveRun"):FireServer()
 	end)
 
-	prevBtn.Activated:Connect(function()
-		cycle(-1)
-	end)
-	nextBtn.Activated:Connect(function()
-		cycle(1)
+	-- DEATH SCREEN: red vignette creeping in from every edge + the "YOU DIED" sticker slam.
+	vignette = Instance.new("Frame")
+	vignette.Name = "DeathVignette"
+	vignette.Size = UDim2.fromScale(1, 1)
+	vignette.BackgroundTransparency = 1
+	vignette.Visible = false
+	vignette.Parent = gui
+	local RED = Color3.fromRGB(140, 16, 10)
+	local function edge(edgeName, pos, size, rot)
+		local f = Instance.new("Frame")
+		f.Name = edgeName
+		f.Position = pos
+		f.Size = size
+		f.BackgroundColor3 = RED
+		f.BorderSizePixel = 0
+		f.Parent = vignette
+		local g = Instance.new("UIGradient")
+		g.Transparency = NumberSequence.new({ -- solid at the screen edge, gone toward the middle
+			NumberSequenceKeypoint.new(0, 0.25),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		g.Rotation = rot
+		g.Parent = f
+		return f
+	end
+	edge("Top", UDim2.new(), UDim2.new(1, 0, 0.22, 0), 90)
+	edge("Bottom", UDim2.new(0, 0, 0.78, 0), UDim2.new(1, 0, 0.22, 0), -90)
+	edge("Left", UDim2.new(), UDim2.new(0.14, 0, 1, 0), 0)
+	edge("Right", UDim2.new(0.86, 0, 0, 0), UDim2.new(0.14, 0, 1, 0), 180)
+
+	diedLabel = Instance.new("TextLabel")
+	diedLabel.Name = "YouDied"
+	diedLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	diedLabel.Position = UDim2.fromScale(0.5, 0.38)
+	diedLabel.Size = UDim2.fromOffset(600, 64)
+	diedLabel.BackgroundTransparency = 1
+	diedLabel.FontFace = UITheme.TitleFace
+	diedLabel.TextSize = 52
+	diedLabel.TextColor3 = Color3.fromRGB(255, 96, 76)
+	diedLabel.Text = "YOU DIED"
+	diedLabel.Parent = vignette
+	local ds = Instance.new("UIStroke")
+	ds.Color = UITheme.BLACK
+	ds.Thickness = 4
+	ds.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	ds.Parent = diedLabel
+	Instance.new("UIScale").Parent = diedLabel
+
+	diedSub = Instance.new("TextLabel")
+	diedSub.Name = "YouDiedSub"
+	diedSub.AnchorPoint = Vector2.new(0.5, 0)
+	diedSub.Position = UDim2.fromScale(0.5, 0.46)
+	diedSub.Size = UDim2.fromOffset(500, 22)
+	diedSub.BackgroundTransparency = 1
+	diedSub.FontFace = UITheme.BodyBoldFace
+	diedSub.TextSize = 16
+	diedSub.TextColor3 = UITheme.TEXT
+	diedSub.Text = "SPECTATING YOUR TEAM — LAST ONE DOWN ENDS THE RUN"
+	diedSub.Parent = vignette
+	local ss = Instance.new("UIStroke")
+	ss.Color = UITheme.BLACK
+	ss.Thickness = 2.5
+	ss.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	ss.Parent = diedSub
+end
+
+-- The death moment: slam the sticker in over the vignette, then fade the words out and leave a faint
+-- red rim while spectating. Cancelled cleanly by exit() (respawn / run end).
+local function showDeathScreen()
+	if not vignette then
+		return
+	end
+	deathToken += 1
+	local my = deathToken
+	vignette.Visible = true
+	for _, f in vignette:GetChildren() do
+		if f:IsA("Frame") then
+			f.BackgroundTransparency = 0
+		end
+	end
+	local st = diedLabel:FindFirstChildOfClass("UIStroke")
+	local sst = diedSub:FindFirstChildOfClass("UIStroke")
+	diedLabel.TextTransparency = 0
+	diedSub.TextTransparency = 0
+	if st then
+		st.Transparency = 0
+	end
+	if sst then
+		sst.Transparency = 0
+	end
+	local sc = diedLabel:FindFirstChildOfClass("UIScale")
+	if sc then
+		sc.Scale = 1.6
+		TweenService:Create(sc, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	end
+	task.delay(2.4, function()
+		if deathToken ~= my or not vignette.Visible then
+			return
+		end
+		-- Words fade; the rim thins to a faint reminder while spectating.
+		TweenService:Create(diedLabel, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
+		TweenService:Create(diedSub, TweenInfo.new(0.5), { TextTransparency = 1 }):Play()
+		if st then
+			TweenService:Create(st, TweenInfo.new(0.5), { Transparency = 1 }):Play()
+		end
+		if sst then
+			TweenService:Create(sst, TweenInfo.new(0.5), { Transparency = 1 }):Play()
+		end
+		for _, f in vignette:GetChildren() do
+			if f:IsA("Frame") then
+				TweenService:Create(f, TweenInfo.new(0.8), { BackgroundTransparency = 0.55 }):Play()
+			end
+		end
 	end)
 end
 
@@ -236,6 +351,7 @@ function SpectateController.Start()
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGuiRef = playerGui
 	build(playerGui)
+	enterDeathFx = showDeathScreen
 
 	Remotes.Get("DownedChanged").OnClientEvent:Connect(function(userId, isDowned)
 		downedSet[userId] = isDowned and true or nil

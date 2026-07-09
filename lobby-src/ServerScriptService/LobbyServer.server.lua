@@ -1773,23 +1773,24 @@ local function refreshPlayerTag(player)
 	if not bb then
 		bb = Instance.new("BillboardGui")
 		bb.Name = "PlayerTag"
-		bb.Size = UDim2.fromOffset(200, 40)
+		-- STUDS-based size: the tag scales with the character (zoom in = bigger, out = smaller).
+		bb.Size = UDim2.new(6, 0, 1.5, 0)
 		bb.StudsOffset = Vector3.new(0, 2.1, 0)
 		bb.MaxDistance = 90
 		bb.Parent = head
-		local function line(name, y, h, size, color)
+		local function line(name, yScale, hScale, color)
 			local l = Instance.new("TextLabel")
-			l.Name = name; l.Position = UDim2.fromOffset(0, y); l.Size = UDim2.new(1, 0, 0, h)
+			l.Name = name; l.Position = UDim2.fromScale(0, yScale); l.Size = UDim2.fromScale(1, hScale)
 			l.BackgroundTransparency = 1
 			l.FontFace = Font.fromEnum(Enum.Font.FredokaOne)
-			l.TextSize = size; l.TextColor3 = color; l.Text = ""
+			l.TextScaled = true; l.TextColor3 = color; l.Text = ""
 			l.Parent = bb
 			local st = Instance.new("UIStroke")
 			st.Color = Color3.new(0, 0, 0); st.Thickness = 2
 			st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; st.Parent = l
 		end
-		line("Wins", 0, 20, 16, Color3.fromRGB(230, 180, 76))
-		line("Level", 20, 16, 13, Color3.fromRGB(255, 255, 255))
+		line("Wins", 0, 0.55, Color3.fromRGB(230, 180, 76))
+		line("Level", 0.55, 0.45, Color3.fromRGB(255, 255, 255))
 	end
 	bb.Wins.Text = ("%d WINS"):format(wins)
 	bb.Level.Text = ("LVL %d"):format(lvl)

@@ -831,6 +831,86 @@ end
 local function ownsSkin(fullId)
 	return invData and invData.skins and invData.skins.owned and invData.skins.owned[fullId] == true
 end
+
+-- ===== LOBBY HOTBAR (VISUAL ONLY) ===== your loadout at the bottom-center, styled like the game's
+-- hotbar. You can't hold guns in the lobby — this just shows what you're taking into the next run.
+-- Self-contained: subscribes to InvSync itself (this file sits at Luau's 200-local ceiling, so no
+-- new top-level locals).
+do
+	local SLOT, GAP2 = 84, 10
+	local row = Instance.new("Frame")
+	row.Name = "LobbyHotbar"
+	row.AnchorPoint = Vector2.new(0.5, 1)
+	row.Position = UDim2.new(0.5, 0, 1, -14)
+	row.Size = UDim2.fromOffset(SLOT * 2 + GAP2, SLOT)
+	row.BackgroundTransparency = 1
+	row.Parent = gui
+	local slots = {}
+	for i = 1, 2 do
+		local f = Instance.new("Frame")
+		f.Position = UDim2.fromOffset((i - 1) * (SLOT + GAP2), 0)
+		f.Size = UDim2.fromOffset(SLOT, SLOT)
+		f.BackgroundColor3 = PANEL
+		f.BackgroundTransparency = 0.05
+		f.BorderSizePixel = 0
+		f.Visible = false
+		f.Parent = row
+		local fc = Instance.new("UICorner")
+		fc.CornerRadius = UDim.new(0, 8) -- crisp rectangle slots, same as the game
+		fc.Parent = f
+		lstuds(f, 30); ldepth(f); ledge(f, TBLACK, 2.5)
+		local key = Instance.new("TextLabel")
+		key.Position = UDim2.fromOffset(7, 4); key.Size = UDim2.fromOffset(20, 16); key.ZIndex = 3
+		key.BackgroundTransparency = 1; key.FontFace = TITLE_FACE; key.TextSize = 12
+		key.TextXAlignment = Enum.TextXAlignment.Left; key.TextColor3 = DIMTEXT
+		key.Text = tostring(i); key.Parent = f
+		local nmp = Instance.new("TextLabel") -- gun name on a dark strip, same as the game's slots
+		nmp.AnchorPoint = Vector2.new(0.5, 1); nmp.Position = UDim2.new(0.5, 0, 1, -4)
+		nmp.Size = UDim2.new(1, -10, 0, 26); nmp.ZIndex = 3
+		nmp.BackgroundColor3 = Color3.fromRGB(5, 10, 3); nmp.BackgroundTransparency = 0.45
+		nmp.FontFace = BODYB_FACE; nmp.TextScaled = true; nmp.TextColor3 = TEXTCOL; nmp.Text = ""
+		nmp.Parent = f
+		local nmc = Instance.new("UICorner"); nmc.CornerRadius = UDim.new(0, 6); nmc.Parent = nmp
+		local ncon = Instance.new("UITextSizeConstraint"); ncon.MaxTextSize = 14; ncon.Parent = nmp
+		slots[i] = { frame = f, name = nmp, vp = nil, vpId = nil }
+	end
+	local function renderRow(snap)
+		for i = 1, 2 do
+			local sl = slots[i]
+			local id = snap.loadout and snap.loadout[i]
+			local w = id and weaponInfo(id)
+			if w then
+				sl.frame.Visible = true
+				if sl.vpId ~= id then
+					if sl.vp then
+						sl.vp:Destroy()
+						sl.vp = nil
+					end
+					local vp = makeGunViewport(id, false)
+					if vp then
+						vp.AnchorPoint = Vector2.new(0.5, 0); vp.Position = UDim2.new(0.5, 0, 0, 2)
+						vp.Size = UDim2.new(1, -8, 1, -32); vp.ZIndex = 2; vp.Parent = sl.frame
+						sl.vp = vp
+					end
+					sl.vpId = id
+				end
+				sl.name.Text = w.name
+			else
+				sl.frame.Visible = false
+				if sl.vp then
+					sl.vp:Destroy()
+					sl.vp = nil
+					sl.vpId = nil
+				end
+			end
+		end
+	end
+	InvSync.OnClientEvent:Connect(function(snap)
+		if typeof(snap) == "table" then
+			renderRow(snap)
+		end
+	end)
+end
 local function ownsSet()
 	local s = {}
 	if invData then
@@ -1345,6 +1425,10 @@ local function renderInvDetail()
 			eqBtn.Activated:Connect(function()
 				lplay("Equip")
 				EquipSlot:FireServer({ slot = slIdx, weaponId = equipped and false or id })
+				-- OPTIMISTIC: flip the local loadout NOW so the page updates instantly; the server's
+				-- InvSync lands right after and confirms (or corrects) it.
+				invData.loadout[slIdx] = (not equipped) and id or nil
+				renderActive()
 			end)
 		else
 			local reqLevel = tonumber(w.unlock) or 0
