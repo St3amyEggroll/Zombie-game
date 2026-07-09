@@ -300,22 +300,30 @@ local SHOP = {
 	-- Robux-ready: map a rarity to a developer product id later and the buy path can branch to Robux
 	-- without a rework (ids ride along in every ShopSync slot).
 	RobuxProducts = {},
-	-- NEW: THE EXCLUSIVE PACK — the featured crate the EXCLUSIVE SHOP panel opens directly (×1/×3/×10).
-	-- One seeded rarity per rotation (always an exciting tier), no stock cap: this is the big Coin sink.
+	-- NEW: THE EXCLUSIVE PACK — the featured crate the EXCLUSIVE SHOP panel opens (×1/×3/×10).
+	-- One seeded rarity per rotation (always an exciting tier). ROBUX ONLY: create three Developer
+	-- Products in Creator Hub (Monetization → Developer Products) — one per open size — and paste
+	-- their ids here. 0 = that button answers "coming soon" in the shop.
 	PackWeights = { rare = 14, epic = 42, legendary = 30, mythic = 10, divine = 4 },
-	PackX3OffPct  = 11, -- multi-open discounts (×3 ≈ 11% off, ×10 ≈ 21% off)
-	PackX10OffPct = 21,
+	PackProducts = { [1] = 0, [3] = 0, [10] = 0 }, -- open count -> Developer Product id
 }
 
--- Coin price of opening the featured pack `count` times (1, 3 or 10 — discounts baked in).
-local function packPrice(rarity, count)
-	local base = SHOP.Prices[rarity] or 100
-	if count == 3 then
-		return math.max(1, math.floor(base * 3 * (100 - SHOP.PackX3OffPct) / 100 + 0.5))
-	elseif count == 10 then
-		return math.max(1, math.floor(base * 10 * (100 - SHOP.PackX10OffPct) / 100 + 0.5))
+-- Robux price of a pack product (from Roblox, cached — shown on the shop's green pills).
+local MarketplaceService = game:GetService("MarketplaceService")
+local productPriceCache = {}
+local function productPrice(pid)
+	if not pid or pid == 0 then
+		return nil
 	end
-	return base
+	if productPriceCache[pid] ~= nil then
+		return productPriceCache[pid] or nil
+	end
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(pid, Enum.InfoType.Product)
+	end)
+	local price = ok and info and tonumber(info.PriceInRobux) or nil
+	productPriceCache[pid] = price or false -- cache misses too (no request spam per snapshot)
+	return price
 end
 
 -- ===== REDEEM CODES (the EXCLUSIVE SHOP's "Enter Code" bar) =====
@@ -690,6 +698,17 @@ local function readProfile(player)
 		shop = sanitizeShop(data.shop),
 		skins = sanitizeSkins(data.skins),
 		settings = sanitizeSettings(data.settings),
+		receipts = (function() -- recent Robux PurchaseIds already granted (double-grant guard)
+			local out = {}
+			if typeof(data.receipts) == "table" then
+				for _, id in data.receipts do
+					if typeof(id) == "string" then
+						table.insert(out, id)
+					end
+				end
+			end
+			return out
+		end)(),
 		redeemed = (function() -- codes this player already claimed: { CODE = true }
 			local out = {}
 			if typeof(data.redeemed) == "table" then
@@ -733,6 +752,7 @@ local function persist(player)
 			old.skins = prof.skins
 			old.settings = prof.settings
 			old.redeemed = prof.redeemed
+			old.receipts = prof.receipts
 			return old
 		end)
 	end)
@@ -1172,13 +1192,16 @@ local function shopSnapshot(prof, enter)
 		endsIn = SHOP.RestockSeconds - (os.time() % SHOP.RestockSeconds),
 		coins = prof.lobbyMoney,
 		slots = slots,
-		-- NEW: the featured EXCLUSIVE PACK (opened directly from the panel, no stock cap).
+		-- The featured EXCLUSIVE PACK — ROBUX ONLY (Developer Product ids + live Robux prices).
 		pack = {
 			caseId = shop.pack,
 			name = CASES[shop.pack].name,
-			price1 = packPrice(shop.pack, 1),
-			price3 = packPrice(shop.pack, 3),
-			price10 = packPrice(shop.pack, 10),
+			product1 = SHOP.PackProducts[1],
+			product3 = SHOP.PackProducts[3],
+			product10 = SHOP.PackProducts[10],
+			robux1 = productPrice(SHOP.PackProducts[1]),
+			robux3 = productPrice(SHOP.PackProducts[3]),
+			robux10 = productPrice(SHOP.PackProducts[10]),
 		},
 	}
 end
@@ -1201,7 +1224,7 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	if typeof(req) ~= "table" then
 		return
 	end
-	local wantOpen = req.open == true or req.pack == true -- pack opens set the client's reel lock too
+	local wantOpen = req.open == true
 	if not allow(player, "Shop") then
 		if wantOpen then
 			CaseResult:FireClient(player, { failed = true }) -- unstick the reel lock, but no resync spam
@@ -1220,33 +1243,6 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	end
 	if prof.noPersist then
 		return fail()
-	end
-	-- NEW: EXCLUSIVE PACK open — pay once for ×1/×3/×10, bank that many featured crates, and open the
-	-- FIRST right now (CaseResult spins the reel); the client's CONTINUE chain opens the rest from
-	-- inventory exactly like OPEN ALL, so a disconnect mid-chain loses nothing.
-	if req.pack == true then
-		local count = tonumber(req.count)
-		if count ~= 1 and count ~= 3 and count ~= 10 then
-			return fail()
-		end
-		local shop = ensureShopState(prof)
-		local caseId = shop.pack
-		if not caseId or not CASES[caseId] then
-			return fail()
-		end
-		local price = packPrice(caseId, count)
-		if prof.lobbyMoney < price then
-			return fail()
-		end
-		prof.lobbyMoney -= price
-		prof.cases[caseId] = (prof.cases[caseId] or 0) + count
-		local result = doOpenCase(player, prof, caseId)
-		markDirty(player)
-		CaseResult:FireClient(player, result)
-		pushShop(player)
-		pushInv(player)
-		StatsRemote:FireClient(player, prof)
-		return
 	end
 	-- BUY ALL: sweep every slot's remaining stock cheapest-first until the coins run out.
 	if req.all == true then
@@ -1373,6 +1369,54 @@ ShopRedeem.OnServerEvent:Connect(function(player, code)
 	StatsRemote:FireClient(player, prof)
 	reply(true, "REDEEMED!  +" .. table.concat(parts, "  +"))
 end)
+
+-- NEW: ROBUX pack opens (the EXCLUSIVE SHOP is Robux-only). The client prompts the Developer Product;
+-- Roblox calls this receipt processor. Grant `count` featured crates, open the FIRST (CaseResult spins
+-- the reel; result.chain tells the client to auto-open the rest from inventory), and persist
+-- IMMEDIATELY — real money changed hands, this can't wait for the batch flush. PurchaseId is remembered
+-- in the profile so Roblox's retry deliveries can't double-grant.
+MarketplaceService.ProcessReceipt = function(receiptInfo)
+	local count = nil
+	for c, pid in SHOP.PackProducts do
+		if pid ~= 0 and pid == receiptInfo.ProductId then
+			count = c
+			break
+		end
+	end
+	if not count then
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- not a pack product (future products retry)
+	end
+	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
+	if not player then
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- left mid-purchase; grant on next join
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- profile not safe to write yet
+	end
+	prof.receipts = prof.receipts or {}
+	if table.find(prof.receipts, receiptInfo.PurchaseId) then
+		return Enum.ProductPurchaseDecision.PurchaseGranted -- retry of an already-granted receipt
+	end
+	local shop = ensureShopState(prof)
+	local caseId = shop.pack
+	if not caseId or not CASES[caseId] then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	table.insert(prof.receipts, receiptInfo.PurchaseId)
+	if #prof.receipts > 50 then
+		table.remove(prof.receipts, 1)
+	end
+	prof.cases[caseId] = (prof.cases[caseId] or 0) + count
+	local result = doOpenCase(player, prof, caseId)
+	result.chain = count - 1
+	persist(player)
+	CaseResult:FireClient(player, result)
+	pushShop(player)
+	pushInv(player)
+	StatsRemote:FireClient(player, prof)
+	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
 
 -- ===== PARTY PADS =====
 -- parties[zonePart] = { state="config"|"open", host, map, difficulty, size, members={}, deadline, billboard }

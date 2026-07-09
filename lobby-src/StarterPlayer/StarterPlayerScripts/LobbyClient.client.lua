@@ -2086,6 +2086,13 @@ CaseResult.OnClientEvent:Connect(function(res)
 		showTab("cases") -- make sure we're on the cases view behind the reel
 		selectedInv = { kind = "case", id = res.caseId } -- CONTINUE lands back on this crate's page
 	end
+	-- NEW: server-initiated multi-opens (the Robux pack) ride in with a `chain` count — queue the rest
+	-- so CONTINUE opens them back-to-back exactly like OPEN ALL.
+	if tonumber(res.chain) and res.chain > 0 then
+		invPanel:SetAttribute("QueueCase", res.caseId)
+		invPanel:SetAttribute("OpenQueue", res.chain)
+	end
+	rolling = true -- a reel is on screen (Robux opens arrive without a client-side request)
 	playReel(res.caseId, res.wonId, res)
 end)
 
@@ -2102,7 +2109,6 @@ end)
 do
 	local ShopSync   = remotes:WaitForChild("ShopSync")
 	local ShopClose  = remotes:WaitForChild("ShopClose")
-	local ShopBuy    = remotes:WaitForChild("ShopBuy")
 	local ShopRedeem = remotes:WaitForChild("ShopRedeem")
 	local MarketplaceService = game:GetService("MarketplaceService")
 
@@ -2155,29 +2161,31 @@ do
 		return l
 	end
 
-	-- Flat gold coin (drawn, not an emoji — emoji glyphs don't render reliably in the title font).
-	local function coinDisc(parent, d)
-		local disc = Instance.new("Frame")
-		disc.Size = UDim2.fromOffset(d, d)
-		disc.BackgroundColor3 = GOLD
-		disc.BorderSizePixel = 0
-		disc.ZIndex = 6
-		disc.Parent = parent
+	-- Drawn Robux mark (the pack is ROBUX ONLY): white tilted rounded square with a dark center hole.
+	local function robuxGem(parent, d)
+		local gem = Instance.new("Frame")
+		gem.Size = UDim2.fromOffset(d, d)
+		gem.Rotation = 45
+		gem.BackgroundColor3 = Color3.fromRGB(246, 246, 246)
+		gem.BorderSizePixel = 0
+		gem.ZIndex = 6
+		gem.Parent = parent
 		local c = Instance.new("UICorner")
-		c.CornerRadius = UDim.new(1, 0)
-		c.Parent = disc
-		ledge(disc, TBLACK, 2)
-		local shine = Instance.new("Frame")
-		shine.Position = UDim2.fromScale(0.2, 0.14)
-		shine.Size = UDim2.fromScale(0.32, 0.24)
-		shine.BackgroundColor3 = Color3.fromRGB(255, 240, 190)
-		shine.BorderSizePixel = 0
-		shine.ZIndex = 7
-		shine.Parent = disc
-		local sc = Instance.new("UICorner")
-		sc.CornerRadius = UDim.new(1, 0)
-		sc.Parent = shine
-		return disc
+		c.CornerRadius = UDim.new(0, 3)
+		c.Parent = gem
+		ledge(gem, TBLACK, 2)
+		local hole = Instance.new("Frame")
+		hole.AnchorPoint = Vector2.new(0.5, 0.5)
+		hole.Position = UDim2.fromScale(0.5, 0.5)
+		hole.Size = UDim2.fromScale(0.36, 0.36)
+		hole.BackgroundColor3 = Color3.fromRGB(60, 66, 48)
+		hole.BorderSizePixel = 0
+		hole.ZIndex = 7
+		hole.Parent = gem
+		local hc = Instance.new("UICorner")
+		hc.CornerRadius = UDim.new(0, 1)
+		hc.Parent = hole
+		return gem
 	end
 
 	S.gui = Instance.new("ScreenGui")
@@ -2293,9 +2301,9 @@ do
 		ll.FillDirection = Enum.FillDirection.Horizontal
 		ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
 		ll.VerticalAlignment = Enum.VerticalAlignment.Center
-		ll.Padding = UDim.new(0, 5)
+		ll.Padding = UDim.new(0, 6)
 		ll.Parent = wrap
-		coinDisc(wrap, 15)
+		robuxGem(wrap, 13)
 		local price = sticker(wrap, "--", 17)
 		price.AutomaticSize = Enum.AutomaticSize.X
 		price.Size = UDim2.fromOffset(0, 24)
@@ -2322,24 +2330,20 @@ do
 			end)
 		end)
 		pill.Activated:Connect(function()
+			-- ROBUX ONLY: prompt the Developer Product. The server's receipt processor grants the
+			-- crates, spins the first pull (CaseResult), and its `chain` field auto-opens the rest.
 			local d = S.data
 			if rolling or not d or not d.pack then
 				return
 			end
-			local cost = tonumber(d.pack["price" .. count]) or math.huge
-			if (d.coins or 0) < cost then
+			local pid = tonumber(d.pack["product" .. count]) or 0
+			if pid < 1 then
 				lplay("Error")
-				S.say("NOT ENOUGH COINS", ORANGE)
+				S.say("ROBUX PRODUCT NOT SET UP YET — COMING SOON", DIMTEXT)
 				return
 			end
-			-- Pay once; the server banks `count` crates and spins the FIRST — the reel's CONTINUE
-			-- chain (OpenQueue) opens the rest exactly like the inventory's OPEN ALL.
-			rolling = true
-			invPanel:SetAttribute("QueueCase", d.pack.caseId)
-			invPanel:SetAttribute("OpenQueue", count - 1)
-			armRollTimeout()
 			lplay("Buy")
-			ShopBuy:FireServer({ pack = true, count = count })
+			MarketplaceService:PromptProductPurchase(localPlayer, pid)
 		end)
 		return price
 	end
@@ -2489,9 +2493,10 @@ do
 		end
 		-- "Legendary Skin Crate" -> "LEGENDARY PACK"
 		S.packTitle.Text = (pk.name or "PACK"):upper():gsub("%s*SKIN%s*CRATE", ""):gsub("%s*CASE", "") .. " PACK"
-		S.p1.Text = fmt(pk.price1 or 0)
-		S.p3.Text = fmt(pk.price3 or 0)
-		S.p10.Text = fmt(pk.price10 or 0)
+		-- Robux prices (live from the Developer Products; "--" until the ids are pasted in).
+		S.p1.Text = pk.robux1 and fmt(pk.robux1) or "--"
+		S.p3.Text = pk.robux3 and fmt(pk.robux3) or "--"
+		S.p10.Text = pk.robux10 and fmt(pk.robux10) or "--"
 
 		clearChildren(S.items)
 		local disp = invData and invData.catalog.cases[pk.caseId]
