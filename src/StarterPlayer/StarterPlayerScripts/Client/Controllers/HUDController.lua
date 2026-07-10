@@ -239,13 +239,23 @@ local function build()
 	lp.Position = UDim2.new(0, 16, 1, -(16 + 64 + 8)) -- directly above the health panel
 	lp.Size = UDim2.fromOffset(240, 44)
 
+	-- CHANGED: the owner's coin IMAGE before the number (the coin emoji didn't render in the title font).
+	local coinImg = Instance.new("ImageLabel")
+	coinImg.Name = "CoinIcon"
+	coinImg.AnchorPoint = Vector2.new(0, 1)
+	coinImg.Position = UDim2.new(0, 16 + 14, 1, -(16 + 64 + 8 + 44 + 7))
+	coinImg.Size = UDim2.fromOffset(32, 32)
+	coinImg.BackgroundTransparency = 1
+	coinImg.ScaleType = Enum.ScaleType.Fit
+	coinImg.Image = "rbxassetid://84729396970772"
+	coinImg.Parent = gui
 	coinsLabel = text(gui, "LobbyMoneyLabel", UITheme.TitleFace, 30, COL_GOLD) -- BIG coins, right above the level
 	coinsLabel.AnchorPoint = Vector2.new(0, 1)
-	coinsLabel.Position = UDim2.new(0, 16 + 14, 1, -(16 + 64 + 8 + 44 + 6)) -- right above the level bar
+	coinsLabel.Position = UDim2.new(0, 16 + 14 + 38, 1, -(16 + 64 + 8 + 44 + 6)) -- after the coin icon
 	coinsLabel.Size = UDim2.fromOffset(280, 34)
 	coinsLabel.TextXAlignment = Enum.TextXAlignment.Left
 	coinsLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	coinsLabel.Text = "🪙 0"
+	coinsLabel.Text = "0"
 	local coinStroke = Instance.new("UIStroke")
 	coinStroke.Color = Color3.fromRGB(0, 0, 0)
 	coinStroke.Transparency = 0.35
@@ -398,7 +408,7 @@ function HUDController.Start()
 
 	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
 		if typeof(data) == "table" and data.lobbyMoney then
-			coinsLabel.Text = "🪙 " .. Util.FormatNumber(data.lobbyMoney)
+			coinsLabel.Text = Util.FormatNumber(data.lobbyMoney)
 		end
 		if typeof(data) == "table" and data.xp ~= nil then
 			setXP(data.xp)
@@ -408,7 +418,7 @@ function HUDController.Start()
 		setXP(xp)
 	end)
 	Remotes.Get("LobbyMoneyChanged").OnClientEvent:Connect(function(total)
-		coinsLabel.Text = "🪙 " .. Util.FormatNumber(total)
+		coinsLabel.Text = Util.FormatNumber(total)
 	end)
 
 	-- Seed initial values.

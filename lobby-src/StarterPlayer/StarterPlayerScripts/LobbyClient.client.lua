@@ -249,11 +249,11 @@ local function redX(parentGui, size, tsize)
 	g.Rotation = 90; g.Parent = x
 	-- Drawn white X (robust vs fonts lacking the glyph).
 	x.Text = ""
-	for _, rot in { 45, -45 } do
+	for _, rot in { 45, -45 } do -- CHANGED: fatter cross (3px got lost on the big header button)
 		local bar = Instance.new("Frame")
 		bar.AnchorPoint = Vector2.new(0.5, 0.5); bar.Position = UDim2.fromScale(0.5, 0.5)
-		bar.Size = UDim2.new(0.5, 0, 0, 3); bar.Rotation = rot
-		bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255); bar.BorderSizePixel = 0; bar.ZIndex = 3; bar.Parent = x
+		bar.Size = UDim2.new(0.55, 0, 0, math.max(4, math.floor(size / 9))); bar.Rotation = rot
+		bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255); bar.BorderSizePixel = 0; bar.ZIndex = 5; bar.Parent = x
 		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = bar
 	end
 	return x
@@ -563,22 +563,24 @@ lattach(gui)
 -- shows up automatically to the left of the number once set.
 local COIN_ICON_ID = "rbxassetid://84729396970772"
 local coinsRow = Instance.new("Frame")
-coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -(12 + 56 + 6)) -- above the LEVEL bar
-coinsRow.Size = UDim2.fromOffset(320, 44); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
-local moneyLabel = Instance.new("TextLabel")
-moneyLabel.Size = UDim2.new(1, 0, 1, 0); moneyLabel.BackgroundTransparency = 1
-moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 40; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
-moneyLabel.TextColor3 = GOLD; moneyLabel.Text = ""; moneyLabel.Parent = coinsRow
-local moneyStroke = Instance.new("UIStroke")
-moneyStroke.Color = TBLACK; moneyStroke.Thickness = 3.5; moneyStroke.Parent = moneyLabel
+coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -(12 + 72 + 6)) -- above the LEVEL bar
+coinsRow.Size = UDim2.fromOffset(380, 52); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
+-- CHANGED: coin icon BEFORE the number (fixed left slot), and the whole readout is BIGGER.
 local coinIcon = Instance.new("ImageLabel")
-coinIcon.AnchorPoint = Vector2.new(1, 0.5); coinIcon.Position = UDim2.new(1, -8, 0.5, 0)
-coinIcon.Size = UDim2.fromOffset(36, 36); coinIcon.BackgroundTransparency = 1
+coinIcon.AnchorPoint = Vector2.new(0, 0.5); coinIcon.Position = UDim2.new(0, 0, 0.5, 0)
+coinIcon.Size = UDim2.fromOffset(46, 46); coinIcon.BackgroundTransparency = 1
 coinIcon.ScaleType = Enum.ScaleType.Fit; coinIcon.Visible = false; coinIcon.Parent = coinsRow
 if COIN_ICON_ID ~= "" then
 	coinIcon.Image = COIN_ICON_ID
 	coinIcon.Visible = true
 end
+local moneyLabel = Instance.new("TextLabel")
+moneyLabel.Position = UDim2.fromOffset(COIN_ICON_ID ~= "" and 54 or 0, 0)
+moneyLabel.Size = UDim2.new(1, -(COIN_ICON_ID ~= "" and 54 or 0), 1, 0); moneyLabel.BackgroundTransparency = 1
+moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 46; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
+moneyLabel.TextColor3 = GOLD; moneyLabel.Text = ""; moneyLabel.Parent = coinsRow
+local moneyStroke = Instance.new("UIStroke")
+moneyStroke.Color = TBLACK; moneyStroke.Thickness = 3.5; moneyStroke.Parent = moneyLabel
 local bestLabel = Instance.new("TextLabel")
 bestLabel.AnchorPoint = Vector2.new(0, 0); bestLabel.Position = UDim2.new(0, 0, 1, 2)
 bestLabel.Size = UDim2.fromOffset(320, 20); bestLabel.BackgroundTransparency = 1
@@ -807,8 +809,6 @@ StatsRemote.OnClientEvent:Connect(function(s)
 	localPlayer:SetAttribute("AccountXP", tonumber(s.xp) or 0)
 	moneyLabel.Text = fmt(s.lobbyMoney or 0)
 	bestLabel.Text = "BEST: WAVE " .. tostring(s.bestWave or 0)
-	-- keep the (future) coin icon hugging the number's left edge
-	coinIcon.Position = UDim2.new(1, -moneyLabel.TextBounds.X - 10, 0.5, 0)
 	-- All profile-load retries failed: this session runs on a fallback that will NEVER be saved
 	-- (opening cases / buying is blocked server-side). Tell the player instead of failing silently.
 	if s.noPersist and not saveWarn then
@@ -1421,7 +1421,20 @@ local function renderInvDetail()
 	ileft.BackgroundColor3 = tint:Lerp(BLACK, 0.72); ileft.BorderSizePixel = 0; ileft.Parent = invDetail
 	corner(ileft, 8); ledge(ileft, TBLACK, 2.5); cardShade(ileft, 0.3)
 
-	local wellVp = makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
+	-- NEW: a weapon renders with its EQUIPPED skin — the skin's own model if the owner built one,
+	-- else the base gun tinted with the skin color — so equipping a skin visibly changes the page.
+	local wellVp
+	if kind == "weapon" then
+		local eqSkin = invData.skins and invData.skins.equipped and invData.skins.equipped[id]
+		if eqSkin then
+			wellVp = makeGunViewport(id .. "_" .. eqSkin, true)
+			if not wellVp then
+				local sn = invData.catalog.skins[id .. "_" .. eqSkin]
+				wellVp = makeGunViewport(id, true, nil, sn and sn.tint)
+			end
+		end
+	end
+	wellVp = wellVp or makeGunViewport(id, true, kind == "case" and "CrateDisplay" or nil)
 	if wellVp then
 		wellVp.Position = UDim2.fromOffset(14, 44); wellVp.Size = UDim2.new(1, -28, 1, -134); wellVp.Parent = ileft
 	elseif typeof(entry.image) == "string" and entry.image ~= "" then
@@ -1588,7 +1601,7 @@ local function renderInvDetail()
 				cap.TextXAlignment = Enum.TextXAlignment.Left; cap.TextColor3 = DIMTEXT
 				cap.Text = "SKINS — CLICK TO EQUIP"; cap.Parent = invDetail
 				local strip = Instance.new("Frame")
-				strip.Position = UDim2.fromOffset(RIGHT_X, 198); strip.Size = UDim2.fromOffset(RIGHT_W, 54)
+				strip.Position = UDim2.fromOffset(RIGHT_X, 198); strip.Size = UDim2.fromOffset(RIGHT_W, 58)
 				strip.BackgroundTransparency = 1; strip.Parent = invDetail
 				local slay = Instance.new("UIListLayout")
 				slay.FillDirection = Enum.FillDirection.Horizontal; slay.Padding = UDim.new(0, 8); slay.Parent = strip
@@ -1603,11 +1616,15 @@ local function renderInvDetail()
 					local sk = invData.catalog.skins[sid]
 					local sOwned = ownsSkin(sid)
 					local isOn = sOwned and invData.skins.equipped and invData.skins.equipped[id] == sk.skin
+					-- REDONE swatch: uniform dark card for every skin; ring = GREEN when equipped, the
+					-- skin's rarity color when owned, near-black when locked; locked art is dimmed with
+					-- a padlock. Clicking a locked one explains itself instead of doing nothing.
 					local sw = Instance.new("TextButton")
-					sw.Size = UDim2.fromOffset(52, 52); sw.Text = ""
-					sw.BackgroundColor3 = rarityColor(sk.rarity):Lerp(BLACK, sOwned and 0.55 or 0.82)
-					sw.BorderSizePixel = 0; sw.AutoButtonColor = sOwned; sw.Parent = strip
-					corner(sw, 5); ledge(sw, isOn and ACCENT or TBLACK, isOn and 2.5 or 2)
+					sw.Size = UDim2.fromOffset(56, 56); sw.Text = ""
+					sw.BackgroundColor3 = darker(PANEL2, 0.35)
+					sw.BorderSizePixel = 0; sw.AutoButtonColor = true; sw.Parent = strip
+					corner(sw, 5)
+					ledge(sw, isOn and ACCENT or (sOwned and rarityColor(sk.rarity) or darker(TRACK, 0.3)), isOn and 3 or 2.5)
 					local svp
 					if sk.image then -- the owner's art for this skin
 						svp = Instance.new("ImageLabel")
@@ -1618,23 +1635,42 @@ local function renderInvDetail()
 						svp = makeGunViewport(sid, false) or makeGunViewport(sk.gun, false, nil, sk.tint)
 					end
 					if svp then
-						svp.Size = UDim2.new(1, 0, 1, -6)
+						svp.Position = UDim2.fromOffset(3, 3)
+						svp.Size = UDim2.new(1, -6, 1, -12)
 						if not sOwned then
-							svp.ImageColor3 = Color3.fromRGB(70, 70, 70)
+							svp.ImageColor3 = Color3.fromRGB(55, 55, 55)
 						end
 						svp.Parent = sw
 					end
+					if not sOwned then
+						local lock = Instance.new("TextLabel")
+						lock.AnchorPoint = Vector2.new(0.5, 0.5); lock.Position = UDim2.fromScale(0.5, 0.45)
+						lock.Size = UDim2.fromOffset(24, 24); lock.BackgroundTransparency = 1
+						lock.FontFace = BODYB_FACE; lock.TextSize = 17; lock.TextColor3 = TEXTCOL
+						lock.Text = "🔒"; lock.ZIndex = 4; lock.Parent = sw
+					end
 					local rbar = Instance.new("Frame")
 					rbar.AnchorPoint = Vector2.new(0, 1); rbar.Position = UDim2.new(0, 4, 1, -3)
-					rbar.Size = UDim2.new(1, -8, 0, 4); rbar.BackgroundColor3 = rarityColor(sk.rarity)
+					rbar.Size = UDim2.new(1, -8, 0, 4)
+					rbar.BackgroundColor3 = sOwned and rarityColor(sk.rarity) or darker(TRACK, 0.15)
 					rbar.BorderSizePixel = 0; rbar.ZIndex = 3; rbar.Parent = sw
 					corner(rbar, 2)
-					if sOwned then
-						sw.Activated:Connect(function()
+					sw.Activated:Connect(function()
+						if sOwned then
 							lplay("Equip")
 							EquipSkin:FireServer({ weaponId = id, skinId = (not isOn) and sk.skin or false })
-						end)
-					end
+						else
+							lplay("Error")
+							cap.Text = ("LOCKED — %s DROPS FROM CRATES"):format((sk.name or sid):upper())
+							cap.TextColor3 = ORANGE
+							task.delay(2, function()
+								if cap.Parent then
+									cap.Text = "SKINS — CLICK TO EQUIP"
+									cap.TextColor3 = DIMTEXT
+								end
+							end)
+						end
+					end)
 				end
 			end
 			-- EQUIP / UNEQUIP — the page's big CTA.
@@ -2992,25 +3028,26 @@ do
 	xpGui.Parent = playerGui
 	lattach(xpGui)
 
+	-- CHANGED: the whole level bar is BIGGER (owner request).
 	local bar = Instance.new("Frame")
-	bar.AnchorPoint = Vector2.new(0, 1); bar.Position = UDim2.new(0, 16, 1, -12); bar.Size = UDim2.fromOffset(320, 56)
+	bar.AnchorPoint = Vector2.new(0, 1); bar.Position = UDim2.new(0, 16, 1, -12); bar.Size = UDim2.fromOffset(400, 72)
 	bar.BackgroundColor3 = PANEL; bar.BackgroundTransparency = 0.15; bar.BorderSizePixel = 0; bar.Parent = xpGui
 	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3); ledge(bar, ACCENT, 2, 0.35)
 
 	local lvl = Instance.new("TextLabel")
-	lvl.Position = UDim2.fromOffset(12, 0); lvl.Size = UDim2.fromOffset(74, 56); lvl.BackgroundTransparency = 1
-	lvl.FontFace = TITLE_FACE; lvl.TextSize = 26; lvl.TextColor3 = Color3.fromRGB(66, 165, 245); lvl.Text = "LVL 1" -- XP/level is BLUE
+	lvl.Position = UDim2.fromOffset(14, 0); lvl.Size = UDim2.fromOffset(96, 72); lvl.BackgroundTransparency = 1
+	lvl.FontFace = TITLE_FACE; lvl.TextSize = 33; lvl.TextColor3 = Color3.fromRGB(66, 165, 245); lvl.Text = "LVL 1" -- XP/level is BLUE
 	lvl.TextXAlignment = Enum.TextXAlignment.Left; lvl.Parent = bar
-	local lvlSt = Instance.new("UIStroke"); lvlSt.Color = TBLACK; lvlSt.Thickness = 2; lvlSt.Parent = lvl
+	local lvlSt = Instance.new("UIStroke"); lvlSt.Color = TBLACK; lvlSt.Thickness = 2.5; lvlSt.Parent = lvl
 
 	local nextLbl = Instance.new("TextLabel")
-	nextLbl.Position = UDim2.fromOffset(92, 8); nextLbl.Size = UDim2.new(1, -104, 0, 18); nextLbl.BackgroundTransparency = 1
-	nextLbl.FontFace = BODYB_FACE; nextLbl.TextSize = 14; nextLbl.TextXAlignment = Enum.TextXAlignment.Left
+	nextLbl.Position = UDim2.fromOffset(116, 10); nextLbl.Size = UDim2.new(1, -130, 0, 22); nextLbl.BackgroundTransparency = 1
+	nextLbl.FontFace = BODYB_FACE; nextLbl.TextSize = 16; nextLbl.TextXAlignment = Enum.TextXAlignment.Left
 	nextLbl.TextColor3 = TEXTCOL; nextLbl.Text = ""; nextLbl.TextTruncate = Enum.TextTruncate.AtEnd; nextLbl.Parent = bar
 	local nextSt = Instance.new("UIStroke"); nextSt.Color = TBLACK; nextSt.Thickness = 1.5; nextSt.Parent = nextLbl
 
 	local track = Instance.new("Frame")
-	track.AnchorPoint = Vector2.new(0, 1); track.Position = UDim2.new(0, 92, 1, -10); track.Size = UDim2.new(1, -104, 0, 16)
+	track.AnchorPoint = Vector2.new(0, 1); track.Position = UDim2.new(0, 116, 1, -12); track.Size = UDim2.new(1, -130, 0, 22)
 	track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Parent = bar
 	corner(track, 8); ledge(track, TBLACK, 1.5)
 	local fill = Instance.new("Frame")
@@ -3018,7 +3055,7 @@ do
 	corner(fill, 8)
 	local xpTxt = Instance.new("TextLabel")
 	xpTxt.Size = UDim2.fromScale(1, 1); xpTxt.BackgroundTransparency = 1; xpTxt.ZIndex = 2
-	xpTxt.FontFace = BODYB_FACE; xpTxt.TextSize = 12; xpTxt.TextColor3 = TEXTCOL; xpTxt.Text = ""; xpTxt.Parent = track
+	xpTxt.FontFace = BODYB_FACE; xpTxt.TextSize = 14; xpTxt.TextColor3 = TEXTCOL; xpTxt.Text = ""; xpTxt.Parent = track
 	local xpSt = Instance.new("UIStroke"); xpSt.Color = TBLACK; xpSt.Thickness = 1.5; xpSt.Parent = xpTxt
 
 	-- The lowest-level gun still above the player's level that they don't already own (drives "NEXT UNLOCK").
