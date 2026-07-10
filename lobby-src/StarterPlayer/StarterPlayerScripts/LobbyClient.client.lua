@@ -991,7 +991,9 @@ do
 		for i = 1, 2 do
 			local sl = slots[i]
 			local id = snap.loadout and snap.loadout[i]
-			local w = id and weaponInfo(id)
+			-- Read the catalog off THIS snapshot first (invData may not be assigned yet on the very
+			-- first push — handler order), falling back to the shared lookup.
+			local w = id and ((snap.catalog and snap.catalog.weapons and snap.catalog.weapons[id]) or weaponInfo(id))
 			if w then
 				sl.frame.Visible = true
 				if sl.vpId ~= id then
@@ -4192,5 +4194,10 @@ do
 	task.delay(2, refresh)
 	refresh()
 end
+
+-- EVERYTHING is wired — now PULL a fresh snapshot. The server's join-time pushes often fire while
+-- this (big) script is still loading, so the hotbar/coins/XP missed them and sat empty until some
+-- other action triggered a resend. This request closes that race for good.
+InvRequest:FireServer()
 
 print("[LobbyClient] started")

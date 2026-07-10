@@ -1145,6 +1145,12 @@ end
 InvRequest.OnServerEvent:Connect(function(player)
 	if allow(player, "Inv") then
 		pushInv(player)
+		-- Resend stats too: the join-time pushes can fire BEFORE the (large) client script has
+		-- connected its handlers — this request is the client saying "I'm ready now".
+		local prof = profileCache[player.UserId]
+		if prof then
+			StatsRemote:FireClient(player, prof)
+		end
 	end
 end)
 
