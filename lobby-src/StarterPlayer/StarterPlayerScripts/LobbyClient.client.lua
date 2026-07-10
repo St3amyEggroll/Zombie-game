@@ -2173,6 +2173,7 @@ do
 	local ShopSync   = remotes:WaitForChild("ShopSync")
 	local ShopClose  = remotes:WaitForChild("ShopClose")
 	local ShopRedeem = remotes:WaitForChild("ShopRedeem")
+	local ShopGift   = remotes:WaitForChild("ShopGift")
 	local MarketplaceService = game:GetService("MarketplaceService")
 
 	-- ===== TUNABLES =====
@@ -2184,7 +2185,7 @@ do
 		{ name = "2x XP",    id = 0, color = Color3.fromRGB(217, 154, 0) },
 		{ name = "VIP",      id = 0, color = Color3.fromRGB(217, 100, 28) },
 	}
-	local BODY_W, BODY_H = 660, 414
+	local BODY_W, BODY_H = 660, 430
 
 	local S = { data = nil, deadline = 0 } -- all elements + live state ride in one local
 
@@ -2265,7 +2266,7 @@ do
 	-- ===== THE FEATURED PACK BOX =====
 	S.pack = Instance.new("Frame")
 	S.pack.Position = UDim2.fromOffset(16, 14)
-	S.pack.Size = UDim2.fromOffset(BODY_W - 32, 300)
+	S.pack.Size = UDim2.fromOffset(BODY_W - 32, 316) -- CHANGED: taller footer = BIGGER buy buttons
 	S.pack.BorderSizePixel = 0
 	S.pack.ClipsDescendants = true
 	S.pack.ZIndex = 2
@@ -2305,7 +2306,7 @@ do
 	S.foot = Instance.new("Frame") -- gold footer: GONE IN + the three Open stacks
 	S.foot.AnchorPoint = Vector2.new(0, 1)
 	S.foot.Position = UDim2.new(0, 0, 1, 0)
-	S.foot.Size = UDim2.new(1, 0, 0, 56)
+	S.foot.Size = UDim2.new(1, 0, 0, 72) -- CHANGED: taller — the buy buttons doubled in size
 	S.foot.BorderSizePixel = 0
 	S.foot.ZIndex = 3
 	S.foot.Parent = S.pack
@@ -2318,13 +2319,13 @@ do
 		seam.ZIndex = 4
 		seam.Parent = S.foot
 		local g1 = sticker(S.foot, "GONE IN:", 12, Color3.fromRGB(255, 210, 62))
-		g1.Position = UDim2.fromOffset(12, 6)
-		g1.Size = UDim2.fromOffset(130, 14)
+		g1.Position = UDim2.fromOffset(12, 10)
+		g1.Size = UDim2.fromOffset(126, 14)
 		g1.TextXAlignment = Enum.TextXAlignment.Left
 	end
-	S.timer = sticker(S.foot, "--:--:--", 20, Color3.fromRGB(255, 90, 46)) -- red-orange like the reference
-	S.timer.Position = UDim2.fromOffset(12, 20)
-	S.timer.Size = UDim2.fromOffset(130, 30)
+	S.timer = sticker(S.foot, "--:--:--", 22, Color3.fromRGB(255, 90, 46)) -- red-orange like the reference
+	S.timer.Position = UDim2.fromOffset(12, 28)
+	S.timer.Size = UDim2.fromOffset(126, 34)
 	S.timer.TextXAlignment = Enum.TextXAlignment.Left
 
 	S.msg = sticker(S.gui, "", 13) -- verdict line (codes / not-enough-coins); sits left of the code bar
@@ -2333,29 +2334,34 @@ do
 		S.msg.TextColor3 = colr or TEXTCOL
 	end
 
-	-- One "Open xN" stack: label over [green coin pill][pink gift square]. Returns the price label.
+	-- One "Open xN" stack: label over [BIG green Robux pill][BIG pink gift square]. Returns the price
+	-- label. Gift = pick a player in the server, then the SAME product purchase delivers to them.
+	local function productFor(count)
+		local d = S.data
+		return d and d.pack and tonumber(d.pack["product" .. count]) or 0
+	end
 	local function mkOpen(count, x)
 		local stack = Instance.new("Frame")
 		stack.Position = UDim2.fromOffset(x, 0)
-		stack.Size = UDim2.fromOffset(150, 56)
+		stack.Size = UDim2.fromOffset(160, 72)
 		stack.BackgroundTransparency = 1
 		stack.ZIndex = 4
 		stack.Parent = S.foot
-		local lbl = sticker(stack, "Open x" .. count, 13)
+		local lbl = sticker(stack, "Open x" .. count, 14)
 		lbl.Position = UDim2.fromOffset(0, 3)
-		lbl.Size = UDim2.fromOffset(106, 14)
+		lbl.Size = UDim2.fromOffset(112, 16)
 		local pill = Instance.new("TextButton")
-		pill.Position = UDim2.fromOffset(0, 20)
-		pill.Size = UDim2.fromOffset(106, 30)
+		pill.Position = UDim2.fromOffset(0, 22)
+		pill.Size = UDim2.fromOffset(112, 44)
 		pill.BorderSizePixel = 0
 		pill.AutoButtonColor = true
 		pill.Text = ""
 		pill.ZIndex = 5
 		pill.Parent = stack
-		corner(pill, 5)
+		corner(pill, 6)
 		absGrad(pill, Color3.fromRGB(198, 247, 122), Color3.fromRGB(47, 138, 16), Color3.fromRGB(89, 193, 34))
-		ledge(pill, TBLACK, 2.5)
-		local wrap = Instance.new("Frame") -- centers [coin][price] as a group
+		ledge(pill, TBLACK, 3)
+		local wrap = Instance.new("Frame") -- centers [robux mark][price] as a group
 		wrap.Size = UDim2.fromScale(1, 1)
 		wrap.BackgroundTransparency = 1
 		wrap.ZIndex = 6
@@ -2366,63 +2372,66 @@ do
 		ll.VerticalAlignment = Enum.VerticalAlignment.Center
 		ll.Padding = UDim.new(0, 6)
 		ll.Parent = wrap
-		robuxGem(wrap, 13)
-		local price = sticker(wrap, "--", 17)
+		robuxGem(wrap, 16)
+		local price = sticker(wrap, "--", 21)
 		price.AutomaticSize = Enum.AutomaticSize.X
-		price.Size = UDim2.fromOffset(0, 24)
+		price.Size = UDim2.fromOffset(0, 30)
 		price.ZIndex = 6
 		local gift = Instance.new("TextButton")
-		gift.Position = UDim2.fromOffset(112, 20)
-		gift.Size = UDim2.fromOffset(30, 30)
+		gift.Position = UDim2.fromOffset(116, 22)
+		gift.Size = UDim2.fromOffset(44, 44)
 		gift.BorderSizePixel = 0
 		gift.FontFace = TITLE_FACE
-		gift.TextSize = 16
+		gift.TextSize = 22
 		gift.TextColor3 = Color3.new(1, 1, 1)
 		gift.Text = "🎁"
 		gift.ZIndex = 5
 		gift.Parent = stack
-		corner(gift, 5)
+		corner(gift, 6)
 		absGrad(gift, Color3.fromRGB(255, 122, 226), Color3.fromRGB(160, 22, 130))
-		ledge(gift, TBLACK, 2.5)
-		gift.Activated:Connect(function() -- gifting = phase 2 (needs Robux products per pack)
-			gift.Text = "SOON"
-			gift.TextSize = 10
-			task.delay(1.2, function()
-				gift.Text = "🎁"
-				gift.TextSize = 16
-			end)
+		ledge(gift, TBLACK, 3)
+		gift.Activated:Connect(function()
+			if rolling then
+				return
+			end
+			if productFor(count) < 1 then
+				lplay("Error")
+				S.say("ROBUX PRODUCT NOT SET UP YET — COMING SOON", DIMTEXT)
+				return
+			end
+			S.openGiftPicker(count)
 		end)
 		pill.Activated:Connect(function()
 			-- ROBUX ONLY: prompt the Developer Product. The server's receipt processor grants the
 			-- crates, spins the first pull (CaseResult), and its `chain` field auto-opens the rest.
-			local d = S.data
-			if rolling or not d or not d.pack then
+			if rolling then
 				return
 			end
-			local pid = tonumber(d.pack["product" .. count]) or 0
+			local pid = productFor(count)
 			if pid < 1 then
 				lplay("Error")
 				S.say("ROBUX PRODUCT NOT SET UP YET — COMING SOON", DIMTEXT)
 				return
 			end
+			ShopGift:FireServer(nil) -- make sure no stale gift is armed: this buy is for ME
 			lplay("Buy")
 			MarketplaceService:PromptProductPurchase(localPlayer, pid)
 		end)
 		return price
 	end
-	S.p1 = mkOpen(1, 150)
-	S.p3 = mkOpen(3, 312)
-	S.p10 = mkOpen(10, 474)
+	S.p1 = mkOpen(1, 142)
+	S.p3 = mkOpen(3, 304)
+	S.p10 = mkOpen(10, 466)
 
 	-- ===== GAMEPASSES ROW (on the dark body, under the pack) =====
 	do
 		local gpTitle = sticker(S.panel, "GAMEPASSES", 20)
-		gpTitle.Position = UDim2.fromOffset(16, 324)
+		gpTitle.Position = UDim2.fromOffset(16, 340)
 		gpTitle.Size = UDim2.fromOffset(BODY_W - 32, 22)
 		gpTitle.ZIndex = 2
 		for i, gp in GAMEPASSES do
 			local b = Instance.new("TextButton")
-			b.Position = UDim2.fromOffset(16 + (i - 1) * 216, 352)
+			b.Position = UDim2.fromOffset(16 + (i - 1) * 216, 368)
 			b.Size = UDim2.fromOffset(196, 46)
 			b.BackgroundColor3 = gp.color
 			b.BorderSizePixel = 0
@@ -2634,6 +2643,130 @@ do
 			pct.ZIndex = 5
 		end
 	end
+
+	-- ===== GIFTING ===== the 🎁 flow: pick a player in this server → the server arms the gift → the
+	-- SAME product purchase delivers the crates to THEM (banked to their inventory, toast both ways).
+	S.picker = Instance.new("Frame")
+	S.picker.AnchorPoint = Vector2.new(0.5, 0.5)
+	S.picker.Position = UDim2.fromScale(0.5, 0.5)
+	S.picker.Size = UDim2.fromOffset(300, 340)
+	S.picker.BackgroundColor3 = Color3.fromRGB(19, 21, 15)
+	S.picker.BorderSizePixel = 0
+	S.picker.Visible = false
+	S.picker.ZIndex = 30
+	S.picker.Parent = S.gui
+	corner(S.picker, 8)
+	ledge(S.picker, TBLACK, 3.5)
+	ledge(S.picker, Color3.fromRGB(255, 122, 226), 1.5, 0.3)
+	do
+		local t = sticker(S.picker, "GIFT TO...", 22)
+		t.Position = UDim2.fromOffset(0, 10)
+		t.Size = UDim2.new(1, 0, 0, 26)
+		t.ZIndex = 31
+		S.pickList = Instance.new("ScrollingFrame")
+		S.pickList.Position = UDim2.fromOffset(14, 46)
+		S.pickList.Size = UDim2.new(1, -28, 1, -108)
+		S.pickList.BackgroundTransparency = 1
+		S.pickList.BorderSizePixel = 0
+		S.pickList.ScrollBarThickness = 5
+		S.pickList.CanvasSize = UDim2.new()
+		S.pickList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		S.pickList.ZIndex = 31
+		S.pickList.Parent = S.picker
+		local ll = Instance.new("UIListLayout")
+		ll.Padding = UDim.new(0, 6)
+		ll.Parent = S.pickList
+		local cancel = Instance.new("TextButton")
+		cancel.AnchorPoint = Vector2.new(0.5, 1)
+		cancel.Position = UDim2.new(0.5, 0, 1, -12)
+		cancel.Size = UDim2.fromOffset(150, 40)
+		cancel.BackgroundColor3 = TRACK
+		cancel.BorderSizePixel = 0
+		cancel.FontFace = TITLE_FACE
+		cancel.TextSize = 16
+		cancel.TextColor3 = TEXTCOL
+		cancel.Text = "CANCEL"
+		cancel.ZIndex = 31
+		cancel.Parent = S.picker
+		corner(cancel, 6)
+		ledge(cancel, TBLACK, 2.5)
+		cancel.Activated:Connect(function()
+			S.picker.Visible = false
+		end)
+	end
+	S.openGiftPicker = function(count)
+		clearChildren(S.pickList)
+		local others = 0
+		for _, plr in Players:GetPlayers() do
+			if plr ~= localPlayer then
+				others += 1
+				local row = Instance.new("TextButton")
+				row.Size = UDim2.new(1, -6, 0, 42)
+				row.BackgroundColor3 = darker(PANEL2, 0.2)
+				row.BorderSizePixel = 0
+				row.FontFace = TITLE_FACE
+				row.TextSize = 16
+				row.TextColor3 = Color3.new(1, 1, 1)
+				row.Text = plr.DisplayName or plr.Name
+				row.ZIndex = 31
+				row.Parent = S.pickList
+				corner(row, 6)
+				ledge(row, TBLACK, 2.5)
+				row.Activated:Connect(function()
+					S.picker.Visible = false
+					local pid = productFor(count)
+					if pid < 1 then
+						return
+					end
+					ShopGift:FireServer(plr.UserId) -- arm the gift, THEN prompt the same product
+					lplay("Buy")
+					MarketplaceService:PromptProductPurchase(localPlayer, pid)
+				end)
+			end
+		end
+		if others == 0 then
+			lplay("Error")
+			S.say("NO ONE ELSE HERE TO GIFT — INVITE A FRIEND!", DIMTEXT)
+			return
+		end
+		S.picker.Visible = true
+	end
+	-- Cancelled the purchase prompt? DISARM any pending gift so a later self-buy can't mis-deliver.
+	MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId, _productId, purchased)
+		if userId == localPlayer.UserId and not purchased then
+			ShopGift:FireServer(nil)
+		end
+	end)
+	-- Gift toasts: buyer gets a confirm line; the RECIPIENT gets a big center-top toast.
+	S.toast = sticker(S.gui, "", 22)
+	S.toast.AnchorPoint = Vector2.new(0.5, 0)
+	S.toast.Position = UDim2.new(0.5, 0, 0, -60)
+	S.toast.Size = UDim2.fromOffset(760, 34)
+	S.toast.ZIndex = 40
+	ShopGift.OnClientEvent:Connect(function(data)
+		if typeof(data) ~= "table" then
+			return
+		end
+		if data.sent then
+			lplay("Buy")
+			S.say(("GIFT SENT TO %s!"):format(tostring(data.to):upper()), ACCENT)
+			return
+		end
+		if data.from then
+			lplay("RevealHigh")
+			S.toast.Text = ("🎁 %s GIFTED YOU %s ×%d — CHECK YOUR INVENTORY!"):format(
+				tostring(data.from):upper(), tostring(data.name or "A PACK"):upper(), tonumber(data.count) or 1)
+			local my = os.clock()
+			S.toastAt = my
+			TweenService:Create(S.toast, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ Position = UDim2.new(0.5, 0, 0, 84) }):Play()
+			task.delay(6, function()
+				if S.toastAt == my then
+					TweenService:Create(S.toast, TweenInfo.new(0.3), { Position = UDim2.new(0.5, 0, 0, -60) }):Play()
+				end
+			end)
+		end
+	end)
 
 	local function closeShop()
 		if S.root.Visible then

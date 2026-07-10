@@ -477,6 +477,8 @@ local ShopSync      = mk("ShopSync")      -- S->C: {enter?, window, endsIn, coin
 local ShopClose     = mk("ShopClose")     -- S->C: you left the shop zone; close the panel
 local ShopBuy       = mk("ShopBuy")       -- C->S: {slot=1..6, open=bool} buy a case | {pack=true, count=1|3|10} open the featured pack
 local ShopRedeem    = mk("ShopRedeem")    -- C->S: (code string) redeem · S->C: {ok, msg} the verdict
+local ShopGift      = mk("ShopGift")      -- C->S: (userId|nil) arm/clear gifting for your NEXT pack buy
+                                          -- S->C: {sent,to,count} buyer confirm | {from,name,count} recipient toast
 -- Guns & skins
 local BuyGun    = mk("BuyGun")    -- C->S: {weaponId} buy a gun outright with Coins
 local EquipSkin = mk("EquipSkin") -- C->S: {weaponId, skinId?} equip a skin (nil/false = back to base look)
@@ -1344,11 +1346,32 @@ ShopRedeem.OnServerEvent:Connect(function(player, code)
 	reply(true, "REDEEMED!  +" .. table.concat(parts, "  +"))
 end)
 
--- NEW: ROBUX pack opens (the EXCLUSIVE SHOP is Robux-only). The client prompts the Developer Product;
--- Roblox calls this receipt processor. Grant `count` featured crates, open the FIRST (CaseResult spins
--- the reel; result.chain tells the client to auto-open the rest from inventory), and persist
--- IMMEDIATELY — real money changed hands, this can't wait for the batch flush. PurchaseId is remembered
--- in the profile so Roblox's retry deliveries can't double-grant.
+-- NEW: GIFTING — the pink 🎁 buttons. The client ARMS a gift (recipient userId) right before prompting
+-- the same pack product; the receipt below sees the armed gift and banks the crates to the RECIPIENT
+-- instead (they open them from their inventory whenever). Cancelling the prompt disarms it client-side;
+-- the 3-minute expiry catches anything that slips through.
+local pendingGift = {} -- buyerUserId -> { to = userId, at = os.clock() }
+ShopGift.OnServerEvent:Connect(function(player, toUserId)
+	if not allow(player, "Shop") then
+		return
+	end
+	if toUserId == nil or toUserId == false then
+		pendingGift[player.UserId] = nil -- purchase prompt cancelled / picker closed
+		return
+	end
+	toUserId = tonumber(toUserId)
+	local target = toUserId and Players:GetPlayerByUserId(toUserId)
+	if not target or target == player or not profileCache[toUserId] then
+		return
+	end
+	pendingGift[player.UserId] = { to = toUserId, at = os.clock() }
+end)
+
+-- ROBUX pack opens (the EXCLUSIVE SHOP is Robux-only). The client prompts the Developer Product;
+-- Roblox calls this receipt processor. Self-buy: grant `count` featured crates, open the FIRST
+-- (CaseResult spins the reel; result.chain auto-opens the rest). Gift armed: bank all `count` crates
+-- to the recipient + toast both sides (recipient gone = falls back to a self-buy). Persist IMMEDIATELY
+-- — real money changed hands — and remember PurchaseIds so Roblox's retries can't double-grant.
 MarketplaceService.ProcessReceipt = function(receiptInfo)
 	local count = nil
 	for c, pid in SHOP.PackProducts do
@@ -1380,6 +1403,25 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	table.insert(prof.receipts, receiptInfo.PurchaseId)
 	if #prof.receipts > 50 then
 		table.remove(prof.receipts, 1)
+	end
+	-- GIFT armed? Deliver to the recipient instead (still in the server + profile loaded), else self-buy.
+	local gift = pendingGift[player.UserId]
+	pendingGift[player.UserId] = nil
+	if gift and os.clock() - gift.at < 180 then
+		local target = Players:GetPlayerByUserId(gift.to)
+		local tprof = target and profileCache[gift.to]
+		if target and tprof and not tprof.noPersist then
+			tprof.cases[caseId] = (tprof.cases[caseId] or 0) + count
+			persist(player) -- buyer: the receipt record
+			persist(target) -- recipient: the crates
+			ShopGift:FireClient(player, { sent = true, to = target.DisplayName or target.Name, count = count })
+			ShopGift:FireClient(target, { from = player.DisplayName or player.Name, name = CASES[caseId].name, count = count })
+			pushInv(target)
+			pushShop(player)
+			print(("[LobbyServer] %s gifted %d× %s to %s"):format(player.Name, count, caseId, target.Name))
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+		-- recipient left mid-purchase: fall through — the buyer keeps the pack instead of losing Robux
 	end
 	prof.cases[caseId] = (prof.cases[caseId] or 0) + count
 	local result = doOpenCase(player, prof, caseId)
