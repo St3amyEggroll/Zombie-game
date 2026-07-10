@@ -303,7 +303,44 @@ local SHOP = {
 	-- their ids here. 0 = that button answers "coming soon" in the shop.
 	PackWeights = { rare = 14, epic = 42, legendary = 30, mythic = 10, divine = 4 },
 	PackProducts = { [1] = 0, [3] = 0, [10] = 0 }, -- open count -> Developer Product id
+
+	-- NEW: PASSES & COINS tab. COIN BUNDLES (Robux -> Coins): create 4 Developer Products, paste ids.
+	CoinBundles = {
+		{ id = 0, coins = 1000 },
+		{ id = 0, coins = 5000, bonus = "+5%" },
+		{ id = 0, coins = 15000, bonus = "+15%" },
+		{ id = 0, coins = 50000, bonus = "+30%" },
+	},
+	-- STARTER PACK: one Developer Product, one purchase EVER per player (repeat receipts pay the coins
+	-- again rather than eat the Robux). Contents below.
+	StarterProductId = 0,
+	StarterCases = { rare = 3 },
+	StarterCoins = 2000,
+	-- PITY: a LEGENDARY+ skin is guaranteed within this many crate opens (counts every crate).
+	PityEvery = 10,
 }
+
+-- ===== DAILY WHEEL (the shop's DAILY tab) ===== one FREE spin per day + Robux re-spins. Segment
+-- weight = its slice of the odds; a claim streak fattens the JACKPOT slice a little per day.
+local WHEEL = {
+	RespinProductId = 0, -- Developer Product for a paid re-spin (0 = button says coming soon)
+	MaxPaidSpins = 3,    -- paid re-spins per day
+	StreakBonus = 1,     -- +weight on the jackpot slice per consecutive claim day...
+	StreakBonusCap = 5,  -- ...capped here
+	Segments = {
+		{ kind = "coins", amount = 150, weight = 20, label = "150 COINS" },
+		{ kind = "case", case = "common", weight = 17, label = "COMMON CRATE" },
+		{ kind = "coins", amount = 400, weight = 14, label = "400 COINS" },
+		{ kind = "case", case = "rare", weight = 14, label = "RARE CRATE" },
+		{ kind = "coins", amount = 800, weight = 12, label = "800 COINS" },
+		{ kind = "case", case = "epic", weight = 10, label = "EPIC CRATE" },
+		{ kind = "skin", weight = 8, label = "RANDOM SKIN" },
+		{ kind = "case", case = "divine", weight = 3, label = "DIVINE CRATE", jackpot = true },
+	},
+}
+local function todayStamp()
+	return math.floor(os.time() / 86400)
+end
 
 -- Robux price of a pack product (from Roblox, cached — shown on the shop's green pills).
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -479,6 +516,9 @@ local ShopBuy       = mk("ShopBuy")       -- C->S: {slot=1..6, open=bool} buy a 
 local ShopRedeem    = mk("ShopRedeem")    -- C->S: (code string) redeem · S->C: {ok, msg} the verdict
 local ShopGift      = mk("ShopGift")      -- C->S: (userId|nil) arm/clear gifting for your NEXT pack buy
                                           -- S->C: {sent,to,count} buyer confirm | {from,name,count} recipient toast
+local WheelSpin     = mk("WheelSpin")     -- C->S: (no args) claim the FREE daily spin
+                                          -- S->C: {seg, reward, streak} result | {failed, msg}
+local ShopTicker    = mk("ShopTicker")    -- S->C broadcast: {name, item, rarity} someone pulled legendary+
 -- Guns & skins
 local BuyGun    = mk("BuyGun")    -- C->S: {weaponId} buy a gun outright with Coins
 local EquipSkin = mk("EquipSkin") -- C->S: {weaponId, skinId?} equip a skin (nil/false = back to base look)
@@ -685,6 +725,16 @@ local function readProfile(player)
 		shop = sanitizeShop(data.shop),
 		skins = sanitizeSkins(data.skins),
 		settings = sanitizeSettings(data.settings),
+		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
+		starter = data.starter == true, -- STARTER PACK is one purchase ever
+		wheel = (function() -- daily wheel: last claim day, claim streak, paid re-spins today
+			local w = (typeof(data.wheel) == "table") and data.wheel or {}
+			return {
+				day = math.floor(tonumber(w.day) or 0),
+				streak = math.max(0, math.floor(tonumber(w.streak) or 0)),
+				paid = math.max(0, math.floor(tonumber(w.paid) or 0)),
+			}
+		end)(),
 		receipts = (function() -- recent Robux PurchaseIds already granted (double-grant guard)
 			local out = {}
 			if typeof(data.receipts) == "table" then
@@ -740,6 +790,9 @@ local function persist(player)
 			old.settings = prof.settings
 			old.redeemed = prof.redeemed
 			old.receipts = prof.receipts
+			old.pity = prof.pity
+			old.starter = prof.starter
+			old.wheel = prof.wheel
 			return old
 		end)
 	end)
@@ -1094,9 +1147,28 @@ local function doOpenCase(player, prof, caseId)
 	if prof.cases[caseId] <= 0 then
 		prof.cases[caseId] = nil
 	end
-	local wonId = rollCase(caseId)
 	-- SKINS ONLY (guns removed from crates): the pull is always a skin; duplicates convert to coins.
+	-- PITY: at PityEvery-1 opens without a legendary+, this open is FORCED to legendary/divine
+	-- (weighted by this crate's own top-tier weights).
+	local wonId
+	if (prof.pity or 0) >= SHOP.PityEvery - 1 then
+		local case = CASES[caseId]
+		local lw = case.skinWeights.legendary or 1
+		local dw = case.skinWeights.divine or 0
+		local rarity = (rng:NextNumber(0, lw + dw) <= lw) and "legendary" or "divine"
+		local list = SKINS_BY_RARITY[rarity] or SKINS_BY_RARITY.legendary
+		wonId = list[rng:NextInteger(1, #list)]
+	else
+		wonId = rollCase(caseId)
+	end
 	local skin = SKINS[wonId]
+	if skin.rarity == "legendary" or skin.rarity == "divine" then
+		prof.pity = 0
+		-- the live pull TICKER: brag about legendary+ pulls to the whole server
+		ShopTicker:FireAllClients({ name = player.DisplayName or player.Name, item = skin.name, rarity = skin.rarity })
+	else
+		prof.pity = (prof.pity or 0) + 1
+	end
 	local unlocked = not prof.skins.owned[wonId]
 	local coins = 0
 	if unlocked then
@@ -1179,6 +1251,39 @@ local function shopSnapshot(prof, enter)
 			robux3 = productPrice(SHOP.PackProducts[3]),
 			robux10 = productPrice(SHOP.PackProducts[10]),
 		},
+		-- PITY meter: opens left until the guaranteed legendary+.
+		pityLeft = math.max(1, SHOP.PityEvery - (prof.pity or 0)),
+		-- PASSES & COINS tab: bundles + the one-time starter pack.
+		bundles = (function()
+			local t = {}
+			for i, b in ipairs(SHOP.CoinBundles) do
+				t[i] = { coins = b.coins, bonus = b.bonus, productId = b.id, robux = productPrice(b.id) }
+			end
+			return t
+		end)(),
+		starter = {
+			productId = SHOP.StarterProductId,
+			robux = productPrice(SHOP.StarterProductId),
+			bought = prof.starter == true,
+			coins = SHOP.StarterCoins,
+		},
+		-- DAILY WHEEL tab state + segment display data.
+		wheel = (function()
+			local today = todayStamp()
+			local claimedToday = prof.wheel.day == today
+			local segs = {}
+			for i, s in ipairs(WHEEL.Segments) do
+				segs[i] = { label = s.label, weight = s.weight, kind = s.kind, jackpot = s.jackpot or nil }
+			end
+			return {
+				freeUsed = claimedToday,
+				paidLeft = claimedToday and math.max(0, WHEEL.MaxPaidSpins - (prof.wheel.paid or 0)) or WHEEL.MaxPaidSpins,
+				streak = prof.wheel.streak or 0,
+				respinProduct = WHEEL.RespinProductId,
+				respinRobux = productPrice(WHEEL.RespinProductId),
+				segments = segs,
+			}
+		end)(),
 	}
 end
 
@@ -1346,6 +1451,80 @@ ShopRedeem.OnServerEvent:Connect(function(player, code)
 	reply(true, "REDEEMED!  +" .. table.concat(parts, "  +"))
 end)
 
+-- ===== DAILY WHEEL ===== roll a segment (streak fattens the jackpot slice), grant it, tell the client
+-- which slice to land on. Free spin claims the day + advances the streak; paid re-spins ride receipts.
+local function doWheelSpin(player, prof)
+	local bonus = math.min(WHEEL.StreakBonusCap, (prof.wheel.streak or 0) * WHEEL.StreakBonus)
+	local total = 0
+	for _, s in WHEEL.Segments do
+		total += s.weight + (s.jackpot and bonus or 0)
+	end
+	local roll = rng:NextNumber(0, total)
+	local acc, idx = 0, 1
+	for i, s in ipairs(WHEEL.Segments) do
+		acc += s.weight + (s.jackpot and bonus or 0)
+		if roll <= acc then
+			idx = i
+			break
+		end
+	end
+	local seg = WHEEL.Segments[idx]
+	local rewardText
+	if seg.kind == "coins" then
+		prof.lobbyMoney += seg.amount
+		rewardText = "+" .. seg.amount .. " COINS"
+	elseif seg.kind == "case" then
+		prof.cases[seg.case] = (prof.cases[seg.case] or 0) + 1
+		rewardText = "+1 " .. CASES[seg.case].name:upper()
+	else -- random skin (uniform over everything; duplicates convert to coins)
+		local ids = {}
+		for id in SKINS do
+			table.insert(ids, id)
+		end
+		table.sort(ids)
+		local wonId = ids[rng:NextInteger(1, #ids)]
+		if prof.skins.owned[wonId] then
+			local c = SKIN_DUP_COINS[SKINS[wonId].rarity] or 25
+			prof.lobbyMoney += c
+			rewardText = ("DUPE %s → +%d COINS"):format(SKINS[wonId].name:upper(), c)
+		else
+			prof.skins.owned[wonId] = true
+			rewardText = "SKIN UNLOCKED: " .. SKINS[wonId].name:upper()
+		end
+	end
+	markDirty(player)
+	return idx, rewardText
+end
+
+-- Claim the day on any first spin of the day (free OR paid): consecutive days build the streak.
+local function wheelClaimDay(prof)
+	local today = todayStamp()
+	if prof.wheel.day ~= today then
+		prof.wheel.streak = (prof.wheel.day == today - 1) and (prof.wheel.streak or 0) + 1 or 1
+		prof.wheel.day = today
+		prof.wheel.paid = 0
+	end
+end
+
+WheelSpin.OnServerEvent:Connect(function(player)
+	if not allow(player, "Shop") then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return WheelSpin:FireClient(player, { failed = true, msg = "TRY AGAIN LATER" })
+	end
+	if prof.wheel.day == todayStamp() then
+		return WheelSpin:FireClient(player, { failed = true, msg = "FREE SPIN USED — COME BACK TOMORROW" })
+	end
+	wheelClaimDay(prof)
+	local idx, rewardText = doWheelSpin(player, prof)
+	WheelSpin:FireClient(player, { seg = idx, reward = rewardText, streak = prof.wheel.streak })
+	pushShop(player)
+	pushInv(player)
+	StatsRemote:FireClient(player, prof)
+end)
+
 -- NEW: GIFTING — the pink 🎁 buttons. The client ARMS a gift (recipient userId) right before prompting
 -- the same pack product; the receipt below sees the armed gift and banks the crates to the RECIPIENT
 -- instead (they open them from their inventory whenever). Cancelling the prompt disarms it client-side;
@@ -1373,61 +1552,93 @@ end)
 -- to the recipient + toast both sides (recipient gone = falls back to a self-buy). Persist IMMEDIATELY
 -- — real money changed hands — and remember PurchaseIds so Roblox's retries can't double-grant.
 MarketplaceService.ProcessReceipt = function(receiptInfo)
-	local count = nil
-	for c, pid in SHOP.PackProducts do
-		if pid ~= 0 and pid == receiptInfo.ProductId then
-			count = c
-			break
-		end
-	end
-	if not count then
-		return Enum.ProductPurchaseDecision.NotProcessedYet -- not a pack product (future products retry)
-	end
 	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
 	if not player then
-		return Enum.ProductPurchaseDecision.NotProcessedYet -- left mid-purchase; grant on next join
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- left mid-purchase; retried on next join
 	end
 	local prof = profileCache[player.UserId]
 	if not prof or prof.noPersist then
 		return Enum.ProductPurchaseDecision.NotProcessedYet -- profile not safe to write yet
 	end
+	-- Which of OUR products is it? Unknown ids stay pending (future products) without being recorded.
+	local pid = receiptInfo.ProductId
+	local packCount, bundle = nil, nil
+	for c, id in SHOP.PackProducts do
+		if id ~= 0 and id == pid then
+			packCount = c
+			break
+		end
+	end
+	for _, b in ipairs(SHOP.CoinBundles) do
+		if b.id ~= 0 and b.id == pid then
+			bundle = b
+			break
+		end
+	end
+	local isStarter = SHOP.StarterProductId ~= 0 and pid == SHOP.StarterProductId
+	local isWheel = WHEEL.RespinProductId ~= 0 and pid == WHEEL.RespinProductId
+	if not (packCount or bundle or isStarter or isWheel) then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
 	prof.receipts = prof.receipts or {}
 	if table.find(prof.receipts, receiptInfo.PurchaseId) then
 		return Enum.ProductPurchaseDecision.PurchaseGranted -- retry of an already-granted receipt
-	end
-	local shop = ensureShopState(prof)
-	local caseId = shop.pack
-	if not caseId or not CASES[caseId] then
-		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	table.insert(prof.receipts, receiptInfo.PurchaseId)
 	if #prof.receipts > 50 then
 		table.remove(prof.receipts, 1)
 	end
-	-- GIFT armed? Deliver to the recipient instead (still in the server + profile loaded), else self-buy.
-	local gift = pendingGift[player.UserId]
-	pendingGift[player.UserId] = nil
-	if gift and os.clock() - gift.at < 180 then
-		local target = Players:GetPlayerByUserId(gift.to)
-		local tprof = target and profileCache[gift.to]
-		if target and tprof and not tprof.noPersist then
-			tprof.cases[caseId] = (tprof.cases[caseId] or 0) + count
-			persist(player) -- buyer: the receipt record
-			persist(target) -- recipient: the crates
-			ShopGift:FireClient(player, { sent = true, to = target.DisplayName or target.Name, count = count })
-			ShopGift:FireClient(target, { from = player.DisplayName or player.Name, name = CASES[caseId].name, count = count })
-			pushInv(target)
-			pushShop(player)
-			print(("[LobbyServer] %s gifted %d× %s to %s"):format(player.Name, count, caseId, target.Name))
-			return Enum.ProductPurchaseDecision.PurchaseGranted
+
+	if packCount then
+		local shop = ensureShopState(prof)
+		local caseId = shop.pack
+		-- GIFT armed? Deliver to the recipient instead (still in the server + profile loaded).
+		local gift = pendingGift[player.UserId]
+		pendingGift[player.UserId] = nil
+		if gift and os.clock() - gift.at < 180 then
+			local target = Players:GetPlayerByUserId(gift.to)
+			local tprof = target and profileCache[gift.to]
+			if target and tprof and not tprof.noPersist then
+				tprof.cases[caseId] = (tprof.cases[caseId] or 0) + packCount
+				persist(player) -- buyer: the receipt record
+				persist(target) -- recipient: the crates
+				ShopGift:FireClient(player, { sent = true, to = target.DisplayName or target.Name, count = packCount })
+				ShopGift:FireClient(target, { from = player.DisplayName or player.Name, name = CASES[caseId].name, count = packCount })
+				pushInv(target)
+				pushShop(player)
+				print(("[LobbyServer] %s gifted %dx %s to %s"):format(player.Name, packCount, caseId, target.Name))
+				return Enum.ProductPurchaseDecision.PurchaseGranted
+			end
+			-- recipient left mid-purchase: fall through — the buyer keeps the pack, no Robux lost
 		end
-		-- recipient left mid-purchase: fall through — the buyer keeps the pack instead of losing Robux
+		prof.cases[caseId] = (prof.cases[caseId] or 0) + packCount
+		local result = doOpenCase(player, prof, caseId)
+		result.chain = packCount - 1 -- the client reel auto-opens the rest from inventory
+		persist(player)
+		CaseResult:FireClient(player, result)
+	elseif bundle then
+		prof.lobbyMoney += bundle.coins
+		persist(player)
+		print(("[LobbyServer] %s bought a coin bundle: +%d"):format(player.Name, bundle.coins))
+	elseif isStarter then
+		if prof.starter then
+			-- Somehow bought twice (should be hidden client-side): pay the coins again, never eat Robux.
+			prof.lobbyMoney += SHOP.StarterCoins
+		else
+			prof.starter = true
+			for cid, n in SHOP.StarterCases do
+				prof.cases[cid] = (prof.cases[cid] or 0) + n
+			end
+			prof.lobbyMoney += SHOP.StarterCoins
+		end
+		persist(player)
+	elseif isWheel then
+		wheelClaimDay(prof) -- a paid spin on a fresh day claims the day + streak too
+		prof.wheel.paid = (prof.wheel.paid or 0) + 1
+		local idx, rewardText = doWheelSpin(player, prof)
+		persist(player)
+		WheelSpin:FireClient(player, { seg = idx, reward = rewardText, streak = prof.wheel.streak, paid = true })
 	end
-	prof.cases[caseId] = (prof.cases[caseId] or 0) + count
-	local result = doOpenCase(player, prof, caseId)
-	result.chain = count - 1
-	persist(player)
-	CaseResult:FireClient(player, result)
 	pushShop(player)
 	pushInv(player)
 	StatsRemote:FireClient(player, prof)
