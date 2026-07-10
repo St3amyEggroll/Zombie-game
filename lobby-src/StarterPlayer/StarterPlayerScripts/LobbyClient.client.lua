@@ -338,6 +338,7 @@ local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
 	bar.Name = "HeaderBar"
 	bar.Size = UDim2.new(1, 0, 0, HDR_H)
 	bar.BorderSizePixel = 0
+	bar.ClipsDescendants = true -- the shine sweep stays inside the bar
 	bar.ZIndex = 3
 	bar.Parent = root
 	corner(bar, 7)
@@ -346,6 +347,15 @@ local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
 	local grad = Instance.new("UIGradient")
 	grad.Rotation = 90
 	grad.Parent = bar
+	local sheen = Instance.new("Frame") -- a diagonal light streak — the hand-placed touch on the metal
+	sheen.Position = UDim2.new(0.56, 0, 0, -22)
+	sheen.Size = UDim2.fromOffset(44, HDR_H * 2)
+	sheen.Rotation = 20
+	sheen.BackgroundColor3 = Color3.new(1, 1, 1)
+	sheen.BackgroundTransparency = 0.8
+	sheen.BorderSizePixel = 0
+	sheen.ZIndex = 3
+	sheen.Parent = bar
 	local function recolor(c) -- bright flash up top, deep foot — the reference's gold falloff
 		grad.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, c:Lerp(Color3.new(1, 1, 1), 0.5)),
@@ -2193,9 +2203,9 @@ do
 	}
 	-- Paste each gamepass id when you create it (Creator Hub → Passes). 0 = the card answers SOON.
 	local GAMEPASSES = {
-		{ name = "2x COINS", sub = "FOREVER, EVERY RUN", id = 0, color = Color3.fromRGB(58, 134, 184), color2 = Color3.fromRGB(27, 74, 104) },
-		{ name = "2x XP", sub = "LEVEL TWICE AS FAST", id = 0, color = Color3.fromRGB(217, 166, 22), color2 = Color3.fromRGB(138, 100, 8) },
-		{ name = "VIP", sub = "TAG + DAILY CRATE + MORE", id = 0, color = Color3.fromRGB(217, 122, 46), color2 = Color3.fromRGB(138, 68, 16) },
+		{ name = "2x COINS", sub = "FOREVER, EVERY RUN", id = 0, emblem = "coins", color = Color3.fromRGB(58, 134, 184), color2 = Color3.fromRGB(27, 74, 104) },
+		{ name = "2x XP", sub = "LEVEL TWICE AS FAST", id = 0, emblem = "xp", color = Color3.fromRGB(217, 166, 22), color2 = Color3.fromRGB(138, 100, 8) },
+		{ name = "VIP", sub = "TAG + DAILY CRATE + MORE", id = 0, emblem = "vip", color = Color3.fromRGB(217, 122, 46), color2 = Color3.fromRGB(138, 68, 16) },
 	}
 	local BODY_W, BODY_H = 660, 430
 
@@ -2375,6 +2385,8 @@ do
 	-- =====================================================================================================
 	-- ===== TAB 1: FEATURED ===== ticker → the pack → pity bar
 	-- =====================================================================================================
+	-- The live pull ticker: HIDDEN until a real legendary+ pull happens (no placeholder sentences).
+	-- While hidden the pack slides up to fill the row; a pull slides everything into place.
 	S.ticker = Instance.new("TextLabel")
 	S.ticker.Size = UDim2.new(1, 0, 0, 24)
 	S.ticker.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
@@ -2383,14 +2395,20 @@ do
 	S.ticker.TextSize = 12
 	S.ticker.TextColor3 = Color3.fromRGB(255, 210, 62)
 	S.ticker.TextTruncate = Enum.TextTruncate.AtEnd
-	S.ticker.Text = "⚡ LEGENDARY+ PULLS FROM THIS SERVER SHOW UP HERE…"
+	S.ticker.Text = ""
+	S.ticker.Visible = false
 	S.ticker.Parent = S.page.featured
 	corner(S.ticker, 4)
 	ledge(S.ticker, TBLACK, 2.5)
+	S.layoutFeatured = function() -- pack + pity ride up when there's no ticker row
+		local y = S.ticker.Visible and 32 or 4
+		S.pack.Position = UDim2.fromOffset(2, y)
+		S.pityBar.Position = UDim2.fromOffset(2, y + 314)
+	end
 
 	S.pack = Instance.new("Frame")
 	S.pack.Position = UDim2.fromOffset(2, 32)
-	S.pack.Size = UDim2.fromOffset(628, 316)
+	S.pack.Size = UDim2.fromOffset(628, 304)
 	S.pack.BorderSizePixel = 0
 	S.pack.ClipsDescendants = true
 	S.pack.ZIndex = 2
@@ -2399,10 +2417,11 @@ do
 	absGrad(S.pack, Color3.fromRGB(32, 24, 8), Color3.fromRGB(14, 11, 4))
 	ledge(S.pack, ORANGE, 3.5)
 
-	do -- gold TITLE BAND across the pack's top
+	do -- gold TITLE BAND across the pack's top — carries the GONE IN timer chip + a light sweep
 		local band = Instance.new("Frame")
 		band.Size = UDim2.new(1, 0, 0, 34)
 		band.BorderSizePixel = 0
+		band.ClipsDescendants = true
 		band.ZIndex = 3
 		band.Parent = S.pack
 		absGrad(band, Color3.fromRGB(255, 210, 62), Color3.fromRGB(212, 138, 0))
@@ -2414,15 +2433,56 @@ do
 		seam.BorderSizePixel = 0
 		seam.ZIndex = 4
 		seam.Parent = band
+		local sheen = Instance.new("Frame")
+		sheen.Position = UDim2.new(0.42, 0, 0, -14)
+		sheen.Size = UDim2.fromOffset(20, 62)
+		sheen.Rotation = 20
+		sheen.BackgroundColor3 = Color3.new(1, 1, 1)
+		sheen.BackgroundTransparency = 0.78
+		sheen.BorderSizePixel = 0
+		sheen.ZIndex = 3
+		sheen.Parent = band
 		S.packTitle = sticker(band, "PACK", 20)
 		S.packTitle.Position = UDim2.fromOffset(14, 0)
-		S.packTitle.Size = UDim2.new(1, -28, 1, -2)
+		S.packTitle.Size = UDim2.fromOffset(340, 32)
 		S.packTitle.TextXAlignment = Enum.TextXAlignment.Left
+		local gl = Instance.new("TextLabel") -- "GONE IN" in the band's own dark red, not sticker white
+		gl.AnchorPoint = Vector2.new(1, 0.5)
+		gl.Position = UDim2.new(1, -96, 0.5, -1)
+		gl.Size = UDim2.fromOffset(70, 16)
+		gl.BackgroundTransparency = 1
+		gl.FontFace = BODYB_FACE
+		gl.TextSize = 12
+		gl.TextColor3 = Color3.fromRGB(122, 26, 16)
+		gl.TextXAlignment = Enum.TextXAlignment.Right
+		gl.Text = "GONE IN"
+		gl.ZIndex = 5
+		gl.Parent = band
+		local chip = Instance.new("Frame") -- the dark timer chip
+		chip.AnchorPoint = Vector2.new(1, 0.5)
+		chip.Position = UDim2.new(1, -10, 0.5, -1)
+		chip.Size = UDim2.fromOffset(80, 24)
+		chip.BackgroundColor3 = Color3.fromRGB(10, 11, 8)
+		chip.BorderSizePixel = 0
+		chip.ZIndex = 5
+		chip.Parent = band
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(0, 6)
+		cc.Parent = chip
+		S.timer = Instance.new("TextLabel")
+		S.timer.Size = UDim2.fromScale(1, 1)
+		S.timer.BackgroundTransparency = 1
+		S.timer.FontFace = TITLE_FACE
+		S.timer.TextSize = 15
+		S.timer.TextColor3 = Color3.fromRGB(255, 90, 46)
+		S.timer.Text = "--:--"
+		S.timer.ZIndex = 6
+		S.timer.Parent = chip
 	end
 
-	S.items = Instance.new("Frame") -- rebuilt every render: 2 big pulls + the 2×2 pool
+	S.items = Instance.new("Frame") -- rebuilt every render: the four tier CARDS (your gun in each skin)
 	S.items.Position = UDim2.fromOffset(0, 34)
-	S.items.Size = UDim2.new(1, 0, 0, 210)
+	S.items.Size = UDim2.new(1, 0, 0, 198)
 	S.items.BackgroundTransparency = 1
 	S.items.ZIndex = 2
 	S.items.Parent = S.pack
@@ -2442,15 +2502,24 @@ do
 		seam.BorderSizePixel = 0
 		seam.ZIndex = 4
 		seam.Parent = S.foot
-		local g1 = sticker(S.foot, "GONE IN:", 12, Color3.fromRGB(255, 210, 62))
-		g1.Position = UDim2.fromOffset(12, 10)
-		g1.Size = UDim2.fromOffset(126, 14)
-		g1.TextXAlignment = Enum.TextXAlignment.Left
+		local cap = Instance.new("TextLabel") -- the timer moved into the band; a human note lives here
+		cap.Position = UDim2.fromOffset(12, 0)
+		cap.Size = UDim2.fromOffset(120, 72)
+		cap.BackgroundTransparency = 1
+		cap.FontFace = BODYB_FACE
+		cap.TextSize = 11
+		cap.TextColor3 = Color3.fromRGB(255, 237, 189)
+		cap.TextWrapped = true
+		cap.TextXAlignment = Enum.TextXAlignment.Left
+		cap.ZIndex = 4
+		cap.Text = "EVERY GUN YOU OWN CAN WEAR THESE"
+		cap.Parent = S.foot
+		local capS = Instance.new("UIStroke")
+		capS.Color = TBLACK
+		capS.Thickness = 1.5
+		capS.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		capS.Parent = cap
 	end
-	S.timer = sticker(S.foot, "--:--:--", 22, Color3.fromRGB(255, 90, 46))
-	S.timer.Position = UDim2.fromOffset(12, 28)
-	S.timer.Size = UDim2.fromOffset(126, 34)
-	S.timer.TextXAlignment = Enum.TextXAlignment.Left
 
 	local function productFor(count)
 		local d = S.data
@@ -2490,11 +2559,20 @@ do
 		ll.VerticalAlignment = Enum.VerticalAlignment.Center
 		ll.Padding = UDim.new(0, 6)
 		ll.Parent = wrap
-		robuxGem(wrap, 16)
-		local price = sticker(wrap, "--", 21)
+		local gem = robuxGem(wrap, 16)
+		local price = sticker(wrap, "SOON", 21)
 		price.AutomaticSize = Enum.AutomaticSize.X
 		price.Size = UDim2.fromOffset(0, 30)
 		price.ZIndex = 6
+		local overlay = Instance.new("Frame") -- grey "not set up yet" cover (never show dead dashes)
+		overlay.Size = UDim2.fromScale(1, 1)
+		overlay.BackgroundColor3 = Color3.fromRGB(44, 49, 36)
+		overlay.BorderSizePixel = 0
+		overlay.ZIndex = 5
+		overlay.Parent = pill
+		local oc = Instance.new("UICorner")
+		oc.CornerRadius = UDim.new(0, math.floor(6 * 1.8 + 2))
+		oc.Parent = overlay
 		local gift = Instance.new("TextButton")
 		gift.Position = UDim2.fromOffset(116, 22)
 		gift.Size = UDim2.fromOffset(44, 44)
@@ -2506,7 +2584,7 @@ do
 		gift.ZIndex = 5
 		gift.Parent = stack
 		corner(gift, 6)
-		absGrad(gift, Color3.fromRGB(255, 122, 226), Color3.fromRGB(160, 22, 130))
+		absGrad(gift, Color3.fromRGB(212, 71, 158), Color3.fromRGB(110, 22, 84)) -- deeper magenta, less neon
 		ledge(gift, TBLACK, 3)
 		gift.Activated:Connect(function()
 			if rolling then
@@ -2533,81 +2611,68 @@ do
 			lplay("Buy")
 			MarketplaceService:PromptProductPurchase(localPlayer, pid)
 		end)
-		return price
+		return { price = price, gem = gem, overlay = overlay }
 	end
 	S.p1 = mkOpen(1, 142)
 	S.p3 = mkOpen(3, 304)
 	S.p10 = mkOpen(10, 466)
+	-- One pill's live state: a real Robux price, or the quiet grey SOON (no dead dashes, ever).
+	S.setPill = function(e, robux)
+		if robux then
+			e.price.Text = fmt(robux)
+			e.price.TextSize = 21
+			e.gem.Visible = true
+			e.overlay.Visible = false
+		else
+			e.price.Text = "SOON"
+			e.price.TextSize = 15
+			e.gem.Visible = false
+			e.overlay.Visible = true
+		end
+	end
 
-	-- PITY bar under the pack: "LEGENDARY+ GUARANTEED IN N OPENS".
-	S.pityLbl = sticker(S.page.featured, "PITY: LEGENDARY+ GUARANTEED IN 10 OPENS", 13, Color3.fromRGB(255, 210, 62))
-	S.pityLbl.Position = UDim2.fromOffset(2, 356)
-	S.pityLbl.Size = UDim2.fromOffset(330, 22)
-	S.pityLbl.TextXAlignment = Enum.TextXAlignment.Left
+	-- PITY: ONE fat labeled meter under the pack — text inside the bar, star cap at the goal end.
+	S.pityBar = Instance.new("Frame")
+	S.pityBar.Position = UDim2.fromOffset(2, 346)
+	S.pityBar.Size = UDim2.fromOffset(628, 26)
+	S.pityBar.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
+	S.pityBar.BorderSizePixel = 0
+	S.pityBar.ClipsDescendants = true
+	S.pityBar.Parent = S.page.featured
 	do
-		local track = Instance.new("Frame")
-		track.Position = UDim2.fromOffset(344, 359)
-		track.Size = UDim2.fromOffset(286, 16)
-		track.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
-		track.BorderSizePixel = 0
-		track.Parent = S.page.featured
 		local tc = Instance.new("UICorner")
 		tc.CornerRadius = UDim.new(1, 0)
-		tc.Parent = track
-		ledge(track, TBLACK, 2.5)
+		tc.Parent = S.pityBar
+		ledge(S.pityBar, TBLACK, 3)
 		S.pityFill = Instance.new("Frame")
 		S.pityFill.Size = UDim2.new(0, 0, 1, 0)
 		S.pityFill.BorderSizePixel = 0
-		S.pityFill.Parent = track
-		absGrad(S.pityFill, Color3.fromRGB(255, 210, 62), Color3.fromRGB(240, 165, 10))
+		S.pityFill.Parent = S.pityBar
+		absGrad(S.pityFill, Color3.fromRGB(138, 92, 8), Color3.fromRGB(240, 165, 10))
+		S.pityFill:FindFirstChildOfClass("UIGradient").Rotation = 0 -- fill shades left→right, not top→down
 		local fc = Instance.new("UICorner")
 		fc.CornerRadius = UDim.new(1, 0)
 		fc.Parent = S.pityFill
+		S.pityLbl = sticker(S.pityBar, "LEGENDARY+ GUARANTEED IN 10 OPENS", 12)
+		S.pityLbl.Size = UDim2.fromScale(1, 1)
+		S.pityLbl.ZIndex = 6
+		local cap = Instance.new("Frame") -- the goal star at the end of the track
+		cap.AnchorPoint = Vector2.new(1, 0.5)
+		cap.Position = UDim2.new(1, -4, 0.5, 0)
+		cap.Size = UDim2.fromOffset(20, 20)
+		cap.BorderSizePixel = 0
+		cap.ZIndex = 6
+		cap.Parent = S.pityBar
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(1, 0)
+		cc.Parent = cap
+		absGrad(cap, Color3.fromRGB(255, 217, 122), Color3.fromRGB(224, 144, 0))
+		ledge(cap, TBLACK, 2)
+		local star = sticker(cap, "★", 11)
+		star.Size = UDim2.fromScale(1, 1)
+		star.ZIndex = 7
 	end
-
-	-- Cheap sunburst behind a featured pull.
-	local function burst(parent, cx, cy)
-		for _, rot in { 0, 45, 90, 135 } do
-			local bar = Instance.new("Frame")
-			bar.AnchorPoint = Vector2.new(0.5, 0.5)
-			bar.Position = UDim2.fromOffset(cx, cy)
-			bar.Size = UDim2.fromOffset(150, 14)
-			bar.Rotation = rot
-			bar.BackgroundColor3 = Color3.fromRGB(255, 223, 110)
-			bar.BackgroundTransparency = 0.85
-			bar.BorderSizePixel = 0
-			bar.ZIndex = 2
-			bar.Parent = parent
-			local c = Instance.new("UICorner")
-			c.CornerRadius = UDim.new(1, 0)
-			c.Parent = bar
-		end
-	end
-
-	-- One pool item's art: the skin's image, its model, or a colored placard — never a hole.
-	local function itemArt(parent, e, spin, textSize)
-		if e.kind == "gun" then
-			local vp = makeGunViewport(e.id, spin)
-			if vp then
-				vp.Size = UDim2.fromScale(1, 1)
-				vp.ZIndex = 3
-				vp.Parent = parent
-				return
-			end
-		end
-		local l
-		if e.kind == "gun" then
-			local w = weaponInfo(e.id)
-			l = sticker(parent, (w and w.name or e.id):upper(), textSize, w and rarityColor(w.rarity) or TEXTCOL)
-		else
-			local rname = (invData and invData.catalog.rarities[e.rarity] or {}).name or e.rarity
-			l = sticker(parent, (rname .. " SKINS"):upper(), textSize, rarityColor(e.rarity))
-		end
-		l.Position = UDim2.fromOffset(4, 4)
-		l.Size = UDim2.new(1, -8, 1, -8)
-		l.TextWrapped = true
-		l.ZIndex = 3
-	end
+	S.layoutFeatured() -- ticker starts hidden → pack + pity ride up
 
 	-- =====================================================================================================
 	-- ===== TAB 2: DAILY WHEEL ===== 8 reward chips in a ring + light-chaser spin.
@@ -2729,8 +2794,8 @@ do
 			ll.VerticalAlignment = Enum.VerticalAlignment.Center
 			ll.Padding = UDim.new(0, 6)
 			ll.Parent = wrap
-			robuxGem(wrap, 13)
-			S.respinLbl = sticker(wrap, "-- SPIN AGAIN", 15)
+			S.respinGem = robuxGem(wrap, 13)
+			S.respinLbl = sticker(wrap, "SPIN AGAIN", 15)
 			S.respinLbl.AutomaticSize = Enum.AutomaticSize.X
 			S.respinLbl.Size = UDim2.fromOffset(0, 24)
 			S.respinLbl.ZIndex = 6
@@ -2787,12 +2852,12 @@ do
 		end
 		for i, s in ipairs(segs) do
 			local a = math.rad((i - 1) * (360 / #segs)) -- chip 1 at the top, clockwise
-			local cx = 120 + math.sin(a) * 82
-			local cy = 120 - math.cos(a) * 82
+			local cx = 120 + math.sin(a) * 86
+			local cy = 120 - math.cos(a) * 86
 			local chip = Instance.new("Frame")
 			chip.AnchorPoint = Vector2.new(0.5, 0.5)
 			chip.Position = UDim2.fromOffset(cx, cy)
-			chip.Size = UDim2.fromOffset(62, 46)
+			chip.Size = UDim2.fromOffset(62, 50)
 			chip.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
 			chip.BorderSizePixel = 0
 			chip.ZIndex = 3
@@ -2801,24 +2866,73 @@ do
 			cc.CornerRadius = UDim.new(0, 8)
 			cc.Parent = chip
 			local ring = ledge(chip, s.jackpot and Color3.fromRGB(255, 210, 62) or TBLACK, 2.5)
+			-- DRAWN icon per reward kind (no 9px essays): coin discs / the crate's render / a tinted gun.
+			local icon = Instance.new("Frame")
+			icon.AnchorPoint = Vector2.new(0.5, 0)
+			icon.Position = UDim2.new(0.5, 0, 0, 2)
+			icon.Size = UDim2.fromOffset(34, 24)
+			icon.BackgroundTransparency = 1
+			icon.ZIndex = 4
+			icon.Parent = chip
+			if s.kind == "coins" then
+				for k = 1, 2 do -- a little stack of gold coins
+					local disc = Instance.new("Frame")
+					disc.Position = UDim2.fromOffset(2 + (k - 1) * 12, 4 + (k % 2) * 3)
+					disc.Size = UDim2.fromOffset(16, 16)
+					disc.BackgroundColor3 = GOLD
+					disc.BorderSizePixel = 0
+					disc.ZIndex = 4 + k
+					disc.Parent = icon
+					local dc = Instance.new("UICorner")
+					dc.CornerRadius = UDim.new(1, 0)
+					dc.Parent = disc
+					ledge(disc, TBLACK, 2)
+				end
+			elseif s.kind == "case" and s.case then
+				local vp = makeGunViewport(s.case, false, "CrateDisplay")
+				if vp then
+					vp.Size = UDim2.fromScale(1, 1)
+					vp.ZIndex = 4
+					vp.Parent = icon
+				else
+					local sq = Instance.new("Frame") -- no crate model yet: a rarity-colored crate block
+					sq.AnchorPoint = Vector2.new(0.5, 0.5)
+					sq.Position = UDim2.fromScale(0.5, 0.5)
+					sq.Size = UDim2.fromOffset(18, 16)
+					sq.BackgroundColor3 = rarityColor(s.case)
+					sq.BorderSizePixel = 0
+					sq.ZIndex = 4
+					sq.Parent = icon
+					local sc = Instance.new("UICorner")
+					sc.CornerRadius = UDim.new(0, 4)
+					sc.Parent = sq
+					ledge(sq, TBLACK, 2)
+				end
+			else -- random skin: a pink-tinted gun
+				local vp = makeGunViewport("pistol", false, nil, Color3.fromRGB(255, 105, 190))
+				if vp then
+					vp.Size = UDim2.fromScale(1, 1)
+					vp.ZIndex = 4
+					vp.Parent = icon
+				end
+			end
 			local lbl = Instance.new("TextLabel")
-			lbl.Position = UDim2.fromOffset(2, 3)
-			lbl.Size = UDim2.new(1, -4, 0, 24)
+			lbl.Position = UDim2.fromOffset(2, 27)
+			lbl.Size = UDim2.new(1, -4, 0, 11)
 			lbl.BackgroundTransparency = 1
 			lbl.FontFace = BODYB_FACE
 			lbl.TextSize = 9
-			lbl.TextWrapped = true
 			lbl.TextColor3 = s.jackpot and Color3.fromRGB(255, 210, 62) or TEXTCOL
 			lbl.ZIndex = 4
-			lbl.Text = s.label or "?"
+			lbl.Text = s.kind == "coins" and fmt(s.amount or 0) or (s.kind == "case" and (s.case or ""):upper() or "SKIN")
 			lbl.Parent = chip
 			local pct = Instance.new("TextLabel")
 			pct.AnchorPoint = Vector2.new(0.5, 1)
-			pct.Position = UDim2.new(0.5, 0, 1, -2)
-			pct.Size = UDim2.fromOffset(50, 12)
+			pct.Position = UDim2.new(0.5, 0, 1, -1)
+			pct.Size = UDim2.fromOffset(50, 10)
 			pct.BackgroundTransparency = 1
 			pct.FontFace = BODYB_FACE
-			pct.TextSize = 10
+			pct.TextSize = 9
 			pct.TextColor3 = DIMTEXT
 			pct.ZIndex = 4
 			pct.Text = total > 0 and ("%d%%"):format(math.floor((s.weight or 0) / total * 100 + 0.5)) or ""
@@ -2877,6 +2991,75 @@ do
 	-- ===== TAB 3: PASSES & COINS ===== gamepass cards → coin bundles → the one-time starter pack.
 	-- =====================================================================================================
 	do
+		-- Big DRAWN emblems (flat shapes, no images needed): coin stack / XP bolt / crown.
+		local function drawEmblem(parent, kind)
+			local em = Instance.new("Frame")
+			em.AnchorPoint = Vector2.new(0.5, 0)
+			em.Position = UDim2.new(0.5, 0, 0, 8)
+			em.Size = UDim2.fromOffset(52, 30)
+			em.BackgroundTransparency = 1
+			em.ZIndex = 5
+			em.Parent = parent
+			if kind == "coins" then
+				for k = 1, 3 do
+					local disc = Instance.new("Frame")
+					disc.Position = UDim2.fromOffset((k - 1) * 14, (k % 2) * 5 + 2)
+					disc.Size = UDim2.fromOffset(22, 22)
+					disc.BackgroundColor3 = GOLD
+					disc.BorderSizePixel = 0
+					disc.ZIndex = 5 + k
+					disc.Parent = em
+					local dc = Instance.new("UICorner")
+					dc.CornerRadius = UDim.new(1, 0)
+					dc.Parent = disc
+					ledge(disc, TBLACK, 2)
+				end
+			elseif kind == "xp" then
+				for k, rot in { -24, 24 } do -- two slanted strokes = a chunky bolt
+					local barF = Instance.new("Frame")
+					barF.AnchorPoint = Vector2.new(0.5, 0.5)
+					barF.Position = UDim2.fromOffset(20 + (k - 1) * 12, 9 + (k - 1) * 12)
+					barF.Size = UDim2.fromOffset(11, 22)
+					barF.Rotation = rot
+					barF.BackgroundColor3 = Color3.fromRGB(255, 236, 120)
+					barF.BorderSizePixel = 0
+					barF.ZIndex = 6
+					barF.Parent = em
+					local bc = Instance.new("UICorner")
+					bc.CornerRadius = UDim.new(0, 3)
+					bc.Parent = barF
+					ledge(barF, TBLACK, 2)
+				end
+			else -- vip crown: a gold base bar + three diamond points
+				local base = Instance.new("Frame")
+				base.AnchorPoint = Vector2.new(0.5, 1)
+				base.Position = UDim2.new(0.5, 0, 1, 0)
+				base.Size = UDim2.fromOffset(42, 11)
+				base.BackgroundColor3 = GOLD
+				base.BorderSizePixel = 0
+				base.ZIndex = 6
+				base.Parent = em
+				local bc = Instance.new("UICorner")
+				bc.CornerRadius = UDim.new(0, 3)
+				bc.Parent = base
+				ledge(base, TBLACK, 2)
+				for k = 1, 3 do
+					local pt = Instance.new("Frame")
+					pt.AnchorPoint = Vector2.new(0.5, 0.5)
+					pt.Position = UDim2.new(0.5, (k - 2) * 15, 0, k == 2 and 8 or 12)
+					pt.Size = UDim2.fromOffset(12, 12)
+					pt.Rotation = 45
+					pt.BackgroundColor3 = GOLD
+					pt.BorderSizePixel = 0
+					pt.ZIndex = 5
+					pt.Parent = em
+					local pc = Instance.new("UICorner")
+					pc.CornerRadius = UDim.new(0, 2)
+					pc.Parent = pt
+					ledge(pt, TBLACK, 2)
+				end
+			end
+		end
 		for i, gp in GAMEPASSES do
 			local card = Instance.new("TextButton")
 			card.Position = UDim2.fromOffset((i - 1) * 216, 0)
@@ -2888,13 +3071,14 @@ do
 			corner(card, 6)
 			absGrad(card, gp.color, gp.color2)
 			ledge(card, TBLACK, 3)
-			local nm = sticker(card, gp.name, 18)
-			nm.Position = UDim2.fromOffset(0, 18)
-			nm.Size = UDim2.new(1, 0, 0, 24)
+			drawEmblem(card, gp.emblem)
+			local nm = sticker(card, gp.name, 17)
+			nm.Position = UDim2.fromOffset(0, 42)
+			nm.Size = UDim2.new(1, 0, 0, 22)
 			nm.ZIndex = 5
 			local sub = Instance.new("TextLabel")
-			sub.Position = UDim2.fromOffset(0, 46)
-			sub.Size = UDim2.new(1, -8, 0, 14)
+			sub.Position = UDim2.fromOffset(0, 64)
+			sub.Size = UDim2.new(1, -8, 0, 13)
 			sub.BackgroundTransparency = 1
 			sub.FontFace = BODYB_FACE
 			sub.TextSize = 9
@@ -2905,8 +3089,8 @@ do
 			sub.Parent = card
 			local pricePill = Instance.new("Frame")
 			pricePill.AnchorPoint = Vector2.new(0.5, 1)
-			pricePill.Position = UDim2.new(0.5, 0, 1, -12)
-			pricePill.Size = UDim2.fromOffset(110, 34)
+			pricePill.Position = UDim2.new(0.5, 0, 1, -8)
+			pricePill.Size = UDim2.fromOffset(110, 32)
 			pricePill.BorderSizePixel = 0
 			pricePill.ZIndex = 5
 			pricePill.Parent = card
@@ -2924,23 +3108,40 @@ do
 			ll.VerticalAlignment = Enum.VerticalAlignment.Center
 			ll.Padding = UDim.new(0, 5)
 			ll.Parent = wrap
-			robuxGem(wrap, 12)
-			local priceLbl = sticker(wrap, "SOON", 15)
+			local gem = robuxGem(wrap, 12)
+			local priceLbl = sticker(wrap, "SOON", 14)
 			priceLbl.AutomaticSize = Enum.AutomaticSize.X
 			priceLbl.Size = UDim2.fromOffset(0, 22)
 			priceLbl.ZIndex = 6
+			gem.Visible = false -- shown once a real price lands
+			local owned = false
 			if gp.id and gp.id > 0 then
-				task.spawn(function() -- live gamepass price
+				task.spawn(function() -- live price + already-owned state
+					local okO, has = pcall(function()
+						return MarketplaceService:UserOwnsGamePassAsync(localPlayer.UserId, gp.id)
+					end)
+					if okO and has then
+						owned = true
+						priceLbl.Text = "OWNED"
+						gem.Visible = false
+						card.AutoButtonColor = false
+						return
+					end
 					local ok, info = pcall(function()
 						return MarketplaceService:GetProductInfo(gp.id, Enum.InfoType.GamePass)
 					end)
 					if ok and info and tonumber(info.PriceInRobux) then
 						priceLbl.Text = fmt(info.PriceInRobux)
+						priceLbl.TextSize = 15
+						gem.Visible = true
 					end
 				end)
 			end
 			card.Activated:Connect(function()
-				if gp.id and gp.id > 0 then
+				if owned then
+					lplay("Error")
+					S.say(gp.name .. " — ALREADY OWNED", DIMTEXT)
+				elseif gp.id and gp.id > 0 then
 					MarketplaceService:PromptGamePassPurchase(localPlayer, gp.id)
 				else
 					lplay("Error")
@@ -2990,8 +3191,8 @@ do
 			ll.VerticalAlignment = Enum.VerticalAlignment.Center
 			ll.Padding = UDim.new(0, 5)
 			ll.Parent = wrap
-			robuxGem(wrap, 12)
-			local priceLbl = sticker(wrap, "--", 14)
+			local gem = robuxGem(wrap, 12)
+			local priceLbl = sticker(wrap, "SOON", 13)
 			priceLbl.AutomaticSize = Enum.AutomaticSize.X
 			priceLbl.Size = UDim2.fromOffset(0, 20)
 			priceLbl.ZIndex = 6
@@ -3009,7 +3210,7 @@ do
 				bc.Parent = badge
 				ledge(badge, TBLACK, 2)
 			end
-			S.bundleBtns[i] = { amt = amt, price = priceLbl, badge = badge }
+			S.bundleBtns[i] = { amt = amt, price = priceLbl, badge = badge, gem = gem }
 			card.Activated:Connect(function()
 				local b = S.data and S.data.bundles and S.data.bundles[i]
 				local pid = b and tonumber(b.productId) or 0
@@ -3071,8 +3272,8 @@ do
 			ll.VerticalAlignment = Enum.VerticalAlignment.Center
 			ll.Padding = UDim.new(0, 5)
 			ll.Parent = wrap
-			robuxGem(wrap, 12)
-			S.starterPrice = sticker(wrap, "--", 15)
+			S.starterGem = robuxGem(wrap, 12)
+			S.starterPrice = sticker(wrap, "SOON", 15)
 			S.starterPrice.AutomaticSize = Enum.AutomaticSize.X
 			S.starterPrice.Size = UDim2.fromOffset(0, 22)
 			S.starterPrice.ZIndex = 6
@@ -3274,7 +3475,7 @@ do
 		end
 	end)
 
-	-- The live pull ticker (last 3 legendary+ pulls on this server).
+	-- The live pull ticker (last 3 legendary+ pulls on this server). First pull reveals the row.
 	ShopTicker.OnClientEvent:Connect(function(t)
 		if typeof(t) ~= "table" or not t.item then
 			return
@@ -3284,6 +3485,10 @@ do
 			table.remove(S.tickerQ)
 		end
 		S.ticker.Text = table.concat(S.tickerQ, "   ·   ")
+		if not S.ticker.Visible then
+			S.ticker.Visible = true
+			S.layoutFeatured()
+		end
 	end)
 
 	-- =====================================================================================================
@@ -3294,13 +3499,13 @@ do
 		if not d then
 			return
 		end
-		-- FEATURED: pack + pity
+		-- FEATURED: the four tier CARDS — your equipped gun rendered wearing each tier's skin.
 		local pk = d.pack
 		if pk then
 			S.packTitle.Text = (pk.name or "PACK"):upper():gsub("%s*SKIN%s*CRATE", ""):gsub("%s*CASE", "") .. " PACK"
-			S.p1.Text = pk.robux1 and fmt(pk.robux1) or "--"
-			S.p3.Text = pk.robux3 and fmt(pk.robux3) or "--"
-			S.p10.Text = pk.robux10 and fmt(pk.robux10) or "--"
+			S.setPill(S.p1, pk.robux1)
+			S.setPill(S.p3, pk.robux3)
+			S.setPill(S.p10, pk.robux10)
 			clearChildren(S.items)
 			local disp = invData and invData.catalog.cases[pk.caseId]
 			if not disp or not disp.loot then
@@ -3311,70 +3516,126 @@ do
 			else
 				local entries = {}
 				for _, e in disp.loot do
-					table.insert(entries, e)
+					if e.kind == "skins" then
+						table.insert(entries, e)
+					end
 				end
 				table.sort(entries, function(a, b)
 					return (a.pct or 100) < (b.pct or 100)
 				end)
-				for i = 1, math.min(2, #entries) do
+				local myGun = (invData.loadout and (invData.loadout[1] or invData.loadout[2])) or "pistol"
+				local PREF = { common = "worn", rare = "toxic", legendary = "gold", divine = "void" }
+				for i = 1, math.min(4, #entries) do
 					local e = entries[i]
-					local well = Instance.new("Frame")
-					well.Position = UDim2.fromOffset(18 + (i - 1) * 178, 6)
-					well.Size = UDim2.fromOffset(164, 198)
-					well.BackgroundTransparency = 1
-					well.Parent = S.items
-					burst(well, 82, 62)
-					local art = Instance.new("Frame")
-					art.Size = UDim2.fromOffset(164, 124)
-					art.BackgroundTransparency = 1
-					art.Parent = well
-					itemArt(art, e, true, 18)
-					local rib = Instance.new("Frame")
-					rib.AnchorPoint = Vector2.new(0.5, 0)
-					rib.Position = UDim2.new(0.5, 0, 0, 106)
-					rib.Size = UDim2.fromOffset(118, 22)
-					rib.BorderSizePixel = 0
-					rib.ZIndex = 5
-					rib.Parent = well
-					corner(rib, 3)
-					absGrad(rib, Color3.fromRGB(255, 90, 60), Color3.fromRGB(150, 18, 18))
-					ledge(rib, TBLACK, 2)
-					local rl = sticker(rib, "LIMITED", 13)
-					rl.Size = UDim2.fromScale(1, 1)
-					rl.ZIndex = 6
-					local pct = sticker(well, ("%.1f%%"):format(e.pct or 0), 27)
-					pct.Position = UDim2.fromOffset(0, 132)
-					pct.Size = UDim2.fromOffset(164, 32)
-				end
-				for i = 3, math.min(6, #entries) do
-					local e = entries[i]
-					local k = i - 3
-					local mini = Instance.new("Frame")
-					mini.Position = UDim2.fromOffset(372 + (k % 2) * 124, 6 + math.floor(k / 2) * 96)
-					mini.Size = UDim2.fromOffset(116, 88)
-					mini.BorderSizePixel = 0
-					mini.Parent = S.items
-					corner(mini, 5)
-					absGrad(mini, Color3.fromRGB(26, 20, 8), Color3.fromRGB(15, 12, 4))
-					ledge(mini, ORANGE, 2.5)
-					local art = Instance.new("Frame")
-					art.Position = UDim2.fromOffset(3, 3)
-					art.Size = UDim2.new(1, -6, 1, -6)
-					art.BackgroundTransparency = 1
-					art.Parent = mini
-					itemArt(art, e, false, 12)
-					local pct = sticker(mini, ("%.1f%%"):format(e.pct or 0), 14)
-					pct.AnchorPoint = Vector2.new(1, 1)
-					pct.Position = UDim2.new(1, -7, 1, -4)
-					pct.Size = UDim2.fromOffset(70, 16)
-					pct.TextXAlignment = Enum.TextXAlignment.Right
-					pct.ZIndex = 5
+					local tierCol = rarityColor(e.rarity)
+					-- the tier's face skin for MY gun (canonical name first, else first of the rarity)
+					local sk = PREF[e.rarity] and invData.catalog.skins[myGun .. "_" .. PREF[e.rarity]]
+					if not sk or sk.rarity ~= e.rarity then
+						local best
+						for id, s2 in invData.catalog.skins do
+							if s2.gun == myGun and s2.rarity == e.rarity and (not best or id < best) then
+								best = id
+							end
+						end
+						sk = best and invData.catalog.skins[best] or sk
+					end
+					local card = Instance.new("Frame")
+					card.Position = UDim2.fromOffset(10 + (i - 1) * 154, 10)
+					card.Size = UDim2.fromOffset(146, 178)
+					card.BorderSizePixel = 0
+					card.ClipsDescendants = true
+					card.Parent = S.items
+					corner(card, 5)
+					absGrad(card, tierCol:Lerp(Color3.fromRGB(23, 18, 10), 0.72), Color3.fromRGB(16, 13, 8))
+					ledge(card, tierCol, 3)
+					if i == 1 then -- the rarest blazes: an extra soft halo ring
+						ledge(card, tierCol, 7, 0.78)
+					end
+					local vp = sk and (makeGunViewport(sk.id, false) or makeGunViewport(myGun, false, nil, sk.tint))
+						or makeGunViewport(myGun, false)
+					if vp then
+						vp.Position = UDim2.fromOffset(0, 8)
+						vp.Size = UDim2.new(1, 0, 0, 100)
+						vp.ZIndex = 3
+						vp.Parent = card
+					else
+						local ph = sticker(card, ((sk and sk.name) or e.rarity):upper(), 13, tierCol)
+						ph.Position = UDim2.fromOffset(6, 24)
+						ph.Size = UDim2.new(1, -12, 0, 72)
+						ph.TextWrapped = true
+						ph.ZIndex = 3
+					end
+					local gl = Instance.new("Frame") -- tier-colored shelf line under the render
+					gl.AnchorPoint = Vector2.new(0.5, 0)
+					gl.Position = UDim2.new(0.5, 0, 0, 112)
+					gl.Size = UDim2.fromOffset(110, 2)
+					gl.BackgroundColor3 = tierCol
+					gl.BackgroundTransparency = 0.45
+					gl.BorderSizePixel = 0
+					gl.ZIndex = 3
+					gl.Parent = card
+					do
+						local c = Instance.new("UICorner")
+						c.CornerRadius = UDim.new(1, 0)
+						c.Parent = gl
+					end
+					local nm = sticker(card, (sk and sk.skin or e.rarity):upper(), 15)
+					nm.Position = UDim2.fromOffset(0, 118)
+					nm.Size = UDim2.new(1, 0, 0, 18)
+					nm.ZIndex = 4
+					local tl = Instance.new("TextLabel")
+					tl.Position = UDim2.fromOffset(0, 137)
+					tl.Size = UDim2.new(1, 0, 0, 12)
+					tl.BackgroundTransparency = 1
+					tl.FontFace = BODYB_FACE
+					tl.TextSize = 10
+					tl.TextColor3 = tierCol
+					tl.ZIndex = 4
+					tl.Text = ((invData.catalog.rarities[e.rarity] or {}).name or e.rarity):upper()
+					tl.Parent = card
+					local chip = Instance.new("Frame") -- the odds, as a neat chip
+					chip.AnchorPoint = Vector2.new(0.5, 1)
+					chip.Position = UDim2.new(0.5, 0, 1, -6)
+					chip.Size = UDim2.fromOffset(66, 20)
+					chip.BackgroundColor3 = Color3.fromRGB(10, 11, 8)
+					chip.BackgroundTransparency = 0.12
+					chip.BorderSizePixel = 0
+					chip.ZIndex = 4
+					chip.Parent = card
+					do
+						local c = Instance.new("UICorner")
+						c.CornerRadius = UDim.new(1, 0)
+						c.Parent = chip
+						ledge(chip, tierCol, 2)
+					end
+					local pc = Instance.new("TextLabel")
+					pc.Size = UDim2.fromScale(1, 1)
+					pc.BackgroundTransparency = 1
+					pc.FontFace = TITLE_FACE
+					pc.TextSize = 12
+					pc.TextColor3 = tierCol
+					pc.ZIndex = 5
+					pc.Text = ("%.1f%%"):format(e.pct or 0)
+					pc.Parent = chip
+					if i == 1 then -- corner ribbon on the rarest
+						local rib = Instance.new("Frame")
+						rib.Position = UDim2.fromOffset(-34, 14)
+						rib.Size = UDim2.fromOffset(130, 19)
+						rib.Rotation = -35
+						rib.BorderSizePixel = 0
+						rib.ZIndex = 6
+						rib.Parent = card
+						absGrad(rib, Color3.fromRGB(255, 90, 60), Color3.fromRGB(150, 18, 18))
+						local rl = sticker(rib, "LIMITED", 11)
+						rl.Size = UDim2.fromScale(1, 1)
+						rl.ZIndex = 7
+					end
 				end
 			end
 		end
 		local pityLeft = tonumber(d.pityLeft) or 10
-		S.pityLbl.Text = ("PITY: LEGENDARY+ GUARANTEED IN %d OPEN%s"):format(pityLeft, pityLeft == 1 and "" or "S")
-		S.pityFill.Size = UDim2.new(math.clamp((10 - pityLeft) / 10, 0, 1), 0, 1, 0)
+		S.pityLbl.Text = ("LEGENDARY+ GUARANTEED IN %d OPEN%s"):format(pityLeft, pityLeft == 1 and "" or "S")
+		S.pityFill.Size = UDim2.new(math.clamp((10 - pityLeft) / 10, 0.04, 1), 0, 1, 0) -- never dead-empty
 
 		-- DAILY: wheel chips + button states + streak + tab badge
 		local w = d.wheel
@@ -3389,8 +3650,15 @@ do
 				S.spinBtnLbl.Text = "SPIN FREE"
 				S.spinBtnLbl.TextSize = 21
 			end
-			S.respinLbl.Text = (w.respinRobux and fmt(w.respinRobux) or "--") .. " SPIN AGAIN"
-			S.respinNote.Text = ("(Robux re-spins, %d left today)"):format(tonumber(w.paidLeft) or 0)
+			if w.respinRobux then
+				S.respinLbl.Text = fmt(w.respinRobux) .. " SPIN AGAIN"
+				S.respinGem.Visible = true
+				S.respinNote.Text = ("(Robux re-spins, %d left today)"):format(tonumber(w.paidLeft) or 0)
+			else
+				S.respinLbl.Text = "RE-SPINS COMING SOON"
+				S.respinGem.Visible = false
+				S.respinNote.Text = ""
+			end
 			local streak = tonumber(w.streak) or 0
 			S.streakLbl.Text = streak > 1
 				and ("🔥 STREAK: %d DAYS — THE JACKPOT SLICE IS FATTER"):format(streak)
@@ -3405,6 +3673,7 @@ do
 				if b then
 					e.amt.Text = fmt(b.coins) .. " COINS"
 					e.price.Text = b.robux and fmt(b.robux) or "SOON"
+					e.gem.Visible = b.robux ~= nil
 					e.badge.Visible = b.bonus ~= nil
 					e.badge.Text = b.bonus or ""
 				end
@@ -3414,10 +3683,12 @@ do
 		if st then
 			if st.bought then
 				S.starterPrice.Text = "OWNED"
+				S.starterGem.Visible = false
 				S.starterBar.AutoButtonColor = false
 				S.starterBar.BackgroundTransparency = 0.4
 			else
 				S.starterPrice.Text = st.robux and fmt(st.robux) or "SOON"
+				S.starterGem.Visible = st.robux ~= nil
 				S.starterBar.AutoButtonColor = true
 				S.starterBar.BackgroundTransparency = 0
 			end

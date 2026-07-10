@@ -13,10 +13,12 @@ local SkinConfig: { [string]: any } = {}
 
 -- ===== TUNABLES =====
 SkinConfig.SkinNames = {
-	worn  = { name = "Worn",  rarity = "common" },
-	toxic = { name = "Toxic", rarity = "rare" },
-	gold  = { name = "Gold",  rarity = "legendary" },
-	void  = { name = "Void",  rarity = "divine" },
+	-- CHANGED: the original four get TINTS too (kept in sync with the lobby's SKIN_NAMES BY HAND) —
+	-- every skin now renders as a recolored gun in the hand; a dedicated model still wins if built.
+	worn  = { name = "Worn",  rarity = "common",    tint = Color3.fromRGB(122, 112, 96) },
+	toxic = { name = "Toxic", rarity = "rare",      tint = Color3.fromRGB(88, 196, 60) },
+	gold  = { name = "Gold",  rarity = "legendary", tint = Color3.fromRGB(222, 178, 58) },
+	void  = { name = "Void",  rarity = "divine",    tint = Color3.fromRGB(88, 48, 132) },
 	-- NEW: TINTED skins — no model needed: the base gun is cloned and recolored with `tint` in the
 	-- hand. KEEP rarities in sync with the lobby's SKIN_NAMES BY HAND.
 	red   = { name = "Red",   rarity = "rare",      tint = Color3.fromRGB(198, 30, 30) },

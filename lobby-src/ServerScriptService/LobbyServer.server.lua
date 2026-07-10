@@ -186,10 +186,12 @@ end
 -- ===== SKINS ===== (what crates pay out — synced with the game's SkinConfig; models are optional:
 -- name a Model "<gunId>_<skinId>" in Assets and it's used everywhere, else the base gun stands in)
 local SKIN_NAMES = {
-	worn  = { name = "Worn",  rarity = "common" },
-	toxic = { name = "Toxic", rarity = "rare" },
-	gold  = { name = "Gold",  rarity = "legendary" },
-	void  = { name = "Void",  rarity = "divine" },
+	-- CHANGED: the original four get TINTS too, so every skin renders as a real recolored gun
+	-- (shop cards, swatches, carry, in-hand) with no dedicated model needed. A model still wins if built.
+	worn  = { name = "Worn",  rarity = "common",    tint = Color3.fromRGB(122, 112, 96) },
+	toxic = { name = "Toxic", rarity = "rare",      tint = Color3.fromRGB(88, 196, 60) },
+	gold  = { name = "Gold",  rarity = "legendary", tint = Color3.fromRGB(222, 178, 58) },
+	void  = { name = "Void",  rarity = "divine",    tint = Color3.fromRGB(88, 48, 132) },
 	-- NEW: TINTED skins — no model needed: the base gun is cloned and recolored with `tint` everywhere
 	-- (carry, UI, in-game hand). `image` is the owner's art, shown on swatches + reel tiles.
 	-- KEEP rarities in sync with the game place's SkinConfig.SkinNames BY HAND.
@@ -833,14 +835,14 @@ end
 -- on the hip). Models: tag gun Models "WeaponModel" or put them in an "Assets" folder — named after the
 -- weapon id or display name, same contract as the game place. Missing model = skipped quietly.
 local CARRY_SMALL = { pistol = true, revolver = true } -- "small" guns prefer the hip when alone
--- Carried guns use the SAME orientation fix as the in-hand hold — the new Handle-only models need it, or
--- they sit wonky. CARRY_BASE matches the game place's HANDLE_ROT (points a gun forward + upright relative
--- to a body part; all body parts share the torso's axes). Each mount = a position offset (studs from the
--- torso) + a small pose tilt layered on top of CARRY_BASE.
---   pos = { right, up, back } in studs   ·   tilt below is pitch / yaw / roll in degrees
-local CARRY_BASE = CFrame.Angles(math.rad(90), 0, math.rad(180))
-local BACK_CF = CFrame.new(0, 0.4, 0.8)   * CARRY_BASE * CFrame.Angles(math.rad(55), 0, math.rad(-20)) -- slung high across the back
-local HIP_CF  = CFrame.new(1.0, -0.9, 0.2) * CARRY_BASE * CFrame.Angles(math.rad(-15), 0, 0)            -- holstered low on the right hip
+-- REDONE: mounting by the Handle with one universal CFrame put guns through heads and sideways off
+-- hips, because every model is BUILT in a different orientation. Carried guns are now normalized by
+-- their BOUNDING BOX: the longest box axis is the barrel line, the thinnest is the flat side — the gun
+-- is laid FLAT against the body with the barrel along the slot's direction, and oversized guns shrink.
+local CARRY_ANGLE = 40 -- degrees off vertical for the diagonal back sling
+local CARRY_MAX = { back = 3.4, hip = 1.8 } -- longest gun dimension per slot (studs); bigger = scaled down
+local CARRY_FLIP = { -- a gun slung barrel-DOWN that bugs you? add `weaponid = true` to flip it
+}
 
 local carryTemplates = nil
 
@@ -941,7 +943,48 @@ local function scanCarryTemplates()
 	publishDisplayModels()
 end
 
-local function attachCarry(char, torso, weaponId, mountCF, name, prof)
+-- Lay a carried gun FLAT against the body, barrel along the slot's line, regardless of how its model
+-- was built. slot = "back" (diagonal sling) | "hip" (holstered low on the right side).
+local function orientCarry(model, torso, weaponId, slot)
+	local function boxAxes()
+		local bboxCF, size = model:GetBoundingBox()
+		local axes = {
+			{ v = bboxCF.RightVector, d = size.X },
+			{ v = bboxCF.UpVector, d = size.Y },
+			{ v = bboxCF.LookVector, d = size.Z },
+		}
+		table.sort(axes, function(a, b)
+			return a.d > b.d
+		end)
+		return bboxCF, axes
+	end
+	local bboxCF, axes = boxAxes()
+	local maxLen = CARRY_MAX[slot] or 3.4
+	if axes[1].d > maxLen then -- minigun-sized: shrink to fit the back
+		model:ScaleTo(model:GetScale() * (maxLen / axes[1].d))
+		bboxCF, axes = boxAxes()
+	end
+	local tc = torso.CFrame
+	local longT, thinT, mountPos
+	if slot == "back" then
+		local a = math.rad(CARRY_ANGLE)
+		longT = (tc.UpVector * math.cos(a) + tc.RightVector * math.sin(a)).Unit
+		thinT = -tc.LookVector -- flat side faces out behind the back
+		mountPos = tc * Vector3.new(0, 0.2, 0.5 + axes[3].d / 2 + 0.05)
+	else
+		longT = (tc.LookVector - tc.UpVector * 0.12).Unit -- barrel forward, nose dipped a touch
+		thinT = tc.RightVector -- flat side faces out from the hip
+		mountPos = tc * Vector3.new(0.85 + axes[3].d / 2, -0.85, 0.2)
+	end
+	if CARRY_FLIP[weaponId] then
+		longT = -longT
+	end
+	local curr = CFrame.fromMatrix(bboxCF.Position, axes[1].v, axes[3].v)
+	local target = CFrame.fromMatrix(mountPos, longT, thinT)
+	model:PivotTo(target * curr:Inverse() * model:GetPivot())
+end
+
+local function attachCarry(char, torso, weaponId, slot, name, prof)
 	-- Equipped skin's model first, base gun as fallback (tinted when the skin is a tint skin).
 	local template, tint
 	local skinId = prof and prof.skins and prof.skins.equipped and prof.skins.equipped[weaponId]
@@ -964,11 +1007,10 @@ local function attachCarry(char, torso, weaponId, mountCF, name, prof)
 		return
 	end
 	model.PrimaryPart = handle
-	-- Move the WHOLE model into its mount pose FIRST (PivotTo shifts every part together), and only THEN
-	-- create the welds. WeldConstraints capture their offsets when they activate — welding while the parts
-	-- still sit at the template's position froze those faraway offsets in, which is why multi-part guns
-	-- floated way off the player's back.
-	model:PivotTo(torso.CFrame * mountCF)
+	-- Pose the WHOLE model FIRST (bounding-box normalized), and only THEN create the welds.
+	-- WeldConstraints capture their offsets when they activate — welding while the parts still sit at
+	-- the template's position froze those faraway offsets in.
+	orientCarry(model, torso, weaponId, slot)
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.CanCollide = false
@@ -1018,13 +1060,13 @@ local function refreshCarry(player)
 	local g1, g2 = prof.loadout[1], prof.loadout[2]
 	if g1 and not g2 then
 		-- One gun: small guns sit on the hip, big ones on the back.
-		attachCarry(char, torso, g1, CARRY_SMALL[g1] and HIP_CF or BACK_CF, "CarriedWeapon1", prof)
+		attachCarry(char, torso, g1, CARRY_SMALL[g1] and "hip" or "back", "CarriedWeapon1", prof)
 	else
 		if g1 then
-			attachCarry(char, torso, g1, BACK_CF, "CarriedWeapon1", prof)
+			attachCarry(char, torso, g1, "back", "CarriedWeapon1", prof)
 		end
 		if g2 then
-			attachCarry(char, torso, g2, HIP_CF, "CarriedWeapon2", prof)
+			attachCarry(char, torso, g2, "hip", "CarriedWeapon2", prof)
 		end
 	end
 end
@@ -1273,7 +1315,8 @@ local function shopSnapshot(prof, enter)
 			local claimedToday = prof.wheel.day == today
 			local segs = {}
 			for i, s in ipairs(WHEEL.Segments) do
-				segs[i] = { label = s.label, weight = s.weight, kind = s.kind, jackpot = s.jackpot or nil }
+				segs[i] = { label = s.label, weight = s.weight, kind = s.kind, jackpot = s.jackpot or nil,
+					case = s.case, amount = s.amount } -- case/amount drive the chips' drawn icons
 			end
 			return {
 				freeUsed = claimedToday,
