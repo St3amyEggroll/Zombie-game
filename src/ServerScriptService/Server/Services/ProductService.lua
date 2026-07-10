@@ -6,6 +6,8 @@
 --   SKIP WAVE (GameConfig.SkipWaveProductId) — the small gold button beside the enemies bar. Clears the
 --   current wave instantly: everything still owed is cancelled and every live zombie drops dead, so the
 --   wave completes through the normal cleared check (no cash/XP credited — there's no shooter).
+--   REVIVE (GameConfig.ReviveProductId) — the gold button on the death screen. Puts a dead player
+--   straight back into the live run and cancels a pending team-wipe countdown (MatchService.RobuxRevive).
 
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -38,6 +40,17 @@ function ProductService.Start()
 		local skipId = tonumber(GameConfig.SkipWaveProductId) or 0
 		if skipId > 0 and receipt.ProductId == skipId then
 			local ok = pcall(grantSkipWave, player)
+			return ok and Enum.ProductPurchaseDecision.PurchaseGranted
+				or Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+		local reviveId = tonumber(GameConfig.ReviveProductId) or 0
+		if reviveId > 0 and receipt.ProductId == reviveId then
+			local ok, revived = pcall(MatchService.RobuxRevive, player)
+			if ok and not revived then
+				-- Nothing to revive (the run ended while the prompt was up) — consume anyway; letting it
+				-- retry forever would resurrect them out of nowhere mid-run next session.
+				warn(("[ProductService] %s bought REVIVE with no live run — consumed with no effect"):format(player.Name))
+			end
 			return ok and Enum.ProductPurchaseDecision.PurchaseGranted
 				or Enum.ProductPurchaseDecision.NotProcessedYet
 		end

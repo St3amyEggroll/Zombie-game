@@ -303,7 +303,9 @@ end
 
 -- ===== RUN END ===== (shared by team-wipe and victory)
 -- Bank every in-run player (win adds the Coins bonus + world unlock) and send them back to the lobby.
+local wipeToken = 0 -- bumping this cancels any pending wipe-grace timer (revive bought / run already over)
 local function endRun(win: boolean)
+	wipeToken += 1
 	for _, player in Players:GetPlayers() do
 		local ps = state.players[player.UserId]
 		if ps and ps.inMatch then
@@ -345,8 +347,51 @@ function MatchService.CheckTeamWipe()
 		end
 	end
 	if anyInRun and not anyAlive then
-		endRun(false) -- team wipe: bank + back to the lobby
+		-- CHANGED: with a ROBUX REVIVE product set up, a full wipe doesn't end the run instantly — it
+		-- HOLDS for ReviveGraceSeconds (clients show the countdown + the revive button) and only ends
+		-- if nobody buys back in. Without a product id, the old instant wipe stands.
+		local reviveId = tonumber(GameConfig.ReviveProductId) or 0
+		if reviveId <= 0 then
+			endRun(false) -- team wipe: bank + back to the lobby
+			return
+		end
+		wipeToken += 1
+		local myToken = wipeToken
+		local secs = math.max(3, math.floor(tonumber(GameConfig.ReviveGraceSeconds) or 12))
+		Remotes.Get("WipeCountdown"):FireAllClients(secs)
+		task.delay(secs, function()
+			if myToken ~= wipeToken then
+				return -- a revive landed (or the run already ended) — this wipe is stale
+			end
+			for _, plr in Players:GetPlayers() do -- re-verify nobody bought back in
+				local p2 = state.players[plr.UserId]
+				if p2 and p2.inMatch and not p2.isDead then
+					local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+					if hum and hum.Health > 0 then
+						return
+					end
+				end
+			end
+			endRun(false) -- still a wipe: bank + back to the lobby
+		end)
 	end
+end
+
+-- NEW: ROBUX REVIVE (ProductService receipt lands here): a dead player buys straight back into the
+-- live run — fresh character, any pending wipe countdown cancelled. Returns false when there's nothing
+-- to revive (purchase landed after the run ended) so the caller can log it.
+function MatchService.RobuxRevive(player: Player): boolean
+	local ps = state.players[player.UserId]
+	if not ps or not ps.inMatch or not ps.isDead then
+		return false
+	end
+	wipeToken += 1 -- cancel the wipe-grace timer, if one is running
+	Remotes.Get("WipeCountdown"):FireAllClients(0)
+	ps.isDead = false
+	Remotes.Get("DownedChanged"):FireAllClients(player.UserId, false, 0) -- client leaves the death screen
+	spawnCharacter(player)
+	print(("[MatchService] %s bought a ROBUX REVIVE — back in the run"):format(player.Name))
+	return true
 end
 
 -- ===== THE RUN (endless, shared) =====

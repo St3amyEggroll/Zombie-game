@@ -13,10 +13,12 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SharedFolder = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(SharedFolder.Modules.Remotes)
 local UITheme = require(SharedFolder.Modules.UITheme)
+local GameConfig = require(SharedFolder.Config.GameConfig)
 
 local SpectateController = {}
 
@@ -27,6 +29,7 @@ local spectating = false
 local targetPlayer = nil
 local panel, nameLabel
 local vignette, diedLabel, diedSub, deathToken = nil, nil, nil, 0
+local wipeLabel, wipeTick = nil, 0 -- the "RUN ENDS IN Ns" line + its countdown token
 local playerGuiRef = nil
 
 -- A player is a valid spectate target if it isn't me, isn't downed, and has a living character.
@@ -295,6 +298,38 @@ local function build(playerGui)
 	ss.Thickness = 2.5
 	ss.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	ss.Parent = diedSub
+
+	-- NEW: ROBUX REVIVE — the gold buy-back button (only when GameConfig.ReviveProductId is set) with
+	-- the wipe countdown line under it ("RUN ENDS IN Ns", shown while the server holds a full wipe).
+	if (tonumber(GameConfig.ReviveProductId) or 0) > 0 then
+		local rb = UITheme.Button(vignette, "REVIVE — ROBUX", "gold")
+		rb.Name = "ReviveButton"
+		rb.AnchorPoint = Vector2.new(0.5, 0)
+		rb.Position = UDim2.fromScale(0.5, 0.55)
+		rb.Size = UDim2.fromOffset(230, 52)
+		rb.TextSize = 19
+		rb.TextColor3 = Color3.fromRGB(255, 255, 255)
+		rb.Activated:Connect(function()
+			MarketplaceService:PromptProductPurchase(localPlayer, tonumber(GameConfig.ReviveProductId))
+		end)
+	end
+	wipeLabel = Instance.new("TextLabel")
+	wipeLabel.Name = "WipeCountdown"
+	wipeLabel.AnchorPoint = Vector2.new(0.5, 0)
+	wipeLabel.Position = UDim2.fromScale(0.5, 0.64)
+	wipeLabel.Size = UDim2.fromOffset(400, 24)
+	wipeLabel.BackgroundTransparency = 1
+	wipeLabel.FontFace = UITheme.TitleFace
+	wipeLabel.TextSize = 20
+	wipeLabel.TextColor3 = Color3.fromRGB(255, 96, 76)
+	wipeLabel.Text = ""
+	wipeLabel.Visible = false
+	wipeLabel.Parent = vignette
+	local ws = Instance.new("UIStroke")
+	ws.Color = UITheme.BLACK
+	ws.Thickness = 2.5
+	ws.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	ws.Parent = wipeLabel
 end
 
 -- The death moment: slam the sticker in over the vignette, then fade the words out and leave a faint
@@ -364,6 +399,34 @@ function SpectateController.Start()
 		elseif spectating and targetPlayer and targetPlayer.UserId == userId and isDowned then
 			cycle(1) -- the teammate we were watching just went down — move to someone still up
 		end
+	end)
+
+	-- NEW: the server holds a full team wipe open for a few seconds so someone can buy the Robux
+	-- revive — tick the "RUN ENDS IN Ns" line while it does (0 = a revive landed, hide it).
+	Remotes.Get("WipeCountdown").OnClientEvent:Connect(function(secs)
+		wipeTick += 1
+		local my = wipeTick
+		secs = math.floor(tonumber(secs) or 0)
+		if not wipeLabel then
+			return
+		end
+		if secs <= 0 then
+			wipeLabel.Visible = false
+			return
+		end
+		wipeLabel.Visible = true
+		task.spawn(function()
+			for left = secs, 1, -1 do
+				if wipeTick ~= my then
+					return
+				end
+				wipeLabel.Text = ("RUN ENDS IN %ds — REVIVE TO KEEP GOING"):format(left)
+				task.wait(1)
+			end
+			if wipeTick == my then
+				wipeLabel.Visible = false
+			end
+		end)
 	end)
 
 	-- Any time I get a fresh character (respawn / revive land), make sure the camera is mine again.

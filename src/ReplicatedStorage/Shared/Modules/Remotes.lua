@@ -72,8 +72,10 @@ local DEFINITIONS: { [string]: string } = {
 	-- (In-run gun upgrades were REMOVED — guns now level up persistently in the LOBBY via case copies;
 	-- the level rides in on data.gunLevels and GunLevelConfig turns it into stats.)
 
-	-- Death / spectate (no revive: dying drops you into spectate; the run ends only on a full team wipe)
+	-- Death / spectate (dying drops you into spectate; the run ends only on a full team wipe — unless
+	-- someone buys the ROBUX REVIVE during the wipe-grace window)
 	DownedChanged     = "RemoteEvent",     -- S->C broadcast: (userId, isOut, 0) — a player died → spectating
+	WipeCountdown     = "RemoteEvent",     -- S->C broadcast: (seconds) run ends in N unless someone revives; 0 = cancelled
 }
 
 local cache: { [string]: Instance } = {}

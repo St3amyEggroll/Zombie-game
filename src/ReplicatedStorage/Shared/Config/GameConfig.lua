@@ -16,6 +16,13 @@ GameConfig.RoundBreakSeconds   = 5     -- prep time between rounds (clients show
 -- 0 = not set up yet (the button warns in Output instead of prompting).
 GameConfig.SkipWaveProductId = 0
 
+-- NEW: ROBUX REVIVE (the gold button on the death screen). Same setup: create a Developer Product in
+-- Creator Hub -> Monetization -> Developer Products and paste its id here. 0 = the button is hidden.
+-- On a FULL TEAM WIPE the run holds for ReviveGraceSeconds before ending, so a solo player (or the
+-- last one down) can buy back in; a revive cancels the wipe and the run rolls on.
+GameConfig.ReviveProductId    = 0
+GameConfig.ReviveGraceSeconds = 12
+
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
 GameConfig.MaxAliveZombies   = 200     -- HARD cap on simultaneous zombies (owed extras wait for a kill,
                                        -- then spawn in — they don't despawn to make room)
