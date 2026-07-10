@@ -60,7 +60,8 @@ local function ensureTag(character)
 		bb.AlwaysOnTop = false
 		bb.Parent = head
 		stickerText(bb, "Wins", 0, 0.55, WINS_COLOR)
-		stickerText(bb, "Level", 0.55, 0.45, LVL_COLOR)
+		local lvl = stickerText(bb, "Level", 0.55, 0.45, LVL_COLOR)
+		lvl.RichText = true -- the gold VIP suffix rides this line
 	end
 	return bb
 end
@@ -84,6 +85,7 @@ function PlayerTagService.Refresh(player: Player)
 	if bb then
 		bb.Wins.Text = ("%d WINS"):format(wins)
 		bb.Level.Text = ("LVL %d"):format(level)
+			.. (player:GetAttribute("VIPPass") and '  <font color="#E6B44C">VIP</font>' or "")
 	end
 end
 
@@ -97,6 +99,9 @@ local function onJoin(player)
 
 	player.CharacterAdded:Connect(function()
 		task.defer(PlayerTagService.Refresh, player)
+	end)
+	player:GetAttributeChangedSignal("VIPPass"):Connect(function()
+		PlayerTagService.Refresh(player) -- pass check resolved (or a fresh purchase): stamp the tag
 	end)
 	task.spawn(function()
 		DataService.WaitFor(player) -- always resolves (falls back to the template on store failure)

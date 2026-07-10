@@ -347,15 +347,25 @@ local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
 	local grad = Instance.new("UIGradient")
 	grad.Rotation = 90
 	grad.Parent = bar
-	local sheen = Instance.new("Frame") -- a diagonal light streak — the hand-placed touch on the metal
-	sheen.Position = UDim2.new(0.56, 0, 0, -22)
-	sheen.Size = UDim2.fromOffset(44, HDR_H * 2)
-	sheen.Rotation = 20
+	-- Diagonal light streak via a GRADIENT (a rotated frame would escape ClipsDescendants — rotated
+	-- UI ignores clipping, so it floated outside the bar).
+	local sheen = Instance.new("Frame")
+	sheen.Size = UDim2.fromScale(1, 1)
 	sheen.BackgroundColor3 = Color3.new(1, 1, 1)
-	sheen.BackgroundTransparency = 0.8
 	sheen.BorderSizePixel = 0
 	sheen.ZIndex = 3
 	sheen.Parent = bar
+	local sg = Instance.new("UIGradient")
+	sg.Rotation = 20
+	sg.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 1),
+		NumberSequenceKeypoint.new(0.55, 0.8),
+		NumberSequenceKeypoint.new(0.62, 0.86),
+		NumberSequenceKeypoint.new(0.68, 1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	sg.Parent = sheen
 	local function recolor(c) -- bright flash up top, deep foot — the reference's gold falloff
 		grad.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, c:Lerp(Color3.new(1, 1, 1), 0.5)),
@@ -2203,11 +2213,11 @@ do
 	}
 	-- Paste each gamepass id when you create it (Creator Hub → Passes). 0 = the card answers SOON.
 	local GAMEPASSES = {
-		{ name = "2x COINS", sub = "FOREVER, EVERY RUN", id = 0, emblem = "coins", color = Color3.fromRGB(58, 134, 184), color2 = Color3.fromRGB(27, 74, 104) },
-		{ name = "2x XP", sub = "LEVEL TWICE AS FAST", id = 0, emblem = "xp", color = Color3.fromRGB(217, 166, 22), color2 = Color3.fromRGB(138, 100, 8) },
-		{ name = "VIP", sub = "TAG + DAILY CRATE + MORE", id = 0, emblem = "vip", color = Color3.fromRGB(217, 122, 46), color2 = Color3.fromRGB(138, 68, 16) },
+		{ name = "2x COINS", sub = "FOREVER, EVERY RUN", id = 1906963090, emblem = "coins", color = Color3.fromRGB(58, 134, 184), color2 = Color3.fromRGB(27, 74, 104) },
+		{ name = "2x XP", sub = "LEVEL TWICE AS FAST", id = 1907131130, emblem = "xp", color = Color3.fromRGB(217, 166, 22), color2 = Color3.fromRGB(138, 100, 8) },
+		{ name = "VIP", sub = "VIP TAG + A FREE RARE CRATE DAILY", id = 1906069123, emblem = "vip", color = Color3.fromRGB(217, 122, 46), color2 = Color3.fromRGB(138, 68, 16) },
 	}
-	local BODY_W, BODY_H = 660, 430
+	local BODY_W, BODY_H = 660, 400 -- (trimmed: the featured tab was leaving a dead band at the bottom)
 
 	local S = { data = nil, deadline = 0, tab = "featured", tickerQ = {}, spinning = false } -- one local holds it all
 
@@ -2433,15 +2443,22 @@ do
 		seam.BorderSizePixel = 0
 		seam.ZIndex = 4
 		seam.Parent = band
-		local sheen = Instance.new("Frame")
-		sheen.Position = UDim2.new(0.42, 0, 0, -14)
-		sheen.Size = UDim2.fromOffset(20, 62)
-		sheen.Rotation = 20
+		local sheen = Instance.new("Frame") -- gradient streak (rotated frames escape clipping)
+		sheen.Size = UDim2.fromScale(1, 1)
 		sheen.BackgroundColor3 = Color3.new(1, 1, 1)
-		sheen.BackgroundTransparency = 0.78
 		sheen.BorderSizePixel = 0
 		sheen.ZIndex = 3
 		sheen.Parent = band
+		local sg = Instance.new("UIGradient")
+		sg.Rotation = 20
+		sg.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.4, 1),
+			NumberSequenceKeypoint.new(0.44, 0.78),
+			NumberSequenceKeypoint.new(0.5, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		sg.Parent = sheen
 		S.packTitle = sticker(band, "PACK", 20)
 		S.packTitle.Position = UDim2.fromOffset(14, 0)
 		S.packTitle.Size = UDim2.fromOffset(340, 32)
@@ -2502,23 +2519,23 @@ do
 		seam.BorderSizePixel = 0
 		seam.ZIndex = 4
 		seam.Parent = S.foot
-		local cap = Instance.new("TextLabel") -- the timer moved into the band; a human note lives here
-		cap.Position = UDim2.fromOffset(12, 0)
-		cap.Size = UDim2.fromOffset(120, 72)
-		cap.BackgroundTransparency = 1
-		cap.FontFace = BODYB_FACE
-		cap.TextSize = 11
-		cap.TextColor3 = Color3.fromRGB(255, 237, 189)
-		cap.TextWrapped = true
-		cap.TextXAlignment = Enum.TextXAlignment.Left
-		cap.ZIndex = 4
-		cap.Text = "EVERY GUN YOU OWN CAN WEAR THESE"
-		cap.Parent = S.foot
+		S.footCap = Instance.new("TextLabel") -- says WHAT you're buying + which gun is modeling
+		S.footCap.Position = UDim2.fromOffset(12, 0)
+		S.footCap.Size = UDim2.fromOffset(120, 72)
+		S.footCap.BackgroundTransparency = 1
+		S.footCap.FontFace = BODYB_FACE
+		S.footCap.TextSize = 11
+		S.footCap.TextColor3 = Color3.fromRGB(255, 237, 189)
+		S.footCap.TextWrapped = true
+		S.footCap.TextXAlignment = Enum.TextXAlignment.Left
+		S.footCap.ZIndex = 4
+		S.footCap.Text = "GUN SKINS — THEY FIT EVERY GUN YOU OWN"
+		S.footCap.Parent = S.foot
 		local capS = Instance.new("UIStroke")
 		capS.Color = TBLACK
 		capS.Thickness = 1.5
 		capS.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-		capS.Parent = cap
+		capS.Parent = S.footCap
 	end
 
 	local function productFor(count)
@@ -3502,7 +3519,7 @@ do
 		-- FEATURED: the four tier CARDS — your equipped gun rendered wearing each tier's skin.
 		local pk = d.pack
 		if pk then
-			S.packTitle.Text = (pk.name or "PACK"):upper():gsub("%s*SKIN%s*CRATE", ""):gsub("%s*CASE", "") .. " PACK"
+			S.packTitle.Text = (pk.name or "PACK"):upper():gsub("%s*SKIN%s*CRATE", ""):gsub("%s*CASE", "") .. " SKIN PACK"
 			S.setPill(S.p1, pk.robux1)
 			S.setPill(S.p3, pk.robux3)
 			S.setPill(S.p10, pk.robux10)
@@ -3524,6 +3541,8 @@ do
 					return (a.pct or 100) < (b.pct or 100)
 				end)
 				local myGun = (invData.loadout and (invData.loadout[1] or invData.loadout[2])) or "pistol"
+				local gunInfo = invData.catalog.weapons[myGun]
+				S.footCap.Text = ("GUN SKINS — SHOWN ON YOUR %s"):format(((gunInfo and gunInfo.name) or myGun):upper())
 				local PREF = { common = "worn", rare = "toxic", legendary = "gold", divine = "void" }
 				for i = 1, math.min(4, #entries) do
 					local e = entries[i]
@@ -3546,7 +3565,8 @@ do
 					card.ClipsDescendants = true
 					card.Parent = S.items
 					corner(card, 5)
-					absGrad(card, tierCol:Lerp(Color3.fromRGB(23, 18, 10), 0.72), Color3.fromRGB(16, 13, 8))
+					-- a REAL tier-colored glow fading down the card (was so subtle it read as flat black)
+					absGrad(card, tierCol:Lerp(Color3.fromRGB(20, 16, 10), 0.4), Color3.fromRGB(13, 11, 7), tierCol:Lerp(Color3.fromRGB(16, 13, 8), 0.72))
 					ledge(card, tierCol, 3)
 					if i == 1 then -- the rarest blazes: an extra soft halo ring
 						ledge(card, tierCol, 7, 0.78)
@@ -3579,7 +3599,7 @@ do
 						c.CornerRadius = UDim.new(1, 0)
 						c.Parent = gl
 					end
-					local nm = sticker(card, (sk and sk.skin or e.rarity):upper(), 15)
+					local nm = sticker(card, (sk and sk.skin or e.rarity):upper() .. " SKIN", 15)
 					nm.Position = UDim2.fromOffset(0, 118)
 					nm.Size = UDim2.new(1, 0, 0, 18)
 					nm.ZIndex = 4
@@ -3617,16 +3637,19 @@ do
 					pc.ZIndex = 5
 					pc.Text = ("%.1f%%"):format(e.pct or 0)
 					pc.Parent = chip
-					if i == 1 then -- corner ribbon on the rarest
+					if i == 1 then -- straight LIMITED badge on the rarest (rotated ribbons escape clipping)
 						local rib = Instance.new("Frame")
-						rib.Position = UDim2.fromOffset(-34, 14)
-						rib.Size = UDim2.fromOffset(130, 19)
-						rib.Rotation = -35
+						rib.Position = UDim2.fromOffset(6, 6)
+						rib.Size = UDim2.fromOffset(66, 18)
 						rib.BorderSizePixel = 0
 						rib.ZIndex = 6
 						rib.Parent = card
+						local rc = Instance.new("UICorner")
+						rc.CornerRadius = UDim.new(0, 6)
+						rc.Parent = rib
 						absGrad(rib, Color3.fromRGB(255, 90, 60), Color3.fromRGB(150, 18, 18))
-						local rl = sticker(rib, "LIMITED", 11)
+						ledge(rib, TBLACK, 2)
+						local rl = sticker(rib, "LIMITED", 10)
 						rl.Size = UDim2.fromScale(1, 1)
 						rl.ZIndex = 7
 					end

@@ -729,6 +729,7 @@ local function readProfile(player)
 		settings = sanitizeSettings(data.settings),
 		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
 		starter = data.starter == true, -- STARTER PACK is one purchase ever
+		vipDay = math.floor(tonumber(data.vipDay) or 0), -- last day the VIP daily crate was granted
 		wheel = (function() -- daily wheel: last claim day, claim streak, paid re-spins today
 			local w = (typeof(data.wheel) == "table") and data.wheel or {}
 			return {
@@ -795,6 +796,7 @@ local function persist(player)
 			old.pity = prof.pity
 			old.starter = prof.starter
 			old.wheel = prof.wheel
+			old.vipDay = prof.vipDay
 			return old
 		end)
 	end)
@@ -840,7 +842,6 @@ local CARRY_SMALL = { pistol = true, revolver = true } -- "small" guns prefer th
 -- their BOUNDING BOX: the longest box axis is the barrel line, the thinnest is the flat side — the gun
 -- is laid FLAT against the body with the barrel along the slot's direction, and oversized guns shrink.
 local CARRY_ANGLE = 40 -- degrees off vertical for the diagonal back sling
-local CARRY_MAX = { back = 3.4, hip = 1.8 } -- longest gun dimension per slot (studs); bigger = scaled down
 local CARRY_FLIP = { -- a gun slung barrel-DOWN that bugs you? add `weaponid = true` to flip it
 }
 
@@ -958,12 +959,7 @@ local function orientCarry(model, torso, weaponId, slot)
 		end)
 		return bboxCF, axes
 	end
-	local bboxCF, axes = boxAxes()
-	local maxLen = CARRY_MAX[slot] or 3.4
-	if axes[1].d > maxLen then -- minigun-sized: shrink to fit the back
-		model:ScaleTo(model:GetScale() * (maxLen / axes[1].d))
-		bboxCF, axes = boxAxes()
-	end
+	local bboxCF, axes = boxAxes() -- (no downscaling — guns keep their real size, per the owner)
 	local tc = torso.CFrame
 	local longT, thinT, mountPos
 	if slot == "back" then
@@ -2277,8 +2273,39 @@ local function refreshPlayerTag(player)
 		line("Level", 0.55, 0.45, Color3.fromRGB(255, 255, 255))
 	end
 	bb.Wins.Text = ("%d WINS"):format(wins)
-	bb.Level.Text = ("LVL %d"):format(lvl)
+	bb.Level.RichText = true
+	bb.Level.Text = ("LVL %d"):format(lvl) .. (prof.vip and '  <font color="#E6B44C">VIP</font>' or "")
 end
+
+-- ===== VIP GAMEPASS ===== (id shared with the game's GameConfig.GamepassVIP). Benefits here:
+-- the gold VIP tag + ONE free rare crate per day (vipDay in the profile).
+local VIP_PASS_ID = 1906069123
+local function primeVip(player)
+	task.spawn(function()
+		local ok, owns = pcall(function()
+			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, VIP_PASS_ID)
+		end)
+		local prof = profileCache[player.UserId]
+		if not ok or not owns or not prof then
+			return
+		end
+		prof.vip = true -- runtime flag (ownership is re-checked every session)
+		refreshPlayerTag(player)
+		local today = todayStamp()
+		if prof.vipDay ~= today and not prof.noPersist then
+			prof.vipDay = today
+			prof.cases.rare = (prof.cases.rare or 0) + 1
+			markDirty(player)
+			pushInv(player)
+			ShopGift:FireClient(player, { from = "VIP DAILY", name = "Rare Skin Crate", count = 1 })
+		end
+	end)
+end
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
+	if purchased and passId == VIP_PASS_ID then
+		primeVip(player) -- bought VIP right here in the lobby: benefits land instantly
+	end
+end)
 
 -- ===== LIFECYCLE =====
 local function onJoin(player)
@@ -2318,6 +2345,7 @@ local function onJoin(player)
 		pushInv(player)
 		refreshCarry(player)
 		refreshPlayerTag(player)
+		primeVip(player)
 	end)
 end
 

@@ -23,6 +23,13 @@ GameConfig.SkipWaveProductId = 0
 GameConfig.ReviveProductId    = 0
 GameConfig.ReviveGraceSeconds = 12
 
+-- ===== GAMEPASSES ===== (owner-created in Creator Hub → Passes). Benefits are server-side:
+-- 2x Coins doubles every Coin grant in a run, 2x XP doubles account XP, VIP = overhead tag + a free
+-- rare crate daily (the lobby handles the crate). Keep ids in sync with the lobby's GAMEPASSES table.
+GameConfig.GamepassCoins2x = 1906963090
+GameConfig.GamepassXP2x    = 1907131130
+GameConfig.GamepassVIP     = 1906069123
+
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
 GameConfig.MaxAliveZombies   = 200     -- HARD cap on simultaneous zombies (owed extras wait for a kill,
                                        -- then spawn in — they don't despawn to make room)

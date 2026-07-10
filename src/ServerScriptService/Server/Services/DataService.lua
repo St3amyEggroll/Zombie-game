@@ -22,7 +22,9 @@ local Config = Shared:WaitForChild("Config")
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 local ProgressionConfig = require(Config.ProgressionConfig)
+local GameConfig = require(Config.GameConfig)
 local SecurityService = require(script.Parent.SecurityService)
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local DataService = {}
 
@@ -193,7 +195,33 @@ local function pushSnapshot(player: Player)
 end
 DataService.PushSnapshot = pushSnapshot
 
+-- ===== GAMEPASSES ===== ownership is cached at join (grant paths must NEVER yield), re-checked on
+-- purchase. AddMoney/AddXP read the cache to apply the 2x passes; VIP drives the overhead tag.
+local passCache: { [number]: { coins2x: boolean, xp2x: boolean, vip: boolean } } = {}
+
+local function primePasses(player: Player)
+	task.spawn(function()
+		local out = { coins2x = false, xp2x = false, vip = false }
+		for key, passId in { coins2x = GameConfig.GamepassCoins2x, xp2x = GameConfig.GamepassXP2x, vip = GameConfig.GamepassVIP } do
+			if passId and passId > 0 then
+				local ok, owns = pcall(function()
+					return MarketplaceService:UserOwnsGamePassAsync(player.UserId, passId)
+				end)
+				out[key] = (ok and owns) == true
+			end
+		end
+		passCache[player.UserId] = out
+		player:SetAttribute("VIPPass", out.vip) -- PlayerTagService listens and re-stamps the tag
+	end)
+end
+
+function DataService.HasPass(player: Player, key: string): boolean
+	local c = passCache[player.UserId]
+	return c ~= nil and c[key] == true
+end
+
 local function onPlayerAdded(player: Player)
+	primePasses(player)
 	local data = loadAsync(player)
 	sessions[player.UserId] = { data = data, dirty = false, saving = false }
 	pushSnapshot(player)
@@ -203,7 +231,15 @@ end
 local function onPlayerRemoving(player: Player)
 	saveAsync(player)
 	sessions[player.UserId] = nil
+	passCache[player.UserId] = nil
 end
+
+-- Bought a pass mid-run? Re-check so the benefit applies instantly, no rejoin needed.
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, _passId, purchased)
+	if purchased then
+		primePasses(player)
+	end
+end)
 
 -- ===== PUBLIC API =====
 function DataService.Get(player: Player): any?
@@ -240,6 +276,9 @@ function DataService.AddXP(player: Player, amount: number): (number, number)
 	if not data then
 		return 1, 0
 	end
+	if amount > 0 and DataService.HasPass(player, "xp2x") then
+		amount *= 2 -- the 2x XP gamepass
+	end
 	local oldLevel = data.level
 	data.xp += math.max(0, math.floor(amount))
 	local newLevel = ProgressionConfig.LevelForXP(data.xp)
@@ -257,6 +296,9 @@ end
 function DataService.AddMoney(player: Player, amount: number)
 	local data = getData(player)
 	if data then
+		if amount > 0 and DataService.HasPass(player, "coins2x") then
+			amount *= 2 -- the 2x Coins gamepass
+		end
 		data.lobbyMoney = math.max(0, data.lobbyMoney + math.floor(amount))
 		markDirty(player)
 	end

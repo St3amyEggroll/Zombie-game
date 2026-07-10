@@ -142,6 +142,139 @@ for _, n in {
 	RIG_PARTS[n:lower()] = true
 end
 
+-- ===== BACK CARRY ===== the loadout gun you are NOT holding rides your back (small guns: the hip).
+-- Orientation is normalized by BOUNDING BOX (longest axis = barrel, thinnest = flat side) so every
+-- differently-built model lies flat — same approach as the lobby. No downscaling (owner's call).
+local CARRY_SMALL: { [string]: boolean } = { pistol = true, revolver = true }
+local CARRY_ANGLE = 40 -- degrees off vertical for the diagonal back sling
+local CARRY_FLIP: { [string]: boolean } = {} -- weaponId = true flips a barrel-down gun
+local BACK_NAME = "CarriedBack"
+
+local function orientCarry(model: Model, torso: BasePart, weaponId: string, slot: string)
+	local bboxCF, size = model:GetBoundingBox()
+	local axes = {
+		{ v = bboxCF.RightVector, d = size.X },
+		{ v = bboxCF.UpVector, d = size.Y },
+		{ v = bboxCF.LookVector, d = size.Z },
+	}
+	table.sort(axes, function(a, b)
+		return a.d > b.d
+	end)
+	local tc = torso.CFrame
+	local longT, thinT, mountPos
+	if slot == "back" then
+		local a = math.rad(CARRY_ANGLE)
+		longT = (tc.UpVector * math.cos(a) + tc.RightVector * math.sin(a)).Unit
+		thinT = -tc.LookVector -- flat side faces out behind the back
+		mountPos = tc * Vector3.new(0, 0.2, 0.5 + axes[3].d / 2 + 0.05)
+	else
+		longT = (tc.LookVector - tc.UpVector * 0.12).Unit -- barrel forward, nose dipped a touch
+		thinT = tc.RightVector
+		mountPos = tc * Vector3.new(0.85 + axes[3].d / 2, -0.85, 0.2)
+	end
+	if CARRY_FLIP[weaponId] then
+		longT = -longT
+	end
+	local curr = CFrame.fromMatrix(bboxCF.Position, axes[1].v, axes[3].v)
+	local target = CFrame.fromMatrix(mountPos, longT, thinT)
+	model:PivotTo(target * curr:Inverse() * model:GetPivot())
+end
+
+local function updateBackCarry(player: Player)
+	local character = player.Character
+	if not character then
+		return
+	end
+	local old = character:FindFirstChild(BACK_NAME)
+	if old then
+		old:Destroy()
+	end
+	local ps = MatchService.GetPlayerState(player)
+	local data = DataService.Get(player)
+	local loadout = data and data.loadout
+	if not ps or type(loadout) ~= "table" then
+		return
+	end
+	local l1, l2 = loadout[1], loadout[2]
+	local otherId
+	if l1 and l1 ~= ps.equippedWeapon then
+		otherId = l1
+	elseif l2 and l2 ~= ps.equippedWeapon then
+		otherId = l2
+	end
+	if not otherId then
+		return
+	end
+	-- Equipped SKIN model first, base + tint as the fallback (same rules as the hand).
+	local template = templates[otherId]
+	local tint = nil
+	local skins = data and data.skins
+	local skinId = (type(skins) == "table" and type(skins.equipped) == "table") and skins.equipped[otherId] or nil
+	if skinId then
+		if templates[otherId .. "_" .. skinId] then
+			template = templates[otherId .. "_" .. skinId]
+		else
+			local sn = SkinConfig.SkinNames[skinId]
+			tint = sn and sn.tint or nil
+		end
+	end
+	if not template then
+		return
+	end
+	local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+	if not torso or not torso:IsA("BasePart") then
+		return
+	end
+	local model = template:Clone()
+	model.Name = BACK_NAME
+	do -- strip animation-rig leftovers, same reason as the hand attach
+		local strip = {}
+		for _, d in model:GetDescendants() do
+			if d:IsA("Humanoid") or d:IsA("Animator") or d:IsA("AnimationController") or d:IsA("Motor6D")
+				or (d:IsA("BasePart") and RIG_PARTS[d.Name:lower()]) then
+				table.insert(strip, d)
+			end
+		end
+		for _, d in strip do
+			if d.Parent then
+				d:Destroy()
+			end
+		end
+	end
+	local handle = model:FindFirstChild("Handle") or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	if not handle or not handle:IsA("BasePart") then
+		model:Destroy()
+		return
+	end
+	model.PrimaryPart = handle
+	orientCarry(model, torso, otherId, CARRY_SMALL[otherId] and "hip" or "back")
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+			d.Massless = true
+			d.Anchored = false
+			if tint then
+				d.Color = tint:Lerp(d.Color, 0.15)
+			end
+			if d ~= handle then
+				local wc = Instance.new("WeldConstraint")
+				wc.Part0 = handle
+				wc.Part1 = d
+				wc.Parent = handle
+			end
+		elseif d:IsA("Script") or d:IsA("LocalScript") then
+			d:Destroy()
+		end
+	end
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = torso
+	weld.Part1 = handle
+	weld.Parent = handle
+	model.Parent = character
+end
+
 -- Attach the player's currently-equipped weapon model to their hand (or clear it if there's no model).
 local function attach(player: Player)
 	local character = player.Character
@@ -158,6 +291,7 @@ local function attach(player: Player)
 	-- no model (or a missing hand) would leave the PREVIOUS gun's pose playing (the "animation doesn't switch"
 	-- bug). The pose is independent of the in-hand model, so stamp it immediately on every equip.
 	playHold(player, ps.equippedWeapon)
+	updateBackCarry(player) -- the OTHER loadout gun rides the back; only the unequipped one shows there
 	-- Equipped SKIN first (profile skins.equipped, lobby-owned), base gun model as the fallback —
 	-- tinted when the skin is a TINT skin with no dedicated model (SkinConfig.SkinNames[skin].tint).
 	local template = templates[ps.equippedWeapon]
