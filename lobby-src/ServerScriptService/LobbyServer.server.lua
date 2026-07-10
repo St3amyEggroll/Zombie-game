@@ -190,13 +190,19 @@ local SKIN_NAMES = {
 	toxic = { name = "Toxic", rarity = "rare" },
 	gold  = { name = "Gold",  rarity = "legendary" },
 	void  = { name = "Void",  rarity = "divine" },
+	-- NEW: TINTED skins — no model needed: the base gun is cloned and recolored with `tint` everywhere
+	-- (carry, UI, in-game hand). `image` is the owner's art, shown on swatches + reel tiles.
+	-- KEEP rarities in sync with the game place's SkinConfig.SkinNames BY HAND.
+	red   = { name = "Red",   rarity = "rare",      tint = Color3.fromRGB(198, 30, 30),   image = "rbxassetid://70603022597075" },
+	pink  = { name = "Pink",  rarity = "legendary", tint = Color3.fromRGB(255, 105, 190), image = "rbxassetid://97862388516710" },
+	black = { name = "Black", rarity = "divine",    tint = Color3.fromRGB(28, 28, 32),    image = "rbxassetid://106670146411294" },
 }
 local SKINS = {}        -- [fullId "revolver_gold"] = { id, gun, skin, name, rarity }
 local SKINS_BY_RARITY = {} -- rarity -> sorted { fullId }
 for gunId, w in WEAPONS do
 	for skinId, s in SKIN_NAMES do
 		local fullId = gunId .. "_" .. skinId
-		SKINS[fullId] = { id = fullId, gun = gunId, skin = skinId, name = s.name .. " " .. w.name, rarity = s.rarity }
+		SKINS[fullId] = { id = fullId, gun = gunId, skin = skinId, name = s.name .. " " .. w.name, rarity = s.rarity, tint = s.tint, image = s.image }
 		SKINS_BY_RARITY[s.rarity] = SKINS_BY_RARITY[s.rarity] or {}
 		table.insert(SKINS_BY_RARITY[s.rarity], fullId)
 	end
@@ -902,11 +908,15 @@ local function scanCarryTemplates()
 end
 
 local function attachCarry(char, torso, weaponId, mountCF, name, prof)
-	-- Equipped skin's model first, base gun as fallback.
-	local template
+	-- Equipped skin's model first, base gun as fallback (tinted when the skin is a tint skin).
+	local template, tint
 	local skinId = prof and prof.skins and prof.skins.equipped and prof.skins.equipped[weaponId]
 	if skinId then
 		template = carryTemplates[weaponId .. "_" .. skinId]
+		if not template then
+			local sn = SKIN_NAMES[skinId]
+			tint = sn and sn.tint or nil -- no dedicated model: recolor the base gun clone
+		end
 	end
 	template = template or carryTemplates[weaponId]
 	if not template then
@@ -932,6 +942,9 @@ local function attachCarry(char, torso, weaponId, mountCF, name, prof)
 			d.CanTouch = false
 			d.Massless = true
 			d.Anchored = false
+			if tint then
+				d.Color = tint:Lerp(d.Color, 0.15) -- tint skin: mostly flat color, a hint of shading
+			end
 			if d ~= handle then
 				local wc = Instance.new("WeldConstraint")
 				wc.Part0 = handle

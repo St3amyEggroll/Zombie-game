@@ -158,13 +158,20 @@ local function attach(player: Player)
 	-- no model (or a missing hand) would leave the PREVIOUS gun's pose playing (the "animation doesn't switch"
 	-- bug). The pose is independent of the in-hand model, so stamp it immediately on every equip.
 	playHold(player, ps.equippedWeapon)
-	-- Equipped SKIN first (profile skins.equipped, lobby-owned), base gun model as the fallback.
+	-- Equipped SKIN first (profile skins.equipped, lobby-owned), base gun model as the fallback —
+	-- tinted when the skin is a TINT skin with no dedicated model (SkinConfig.SkinNames[skin].tint).
 	local template = templates[ps.equippedWeapon]
+	local tint = nil
 	local data = DataService.Get(player)
 	local skins = data and data.skins
 	local skinId = (type(skins) == "table" and type(skins.equipped) == "table") and skins.equipped[ps.equippedWeapon] or nil
-	if skinId and templates[ps.equippedWeapon .. "_" .. skinId] then
-		template = templates[ps.equippedWeapon .. "_" .. skinId]
+	if skinId then
+		if templates[ps.equippedWeapon .. "_" .. skinId] then
+			template = templates[ps.equippedWeapon .. "_" .. skinId]
+		else
+			local sn = SkinConfig.SkinNames[skinId]
+			tint = sn and sn.tint or nil
+		end
 	end
 	if not template then
 		return -- no model supplied for this weapon (the FP viewmodel still works in first person)
@@ -195,6 +202,14 @@ local function attach(player: Player)
 				end
 			end
 			warn(("[WeaponModelService] '%s' had animation-rig leftovers (%d) — stripped so only the gun welds."):format(ps.equippedWeapon, #strip))
+		end
+	end
+
+	if tint then -- tint skin: mostly flat color, a hint of the original shading
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Color = tint:Lerp(d.Color, 0.15)
+			end
 		end
 	end
 

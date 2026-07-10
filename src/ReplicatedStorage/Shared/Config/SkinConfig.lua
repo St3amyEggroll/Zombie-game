@@ -17,6 +17,11 @@ SkinConfig.SkinNames = {
 	toxic = { name = "Toxic", rarity = "rare" },
 	gold  = { name = "Gold",  rarity = "legendary" },
 	void  = { name = "Void",  rarity = "divine" },
+	-- NEW: TINTED skins — no model needed: the base gun is cloned and recolored with `tint` in the
+	-- hand. KEEP rarities in sync with the lobby's SKIN_NAMES BY HAND.
+	red   = { name = "Red",   rarity = "rare",      tint = Color3.fromRGB(198, 30, 30) },
+	pink  = { name = "Pink",  rarity = "legendary", tint = Color3.fromRGB(255, 105, 190) },
+	black = { name = "Black", rarity = "divine",    tint = Color3.fromRGB(28, 28, 32) },
 }
 
 -- Duplicate skin pulls convert to Coins, by SKIN rarity.
@@ -30,7 +35,7 @@ SkinConfig.ByRarity = {} -- rarity -> sorted { fullId }
 for gunId, w in WeaponConfig do
 	for skinId, s in SkinConfig.SkinNames do
 		local fullId = gunId .. "_" .. skinId
-		SkinConfig.Skins[fullId] = { id = fullId, gun = gunId, skin = skinId, name = s.name .. " " .. w.name, rarity = s.rarity }
+		SkinConfig.Skins[fullId] = { id = fullId, gun = gunId, skin = skinId, name = s.name .. " " .. w.name, rarity = s.rarity, tint = s.tint }
 		local list = SkinConfig.ByRarity[s.rarity]
 		if not list then
 			list = {}

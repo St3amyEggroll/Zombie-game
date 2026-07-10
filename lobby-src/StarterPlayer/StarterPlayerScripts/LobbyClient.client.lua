@@ -487,7 +487,9 @@ end
 -- publishes sanitized clones of every carry model at boot). Returns nil when a gun has no model yet.
 local gvSpinning = {} -- { {vp, model, base, ang} }
 local gvLoop = false
-local function makeGunViewport(weaponId, spin, folderName)
+local function makeGunViewport(weaponId, spin, folderName, tint)
+	-- NEW: `tint` (Color3) recolors the clone — tinted SKINS render on the base gun model, no
+	-- per-skin model needed.
 	local folder = ReplicatedStorage:FindFirstChild(folderName or "GunDisplay")
 	local template = folder and folder:FindFirstChild(weaponId)
 	if not template then
@@ -500,6 +502,13 @@ local function makeGunViewport(weaponId, spin, folderName)
 	vp.LightColor = Color3.fromRGB(235, 235, 220)
 	vp.LightDirection = Vector3.new(-0.4, -1, -0.4)
 	local model = template:Clone()
+	if tint then
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Color = tint:Lerp(d.Color, 0.15) -- mostly flat skin color, a hint of the original shading
+			end
+		end
+	end
 	model.Parent = vp
 	local cam = Instance.new("Camera")
 	cam.FieldOfView = 30
@@ -552,7 +561,7 @@ lattach(gui)
 -- Coins: a bare gold number pinned middle-right of the screen (no panel behind it).
 -- COIN_ICON_ID: paste the currency image asset id here later (e.g. "rbxassetid://123456") — the icon
 -- shows up automatically to the left of the number once set.
-local COIN_ICON_ID = ""
+local COIN_ICON_ID = "rbxassetid://84729396970772"
 local coinsRow = Instance.new("Frame")
 coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -(12 + 56 + 6)) -- above the LEVEL bar
 coinsRow.Size = UDim2.fromOffset(320, 44); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
@@ -1599,7 +1608,15 @@ local function renderInvDetail()
 					sw.BackgroundColor3 = rarityColor(sk.rarity):Lerp(BLACK, sOwned and 0.55 or 0.82)
 					sw.BorderSizePixel = 0; sw.AutoButtonColor = sOwned; sw.Parent = strip
 					corner(sw, 5); ledge(sw, isOn and ACCENT or TBLACK, isOn and 2.5 or 2)
-					local svp = makeGunViewport(sid, false) or makeGunViewport(sk.gun, false)
+					local svp
+					if sk.image then -- the owner's art for this skin
+						svp = Instance.new("ImageLabel")
+						svp.BackgroundTransparency = 1
+						svp.Image = sk.image
+						svp.ScaleType = Enum.ScaleType.Fit
+					else -- its model, else the base gun tinted with the skin color
+						svp = makeGunViewport(sid, false) or makeGunViewport(sk.gun, false, nil, sk.tint)
+					end
 					if svp then
 						svp.Size = UDim2.new(1, 0, 1, -6)
 						if not sOwned then
@@ -1913,7 +1930,17 @@ playReel = function(caseId, wonId, res)
 		corner(tile, 8)
 		local ts = Instance.new("UIStroke"); ts.Color = col; ts.Thickness = 1.5; ts.Parent = tile
 		local sInfo = skinInfo(id)
-		local tvp = makeGunViewport(id, false) or (sInfo and makeGunViewport(sInfo.gun, false)) -- skin model, else base gun
+		-- Skin art order: the skin's IMAGE if the owner supplied one, else its model, else the base gun
+		-- (tinted when the skin has a tint color).
+		local tvp
+		if sInfo and sInfo.image then
+			tvp = Instance.new("ImageLabel")
+			tvp.BackgroundTransparency = 1
+			tvp.Image = sInfo.image
+			tvp.ScaleType = Enum.ScaleType.Fit
+		else
+			tvp = makeGunViewport(id, false) or (sInfo and makeGunViewport(sInfo.gun, false, nil, sInfo.tint))
+		end
 		if tvp then
 			tvp.Position = UDim2.new(0, 0, 0, 0); tvp.Size = UDim2.new(1, 0, 1, 0); tvp.ZIndex = 6; tvp.Parent = tile
 		end
@@ -2113,7 +2140,7 @@ do
 	local MarketplaceService = game:GetService("MarketplaceService")
 
 	-- ===== TUNABLES =====
-	local SHOP_ICON = "" -- <- paste the shop BUTTON image here ("rbxassetid://..." or just the number)
+	local SHOP_ICON = "112022036781888" -- the shop BUTTON image ("rbxassetid://..." or just the number)
 	local SHOP_GOLD = Color3.fromRGB(240, 165, 10) -- the reference's bright header gold
 	-- Paste each gamepass id when you create it (Creator Hub → Passes). 0 = the button answers SOON.
 	local GAMEPASSES = {
