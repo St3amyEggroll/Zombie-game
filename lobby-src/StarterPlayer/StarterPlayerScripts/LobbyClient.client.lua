@@ -1058,9 +1058,9 @@ local dockBtns = {} -- every dock button + badge, one table (200-local ceiling)
 do
 	local DOCK_ICONS = { -- paste your photo ids here ("rbxassetid://..." or the number). "" = emoji.
 		inventory = CASES_ICON,
-		weapons = GUN_ICON,
+		weapons = "102091580612843",
 		daily = "",
-		shop = "112022036781888",
+		shop = "71412141929869",
 		pass = "",
 		settings = "",
 		codes = "",
