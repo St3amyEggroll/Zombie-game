@@ -1133,10 +1133,16 @@ do
 	fade.Size = UDim2.new(1, 0, 0, 170)
 	fade.BackgroundColor3 = Color3.new(0, 0, 0)
 	fade.BorderSizePixel = 0
-	fade.ZIndex = 1
-	-- CHANGED: the fade lives in the LOWER gui (LobbyHUD, DisplayOrder 10) so the coins pill and
-	-- hotbar draw OVER it — it was parented to the dock's gui (11) and dimmed them.
-	fade.Parent = gui
+	-- CHANGED: the fade gets its OWN ScreenGui UNDER every HUD layer (DisplayOrder 9 < LobbyHUD's 10).
+	-- Same-gui ZIndex juggling kept losing — the coins pill still rendered dim under it.
+	local fadeGui = Instance.new("ScreenGui")
+	fadeGui.Name = "LobbyDockFade"
+	fadeGui.ResetOnSpawn = false
+	fadeGui.IgnoreGuiInset = true
+	fadeGui.DisplayOrder = 9
+	fadeGui.Parent = playerGui
+	lattach(fadeGui)
+	fade.Parent = fadeGui
 	fade.Size = UDim2.new(1, 0, 0, 148) -- CHANGED: shorter — 195 was dimming the coins/XP readouts
 	local fg = Instance.new("UIGradient")
 	fg.Rotation = 90
@@ -4434,10 +4440,10 @@ do
 		vt.Size = UDim2.fromOffset(150, 20)
 		vt.Rotation = -90
 	end
-	Q.arrow = Q.text(Q.rail, "▶", 15, ACCENT)
+	Q.arrow = Q.text(Q.rail, "▶", 17, ACCENT)
 	Q.arrow.AnchorPoint = Vector2.new(0.5, 0.5)
-	Q.arrow.Position = UDim2.new(1, 16, 0.5, 0)
-	Q.arrow.Size = UDim2.fromOffset(20, 20)
+	Q.arrow.Position = UDim2.new(1, 15, 0.5, 0)
+	Q.arrow.Size = UDim2.fromOffset(22, 22)
 	Q.badge = Instance.new("Frame")
 	Q.badge.AnchorPoint = Vector2.new(1, 0)
 	Q.badge.Position = UDim2.new(1, 8, 0, -8)
@@ -4541,49 +4547,50 @@ do
 		hdr.Size = UDim2.new(1, 0, 0, 24)
 		hdr.BackgroundTransparency = 1
 		hdr.Parent = Q.body
-		local t = Q.text(hdr, "DAILY QUESTS", 16)
+		local t = Q.text(hdr, "DAILY QUESTS", 17)
 		t.Position = UDim2.new(0, 0, 0, 0)
 		t.Size = UDim2.fromOffset(160, 24)
 		t.TextXAlignment = Enum.TextXAlignment.Left
-		local chip = Instance.new("Frame")
+		local chip = Instance.new("Frame") -- dark timer chip, same family as the shop's GONE IN chip
 		chip.AnchorPoint = Vector2.new(1, 0.5)
 		chip.Position = UDim2.new(1, 0, 0.5, 0)
-		chip.Size = UDim2.fromOffset(96, 20)
-		chip.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		chip.BackgroundTransparency = 0.93
+		chip.Size = UDim2.fromOffset(100, 20)
+		chip.BackgroundColor3 = Color3.fromRGB(10, 11, 8)
+		chip.BackgroundTransparency = 0.15
 		chip.BorderSizePixel = 0
 		chip.Parent = hdr
 		local cc = Instance.new("UICorner")
 		cc.CornerRadius = UDim.new(1, 0)
 		cc.Parent = chip
+		ledge(chip, Color3.new(1, 1, 1), 1.5, 0.8)
 		Q.resetLbl = Instance.new("TextLabel")
 		Q.resetLbl.Size = UDim2.fromScale(1, 1)
 		Q.resetLbl.BackgroundTransparency = 1
 		Q.resetLbl.FontFace = BODYB_FACE
 		Q.resetLbl.TextSize = 10
-		Q.resetLbl.TextColor3 = DIMTEXT
+		Q.resetLbl.TextColor3 = Color3.fromRGB(255, 213, 122)
 		Q.resetLbl.Text = ""
 		Q.resetLbl.Parent = chip
 	end
 	do -- the purple all-3 bonus meter (bottom)
 		local row = Instance.new("Frame")
 		row.LayoutOrder = 99
-		row.Size = UDim2.new(1, 0, 0, 22)
+		row.Size = UDim2.new(1, 0, 0, 24)
 		row.BackgroundTransparency = 1
 		row.Parent = Q.body
-		local gift = Q.text(row, "🎁", 14)
-		gift.Position = UDim2.fromOffset(0, 0)
+		local gift = Q.text(row, "🎁", 15)
+		gift.Position = UDim2.fromOffset(0, 1)
 		gift.Size = UDim2.fromOffset(20, 22)
 		local tk = Instance.new("Frame")
-		tk.Position = UDim2.fromOffset(26, 6)
-		tk.Size = UDim2.new(1, -156, 0, 10)
+		tk.Position = UDim2.fromOffset(28, 6)
+		tk.Size = UDim2.new(1, -160, 0, 12)
 		tk.BackgroundColor3 = Color3.fromRGB(36, 31, 46)
 		tk.BorderSizePixel = 0
 		tk.Parent = row
 		local tc = Instance.new("UICorner")
 		tc.CornerRadius = UDim.new(1, 0)
 		tc.Parent = tk
-		ledge(tk, TBLACK, 1.5)
+		ledge(tk, TBLACK, 2)
 		Q.bonusFill = Instance.new("Frame")
 		Q.bonusFill.Size = UDim2.new(0, 0, 1, 0)
 		Q.bonusFill.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -4597,7 +4604,7 @@ do
 		fg.Parent = Q.bonusFill
 		Q.bonusLbl = Instance.new("TextLabel")
 		Q.bonusLbl.AnchorPoint = Vector2.new(1, 0)
-		Q.bonusLbl.Position = UDim2.new(1, 0, 0, 0)
+		Q.bonusLbl.Position = UDim2.new(1, 0, 0, 1)
 		Q.bonusLbl.Size = UDim2.fromOffset(124, 22)
 		Q.bonusLbl.BackgroundTransparency = 1
 		Q.bonusLbl.FontFace = BODYB_FACE
@@ -4606,6 +4613,11 @@ do
 		Q.bonusLbl.TextXAlignment = Enum.TextXAlignment.Right
 		Q.bonusLbl.Text = "ALL 3 → RARE CRATE"
 		Q.bonusLbl.Parent = row
+		local bs = Instance.new("UIStroke")
+		bs.Color = TBLACK
+		bs.Thickness = 1.5
+		bs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		bs.Parent = Q.bonusLbl
 	end
 
 	-- Open/close: the plate slides, the arrow flips. (The rail stays put — it's the handle.)
@@ -4644,7 +4656,7 @@ do
 			end
 		end
 		local ready, claimedN = 0, 0
-		local contentH = 10 + 24 + 22 + 12 -- top pad + header + bonus row + bottom pad
+		local contentH = 10 + 24 + 24 + 12 -- top pad + header + bonus row + bottom pad
 		for i, e in ipairs(d.list) do
 			local done = (e.prog or 0) >= (e.goal or 1)
 			local claimable = done and not e.claimed
@@ -4654,44 +4666,60 @@ do
 			if e.claimed then
 				claimedN += 1
 			end
-			local capH = e.claimed and 44 or (claimable and 68 or 58)
+			local capH = e.claimed and 44 or (claimable and 68 or 56)
 			contentH += capH + 8
 			local cap = Instance.new("Frame")
 			cap:SetAttribute("QuestRow", true)
 			cap.LayoutOrder = 10 + i
 			cap.Size = UDim2.new(1, 0, 0, capH)
-			cap.BackgroundColor3 = Color3.fromRGB(28, 31, 22)
+			cap.BackgroundColor3 = Color3.fromRGB(30, 33, 24)
 			cap.BorderSizePixel = 0
 			cap.Parent = Q.body
 			corner(cap, 10)
+			ldepth(cap) -- subtle top-light, same depth trick as every panel card
 			ledge(cap, claimable and QGOLD or TBLACK, claimable and 2.5 or 2)
 			local nm = Q.text(cap, e.name, 13)
-			nm.Position = UDim2.fromOffset(11, 7)
-			nm.Size = UDim2.new(1, -100, 0, 16)
+			nm.Position = UDim2.fromOffset(12, 8)
+			nm.Size = UDim2.new(1, -102, 0, 16)
 			nm.TextXAlignment = Enum.TextXAlignment.Left
 			nm.TextTruncate = Enum.TextTruncate.AtEnd
-			if (e.coins or 0) > 0 and not e.claimed then -- reward chip: drawn coin + amount
+			if (e.coins or 0) > 0 and not e.claimed then -- reward: a proper little pill, not loose bits
+				local pillW = 34 + #fmt(e.coins) * 8
+				local rp = Instance.new("Frame")
+				rp.AnchorPoint = Vector2.new(1, 0)
+				rp.Position = UDim2.new(1, -9, 0, 7)
+				rp.Size = UDim2.fromOffset(pillW, 19)
+				rp.BackgroundColor3 = Color3.fromRGB(10, 11, 8)
+				rp.BackgroundTransparency = 0.2
+				rp.BorderSizePixel = 0
+				rp.ZIndex = 4
+				rp.Parent = cap
+				local rc = Instance.new("UICorner")
+				rc.CornerRadius = UDim.new(1, 0)
+				rc.Parent = rp
+				ledge(rp, QGOLD, 1.5, 0.45)
 				local disc = Instance.new("Frame")
-				disc.AnchorPoint = Vector2.new(1, 0)
-				disc.Position = UDim2.new(1, -46, 0, 9)
-				disc.Size = UDim2.fromOffset(13, 13)
+				disc.AnchorPoint = Vector2.new(0, 0.5)
+				disc.Position = UDim2.new(0, 5, 0.5, 0)
+				disc.Size = UDim2.fromOffset(12, 12)
 				disc.BackgroundColor3 = GOLD
 				disc.BorderSizePixel = 0
 				disc.ZIndex = 5
-				disc.Parent = cap
+				disc.Parent = rp
 				local dc = Instance.new("UICorner")
 				dc.CornerRadius = UDim.new(1, 0)
 				dc.Parent = disc
 				ledge(disc, TBLACK, 1.5)
-				local amt = Q.text(cap, fmt(e.coins), 12, Color3.fromRGB(255, 213, 122))
-				amt.AnchorPoint = Vector2.new(1, 0)
-				amt.Position = UDim2.new(1, -8, 0, 8)
-				amt.Size = UDim2.fromOffset(36, 15)
+				local amt = Q.text(rp, fmt(e.coins), 12, Color3.fromRGB(255, 213, 122))
+				amt.AnchorPoint = Vector2.new(1, 0.5)
+				amt.Position = UDim2.new(1, -7, 0.5, 0)
+				amt.Size = UDim2.fromOffset(pillW - 26, 15)
 				amt.TextXAlignment = Enum.TextXAlignment.Right
+				amt.ZIndex = 5
 			end
 			if e.claimed then
 				local tick = Instance.new("Frame")
-				tick.Position = UDim2.fromOffset(11, 25)
+				tick.Position = UDim2.fromOffset(12, 24)
 				tick.Size = UDim2.fromOffset(15, 15)
 				tick.BackgroundColor3 = Color3.fromRGB(63, 122, 26)
 				tick.BorderSizePixel = 0
@@ -4703,7 +4731,7 @@ do
 				local tl = Q.text(tick, "✓", 9)
 				tl.Size = UDim2.fromScale(1, 1)
 				local cl = Instance.new("TextLabel")
-				cl.Position = UDim2.fromOffset(32, 24)
+				cl.Position = UDim2.fromOffset(33, 23)
 				cl.Size = UDim2.fromOffset(120, 16)
 				cl.BackgroundTransparency = 1
 				cl.FontFace = BODYB_FACE
@@ -4714,8 +4742,8 @@ do
 				cl.Parent = cap
 			elseif claimable then
 				local btn = Instance.new("TextButton")
-				btn.Position = UDim2.fromOffset(11, 29)
-				btn.Size = UDim2.new(1, -22, 0, 30)
+				btn.Position = UDim2.fromOffset(12, 30)
+				btn.Size = UDim2.new(1, -24, 0, 29)
 				btn.BorderSizePixel = 0
 				btn.AutoButtonColor = false
 				btn.Text = ""
@@ -4754,8 +4782,8 @@ do
 				end)
 			else
 				local tk = Instance.new("Frame")
-				tk.Position = UDim2.fromOffset(11, 32)
-				tk.Size = UDim2.new(1, -22, 0, 14)
+				tk.Position = UDim2.fromOffset(12, 31)
+				tk.Size = UDim2.new(1, -24, 0, 14)
 				tk.BackgroundColor3 = Color3.fromRGB(36, 41, 28)
 				tk.BorderSizePixel = 0
 				tk.Parent = cap

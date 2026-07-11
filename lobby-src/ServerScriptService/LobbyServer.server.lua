@@ -899,8 +899,16 @@ local function ensureQuests(player, prof)
 		q.ids, q.prog, q.claimed, q.bonus = {}, {}, {}, false
 		local rng = Random.new(player.UserId * 100003 + today)
 		local pool = table.clone(QUESTS.Pool)
+		local used = {} -- one quest per STAT: two "REACH WAVE" rows read as the same quest twice
 		for i = 1, QUESTS.PerDay do
-			local k = rng:NextInteger(1, #pool)
+			local k
+			for _ = 1, 24 do
+				k = rng:NextInteger(1, #pool)
+				if not used[pool[k].stat] then
+					break
+				end
+			end
+			used[pool[k].stat] = true
 			q.ids[i] = pool[k].id
 			q.prog[i] = 0
 			q.claimed[i] = false
