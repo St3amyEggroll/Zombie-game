@@ -807,6 +807,9 @@ local function setPanelMode(mode)
 	else
 		title.Text = "PARTY PAD"
 	end
+	-- The dock's Play sits where the party LEAVE button lives — the dock section (declared later,
+	-- so it can't be referenced here) listens to this attribute and hides Play while a pad UI is up.
+	gui:SetAttribute("PadMode", mode or "")
 end
 
 -- ===== EVENTS =====
@@ -953,8 +956,8 @@ do
 	local SLOT, GAP2 = 84, 10
 	local row = Instance.new("Frame")
 	row.Name = "LobbyHotbar"
-	row.AnchorPoint = Vector2.new(0.5, 1)
-	row.Position = UDim2.new(0.5, 0, 1, -14)
+	row.AnchorPoint = Vector2.new(1, 1) -- CHANGED: bottom-RIGHT — the dock owns the bottom-center now
+	row.Position = UDim2.new(1, -16, 1, -14)
 	row.Size = UDim2.fromOffset(SLOT * 2 + GAP2, SLOT)
 	row.BackgroundTransparency = 1
 	row.Parent = gui
@@ -1043,67 +1046,220 @@ lattach(invGui)
 
 local function hideTip() end -- (legacy no-op: hover tooltips were replaced by the detail pane)
 
--- LEFT-CENTER buttons: GUNS [B] over CASES — square icon buttons, these ARE the inventory now.
--- Owner-supplied images; the caption underneath doubles as the fallback if an image id fails to load.
+-- =====================================================================================================
+-- ===== THE DOCK (Rivals-style, the approved V-A mock) ===== a faded black bar across the bottom, a
+-- row of seven dark-glass circle buttons with their icons popping over the top edge, Title-case labels
+-- sitting ON the circles' lower rim, white-rimmed red badges, and the glossy borderless Play above.
+-- Owner photos go in DOCK_ICONS (any square image); until then the existing photos + emoji stand in.
+-- =====================================================================================================
 local GUN_ICON = "rbxassetid://107465960874017"
 local CASES_ICON = "rbxassetid://83465359983310"
-local function cornerButton(imageId, caption, xOff, accent, badge)
-	-- TOP-CENTER NAV (sticker style): fat colored text buttons in a row, like the reference's
-	-- Weapons | Play | Classes. xOff = horizontal offset from screen center.
-	local b = Instance.new("TextButton")
-	b.AnchorPoint = Vector2.new(0.5, 0)
-	b.Position = UDim2.new(0.5, xOff, 0, 10); b.Size = UDim2.fromOffset(180, 56)
-	b.BackgroundColor3 = accent; b.BorderSizePixel = 0
-	b.Text = ""; b.Parent = invGui
-	local navCorner = Instance.new("UICorner") -- RAW 10px radius (the shared curve made these bulbous)
-	navCorner.CornerRadius = UDim.new(0, 10); navCorner.Parent = b
-	ledge(b, TBLACK, 3); lbevel(b) -- full black ring like the mockup
+local dockBtns = {} -- every dock button + badge, one table (200-local ceiling)
+do
+	local DOCK_ICONS = { -- paste your photo ids here ("rbxassetid://..." or the number). "" = emoji.
+		inventory = CASES_ICON,
+		weapons = GUN_ICON,
+		daily = "",
+		shop = "112022036781888",
+		pass = "",
+		settings = "",
+		codes = "",
+	}
+	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", pass = "🏅", settings = "⚙️", codes = "🔑" }
+	local ORDER = { "inventory", "weapons", "daily", "shop", "pass", "settings", "codes" }
+	local LABELS = { inventory = "Inventory", weapons = "Weapons", daily = "Daily", shop = "Shop", pass = "Pass", settings = "Settings", codes = "Codes" }
 
-	-- TEXT-ONLY pill (the reference buttons carry no icon art — the raw images read as stickers)
-	local cap = Instance.new("TextLabel")
-	cap.AnchorPoint = Vector2.new(0.5, 0.5); cap.Position = UDim2.new(0.5, 0, 0.5, -2)
-	cap.Size = UDim2.new(1, -20, 0, 36); cap.BackgroundTransparency = 1
-	cap.FontFace = TITLE_FACE; cap.TextSize = 26; cap.TextColor3 = Color3.new(1, 1, 1)
-	cap.TextScaled = true; cap.Parent = b
-	local capC = Instance.new("UITextSizeConstraint"); capC.MaxTextSize = 26; capC.Parent = cap
-	local capS = Instance.new("UIStroke")
-	capS.Color = TBLACK; capS.Thickness = 2.5; capS.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; capS.Parent = cap
-	cap.TextXAlignment = Enum.TextXAlignment.Center; cap.Text = caption
-	local capS2 = cap:FindFirstChildOfClass("UIStroke")
-	if capS2 then capS2.Thickness = 3 end
+	-- The faded black bar behind everything (pure gradient, no border — melts into the floor).
+	local fade = Instance.new("Frame")
+	fade.Name = "DockFade"
+	fade.AnchorPoint = Vector2.new(0, 1)
+	fade.Position = UDim2.new(0, 0, 1, 0)
+	fade.Size = UDim2.new(1, 0, 0, 170)
+	fade.BackgroundColor3 = Color3.new(0, 0, 0)
+	fade.BorderSizePixel = 0
+	fade.ZIndex = 1
+	fade.Parent = invGui
+	local fg = Instance.new("UIGradient")
+	fg.Rotation = 90
+	fg.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.45, 0.55),
+		NumberSequenceKeypoint.new(1, 0.12),
+	})
+	fg.Parent = fade
 
-	if badge then
-		local bd = Instance.new("TextLabel")
-		bd.Position = UDim2.fromOffset(6, 4); bd.Size = UDim2.fromOffset(16, 14)
-		bd.BackgroundTransparency = 1; bd.FontFace = TITLE_FACE; bd.TextSize = 12
-		bd.TextColor3 = GOLD; bd.TextXAlignment = Enum.TextXAlignment.Left
-		bd.Text = "B"; bd.Parent = b
-	end
-	return b
-end
--- CHANGED: nav pills back at the TOP-CENTER where they were: WEAPONS | PLAY | INVENTORY. The SHOP
--- button is separate — an IMAGE button on the screen's LEFT edge (built by the Exclusive Shop section;
--- owner supplies the image).
-local gunsBtn = cornerButton(GUN_ICON, "WEAPONS", -240, Color3.fromRGB(168, 32, 32), true) -- deep red, left of center
-local casesBtn = cornerButton(CASES_ICON, "INVENTORY", 240, Color3.fromRGB(18, 69, 90), false) -- BLUE — matches its panel's header
--- PLAY button — the BIG center pill.
--- Pressing it steps you onto the nearest free party pad, so the normal set-up-your-run flow takes over.
-local playBtn = cornerButton("", "PLAY", 0, Color3.fromRGB(34, 122, 34), false) -- deep green, center, bigger
-playBtn.Size = UDim2.fromOffset(260, 74)
-do -- scale the caption up to match the bigger pill
-	local capL = playBtn:FindFirstChildOfClass("TextLabel")
-	if capL then
-		capL.Size = UDim2.new(1, -24, 0, 48)
-		capL.TextSize = 38
-		local con = capL:FindFirstChildOfClass("UITextSizeConstraint")
-		if con then
-			con.MaxTextSize = 38
+	local function dockBtn(i, key)
+		local holder = Instance.new("Frame")
+		holder.Name = "Dock_" .. key
+		holder.AnchorPoint = Vector2.new(0, 1)
+		holder.Position = UDim2.new(0.5, -282 + (i - 1) * 83, 1, -6)
+		holder.Size = UDim2.fromOffset(66, 84)
+		holder.BackgroundTransparency = 1
+		holder.ZIndex = 2
+		holder.Parent = invGui
+		local circ = Instance.new("ImageButton") -- the dark-glass circle IS the click target
+		circ.Name = "Circle"
+		circ.AnchorPoint = Vector2.new(0.5, 1)
+		circ.Position = UDim2.new(0.5, 0, 1, -14)
+		circ.Size = UDim2.fromOffset(64, 64)
+		circ.BackgroundColor3 = Color3.new(1, 1, 1)
+		circ.BorderSizePixel = 0
+		circ.ZIndex = 2
+		circ.Parent = holder
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(1, 0)
+		cc.Parent = circ
+		local cg = Instance.new("UIGradient") -- absolute colors: near-black glass with a top light-catch
+		cg.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 55, 64)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(26, 27, 33)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 14, 18)),
+		})
+		cg.Rotation = 90
+		cg.Parent = circ
+		local rim = Instance.new("UIStroke")
+		rim.Color = Color3.new(1, 1, 1)
+		rim.Transparency = 0.9
+		rim.Thickness = 1.5
+		rim.Parent = circ
+		-- the icon pops OVER the circle's top edge (photo when supplied, emoji until then)
+		local iconId = DOCK_ICONS[key]
+		if iconId ~= "" then
+			local img = Instance.new("ImageLabel")
+			img.AnchorPoint = Vector2.new(0.5, 0)
+			img.Position = UDim2.new(0.5, 0, 0, -4)
+			img.Size = UDim2.fromOffset(56, 56)
+			img.BackgroundTransparency = 1
+			img.ScaleType = Enum.ScaleType.Fit
+			img.Image = iconId:match("^%d+$") and ("rbxassetid://" .. iconId) or iconId
+			img.ZIndex = 3
+			img.Parent = holder
+		else
+			local e = Instance.new("TextLabel")
+			e.AnchorPoint = Vector2.new(0.5, 0)
+			e.Position = UDim2.new(0.5, 0, 0, -6)
+			e.Size = UDim2.fromOffset(58, 56)
+			e.BackgroundTransparency = 1
+			e.FontFace = TITLE_FACE
+			e.TextSize = 44
+			e.Text = DOCK_EMOJI[key]
+			e.ZIndex = 3
+			e.Parent = holder
 		end
+		local lbl = Instance.new("TextLabel") -- Title case, ON the circle's lower rim (the Rivals detail)
+		lbl.AnchorPoint = Vector2.new(0.5, 1)
+		lbl.Position = UDim2.new(0.5, 0, 1, 0)
+		lbl.Size = UDim2.fromOffset(84, 16)
+		lbl.BackgroundTransparency = 1
+		lbl.FontFace = BODYB_FACE
+		lbl.TextSize = 13
+		lbl.TextColor3 = Color3.new(1, 1, 1)
+		lbl.ZIndex = 4
+		lbl.Text = LABELS[key]
+		lbl.Parent = holder
+		local ls = Instance.new("UIStroke")
+		ls.Color = Color3.new(0, 0, 0)
+		ls.Transparency = 0.25
+		ls.Thickness = 1.6
+		ls.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		ls.Parent = lbl
+		local badge = Instance.new("Frame") -- white-rimmed red badge, hidden until something's waiting
+		badge.AnchorPoint = Vector2.new(1, 0)
+		badge.Position = UDim2.new(1, 2, 0, 2)
+		badge.Size = UDim2.fromOffset(22, 22)
+		badge.BackgroundColor3 = Color3.fromRGB(224, 28, 14)
+		badge.BorderSizePixel = 0
+		badge.Visible = false
+		badge.ZIndex = 5
+		badge.Parent = holder
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(1, 0)
+		bc.Parent = badge
+		local bs = Instance.new("UIStroke")
+		bs.Color = Color3.new(1, 1, 1)
+		bs.Transparency = 0.15
+		bs.Thickness = 1.5
+		bs.Parent = badge
+		local bt = Instance.new("TextLabel")
+		bt.Name = "N"
+		bt.Size = UDim2.fromScale(1, 1)
+		bt.BackgroundTransparency = 1
+		bt.FontFace = BODYB_FACE
+		bt.TextSize = 13
+		bt.TextColor3 = Color3.new(1, 1, 1)
+		bt.Text = "!"
+		bt.ZIndex = 6
+		bt.Parent = badge
+		dockBtns[key] = circ
+		dockBtns[key .. "Badge"] = badge
+		return circ
 	end
+	for i, key in ORDER do
+		dockBtn(i, key)
+	end
+end
+local gunsBtn = dockBtns.weapons -- keep the old names: everything downstream wires to these
+local casesBtn = dockBtns.inventory
+
+-- PLAY — glossy, borderless, above the dock (steps you onto the nearest free party pad).
+local playBtn = Instance.new("TextButton")
+playBtn.Name = "PlayButton"
+playBtn.AnchorPoint = Vector2.new(0.5, 1)
+playBtn.Position = UDim2.new(0.5, 0, 1, -102)
+playBtn.Size = UDim2.fromOffset(206, 56)
+playBtn.BackgroundColor3 = Color3.new(1, 1, 1)
+playBtn.BorderSizePixel = 0
+playBtn.AutoButtonColor = true
+playBtn.Text = ""
+playBtn.ZIndex = 2
+playBtn.Parent = invGui
+do
+	local pc = Instance.new("UICorner")
+	pc.CornerRadius = UDim.new(0, 16)
+	pc.Parent = playBtn
+	local pg = Instance.new("UIGradient")
+	pg.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(181, 249, 116)),
+		ColorSequenceKeypoint.new(0.42, Color3.fromRGB(111, 221, 47)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(63, 187, 23)),
+	})
+	pg.Rotation = 90
+	pg.Parent = playBtn
+	local bevel = Instance.new("Frame") -- the inset dark-green base edge from the photo
+	bevel.AnchorPoint = Vector2.new(0.5, 1)
+	bevel.Position = UDim2.new(0.5, 0, 1, -3)
+	bevel.Size = UDim2.new(1, -8, 0, 7)
+	bevel.BackgroundColor3 = Color3.fromRGB(35, 124, 11)
+	bevel.BackgroundTransparency = 0.45
+	bevel.BorderSizePixel = 0
+	bevel.ZIndex = 3
+	bevel.Parent = playBtn
+	local bvc = Instance.new("UICorner")
+	bvc.CornerRadius = UDim.new(0, 8)
+	bvc.Parent = bevel
+	local pt = Instance.new("TextLabel")
+	pt.Size = UDim2.fromScale(1, 1)
+	pt.BackgroundTransparency = 1
+	pt.FontFace = TITLE_FACE
+	pt.TextSize = 28
+	pt.TextColor3 = Color3.new(1, 1, 1)
+	pt.Text = "Play"
+	pt.ZIndex = 4
+	pt.Parent = playBtn
+	local pts = Instance.new("UIStroke")
+	pts.Color = Color3.fromRGB(22, 86, 8)
+	pts.Transparency = 0.35
+	pts.Thickness = 2
+	pts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	pts.Parent = pt
 end
 playBtn.Activated:Connect(function()
 	lplay("Open")
 	remotes:WaitForChild("GoPlay"):FireServer()
+end)
+-- A pad UI (config/party) owns the bottom-center while it's up — Play steps aside (see setPanelMode).
+gui:GetAttributeChangedSignal("PadMode"):Connect(function()
+	playBtn.Visible = (gui:GetAttribute("PadMode") or "") == ""
 end)
 
 local PANEL_W, PANEL_H = 940, 540
@@ -2151,6 +2307,15 @@ InvSync.OnClientEvent:Connect(function(snap)
 	invData = snap
 	-- Bump a version attribute so the XP bar recomputes its "next unlock" once the catalog is available.
 	localPlayer:SetAttribute("InvVersion", (localPlayer:GetAttribute("InvVersion") or 0) + 1)
+	-- Dock badge: unopened crate count on the Inventory button.
+	local crates = 0
+	if typeof(snap.cases) == "table" then
+		for _, n in snap.cases do
+			crates += tonumber(n) or 0
+		end
+	end
+	dockBtns.inventoryBadge.Visible = crates > 0
+	dockBtns.inventoryBadge.N.Text = crates > 99 and "99+" or tostring(crates)
 	if invPanel.Visible then
 		renderActive()
 	end
@@ -2203,7 +2368,7 @@ do
 	local MarketplaceService = game:GetService("MarketplaceService")
 
 	-- ===== TUNABLES =====
-	local SHOP_ICON = "112022036781888" -- the LEFT-EDGE shop button image
+	-- (the shop button moved into the DOCK — its image lives in DOCK_ICONS.shop up top)
 	local SHOP_GOLD = Color3.fromRGB(240, 165, 10)
 	-- The tab buttons' photos: paste one image id per tab ("rbxassetid://..." or the number).
 	-- Blank = the emoji stand-in shows until you send the image.
@@ -3693,6 +3858,7 @@ do
 				and ("🔥 STREAK: %d DAYS — THE JACKPOT SLICE IS FATTER"):format(streak)
 				or "CLAIM DAILY TO BUILD A STREAK — IT FATTENS THE JACKPOT"
 			S.dailyBadge.Visible = not w.freeUsed
+			dockBtns.dailyBadge.Visible = not w.freeUsed -- the dock button calls it out too
 		end
 
 		-- PASSES: bundle amounts/prices + starter state
@@ -3756,7 +3922,8 @@ do
 				lplay("Open")
 				uiFocusOpen()
 				S.root.Visible = true
-				S.setTab("featured")
+				S.setTab(S.pendingTab or "featured") -- land on the tab the dock button asked for
+				S.pendingTab = nil
 			end
 			if invPanel.Visible and not rolling then -- one panel at a time
 				invPanel.Visible = false
@@ -3766,9 +3933,10 @@ do
 		if S.root.Visible then
 			S.render()
 		else
-			-- keep the DAILY badge honest even while closed (the shop button pulses interest)
+			-- keep the DAILY badges honest even while closed (the dock button pulses interest)
 			if p.wheel then
 				S.dailyBadge.Visible = not p.wheel.freeUsed
+				dockBtns.dailyBadge.Visible = not p.wheel.freeUsed
 			end
 		end
 	end)
@@ -3796,49 +3964,33 @@ do
 		end
 	end)
 
-	-- ===== THE LEFT-EDGE SHOP BUTTON (your image) =====
-	S.btn = Instance.new("ImageButton")
-	S.btn.Name = "ShopButton"
-	S.btn.AnchorPoint = Vector2.new(0, 0.5)
-	S.btn.Position = UDim2.new(0, 16, 0.5, 0)
-	S.btn.Size = UDim2.fromOffset(100, 100)
-	S.btn.BackgroundTransparency = 1
-	S.btn.ScaleType = Enum.ScaleType.Fit
-	S.btn.Parent = S.gui
-	if SHOP_ICON ~= "" then
-		S.btn.Image = SHOP_ICON:match("^%d+$") and ("rbxassetid://" .. SHOP_ICON) or SHOP_ICON
-	else
-		S.btn.BackgroundTransparency = 0
-		S.btn.BackgroundColor3 = SHOP_GOLD
-		corner(S.btn, 7)
-		ledge(S.btn, TBLACK, 3.5)
-		cardShade(S.btn, 0.3)
-		local t = sticker(S.btn, "SHOP", 24)
-		t.Size = UDim2.fromScale(1, 1)
-	end
-	do -- hover/press squash
-		local press = Instance.new("UIScale")
-		press.Parent = S.btn
-		S.btn.MouseEnter:Connect(function()
-			press.Scale = 1.06
-		end)
-		S.btn.MouseLeave:Connect(function()
-			press.Scale = 1
-		end)
-		S.btn.MouseButton1Down:Connect(function()
-			press.Scale = 0.92
-		end)
-		S.btn.MouseButton1Up:Connect(function()
-			press.Scale = 1.06
-		end)
-	end
-	S.btn.Activated:Connect(function()
+	-- ===== DOCK WIRING ===== the dock's Shop/Daily/Pass/Codes buttons deep-link into this panel's
+	-- tabs. Closed → ask the server (enter=true opens it) and remember which tab to land on.
+	local function openShopTab(tab)
+		lplay("Click")
 		if S.root.Visible then
-			lplay("Close")
-			closeShop()
+			if S.tab == tab then -- same button twice = toggle closed
+				lplay("Close")
+				closeShop()
+			else
+				S.setTab(tab)
+			end
 		else
-			ShopSync:FireServer() -- server replies with enter=true → opens the panel
+			S.pendingTab = tab
+			ShopSync:FireServer()
 		end
+	end
+	dockBtns.shop.Activated:Connect(function()
+		openShopTab("featured")
+	end)
+	dockBtns.daily.Activated:Connect(function()
+		openShopTab("daily")
+	end)
+	dockBtns.pass.Activated:Connect(function()
+		openShopTab("passes")
+	end)
+	dockBtns.codes.Activated:Connect(function()
+		openShopTab("codes")
 	end)
 	-- Opening WEAPONS/INVENTORY (buttons or the B key) puts the shop away — one panel at a time.
 	gunsBtn.Activated:Connect(closeShop)
@@ -3957,11 +4109,8 @@ do
 	setGui.Parent = playerGui
 	lattach(setGui)
 
-	local gear = Instance.new("TextButton")
-	gear.AnchorPoint = Vector2.new(1, 1); gear.Position = UDim2.new(1, -12, 1, -12); gear.Size = UDim2.fromOffset(48, 48)
-	gear.BackgroundColor3 = PANEL; gear.BorderSizePixel = 0; gear.FontFace = BODYB_FACE
-	gear.TextSize = 24; gear.TextColor3 = DIMTEXT; gear.Text = "⚙"; gear.Parent = setGui
-	corner(gear, 8); lstuds(gear); ldepth(gear); ledge(gear)
+	-- CHANGED: the dock's Settings button IS the toggle now (the floating corner gear is gone).
+	local gear = dockBtns.settings
 
 	local sPanel = Instance.new("Frame")
 	sPanel.AnchorPoint = Vector2.new(1, 1); sPanel.Position = UDim2.new(1, -12, 1, -68)
