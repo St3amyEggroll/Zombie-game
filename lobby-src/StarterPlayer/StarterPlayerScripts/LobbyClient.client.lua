@@ -957,7 +957,7 @@ do
 	local row = Instance.new("Frame")
 	row.Name = "LobbyHotbar"
 	row.AnchorPoint = Vector2.new(1, 1) -- CHANGED: bottom-RIGHT — the dock owns the bottom-center now
-	row.Position = UDim2.new(1, -16, 1, -14)
+	row.Position = UDim2.new(1, -66, 1, -14) -- clear of Roblox's mic/menu corner buttons
 	row.Size = UDim2.fromOffset(SLOT * 2 + GAP2, SLOT)
 	row.BackgroundTransparency = 1
 	row.Parent = gui
@@ -1079,12 +1079,13 @@ do
 	fade.BorderSizePixel = 0
 	fade.ZIndex = 1
 	fade.Parent = invGui
+	fade.Size = UDim2.new(1, 0, 0, 195) -- CHANGED: taller + darker — it was melting away against the floor
 	local fg = Instance.new("UIGradient")
 	fg.Rotation = 90
 	fg.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(0.45, 0.55),
-		NumberSequenceKeypoint.new(1, 0.12),
+		NumberSequenceKeypoint.new(0.4, 0.45),
+		NumberSequenceKeypoint.new(1, 0.05),
 	})
 	fg.Parent = fade
 
@@ -1122,18 +1123,20 @@ do
 		rim.Transparency = 0.9
 		rim.Thickness = 1.5
 		rim.Parent = circ
-		-- the icon pops OVER the circle's top edge (photo when supplied, emoji until then)
+		-- Photos get ROUND-CROPPED inside the circle (square art with solid backgrounds read as white
+		-- boxes when popped over the rim — transparent PNG renders can pop later); emoji still pop.
 		local iconId = DOCK_ICONS[key]
 		if iconId ~= "" then
 			local img = Instance.new("ImageLabel")
-			img.AnchorPoint = Vector2.new(0.5, 0)
-			img.Position = UDim2.new(0.5, 0, 0, -4)
-			img.Size = UDim2.fromOffset(56, 56)
+			img.Size = UDim2.fromScale(1, 1)
 			img.BackgroundTransparency = 1
-			img.ScaleType = Enum.ScaleType.Fit
+			img.ScaleType = Enum.ScaleType.Crop
 			img.Image = iconId:match("^%d+$") and ("rbxassetid://" .. iconId) or iconId
 			img.ZIndex = 3
-			img.Parent = holder
+			img.Parent = circ
+			local ic = Instance.new("UICorner")
+			ic.CornerRadius = UDim.new(1, 0)
+			ic.Parent = img
 		else
 			local e = Instance.new("TextLabel")
 			e.AnchorPoint = Vector2.new(0.5, 0)
@@ -1190,6 +1193,21 @@ do
 		bt.Text = "!"
 		bt.ZIndex = 6
 		bt.Parent = badge
+		-- hover/press pop — makes the dock feel alive
+		local press = Instance.new("UIScale")
+		press.Parent = holder
+		circ.MouseEnter:Connect(function()
+			press.Scale = 1.08
+		end)
+		circ.MouseLeave:Connect(function()
+			press.Scale = 1
+		end)
+		circ.MouseButton1Down:Connect(function()
+			press.Scale = 0.9
+		end)
+		circ.MouseButton1Up:Connect(function()
+			press.Scale = 1.08
+		end)
 		dockBtns[key] = circ
 		dockBtns[key .. "Badge"] = badge
 		return circ
