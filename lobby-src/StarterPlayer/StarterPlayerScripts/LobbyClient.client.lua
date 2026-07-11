@@ -622,9 +622,9 @@ local COIN_ICON_ID = "rbxassetid://84729396970772"
 local coinsRow = Instance.new("Frame")
 coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -12)
 coinsRow.Size = UDim2.fromOffset(0, 54); coinsRow.AutomaticSize = Enum.AutomaticSize.X
-coinsRow.BackgroundColor3 = Color3.fromRGB(10, 8, 16); coinsRow.BackgroundTransparency = 0.28
+coinsRow.BackgroundColor3 = Color3.fromRGB(24, 22, 30); coinsRow.BackgroundTransparency = 0.1
 coinsRow.BorderSizePixel = 0; coinsRow.ZIndex = 2; coinsRow.Parent = gui -- ZIndex 2: over the dock fade
-corner(coinsRow, 27); ledge(coinsRow, Color3.new(1, 1, 1), 1.5, 0.86)
+corner(coinsRow, 27); ledge(coinsRow, Color3.new(1, 1, 1), 1.5, 0.7)
 local coinPad = Instance.new("UIPadding")
 coinPad.PaddingLeft = UDim.new(0, 6); coinPad.PaddingRight = UDim.new(0, 18)
 coinPad.Parent = coinsRow
@@ -4488,12 +4488,13 @@ do
 	end
 
 	-- THE PLATE — the stamp card that slides out.
+	-- FIXED height (computed per render). AutomaticSize + the scale-height spine + a list layout fed
+	-- back into each other and the plate grew to full screen height — never again.
 	Q.panel = Instance.new("Frame")
 	Q.panel.Name = "QuestPlate"
 	Q.panel.AnchorPoint = Vector2.new(0, 0.5)
 	Q.panel.Position = UDim2.new(0, PANEL_X_CLOSED, 0.5, 0)
-	Q.panel.Size = UDim2.new(0, 296, 0, 0)
-	Q.panel.AutomaticSize = Enum.AutomaticSize.Y
+	Q.panel.Size = UDim2.fromOffset(296, 240)
 	Q.panel.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
 	Q.panel.BackgroundTransparency = 0.06
 	Q.panel.BorderSizePixel = 0
@@ -4501,7 +4502,7 @@ do
 	Q.panel.Parent = Q.gui
 	corner(Q.panel, 12)
 	ledge(Q.panel, TBLACK, 3)
-	do -- the green spine down the plate's left side
+	do -- the green spine down the plate's left side (absolute — NOT part of the content stack)
 		local spine = Instance.new("Frame")
 		spine.Position = UDim2.fromOffset(3, 3)
 		spine.Size = UDim2.new(0, 7, 1, -6)
@@ -4517,24 +4518,29 @@ do
 		g.Rotation = 90
 		g.Parent = spine
 	end
+	-- All rows stack inside THIS frame; the spine stays outside the layout.
+	Q.body = Instance.new("Frame")
+	Q.body.Size = UDim2.fromScale(1, 1)
+	Q.body.BackgroundTransparency = 1
+	Q.body.Parent = Q.panel
 	do
 		local pad = Instance.new("UIPadding")
 		pad.PaddingLeft = UDim.new(0, 20)
 		pad.PaddingRight = UDim.new(0, 12)
 		pad.PaddingTop = UDim.new(0, 10)
 		pad.PaddingBottom = UDim.new(0, 12)
-		pad.Parent = Q.panel
+		pad.Parent = Q.body
 		local ll = Instance.new("UIListLayout")
 		ll.Padding = UDim.new(0, 8)
 		ll.SortOrder = Enum.SortOrder.LayoutOrder
-		ll.Parent = Q.panel
+		ll.Parent = Q.body
 	end
 	do -- header row: title + reset chip
 		local hdr = Instance.new("Frame")
 		hdr.LayoutOrder = 1
 		hdr.Size = UDim2.new(1, 0, 0, 24)
 		hdr.BackgroundTransparency = 1
-		hdr.Parent = Q.panel
+		hdr.Parent = Q.body
 		local t = Q.text(hdr, "DAILY QUESTS", 16)
 		t.Position = UDim2.new(0, 0, 0, 0)
 		t.Size = UDim2.fromOffset(160, 24)
@@ -4564,7 +4570,7 @@ do
 		row.LayoutOrder = 99
 		row.Size = UDim2.new(1, 0, 0, 22)
 		row.BackgroundTransparency = 1
-		row.Parent = Q.panel
+		row.Parent = Q.body
 		local gift = Q.text(row, "🎁", 14)
 		gift.Position = UDim2.fromOffset(0, 0)
 		gift.Size = UDim2.fromOffset(20, 22)
@@ -4632,12 +4638,13 @@ do
 		if not d or typeof(d.list) ~= "table" then
 			return
 		end
-		for _, c in Q.panel:GetChildren() do
+		for _, c in Q.body:GetChildren() do
 			if c:GetAttribute("QuestRow") then
 				c:Destroy()
 			end
 		end
 		local ready, claimedN = 0, 0
+		local contentH = 10 + 24 + 22 + 12 -- top pad + header + bonus row + bottom pad
 		for i, e in ipairs(d.list) do
 			local done = (e.prog or 0) >= (e.goal or 1)
 			local claimable = done and not e.claimed
@@ -4647,13 +4654,15 @@ do
 			if e.claimed then
 				claimedN += 1
 			end
+			local capH = e.claimed and 44 or (claimable and 68 or 58)
+			contentH += capH + 8
 			local cap = Instance.new("Frame")
 			cap:SetAttribute("QuestRow", true)
 			cap.LayoutOrder = 10 + i
-			cap.Size = UDim2.new(1, 0, 0, e.claimed and 44 or (claimable and 68 or 58))
+			cap.Size = UDim2.new(1, 0, 0, capH)
 			cap.BackgroundColor3 = Color3.fromRGB(28, 31, 22)
 			cap.BorderSizePixel = 0
-			cap.Parent = Q.panel
+			cap.Parent = Q.body
 			corner(cap, 10)
 			ledge(cap, claimable and QGOLD or TBLACK, claimable and 2.5 or 2)
 			local nm = Q.text(cap, e.name, 13)
@@ -4786,6 +4795,8 @@ do
 				ns.Parent = num
 			end
 		end
+		-- fixed height from the actual rows (+8 = the gap before the bonus row)
+		Q.panel.Size = UDim2.fromOffset(296, contentH + 8)
 		-- badge + bonus meter + the once-per-readiness auto-open
 		Q.badge.Visible = ready > 0
 		Q.badgeN.Text = tostring(ready)
