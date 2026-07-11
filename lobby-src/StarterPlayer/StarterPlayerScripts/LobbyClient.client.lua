@@ -219,14 +219,29 @@ local function lbevel(o)
 	applyFill()
 	o:GetPropertyChangedSignal("BackgroundColor3"):Connect(applyFill) -- selection recolors re-derive
 	if o:IsA("GuiButton") then
+		-- NEW: juice — smooth hover grow + press squish (tweened UIScale) on top of the face slide.
+		local ts = game:GetService("TweenService")
+		local sc = Instance.new("UIScale")
+		sc.Parent = o
+		local function to(v, t, style)
+			ts:Create(sc, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Scale = v }):Play()
+		end
+		o.MouseEnter:Connect(function()
+			to(1.04, 0.09)
+		end)
 		o.MouseButton1Down:Connect(function()
 			face.Position = UDim2.fromOffset(0, 4) -- press = face slides down onto the slab
+			to(0.95, 0.05)
 		end)
-		local function up()
+		o.MouseButton1Up:Connect(function()
 			face.Position = UDim2.new()
-		end
-		o.MouseButton1Up:Connect(up)
-		o.MouseLeave:Connect(up)
+			to(1.04, 0.14, Enum.EasingStyle.Back) -- release = springs back with a soft overshoot
+		end)
+		o.MouseLeave:Connect(function()
+			face.Position = UDim2.new()
+			to(1, 0.09)
+		end)
 	end
 	return g
 end
@@ -255,6 +270,19 @@ local function redX(parentGui, size, tsize)
 		bar.Size = UDim2.new(0.55, 0, 0, math.max(4, math.floor(size / 9))); bar.Rotation = rot
 		bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255); bar.BorderSizePixel = 0; bar.ZIndex = 5; bar.Parent = x
 		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = bar
+	end
+	do -- NEW: juice — tweened hover grow + press squish
+		local ts = game:GetService("TweenService")
+		local sc = Instance.new("UIScale")
+		sc.Parent = x
+		local function to(v, t, style)
+			ts:Create(sc, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Scale = v }):Play()
+		end
+		x.MouseEnter:Connect(function() to(1.1, 0.09) end)
+		x.MouseLeave:Connect(function() to(1, 0.09) end)
+		x.MouseButton1Down:Connect(function() to(0.88, 0.05) end)
+		x.MouseButton1Up:Connect(function() to(1.1, 0.14, Enum.EasingStyle.Back) end)
 	end
 	return x
 end
@@ -319,6 +347,16 @@ local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
 	root.BackgroundTransparency = 1
 	root.Visible = false
 	root.Parent = parentGui
+	-- NEW: pop-open — every chrome panel grows in with a soft overshoot when it appears.
+	local pop = Instance.new("UIScale")
+	pop.Parent = root
+	root:GetPropertyChangedSignal("Visible"):Connect(function()
+		if root.Visible then
+			pop.Scale = 0.92
+			game:GetService("TweenService"):Create(pop,
+				TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		end
+	end)
 
 	local body = Instance.new("Frame")
 	body.Name = "Body"
@@ -578,34 +616,38 @@ gui.Name = "LobbyHUD"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.
 gui.Parent = playerGui
 lattach(gui)
 
--- Coins: a bare gold number pinned middle-right of the screen (no panel behind it).
--- COIN_ICON_ID: paste the currency image asset id here later (e.g. "rbxassetid://123456") — the icon
--- shows up automatically to the left of the number once set.
+-- Coins: V2-A — a dark rounded pill floating MID-LEFT, coin icon + gold number, sitting just above
+-- the LEVEL card (which is also mid-left now). Auto-sizes to the number.
 local COIN_ICON_ID = "rbxassetid://84729396970772"
 local coinsRow = Instance.new("Frame")
-coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -(12 + 72 + 6)) -- above the LEVEL bar
-coinsRow.Size = UDim2.fromOffset(380, 52); coinsRow.BackgroundTransparency = 1; coinsRow.Parent = gui
--- CHANGED: coin icon BEFORE the number (fixed left slot), and the whole readout is BIGGER.
+coinsRow.AnchorPoint = Vector2.new(0, 0.5); coinsRow.Position = UDim2.new(0, 16, 0.5, -45)
+coinsRow.Size = UDim2.fromOffset(0, 54); coinsRow.AutomaticSize = Enum.AutomaticSize.X
+coinsRow.BackgroundColor3 = Color3.fromRGB(10, 8, 16); coinsRow.BackgroundTransparency = 0.28
+coinsRow.BorderSizePixel = 0; coinsRow.Parent = gui
+corner(coinsRow, 27); ledge(coinsRow, Color3.new(1, 1, 1), 1.5, 0.86)
+local coinPad = Instance.new("UIPadding")
+coinPad.PaddingLeft = UDim.new(0, 6); coinPad.PaddingRight = UDim.new(0, 18)
+coinPad.Parent = coinsRow
 local coinIcon = Instance.new("ImageLabel")
 coinIcon.AnchorPoint = Vector2.new(0, 0.5); coinIcon.Position = UDim2.new(0, 0, 0.5, 0)
-coinIcon.Size = UDim2.fromOffset(46, 46); coinIcon.BackgroundTransparency = 1
+coinIcon.Size = UDim2.fromOffset(42, 42); coinIcon.BackgroundTransparency = 1
 coinIcon.ScaleType = Enum.ScaleType.Fit; coinIcon.Visible = false; coinIcon.Parent = coinsRow
 if COIN_ICON_ID ~= "" then
 	coinIcon.Image = COIN_ICON_ID
 	coinIcon.Visible = true
 end
 local moneyLabel = Instance.new("TextLabel")
-moneyLabel.Position = UDim2.fromOffset(COIN_ICON_ID ~= "" and 54 or 0, 0)
-moneyLabel.Size = UDim2.new(1, -(COIN_ICON_ID ~= "" and 54 or 0), 1, 0); moneyLabel.BackgroundTransparency = 1
-moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 46; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
+moneyLabel.Position = UDim2.fromOffset(COIN_ICON_ID ~= "" and 50 or 0, 0)
+moneyLabel.Size = UDim2.new(0, 0, 1, 0); moneyLabel.AutomaticSize = Enum.AutomaticSize.X
+moneyLabel.BackgroundTransparency = 1
+moneyLabel.FontFace = TITLE_FACE; moneyLabel.TextSize = 34; moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
 moneyLabel.TextColor3 = GOLD; moneyLabel.Text = ""; moneyLabel.Parent = coinsRow
 local moneyStroke = Instance.new("UIStroke")
-moneyStroke.Color = TBLACK; moneyStroke.Thickness = 3.5; moneyStroke.Parent = moneyLabel
-local bestLabel = Instance.new("TextLabel")
-bestLabel.AnchorPoint = Vector2.new(0, 0); bestLabel.Position = UDim2.new(0, 0, 1, 2)
-bestLabel.Size = UDim2.fromOffset(320, 20); bestLabel.BackgroundTransparency = 1
-bestLabel.FontFace = BODYB_FACE; bestLabel.TextSize = 14; bestLabel.TextXAlignment = Enum.TextXAlignment.Left
-bestLabel.TextColor3 = DIMTEXT; bestLabel.Text = ""; bestLabel.Visible = false; bestLabel.Parent = coinsRow -- best-wave text removed
+moneyStroke.Color = TBLACK; moneyStroke.Thickness = 3; moneyStroke.Parent = moneyLabel
+local bestLabel = Instance.new("TextLabel") -- best-wave text removed; kept as a hidden data hook
+bestLabel.Size = UDim2.fromOffset(0, 0); bestLabel.BackgroundTransparency = 1
+bestLabel.FontFace = BODYB_FACE; bestLabel.TextSize = 14
+bestLabel.TextColor3 = DIMTEXT; bestLabel.Text = ""; bestLabel.Visible = false; bestLabel.Parent = coinsRow
 local bestStroke = Instance.new("UIStroke")
 bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestLabel
 
@@ -959,15 +1001,15 @@ do
 	local SLOT, GAP2 = 84, 10
 	local row = Instance.new("Frame")
 	row.Name = "LobbyHotbar"
-	row.AnchorPoint = Vector2.new(1, 1) -- CHANGED: bottom-RIGHT — the dock owns the bottom-center now
-	row.Position = UDim2.new(1, -66, 1, -14) -- clear of Roblox's mic/menu corner buttons
-	row.Size = UDim2.fromOffset(SLOT * 2 + GAP2, SLOT)
+	row.AnchorPoint = Vector2.new(1, 0.5) -- CHANGED: vertical rack on the RIGHT EDGE, centered (V2-A)
+	row.Position = UDim2.new(1, -14, 0.5, 0)
+	row.Size = UDim2.fromOffset(SLOT, SLOT * 2 + GAP2)
 	row.BackgroundTransparency = 1
 	row.Parent = gui
 	local slots = {}
 	for i = 1, 2 do
 		local f = Instance.new("Frame")
-		f.Position = UDim2.fromOffset((i - 1) * (SLOT + GAP2), 0)
+		f.Position = UDim2.fromOffset(0, (i - 1) * (SLOT + GAP2))
 		f.Size = UDim2.fromOffset(SLOT, SLOT)
 		f.BackgroundColor3 = PANEL
 		f.BackgroundTransparency = 0.05
@@ -1196,21 +1238,18 @@ do
 		bt.Text = "!"
 		bt.ZIndex = 6
 		bt.Parent = badge
-		-- hover/press pop — makes the dock feel alive
+		-- hover/press pop — CHANGED: tweened now (the instant snaps read as jitter, not juice)
+		local ts = game:GetService("TweenService")
 		local press = Instance.new("UIScale")
 		press.Parent = holder
-		circ.MouseEnter:Connect(function()
-			press.Scale = 1.08
-		end)
-		circ.MouseLeave:Connect(function()
-			press.Scale = 1
-		end)
-		circ.MouseButton1Down:Connect(function()
-			press.Scale = 0.9
-		end)
-		circ.MouseButton1Up:Connect(function()
-			press.Scale = 1.08
-		end)
+		local function to(v, t, style)
+			ts:Create(press, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Scale = v }):Play()
+		end
+		circ.MouseEnter:Connect(function() to(1.08, 0.09) end)
+		circ.MouseLeave:Connect(function() to(1, 0.09) end)
+		circ.MouseButton1Down:Connect(function() to(0.9, 0.05) end)
+		circ.MouseButton1Up:Connect(function() to(1.08, 0.14, Enum.EasingStyle.Back) end)
 		dockBtns[key] = circ
 		dockBtns[key .. "Badge"] = badge
 		return circ
@@ -1280,15 +1319,30 @@ do
 	pts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	pts.Parent = pt
 
-	-- Press = the face slides down onto the slab (same feel as every in-game button).
+	-- Press = the face slides down onto the slab (same feel as every in-game button),
+	-- plus the tweened hover grow / press squish the rest of the buttons get.
+	local ts = game:GetService("TweenService")
+	local sc = Instance.new("UIScale")
+	sc.Parent = playBtn
+	local function to(v, t, style)
+		ts:Create(sc, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Scale = v }):Play()
+	end
+	playBtn.MouseEnter:Connect(function()
+		to(1.05, 0.09)
+	end)
 	playBtn.MouseButton1Down:Connect(function()
 		face.Position = UDim2.fromOffset(0, 4)
+		to(0.95, 0.05)
 	end)
-	local function up()
+	playBtn.MouseButton1Up:Connect(function()
 		face.Position = UDim2.new()
-	end
-	playBtn.MouseButton1Up:Connect(up)
-	playBtn.MouseLeave:Connect(up)
+		to(1.05, 0.14, Enum.EasingStyle.Back)
+	end)
+	playBtn.MouseLeave:Connect(function()
+		face.Position = UDim2.new()
+		to(1, 0.09)
+	end)
 end
 playBtn.Activated:Connect(function()
 	lplay("Open")
@@ -4302,9 +4356,9 @@ do
 	xpGui.Parent = playerGui
 	lattach(xpGui)
 
-	-- CHANGED: the whole level bar is BIGGER (owner request).
+	-- CHANGED: mid-LEFT now (V2-A), tucked right under the coins pill.
 	local bar = Instance.new("Frame")
-	bar.AnchorPoint = Vector2.new(0, 1); bar.Position = UDim2.new(0, 16, 1, -12); bar.Size = UDim2.fromOffset(400, 72)
+	bar.AnchorPoint = Vector2.new(0, 0.5); bar.Position = UDim2.new(0, 16, 0.5, 30); bar.Size = UDim2.fromOffset(400, 72)
 	bar.BackgroundColor3 = PANEL; bar.BackgroundTransparency = 0.15; bar.BorderSizePixel = 0; bar.Parent = xpGui
 	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3); ledge(bar, ACCENT, 2, 0.35)
 
