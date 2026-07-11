@@ -738,6 +738,24 @@ local function readProfile(player)
 				paid = math.max(0, math.floor(tonumber(w.paid) or 0)),
 			}
 		end)(),
+		quests = (function() -- daily quests: today's 3 ids + progress + claims + the all-3 bonus flag
+			local q = (typeof(data.quests) == "table") and data.quests or {}
+			local ids, prog, claimed = {}, {}, {}
+			if typeof(q.ids) == "table" then
+				for i, id in ipairs(q.ids) do
+					ids[i] = tostring(id)
+					prog[i] = math.max(0, math.floor(tonumber(typeof(q.prog) == "table" and q.prog[i]) or 0))
+					claimed[i] = typeof(q.claimed) == "table" and q.claimed[i] == true
+				end
+			end
+			return {
+				day = math.floor(tonumber(q.day) or 0),
+				ids = ids,
+				prog = prog,
+				claimed = claimed,
+				bonus = q.bonus == true,
+			}
+		end)(),
 		receipts = (function() -- recent Robux PurchaseIds already granted (double-grant guard)
 			local out = {}
 			if typeof(data.receipts) == "table" then
@@ -797,6 +815,7 @@ local function persist(player)
 			old.starter = prof.starter
 			old.wheel = prof.wheel
 			old.vipDay = prof.vipDay
+			old.quests = prof.quests
 			return old
 		end)
 	end)
@@ -829,6 +848,121 @@ local function pushInv(player)
 	local prof = profileCache[player.UserId]
 	if prof then
 		InvSync:FireClient(player, invSnapshot(prof))
+	end
+end
+
+-- ===== DAILY QUESTS ===== 3 rotating dailies per player per day (deterministic: userId + day seeds the
+-- pick, so relogging can't re-roll them). Progress feeds from run summaries (the game place teleports
+-- back with a SERVER-set summary — GetJoinData, not the client) and from lobby crate opens. Rewards are
+-- COINS only (XP is game-owned; the lobby never writes it). Clear all 3 → a bonus crate.
+local QUESTS = {
+	PerDay = 3,
+	BonusCase = "rare", -- clearing the whole board pays one of these
+	Pool = {
+		-- stat: kills/money/runs/wins/crates accumulate; wave keeps the best single run (max = true)
+		{ id = "kills150", name = "KILL 150 ZOMBIES", stat = "kills", goal = 150, coins = 500 },
+		{ id = "kills400", name = "KILL 400 ZOMBIES", stat = "kills", goal = 400, coins = 1200 },
+		{ id = "wave8", name = "REACH WAVE 8", stat = "wave", goal = 8, coins = 400, max = true },
+		{ id = "wave12", name = "REACH WAVE 12", stat = "wave", goal = 12, coins = 900, max = true },
+		{ id = "earn1500", name = "EARN 1,500 COINS", stat = "money", goal = 1500, coins = 600 },
+		{ id = "runs2", name = "PLAY 2 RUNS", stat = "runs", goal = 2, coins = 400 },
+		{ id = "win1", name = "WIN A RUN", stat = "wins", goal = 1, coins = 1000 },
+		{ id = "crates2", name = "OPEN 2 CRATES", stat = "crates", goal = 2, coins = 350 },
+	},
+}
+local QuestSync = mk("QuestSync") -- S->C: { resetIn, list = {name, goal, prog, coins, claimed}, bonus... }
+local QuestClaim = mk("QuestClaim") -- C->S: {i} claim quest i's coins
+
+local function questDef(id)
+	for _, d in QUESTS.Pool do
+		if d.id == id then
+			return d
+		end
+	end
+	return nil
+end
+
+-- Today's 3 defs for this player, re-rolling at day change (or if the pool changed under saved ids).
+local function ensureQuests(player, prof)
+	local q = prof.quests
+	local today = todayStamp()
+	local stale = q.day ~= today or #q.ids ~= QUESTS.PerDay
+	if not stale then
+		for _, id in q.ids do
+			if not questDef(id) then
+				stale = true -- pool edit orphaned a saved id
+			end
+		end
+	end
+	if stale then
+		q.day = today
+		q.ids, q.prog, q.claimed, q.bonus = {}, {}, {}, false
+		local rng = Random.new(player.UserId * 100003 + today)
+		local pool = table.clone(QUESTS.Pool)
+		for i = 1, QUESTS.PerDay do
+			local k = rng:NextInteger(1, #pool)
+			q.ids[i] = pool[k].id
+			q.prog[i] = 0
+			q.claimed[i] = false
+			table.remove(pool, k)
+		end
+	end
+	local defs = {}
+	for i, id in q.ids do
+		defs[i] = questDef(id)
+	end
+	return defs
+end
+
+local function questSnapshot(player, prof)
+	local defs = ensureQuests(player, prof)
+	local q = prof.quests
+	local list = {}
+	for i, d in defs do
+		list[i] = {
+			name = d.name,
+			goal = d.goal,
+			prog = math.min(q.prog[i] or 0, d.goal),
+			coins = d.coins or 0,
+			claimed = q.claimed[i] == true,
+		}
+	end
+	return {
+		resetIn = 86400 - os.time() % 86400,
+		list = list,
+		bonusCase = QUESTS.BonusCase,
+		bonusDone = q.bonus == true,
+	}
+end
+
+local function pushQuests(player)
+	local prof = profileCache[player.UserId]
+	if prof then
+		QuestSync:FireClient(player, questSnapshot(player, prof))
+	end
+end
+
+-- Feed an amount into every active quest tracking `stat` (accumulate, or best-value when def.max).
+local function bumpQuest(player, stat, amount)
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist or amount <= 0 then
+		return
+	end
+	local defs = ensureQuests(player, prof)
+	local q = prof.quests
+	local changed = false
+	for i, d in defs do
+		if d.stat == stat and not q.claimed[i] and (q.prog[i] or 0) < d.goal then
+			local new = d.max and math.max(q.prog[i] or 0, amount) or (q.prog[i] or 0) + amount
+			if new ~= q.prog[i] then
+				q.prog[i] = new
+				changed = true
+			end
+		end
+	end
+	if changed then
+		markDirty(player)
+		pushQuests(player)
 	end
 end
 
@@ -1245,6 +1379,7 @@ OpenCase.OnServerEvent:Connect(function(player, req)
 		return fail()
 	end
 	local result = doOpenCase(player, prof, caseId)
+	bumpQuest(player, "crates", 1) -- daily quests count every crate you open
 	markDirty(player)
 	CaseResult:FireClient(player, result)
 	pushInv(player)
@@ -1445,6 +1580,7 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	local result = nil
 	if wantOpen then
 		result = doOpenCase(player, prof, slot.caseId)
+		bumpQuest(player, "crates", 1)
 	end
 	markDirty(player)
 	if result then
@@ -2352,6 +2488,23 @@ local function onJoin(player)
 		refreshCarry(player)
 		refreshPlayerTag(player)
 		primeVip(player)
+		-- DAILY QUESTS: the game place teleports back with a SERVER-set run summary — feed it in.
+		-- (GetJoinData's TeleportData comes from the sending server, not the client — trustable.)
+		local okJD, jd = pcall(function()
+			return player:GetJoinData()
+		end)
+		local sum = okJD and typeof(jd) == "table" and typeof(jd.TeleportData) == "table"
+			and typeof(jd.TeleportData.summary) == "table" and jd.TeleportData.summary or nil
+		if sum then
+			bumpQuest(player, "kills", math.floor(tonumber(sum.kills) or 0))
+			bumpQuest(player, "money", math.floor(tonumber(sum.money) or 0))
+			bumpQuest(player, "wave", math.floor(tonumber(sum.wave) or 0))
+			bumpQuest(player, "runs", 1)
+			if sum.win == true then
+				bumpQuest(player, "wins", 1)
+			end
+		end
+		pushQuests(player)
 	end)
 end
 
@@ -2432,6 +2585,50 @@ BuyGun.OnServerEvent:Connect(function(player, req)
 	markDirty(player)
 	pushInv(player)
 	StatsRemote:FireClient(player, prof)
+end)
+
+-- DAILY QUESTS: claim one finished quest's coins. Clearing all 3 auto-pays the bonus crate.
+QuestClaim.OnServerEvent:Connect(function(player, req)
+	if not allow(player, "Buy") or typeof(req) ~= "table" then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return
+	end
+	local defs = ensureQuests(player, prof)
+	local q = prof.quests
+	local i = math.floor(tonumber(req.i) or 0)
+	local d = defs[i]
+	if not d or q.claimed[i] or (q.prog[i] or 0) < d.goal then
+		return
+	end
+	q.claimed[i] = true
+	prof.lobbyMoney += d.coins or 0
+	local all = true
+	for k in defs do
+		if not q.claimed[k] then
+			all = false
+		end
+	end
+	if all and not q.bonus then
+		q.bonus = true
+		prof.cases[QUESTS.BonusCase] = (prof.cases[QUESTS.BonusCase] or 0) + 1
+		ShopGift:FireClient(player, {
+			from = "DAILY QUESTS",
+			name = QUESTS.BonusCase:sub(1, 1):upper() .. QUESTS.BonusCase:sub(2) .. " Skin Crate",
+			count = 1,
+		})
+		pushInv(player)
+	end
+	markDirty(player)
+	pushQuests(player)
+	StatsRemote:FireClient(player, prof) -- the coins readout ticks up
+end)
+
+-- DAILY QUESTS: a fresh client asks for the board (same join-race fix as InvRequest).
+QuestSync.OnServerEvent:Connect(function(player)
+	pushQuests(player)
 end)
 
 -- Equip / clear a skin on a gun you own.

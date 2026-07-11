@@ -623,7 +623,7 @@ local coinsRow = Instance.new("Frame")
 coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -12)
 coinsRow.Size = UDim2.fromOffset(0, 54); coinsRow.AutomaticSize = Enum.AutomaticSize.X
 coinsRow.BackgroundColor3 = Color3.fromRGB(10, 8, 16); coinsRow.BackgroundTransparency = 0.28
-coinsRow.BorderSizePixel = 0; coinsRow.Parent = gui
+coinsRow.BorderSizePixel = 0; coinsRow.ZIndex = 2; coinsRow.Parent = gui -- ZIndex 2: over the dock fade
 corner(coinsRow, 27); ledge(coinsRow, Color3.new(1, 1, 1), 1.5, 0.86)
 local coinPad = Instance.new("UIPadding")
 coinPad.PaddingLeft = UDim.new(0, 6); coinPad.PaddingRight = UDim.new(0, 18)
@@ -1134,7 +1134,9 @@ do
 	fade.BackgroundColor3 = Color3.new(0, 0, 0)
 	fade.BorderSizePixel = 0
 	fade.ZIndex = 1
-	fade.Parent = invGui
+	-- CHANGED: the fade lives in the LOWER gui (LobbyHUD, DisplayOrder 10) so the coins pill and
+	-- hotbar draw OVER it — it was parented to the dock's gui (11) and dimmed them.
+	fade.Parent = gui
 	fade.Size = UDim2.new(1, 0, 0, 148) -- CHANGED: shorter — 195 was dimming the coins/XP readouts
 	local fg = Instance.new("UIGradient")
 	fg.Rotation = 90
@@ -4369,6 +4371,459 @@ do
 		syncXpBar()
 	end)
 	task.delay(3, renderAll) -- saved volumes arrive async via Stats
+end
+
+-- ===== DAILY QUESTS (edge tab → stamp card) ===== the slim QUESTS rail hugging the left edge with
+-- the green ▶ arrow (the picked mock's toggle); clicking it slides the STAMP CARD plate out — green
+-- spine, one dark capsule per quest (gold ring + CLAIM when finished), purple all-3 bonus meter.
+-- Auto-opens once whenever a claim becomes ready. Server: QuestSync / QuestClaim.
+-- =====================================================================================================
+do
+	local QuestSyncR = remotes:WaitForChild("QuestSync")
+	local QuestClaimR = remotes:WaitForChild("QuestClaim")
+	local TS = game:GetService("TweenService")
+	local QGOLD = Color3.fromRGB(230, 180, 76)
+	local PANEL_X_OPEN, PANEL_X_CLOSED = 64, -330
+
+	local Q = { open = false, data = nil, deadline = 0, autoArmed = true } -- one table (200-local ceiling)
+
+	Q.gui = Instance.new("ScreenGui")
+	Q.gui.Name = "LobbyQuests"
+	Q.gui.ResetOnSpawn = false
+	Q.gui.IgnoreGuiInset = true
+	Q.gui.DisplayOrder = 12
+	Q.gui.Parent = playerGui
+	lattach(Q.gui)
+
+	Q.text = function(parent, str, size, colr) -- sticker text (the shop's helper is scoped to its block)
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.FontFace = TITLE_FACE
+		l.TextSize = size
+		l.TextColor3 = colr or Color3.new(1, 1, 1)
+		l.Text = str
+		l.ZIndex = 5
+		local st = Instance.new("UIStroke")
+		st.Color = TBLACK
+		st.Thickness = math.clamp(size / 8, 2, 3)
+		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		st.Parent = l
+		l.Parent = parent
+		return l
+	end
+
+	-- THE RAIL — the collapsed tab: dark, vertical QUESTS, red badge, green arrow. Left corners hide
+	-- offscreen so only the right edge reads as rounded (the mock's bookmark silhouette).
+	Q.rail = Instance.new("TextButton")
+	Q.rail.Name = "QuestRail"
+	Q.rail.AnchorPoint = Vector2.new(0, 0.5)
+	Q.rail.Position = UDim2.new(0, -12, 0.5, 0)
+	Q.rail.Size = UDim2.fromOffset(50, 190)
+	Q.rail.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
+	Q.rail.BackgroundTransparency = 0.08
+	Q.rail.BorderSizePixel = 0
+	Q.rail.AutoButtonColor = false
+	Q.rail.Text = ""
+	Q.rail.Parent = Q.gui
+	corner(Q.rail, 12)
+	ledge(Q.rail, TBLACK, 3)
+	do
+		local vt = Q.text(Q.rail, "QUESTS", 15, Color3.fromRGB(217, 247, 184))
+		vt.AnchorPoint = Vector2.new(0.5, 0.5)
+		vt.Position = UDim2.new(0.5, 7, 0.5, 0)
+		vt.Size = UDim2.fromOffset(150, 20)
+		vt.Rotation = -90
+	end
+	Q.arrow = Q.text(Q.rail, "▶", 15, ACCENT)
+	Q.arrow.AnchorPoint = Vector2.new(0.5, 0.5)
+	Q.arrow.Position = UDim2.new(1, 16, 0.5, 0)
+	Q.arrow.Size = UDim2.fromOffset(20, 20)
+	Q.badge = Instance.new("Frame")
+	Q.badge.AnchorPoint = Vector2.new(1, 0)
+	Q.badge.Position = UDim2.new(1, 8, 0, -8)
+	Q.badge.Size = UDim2.fromOffset(24, 24)
+	Q.badge.BackgroundColor3 = Color3.fromRGB(224, 28, 14)
+	Q.badge.BorderSizePixel = 0
+	Q.badge.Visible = false
+	Q.badge.ZIndex = 6
+	Q.badge.Parent = Q.rail
+	do
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = Q.badge
+		local rim = Instance.new("UIStroke")
+		rim.Color = Color3.new(1, 1, 1)
+		rim.Transparency = 0.15
+		rim.Thickness = 1.5
+		rim.Parent = Q.badge
+	end
+	Q.badgeN = Q.text(Q.badge, "1", 13)
+	Q.badgeN.Size = UDim2.fromScale(1, 1)
+	Q.badgeN.ZIndex = 7
+	Q.badgeScale = Instance.new("UIScale")
+	Q.badgeScale.Parent = Q.badge
+	task.spawn(function() -- heartbeat while a claim is waiting
+		while true do
+			task.wait(1.1)
+			if Q.badge.Visible then
+				TS:Create(Q.badgeScale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ Scale = 1.3 }):Play()
+				task.wait(0.16)
+				TS:Create(Q.badgeScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+					{ Scale = 1 }):Play()
+			end
+		end
+	end)
+	do -- rail hover/press juice (same feel as the dock)
+		local sc = Instance.new("UIScale")
+		sc.Parent = Q.rail
+		local function to(v, t, style)
+			TS:Create(sc, TweenInfo.new(t, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Scale = v }):Play()
+		end
+		Q.rail.MouseEnter:Connect(function() to(1.05, 0.09) end)
+		Q.rail.MouseLeave:Connect(function() to(1, 0.09) end)
+		Q.rail.MouseButton1Down:Connect(function() to(0.94, 0.05) end)
+		Q.rail.MouseButton1Up:Connect(function() to(1.05, 0.14, Enum.EasingStyle.Back) end)
+	end
+
+	-- THE PLATE — the stamp card that slides out.
+	Q.panel = Instance.new("Frame")
+	Q.panel.Name = "QuestPlate"
+	Q.panel.AnchorPoint = Vector2.new(0, 0.5)
+	Q.panel.Position = UDim2.new(0, PANEL_X_CLOSED, 0.5, 0)
+	Q.panel.Size = UDim2.new(0, 296, 0, 0)
+	Q.panel.AutomaticSize = Enum.AutomaticSize.Y
+	Q.panel.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
+	Q.panel.BackgroundTransparency = 0.06
+	Q.panel.BorderSizePixel = 0
+	Q.panel.Visible = false
+	Q.panel.Parent = Q.gui
+	corner(Q.panel, 12)
+	ledge(Q.panel, TBLACK, 3)
+	do -- the green spine down the plate's left side
+		local spine = Instance.new("Frame")
+		spine.Position = UDim2.fromOffset(3, 3)
+		spine.Size = UDim2.new(0, 7, 1, -6)
+		spine.BorderSizePixel = 0
+		spine.BackgroundColor3 = Color3.new(1, 1, 1)
+		spine.ZIndex = 2
+		spine.Parent = Q.panel
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, 4)
+		c.Parent = spine
+		local g = Instance.new("UIGradient")
+		g.Color = ColorSequence.new(Color3.fromRGB(164, 222, 98), Color3.fromRGB(75, 140, 23))
+		g.Rotation = 90
+		g.Parent = spine
+	end
+	do
+		local pad = Instance.new("UIPadding")
+		pad.PaddingLeft = UDim.new(0, 20)
+		pad.PaddingRight = UDim.new(0, 12)
+		pad.PaddingTop = UDim.new(0, 10)
+		pad.PaddingBottom = UDim.new(0, 12)
+		pad.Parent = Q.panel
+		local ll = Instance.new("UIListLayout")
+		ll.Padding = UDim.new(0, 8)
+		ll.SortOrder = Enum.SortOrder.LayoutOrder
+		ll.Parent = Q.panel
+	end
+	do -- header row: title + reset chip
+		local hdr = Instance.new("Frame")
+		hdr.LayoutOrder = 1
+		hdr.Size = UDim2.new(1, 0, 0, 24)
+		hdr.BackgroundTransparency = 1
+		hdr.Parent = Q.panel
+		local t = Q.text(hdr, "DAILY QUESTS", 16)
+		t.Position = UDim2.new(0, 0, 0, 0)
+		t.Size = UDim2.fromOffset(160, 24)
+		t.TextXAlignment = Enum.TextXAlignment.Left
+		local chip = Instance.new("Frame")
+		chip.AnchorPoint = Vector2.new(1, 0.5)
+		chip.Position = UDim2.new(1, 0, 0.5, 0)
+		chip.Size = UDim2.fromOffset(96, 20)
+		chip.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		chip.BackgroundTransparency = 0.93
+		chip.BorderSizePixel = 0
+		chip.Parent = hdr
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(1, 0)
+		cc.Parent = chip
+		Q.resetLbl = Instance.new("TextLabel")
+		Q.resetLbl.Size = UDim2.fromScale(1, 1)
+		Q.resetLbl.BackgroundTransparency = 1
+		Q.resetLbl.FontFace = BODYB_FACE
+		Q.resetLbl.TextSize = 10
+		Q.resetLbl.TextColor3 = DIMTEXT
+		Q.resetLbl.Text = ""
+		Q.resetLbl.Parent = chip
+	end
+	do -- the purple all-3 bonus meter (bottom)
+		local row = Instance.new("Frame")
+		row.LayoutOrder = 99
+		row.Size = UDim2.new(1, 0, 0, 22)
+		row.BackgroundTransparency = 1
+		row.Parent = Q.panel
+		local gift = Q.text(row, "🎁", 14)
+		gift.Position = UDim2.fromOffset(0, 0)
+		gift.Size = UDim2.fromOffset(20, 22)
+		local tk = Instance.new("Frame")
+		tk.Position = UDim2.fromOffset(26, 6)
+		tk.Size = UDim2.new(1, -156, 0, 10)
+		tk.BackgroundColor3 = Color3.fromRGB(36, 31, 46)
+		tk.BorderSizePixel = 0
+		tk.Parent = row
+		local tc = Instance.new("UICorner")
+		tc.CornerRadius = UDim.new(1, 0)
+		tc.Parent = tk
+		ledge(tk, TBLACK, 1.5)
+		Q.bonusFill = Instance.new("Frame")
+		Q.bonusFill.Size = UDim2.new(0, 0, 1, 0)
+		Q.bonusFill.BackgroundColor3 = Color3.new(1, 1, 1)
+		Q.bonusFill.BorderSizePixel = 0
+		Q.bonusFill.Parent = tk
+		local fc = Instance.new("UICorner")
+		fc.CornerRadius = UDim.new(1, 0)
+		fc.Parent = Q.bonusFill
+		local fg = Instance.new("UIGradient")
+		fg.Color = ColorSequence.new(Color3.fromRGB(122, 43, 216), Color3.fromRGB(201, 59, 240))
+		fg.Parent = Q.bonusFill
+		Q.bonusLbl = Instance.new("TextLabel")
+		Q.bonusLbl.AnchorPoint = Vector2.new(1, 0)
+		Q.bonusLbl.Position = UDim2.new(1, 0, 0, 0)
+		Q.bonusLbl.Size = UDim2.fromOffset(124, 22)
+		Q.bonusLbl.BackgroundTransparency = 1
+		Q.bonusLbl.FontFace = BODYB_FACE
+		Q.bonusLbl.TextSize = 10
+		Q.bonusLbl.TextColor3 = Color3.fromRGB(230, 217, 251)
+		Q.bonusLbl.TextXAlignment = Enum.TextXAlignment.Right
+		Q.bonusLbl.Text = "ALL 3 → RARE CRATE"
+		Q.bonusLbl.Parent = row
+	end
+
+	-- Open/close: the plate slides, the arrow flips. (The rail stays put — it's the handle.)
+	Q.setOpen = function(on)
+		if Q.open == on then
+			return
+		end
+		Q.open = on
+		lplay(on and "Open" or "Close")
+		Q.panel.Visible = true
+		TS:Create(Q.panel,
+			TweenInfo.new(on and 0.3 or 0.18, on and Enum.EasingStyle.Back or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Position = UDim2.new(0, on and PANEL_X_OPEN or PANEL_X_CLOSED, 0.5, 0) }):Play()
+		TS:Create(Q.arrow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Rotation = on and 180 or 0 }):Play()
+		if not on then
+			task.delay(0.2, function()
+				if not Q.open then
+					Q.panel.Visible = false
+				end
+			end)
+		end
+	end
+	Q.rail.Activated:Connect(function()
+		Q.setOpen(not Q.open)
+	end)
+
+	Q.render = function()
+		local d = Q.data
+		if not d or typeof(d.list) ~= "table" then
+			return
+		end
+		for _, c in Q.panel:GetChildren() do
+			if c:GetAttribute("QuestRow") then
+				c:Destroy()
+			end
+		end
+		local ready, claimedN = 0, 0
+		for i, e in ipairs(d.list) do
+			local done = (e.prog or 0) >= (e.goal or 1)
+			local claimable = done and not e.claimed
+			if claimable then
+				ready += 1
+			end
+			if e.claimed then
+				claimedN += 1
+			end
+			local cap = Instance.new("Frame")
+			cap:SetAttribute("QuestRow", true)
+			cap.LayoutOrder = 10 + i
+			cap.Size = UDim2.new(1, 0, 0, e.claimed and 44 or (claimable and 68 or 58))
+			cap.BackgroundColor3 = Color3.fromRGB(28, 31, 22)
+			cap.BorderSizePixel = 0
+			cap.Parent = Q.panel
+			corner(cap, 10)
+			ledge(cap, claimable and QGOLD or TBLACK, claimable and 2.5 or 2)
+			local nm = Q.text(cap, e.name, 13)
+			nm.Position = UDim2.fromOffset(11, 7)
+			nm.Size = UDim2.new(1, -100, 0, 16)
+			nm.TextXAlignment = Enum.TextXAlignment.Left
+			nm.TextTruncate = Enum.TextTruncate.AtEnd
+			if (e.coins or 0) > 0 and not e.claimed then -- reward chip: drawn coin + amount
+				local disc = Instance.new("Frame")
+				disc.AnchorPoint = Vector2.new(1, 0)
+				disc.Position = UDim2.new(1, -46, 0, 9)
+				disc.Size = UDim2.fromOffset(13, 13)
+				disc.BackgroundColor3 = GOLD
+				disc.BorderSizePixel = 0
+				disc.ZIndex = 5
+				disc.Parent = cap
+				local dc = Instance.new("UICorner")
+				dc.CornerRadius = UDim.new(1, 0)
+				dc.Parent = disc
+				ledge(disc, TBLACK, 1.5)
+				local amt = Q.text(cap, fmt(e.coins), 12, Color3.fromRGB(255, 213, 122))
+				amt.AnchorPoint = Vector2.new(1, 0)
+				amt.Position = UDim2.new(1, -8, 0, 8)
+				amt.Size = UDim2.fromOffset(36, 15)
+				amt.TextXAlignment = Enum.TextXAlignment.Right
+			end
+			if e.claimed then
+				local tick = Instance.new("Frame")
+				tick.Position = UDim2.fromOffset(11, 25)
+				tick.Size = UDim2.fromOffset(15, 15)
+				tick.BackgroundColor3 = Color3.fromRGB(63, 122, 26)
+				tick.BorderSizePixel = 0
+				tick.Parent = cap
+				local tc2 = Instance.new("UICorner")
+				tc2.CornerRadius = UDim.new(1, 0)
+				tc2.Parent = tick
+				ledge(tick, TBLACK, 1.5)
+				local tl = Q.text(tick, "✓", 9)
+				tl.Size = UDim2.fromScale(1, 1)
+				local cl = Instance.new("TextLabel")
+				cl.Position = UDim2.fromOffset(32, 24)
+				cl.Size = UDim2.fromOffset(120, 16)
+				cl.BackgroundTransparency = 1
+				cl.FontFace = BODYB_FACE
+				cl.TextSize = 11
+				cl.TextColor3 = DIMTEXT
+				cl.TextXAlignment = Enum.TextXAlignment.Left
+				cl.Text = "CLAIMED"
+				cl.Parent = cap
+			elseif claimable then
+				local btn = Instance.new("TextButton")
+				btn.Position = UDim2.fromOffset(11, 29)
+				btn.Size = UDim2.new(1, -22, 0, 30)
+				btn.BorderSizePixel = 0
+				btn.AutoButtonColor = false
+				btn.Text = ""
+				btn.ZIndex = 4
+				btn.Parent = cap
+				corner(btn, 8)
+				do
+					local g = Instance.new("UIGradient")
+					btn.BackgroundColor3 = Color3.new(1, 1, 1)
+					g.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromRGB(251, 233, 182)),
+						ColorSequenceKeypoint.new(0.45, Color3.fromRGB(230, 180, 76)),
+						ColorSequenceKeypoint.new(1, Color3.fromRGB(168, 122, 30)),
+					})
+					g.Rotation = 90
+					g.Parent = btn
+				end
+				ledge(btn, TBLACK, 2.5)
+				local bl = Q.text(btn, "CLAIM ✦", 14)
+				bl.Size = UDim2.fromScale(1, 1)
+				bl.ZIndex = 5
+				local sc = Instance.new("UIScale")
+				sc.Parent = btn
+				btn.MouseEnter:Connect(function()
+					TS:Create(sc, TweenInfo.new(0.09), { Scale = 1.04 }):Play()
+				end)
+				btn.MouseLeave:Connect(function()
+					TS:Create(sc, TweenInfo.new(0.09), { Scale = 1 }):Play()
+				end)
+				btn.MouseButton1Down:Connect(function()
+					TS:Create(sc, TweenInfo.new(0.05), { Scale = 0.93 }):Play()
+				end)
+				btn.Activated:Connect(function()
+					lplay("Buy")
+					QuestClaimR:FireServer({ i = i })
+				end)
+			else
+				local tk = Instance.new("Frame")
+				tk.Position = UDim2.fromOffset(11, 32)
+				tk.Size = UDim2.new(1, -22, 0, 14)
+				tk.BackgroundColor3 = Color3.fromRGB(36, 41, 28)
+				tk.BorderSizePixel = 0
+				tk.Parent = cap
+				local kc = Instance.new("UICorner")
+				kc.CornerRadius = UDim.new(1, 0)
+				kc.Parent = tk
+				ledge(tk, TBLACK, 1.5)
+				local fill = Instance.new("Frame")
+				fill.Size = UDim2.new(math.clamp((e.prog or 0) / math.max(e.goal or 1, 1), 0, 1), 0, 1, 0)
+				fill.BackgroundColor3 = Color3.new(1, 1, 1)
+				fill.BorderSizePixel = 0
+				fill.Parent = tk
+				local fc2 = Instance.new("UICorner")
+				fc2.CornerRadius = UDim.new(1, 0)
+				fc2.Parent = fill
+				local fg2 = Instance.new("UIGradient")
+				fg2.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(192, 243, 127)),
+					ColorSequenceKeypoint.new(0.55, Color3.fromRGB(124, 219, 35)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(84, 148, 26)),
+				})
+				fg2.Rotation = 90
+				fg2.Parent = fill
+				local num = Instance.new("TextLabel")
+				num.Size = UDim2.fromScale(1, 1)
+				num.BackgroundTransparency = 1
+				num.FontFace = BODYB_FACE
+				num.TextSize = 10
+				num.TextColor3 = TEXTCOL
+				num.ZIndex = 3
+				num.Text = fmt(e.prog or 0) .. " / " .. fmt(e.goal or 0)
+				num.Parent = tk
+				local ns = Instance.new("UIStroke")
+				ns.Color = TBLACK
+				ns.Thickness = 1.5
+				ns.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+				ns.Parent = num
+			end
+		end
+		-- badge + bonus meter + the once-per-readiness auto-open
+		Q.badge.Visible = ready > 0
+		Q.badgeN.Text = tostring(ready)
+		Q.bonusFill.Size = UDim2.new(claimedN / math.max(#d.list, 1), 0, 1, 0)
+		if d.bonusDone then
+			Q.bonusLbl.Text = "BONUS CLAIMED ✓"
+			Q.bonusLbl.TextColor3 = Color3.fromRGB(155, 226, 74)
+		else
+			Q.bonusLbl.Text = ("ALL %d → %s CRATE"):format(#d.list, tostring(d.bonusCase or "rare"):upper())
+			Q.bonusLbl.TextColor3 = Color3.fromRGB(230, 217, 251)
+		end
+		if ready > 0 and Q.autoArmed then
+			Q.autoArmed = false -- open ONCE per "something became claimable", not every sync
+			Q.setOpen(true)
+		elseif ready == 0 then
+			Q.autoArmed = true
+		end
+	end
+
+	QuestSyncR.OnClientEvent:Connect(function(d)
+		if typeof(d) ~= "table" then
+			return
+		end
+		Q.data = d
+		Q.deadline = os.clock() + (tonumber(d.resetIn) or 0)
+		Q.render()
+	end)
+	task.spawn(function() -- the NEW IN hh:mm:ss chip ticks while the plate is out
+		while true do
+			task.wait(1)
+			if Q.panel.Visible and Q.resetLbl then
+				local left = math.max(0, Q.deadline - os.clock())
+				Q.resetLbl.Text = ("NEW IN %02d:%02d:%02d"):format(
+					math.floor(left / 3600), math.floor(left / 60) % 60, math.floor(left) % 60)
+			end
+		end
+	end)
+	QuestSyncR:FireServer() -- pull the board (join-race safe, same trick as InvRequest)
 end
 
 -- ===== ACCOUNT LEVEL / XP BAR ===== (bottom-center: level, progress, and the NEXT gun you'll unlock) ====
