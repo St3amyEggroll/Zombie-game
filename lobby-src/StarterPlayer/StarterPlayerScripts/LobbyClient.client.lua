@@ -4146,34 +4146,27 @@ do
 	-- CHANGED: the dock's Settings button IS the toggle now (the floating corner gear is gone).
 	local gear = dockBtns.settings
 
-	local sPanel = Instance.new("Frame")
-	sPanel.AnchorPoint = Vector2.new(1, 1); sPanel.Position = UDim2.new(1, -12, 1, -68)
-	sPanel.Size = UDim2.fromOffset(340, 312); sPanel.BackgroundColor3 = PANEL; sPanel.BackgroundTransparency = 0.12
-	sPanel.BorderSizePixel = 0; sPanel.Visible = false; sPanel.Parent = setGui
-	corner(sPanel, 8); lstuds(sPanel); ldepth(sPanel); ledge(sPanel, TBLACK, 3); ledge(sPanel, HEADER_COLORS.settings, 2.5, 0.05)
-
-	headerBar(sPanel, 48, HEADER_COLORS.settings)
-	local sTitle = Instance.new("TextLabel")
-	sTitle.Position = UDim2.fromOffset(18, 0); sTitle.Size = UDim2.fromOffset(200, 44); sTitle.BackgroundTransparency = 1
-	sTitle.FontFace = TITLE_FACE; sTitle.TextSize = 22; sTitle.TextXAlignment = Enum.TextXAlignment.Left
-	sTitle.TextColor3 = TEXTCOL; sTitle.Text = "SETTINGS"; sTitle.Parent = sPanel
-
-	local sClose = redX(sPanel, 44, 20)
-	sClose.Position = UDim2.new(1, -6, 0, 6)
+	-- CHANGED: dead-center chrome panel (the same modern header-bar assembly as WEAPONS/the shop)
+	-- instead of the old bottom-right card.
+	local sRoot, sPanel, _, sClose = chromePanel(setGui, 460, 316, HEADER_COLORS.settings, "SETTINGS")
+	sPanel.Visible = false
+	sPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+		sRoot.Visible = sPanel.Visible
+	end)
 
 	local function sliderRow(y, labelText, get, set)
 		local label = Instance.new("TextLabel")
-		label.Position = UDim2.fromOffset(18, y); label.Size = UDim2.fromOffset(120, 18); label.BackgroundTransparency = 1
+		label.Position = UDim2.fromOffset(24, y); label.Size = UDim2.fromOffset(120, 18); label.BackgroundTransparency = 1
 		label.FontFace = BODYB_FACE; label.TextSize = 15; label.TextXAlignment = Enum.TextXAlignment.Left
 		label.TextColor3 = DIMTEXT; label.Text = labelText; label.Parent = sPanel
 
 		local pct = Instance.new("TextLabel")
-		pct.AnchorPoint = Vector2.new(1, 0); pct.Position = UDim2.new(1, -18, 0, y); pct.Size = UDim2.fromOffset(60, 18)
+		pct.AnchorPoint = Vector2.new(1, 0); pct.Position = UDim2.new(1, -24, 0, y); pct.Size = UDim2.fromOffset(60, 18)
 		pct.BackgroundTransparency = 1; pct.FontFace = BODYB_FACE; pct.TextSize = 15
 		pct.TextXAlignment = Enum.TextXAlignment.Right; pct.TextColor3 = TEXTCOL; pct.Parent = sPanel
 
 		local track = Instance.new("TextButton")
-		track.Position = UDim2.fromOffset(18, y + 24); track.Size = UDim2.new(1, -36, 0, 14)
+		track.Position = UDim2.fromOffset(24, y + 24); track.Size = UDim2.new(1, -48, 0, 14)
 		track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Text = ""; track.AutoButtonColor = false
 		track:SetAttribute("NoClickSound", true); track.Parent = sPanel
 		corner(track, 7); ledge(track, TBLACK, 1.5)
@@ -4226,12 +4219,12 @@ do
 	-- On/off pill toggle (label + a sliding switch). get()/set(bool).
 	local function toggleRow(y, labelText, get, set)
 		local label = Instance.new("TextLabel")
-		label.Position = UDim2.fromOffset(18, y); label.Size = UDim2.fromOffset(180, 26); label.BackgroundTransparency = 1
+		label.Position = UDim2.fromOffset(24, y); label.Size = UDim2.fromOffset(180, 26); label.BackgroundTransparency = 1
 		label.FontFace = BODYB_FACE; label.TextSize = 15; label.TextXAlignment = Enum.TextXAlignment.Left
 		label.TextColor3 = DIMTEXT; label.Text = labelText; label.Parent = sPanel
 
 		local sw = Instance.new("TextButton")
-		sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -18, 0, y + 13); sw.Size = UDim2.fromOffset(64, 30)
+		sw.AnchorPoint = Vector2.new(1, 0.5); sw.Position = UDim2.new(1, -24, 0, y + 13); sw.Size = UDim2.fromOffset(64, 30)
 		sw.BorderSizePixel = 0; sw.Text = ""; sw.AutoButtonColor = false
 		sw:SetAttribute("NoClickSound", true); sw.Parent = sPanel
 		corner(sw, 15); ledge(sw, TBLACK, 2)
@@ -4254,11 +4247,11 @@ do
 	end
 
 	local SetShake = remotes:WaitForChild("SetShake")
-	local renders = {
-		sliderRow(58, "MASTER", function() return volMaster end, function(v) volMaster = v end),
-		sliderRow(120, "MUSIC", function() return volMusic end, function(v) volMusic = v end),
-		sliderRow(182, "SFX", function() return volSfx end, function(v) volSfx = v end),
-		toggleRow(244, "CAMERA SHAKE", function()
+	local renders = { -- CHANGED: ys retuned for the chrome body (no in-panel header anymore)
+		sliderRow(34, "MASTER", function() return volMaster end, function(v) volMaster = v end),
+		sliderRow(100, "MUSIC", function() return volMusic end, function(v) volMusic = v end),
+		sliderRow(166, "SFX", function() return volSfx end, function(v) volSfx = v end),
+		toggleRow(232, "CAMERA SHAKE", function()
 			return localPlayer:GetAttribute("ShakeOff") ~= true
 		end, function(v)
 			localPlayer:SetAttribute("ShakeOff", not v)
