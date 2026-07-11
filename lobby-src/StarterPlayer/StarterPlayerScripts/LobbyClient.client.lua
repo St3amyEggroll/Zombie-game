@@ -1035,7 +1035,9 @@ do
 		local ncon = Instance.new("UITextSizeConstraint"); ncon.MaxTextSize = 14; ncon.Parent = nmp
 		slots[i] = { frame = f, name = nmp, vp = nil, vpId = nil }
 	end
+	local lastSnap, retryArmed, vpRetries = nil, false, 0
 	local function renderRow(snap)
+		lastSnap = snap
 		for i = 1, 2 do
 			local sl = slots[i]
 			local id = snap.loadout and snap.loadout[i]
@@ -1054,8 +1056,17 @@ do
 						vp.AnchorPoint = Vector2.new(0.5, 0); vp.Position = UDim2.new(0.5, 0, 0, 2)
 						vp.Size = UDim2.new(1, -8, 1, -32); vp.ZIndex = 2; vp.Parent = sl.frame
 						sl.vp = vp
+						sl.vpId = id
+					elseif vpRetries < 30 and not retryArmed then
+						-- CHANGED: no model YET (GunDisplay replicates after the first join snapshot) —
+						-- retry instead of stamping the slot done with an empty well.
+						retryArmed = true
+						vpRetries += 1
+						task.delay(1, function()
+							retryArmed = false
+							if lastSnap then renderRow(lastSnap) end
+						end)
 					end
-					sl.vpId = id
 				end
 				sl.name.Text = w.name
 			else
@@ -4356,9 +4367,9 @@ do
 	xpGui.Parent = playerGui
 	lattach(xpGui)
 
-	-- CHANGED: mid-LEFT now (V2-A), tucked right under the coins pill.
+	-- CHANGED: bottom-RIGHT (mid-left was in the way; daily quests take that spot next).
 	local bar = Instance.new("Frame")
-	bar.AnchorPoint = Vector2.new(0, 0.5); bar.Position = UDim2.new(0, 16, 0.5, 30); bar.Size = UDim2.fromOffset(400, 72)
+	bar.AnchorPoint = Vector2.new(1, 1); bar.Position = UDim2.new(1, -16, 1, -12); bar.Size = UDim2.fromOffset(400, 72)
 	bar.BackgroundColor3 = PANEL; bar.BackgroundTransparency = 0.15; bar.BorderSizePixel = 0; bar.Parent = xpGui
 	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3); ledge(bar, ACCENT, 2, 0.35)
 
