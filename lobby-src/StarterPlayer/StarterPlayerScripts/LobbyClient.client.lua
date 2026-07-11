@@ -617,14 +617,20 @@ gui.Parent = playerGui
 lattach(gui)
 
 -- Coins: a dark rounded pill BOTTOM-LEFT, coin icon + gold number. Auto-sizes to the number.
--- (Mid-left is reserved for the upcoming daily-quests panel.)
+-- CHANGED: lives in its OWN ScreenGui above every ambient layer — it kept getting washed out by
+-- whatever translucent layer happened to draw after it. Nothing sits on the coins anymore, period.
 local COIN_ICON_ID = "rbxassetid://84729396970772"
+local coinsGui = Instance.new("ScreenGui")
+coinsGui.Name = "LobbyCoins"; coinsGui.ResetOnSpawn = false; coinsGui.IgnoreGuiInset = true
+coinsGui.DisplayOrder = 25 -- above HUD(10)/dock(11)/panels(12), below toasts(40)/warnings(90)
+coinsGui.Parent = playerGui
+lattach(coinsGui)
 local coinsRow = Instance.new("Frame")
 coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -12)
 coinsRow.Size = UDim2.fromOffset(0, 54); coinsRow.AutomaticSize = Enum.AutomaticSize.X
-coinsRow.BackgroundColor3 = Color3.fromRGB(24, 22, 30); coinsRow.BackgroundTransparency = 0.1
-coinsRow.BorderSizePixel = 0; coinsRow.ZIndex = 2; coinsRow.Parent = gui -- ZIndex 2: over the dock fade
-corner(coinsRow, 27); ledge(coinsRow, Color3.new(1, 1, 1), 1.5, 0.7)
+coinsRow.BackgroundColor3 = Color3.fromRGB(19, 20, 15); coinsRow.BackgroundTransparency = 0.05
+coinsRow.BorderSizePixel = 0; coinsRow.Parent = coinsGui
+corner(coinsRow, 27); ledge(coinsRow, TBLACK, 3); ledge(coinsRow, Color3.new(1, 1, 1), 1.5, 0.75)
 local coinPad = Instance.new("UIPadding")
 coinPad.PaddingLeft = UDim.new(0, 6); coinPad.PaddingRight = UDim.new(0, 18)
 coinPad.Parent = coinsRow
@@ -4389,6 +4395,7 @@ do
 	local QuestClaimR = remotes:WaitForChild("QuestClaim")
 	local TS = game:GetService("TweenService")
 	local QGOLD = Color3.fromRGB(230, 180, 76)
+	local QICON = { kills = "🧟", wave = "🌊", money = "🪙", runs = "🎮", wins = "🏆", crates = "📦" }
 	local PANEL_X_OPEN, PANEL_X_CLOSED = 64, -330
 
 	local Q = { open = false, data = nil, deadline = 0, autoArmed = true } -- one table (200-local ceiling)
@@ -4508,30 +4515,15 @@ do
 	Q.panel.Parent = Q.gui
 	corner(Q.panel, 12)
 	ledge(Q.panel, TBLACK, 3)
-	do -- the green spine down the plate's left side (absolute — NOT part of the content stack)
-		local spine = Instance.new("Frame")
-		spine.Position = UDim2.fromOffset(3, 3)
-		spine.Size = UDim2.new(0, 7, 1, -6)
-		spine.BorderSizePixel = 0
-		spine.BackgroundColor3 = Color3.new(1, 1, 1)
-		spine.ZIndex = 2
-		spine.Parent = Q.panel
-		local c = Instance.new("UICorner")
-		c.CornerRadius = UDim.new(0, 4)
-		c.Parent = spine
-		local g = Instance.new("UIGradient")
-		g.Color = ColorSequence.new(Color3.fromRGB(164, 222, 98), Color3.fromRGB(75, 140, 23))
-		g.Rotation = 90
-		g.Parent = spine
-	end
-	-- All rows stack inside THIS frame; the spine stays outside the layout.
+	-- All rows stack inside THIS frame (the header band above is absolute).
 	Q.body = Instance.new("Frame")
-	Q.body.Size = UDim2.fromScale(1, 1)
+	Q.body.Position = UDim2.fromOffset(0, 38)
+	Q.body.Size = UDim2.new(1, 0, 1, -38)
 	Q.body.BackgroundTransparency = 1
 	Q.body.Parent = Q.panel
 	do
 		local pad = Instance.new("UIPadding")
-		pad.PaddingLeft = UDim.new(0, 20)
+		pad.PaddingLeft = UDim.new(0, 12)
 		pad.PaddingRight = UDim.new(0, 12)
 		pad.PaddingTop = UDim.new(0, 10)
 		pad.PaddingBottom = UDim.new(0, 12)
@@ -4541,28 +4533,57 @@ do
 		ll.SortOrder = Enum.SortOrder.LayoutOrder
 		ll.Parent = Q.body
 	end
-	do -- header row: title + reset chip
-		local hdr = Instance.new("Frame")
-		hdr.LayoutOrder = 1
-		hdr.Size = UDim2.new(1, 0, 0, 24)
-		hdr.BackgroundTransparency = 1
-		hdr.Parent = Q.body
-		local t = Q.text(hdr, "DAILY QUESTS", 17)
-		t.Position = UDim2.new(0, 0, 0, 0)
-		t.Size = UDim2.fromOffset(160, 24)
+	do -- CHANGED: real chrome — a green gradient header BAND across the plate's top (the flat green
+		-- side-bar read as an unfinished placeholder), title on the band, timer chip in its right end.
+		local band = Instance.new("Frame")
+		band.Size = UDim2.new(1, 0, 0, 38)
+		band.BackgroundColor3 = Color3.new(1, 1, 1)
+		band.BorderSizePixel = 0
+		band.ZIndex = 3
+		band.Parent = Q.panel
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(0, 12)
+		bc.Parent = band
+		local bg = Instance.new("UIGradient")
+		bg.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(164, 222, 98)),
+			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(100, 178, 40)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(64, 118, 22)),
+		})
+		bg.Rotation = 90
+		bg.Parent = band
+		local squareOff = Instance.new("Frame") -- square off the band's bottom corners
+		squareOff.AnchorPoint = Vector2.new(0, 1)
+		squareOff.Position = UDim2.new(0, 0, 1, 0)
+		squareOff.Size = UDim2.new(1, 0, 0, 12)
+		squareOff.BackgroundColor3 = Color3.fromRGB(80, 143, 28)
+		squareOff.BorderSizePixel = 0
+		squareOff.ZIndex = 3
+		squareOff.Parent = band
+		local seam = Instance.new("Frame") -- black seam under the band, same as the shop chrome
+		seam.AnchorPoint = Vector2.new(0, 1)
+		seam.Position = UDim2.new(0, 0, 1, 0)
+		seam.Size = UDim2.new(1, 0, 0, 2.5)
+		seam.BackgroundColor3 = TBLACK
+		seam.BorderSizePixel = 0
+		seam.ZIndex = 4
+		seam.Parent = band
+		local t = Q.text(band, "DAILY QUESTS", 17)
+		t.Position = UDim2.fromOffset(12, 0)
+		t.Size = UDim2.fromOffset(160, 36)
 		t.TextXAlignment = Enum.TextXAlignment.Left
-		local chip = Instance.new("Frame") -- dark timer chip, same family as the shop's GONE IN chip
+		t.ZIndex = 5
+		local chip = Instance.new("Frame") -- dark timer chip riding the band's right end
 		chip.AnchorPoint = Vector2.new(1, 0.5)
-		chip.Position = UDim2.new(1, 0, 0.5, 0)
+		chip.Position = UDim2.new(1, -10, 0.5, -1)
 		chip.Size = UDim2.fromOffset(100, 20)
 		chip.BackgroundColor3 = Color3.fromRGB(10, 11, 8)
-		chip.BackgroundTransparency = 0.15
 		chip.BorderSizePixel = 0
-		chip.Parent = hdr
+		chip.ZIndex = 5
+		chip.Parent = band
 		local cc = Instance.new("UICorner")
 		cc.CornerRadius = UDim.new(1, 0)
 		cc.Parent = chip
-		ledge(chip, Color3.new(1, 1, 1), 1.5, 0.8)
 		Q.resetLbl = Instance.new("TextLabel")
 		Q.resetLbl.Size = UDim2.fromScale(1, 1)
 		Q.resetLbl.BackgroundTransparency = 1
@@ -4570,6 +4591,7 @@ do
 		Q.resetLbl.TextSize = 10
 		Q.resetLbl.TextColor3 = Color3.fromRGB(255, 213, 122)
 		Q.resetLbl.Text = ""
+		Q.resetLbl.ZIndex = 6
 		Q.resetLbl.Parent = chip
 	end
 	do -- the purple all-3 bonus meter (bottom)
@@ -4656,7 +4678,7 @@ do
 			end
 		end
 		local ready, claimedN = 0, 0
-		local contentH = 10 + 24 + 24 + 12 -- top pad + header + bonus row + bottom pad
+		local contentH = 38 + 10 + 24 + 12 -- header band + top pad + bonus row + bottom pad
 		for i, e in ipairs(d.list) do
 			local done = (e.prog or 0) >= (e.goal or 1)
 			local claimable = done and not e.claimed
@@ -4678,9 +4700,34 @@ do
 			corner(cap, 10)
 			ldepth(cap) -- subtle top-light, same depth trick as every panel card
 			ledge(cap, claimable and QGOLD or TBLACK, claimable and 2.5 or 2)
+			do -- the stat's icon in a dark glass circle (the dock's family) on the capsule's left
+				local ic = Instance.new("Frame")
+				ic.AnchorPoint = Vector2.new(0, 0.5)
+				ic.Position = UDim2.new(0, 8, 0.5, 0)
+				ic.Size = UDim2.fromOffset(32, 32)
+				ic.BackgroundColor3 = Color3.new(1, 1, 1)
+				ic.BorderSizePixel = 0
+				ic.ZIndex = 3
+				ic.Parent = cap
+				local icc = Instance.new("UICorner")
+				icc.CornerRadius = UDim.new(1, 0)
+				icc.Parent = ic
+				local ig = Instance.new("UIGradient")
+				ig.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 55, 64)),
+					ColorSequenceKeypoint.new(0.35, Color3.fromRGB(26, 27, 33)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 14, 18)),
+				})
+				ig.Rotation = 90
+				ig.Parent = ic
+				ledge(ic, Color3.new(1, 1, 1), 1.2, 0.85)
+				local em = Q.text(ic, QICON[e.stat] or "⭐", 16)
+				em.Size = UDim2.fromScale(1, 1)
+				em.ZIndex = 4
+			end
 			local nm = Q.text(cap, e.name, 13)
-			nm.Position = UDim2.fromOffset(12, 8)
-			nm.Size = UDim2.new(1, -102, 0, 16)
+			nm.Position = UDim2.fromOffset(48, 8)
+			nm.Size = UDim2.new(1, -138, 0, 16)
 			nm.TextXAlignment = Enum.TextXAlignment.Left
 			nm.TextTruncate = Enum.TextTruncate.AtEnd
 			if (e.coins or 0) > 0 and not e.claimed then -- reward: a proper little pill, not loose bits
@@ -4719,7 +4766,7 @@ do
 			end
 			if e.claimed then
 				local tick = Instance.new("Frame")
-				tick.Position = UDim2.fromOffset(12, 24)
+				tick.Position = UDim2.fromOffset(48, 24)
 				tick.Size = UDim2.fromOffset(15, 15)
 				tick.BackgroundColor3 = Color3.fromRGB(63, 122, 26)
 				tick.BorderSizePixel = 0
@@ -4731,7 +4778,7 @@ do
 				local tl = Q.text(tick, "✓", 9)
 				tl.Size = UDim2.fromScale(1, 1)
 				local cl = Instance.new("TextLabel")
-				cl.Position = UDim2.fromOffset(33, 23)
+				cl.Position = UDim2.fromOffset(69, 23)
 				cl.Size = UDim2.fromOffset(120, 16)
 				cl.BackgroundTransparency = 1
 				cl.FontFace = BODYB_FACE
@@ -4742,8 +4789,8 @@ do
 				cl.Parent = cap
 			elseif claimable then
 				local btn = Instance.new("TextButton")
-				btn.Position = UDim2.fromOffset(12, 30)
-				btn.Size = UDim2.new(1, -24, 0, 29)
+				btn.Position = UDim2.fromOffset(48, 30)
+				btn.Size = UDim2.new(1, -60, 0, 29)
 				btn.BorderSizePixel = 0
 				btn.AutoButtonColor = false
 				btn.Text = ""
@@ -4782,8 +4829,8 @@ do
 				end)
 			else
 				local tk = Instance.new("Frame")
-				tk.Position = UDim2.fromOffset(12, 31)
-				tk.Size = UDim2.new(1, -24, 0, 14)
+				tk.Position = UDim2.fromOffset(48, 31)
+				tk.Size = UDim2.new(1, -60, 0, 14)
 				tk.BackgroundColor3 = Color3.fromRGB(36, 41, 28)
 				tk.BorderSizePixel = 0
 				tk.Parent = cap
@@ -4823,8 +4870,8 @@ do
 				ns.Parent = num
 			end
 		end
-		-- fixed height from the actual rows (+8 = the gap before the bonus row)
-		Q.panel.Size = UDim2.fromOffset(296, contentH + 8)
+		-- fixed height from the actual rows (per-capsule +8 already covers every stack gap)
+		Q.panel.Size = UDim2.fromOffset(296, contentH)
 		-- badge + bonus meter + the once-per-readiness auto-open
 		Q.badge.Visible = ready > 0
 		Q.badgeN.Text = tostring(ready)
@@ -4891,7 +4938,8 @@ do
 	local bar = Instance.new("Frame")
 	bar.AnchorPoint = Vector2.new(1, 1); bar.Position = UDim2.new(1, -16, 1, -12); bar.Size = UDim2.fromOffset(400, 72)
 	bar.BackgroundColor3 = PANEL; bar.BackgroundTransparency = 0.15; bar.BorderSizePixel = 0; bar.Parent = xpGui
-	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3); ledge(bar, ACCENT, 2, 0.35)
+	corner(bar, 8); lstuds(bar); ldepth(bar); ledge(bar, TBLACK, 3)
+	ledge(bar, Color3.fromRGB(196, 200, 190), 2, 0.35) -- CHANGED: light-gray accent ring (was green)
 
 	local lvl = Instance.new("TextLabel")
 	lvl.Position = UDim2.fromOffset(14, 0); lvl.Size = UDim2.fromOffset(96, 72); lvl.BackgroundTransparency = 1

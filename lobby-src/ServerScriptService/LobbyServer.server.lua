@@ -929,6 +929,7 @@ local function questSnapshot(player, prof)
 	for i, d in defs do
 		list[i] = {
 			name = d.name,
+			stat = d.stat, -- the client draws a matching icon chip per quest
 			goal = d.goal,
 			prog = math.min(q.prog[i] or 0, d.goal),
 			coins = d.coins or 0,
