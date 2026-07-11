@@ -1059,7 +1059,7 @@ do
 	local DOCK_ICONS = { -- paste your photo ids here ("rbxassetid://..." or the number). "" = emoji.
 		inventory = "119161862051444",
 		weapons = "102091580612843",
-		daily = "",
+		daily = "85053185478907",
 		shop = "71412141929869",
 		pass = "",
 		settings = "94140673883223",
