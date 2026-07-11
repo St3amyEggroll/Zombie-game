@@ -3153,6 +3153,10 @@ do
 						priceLbl.Text = fmt(info.PriceInRobux)
 						priceLbl.TextSize = 15
 						gem.Visible = true
+					else
+						-- id exists but no price came back (off-sale / lookup hiccup): still buyable,
+						-- never pretend it's unwired
+						priceLbl.Text = "BUY"
 					end
 				end)
 			end
