@@ -1219,57 +1219,73 @@ end
 local gunsBtn = dockBtns.weapons -- keep the old names: everything downstream wires to these
 local casesBtn = dockBtns.inventory
 
--- PLAY — glossy, borderless, above the dock (steps you onto the nearest free party pad).
+-- PLAY — the game place's chunky slab-and-face button (UITheme.Button "primary"), synced by hand:
+-- dark slab with a 5px lip, bright toxic-gradient face with its own black ring, white stencil text,
+-- face slides DOWN onto the slab on press. Steps you onto the nearest free party pad.
 local playBtn = Instance.new("TextButton")
 playBtn.Name = "PlayButton"
 playBtn.AnchorPoint = Vector2.new(0.5, 1)
 playBtn.Position = UDim2.new(0.5, 0, 1, -102)
 playBtn.Size = UDim2.fromOffset(206, 56)
-playBtn.BackgroundColor3 = Color3.new(1, 1, 1)
 playBtn.BorderSizePixel = 0
-playBtn.AutoButtonColor = true
+playBtn.AutoButtonColor = false
 playBtn.Text = ""
 playBtn.ZIndex = 2
 playBtn.Parent = invGui
 do
+	local white = Color3.new(1, 1, 1)
+	local base = ACCENT
+	local baseDk = Color3.fromRGB(58, 116, 16) -- TOXIC_DK from the game theme
+	playBtn.BackgroundColor3 = darker(baseDk, 0.35) -- the slab
 	local pc = Instance.new("UICorner")
-	pc.CornerRadius = UDim.new(0, 16)
+	pc.CornerRadius = UDim.new(0, 10)
 	pc.Parent = playBtn
-	local pg = Instance.new("UIGradient")
+	ledge(playBtn, TBLACK, 3)
+
+	local face = Instance.new("Frame")
+	face.Name = "Face"
+	face.Size = UDim2.new(1, 0, 1, -5) -- the slab shows as a 5px lip below
+	face.BackgroundColor3 = white
+	face.BorderSizePixel = 0
+	face.ZIndex = 3
+	face.Parent = playBtn
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(0, 10)
+	fc.Parent = face
+	ledge(face, TBLACK, 2.5) -- the face needs its OWN black ring (it covers the slab's)
+	local pg = Instance.new("UIGradient") -- absolute colors: bright top flash baked in
 	pg.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(181, 249, 116)),
-		ColorSequenceKeypoint.new(0.42, Color3.fromRGB(111, 221, 47)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(63, 187, 23)),
+		ColorSequenceKeypoint.new(0, base:Lerp(white, 0.42)),
+		ColorSequenceKeypoint.new(0.07, base:Lerp(white, 0.18)),
+		ColorSequenceKeypoint.new(1, darker(base, 0.28)),
 	})
 	pg.Rotation = 90
-	pg.Parent = playBtn
-	local bevel = Instance.new("Frame") -- the inset dark-green base edge from the photo
-	bevel.AnchorPoint = Vector2.new(0.5, 1)
-	bevel.Position = UDim2.new(0.5, 0, 1, -3)
-	bevel.Size = UDim2.new(1, -8, 0, 7)
-	bevel.BackgroundColor3 = Color3.fromRGB(35, 124, 11)
-	bevel.BackgroundTransparency = 0.45
-	bevel.BorderSizePixel = 0
-	bevel.ZIndex = 3
-	bevel.Parent = playBtn
-	local bvc = Instance.new("UICorner")
-	bvc.CornerRadius = UDim.new(0, 8)
-	bvc.Parent = bevel
+	pg.Parent = face
+
 	local pt = Instance.new("TextLabel")
 	pt.Size = UDim2.fromScale(1, 1)
 	pt.BackgroundTransparency = 1
 	pt.FontFace = TITLE_FACE
-	pt.TextSize = 28
-	pt.TextColor3 = Color3.new(1, 1, 1)
-	pt.Text = "Play"
+	pt.TextSize = 26
+	pt.TextColor3 = white
+	pt.Text = "PLAY"
 	pt.ZIndex = 4
-	pt.Parent = playBtn
+	pt.Parent = face
 	local pts = Instance.new("UIStroke")
-	pts.Color = Color3.fromRGB(22, 86, 8)
-	pts.Transparency = 0.35
-	pts.Thickness = 2
+	pts.Color = TBLACK
+	pts.Thickness = 2.5
 	pts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	pts.Parent = pt
+
+	-- Press = the face slides down onto the slab (same feel as every in-game button).
+	playBtn.MouseButton1Down:Connect(function()
+		face.Position = UDim2.fromOffset(0, 4)
+	end)
+	local function up()
+		face.Position = UDim2.new()
+	end
+	playBtn.MouseButton1Up:Connect(up)
+	playBtn.MouseLeave:Connect(up)
 end
 playBtn.Activated:Connect(function()
 	lplay("Open")
