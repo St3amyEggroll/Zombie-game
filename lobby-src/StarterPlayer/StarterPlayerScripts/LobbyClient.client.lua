@@ -1063,7 +1063,7 @@ do
 		shop = "71412141929869",
 		pass = "",
 		settings = "94140673883223",
-		codes = "",
+		codes = "106591567271932",
 	}
 	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", pass = "🏅", settings = "⚙️", codes = "🔑" }
 	local ORDER = { "inventory", "weapons", "daily", "shop", "pass", "settings", "codes" }
