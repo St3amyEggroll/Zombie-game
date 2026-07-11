@@ -1062,7 +1062,7 @@ do
 		daily = "",
 		shop = "122768215680808",
 		pass = "",
-		settings = "95184250372206",
+		settings = "94140673883223",
 		codes = "",
 	}
 	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", pass = "🏅", settings = "⚙️", codes = "🔑" }
@@ -1079,12 +1079,12 @@ do
 	fade.BorderSizePixel = 0
 	fade.ZIndex = 1
 	fade.Parent = invGui
-	fade.Size = UDim2.new(1, 0, 0, 195) -- CHANGED: taller + darker — it was melting away against the floor
+	fade.Size = UDim2.new(1, 0, 0, 148) -- CHANGED: shorter — 195 was dimming the coins/XP readouts
 	local fg = Instance.new("UIGradient")
 	fg.Rotation = 90
 	fg.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(0.4, 0.45),
+		NumberSequenceKeypoint.new(0.45, 0.5),
 		NumberSequenceKeypoint.new(1, 0.05),
 	})
 	fg.Parent = fade
