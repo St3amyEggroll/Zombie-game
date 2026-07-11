@@ -883,6 +883,9 @@ ZoneLeave.OnClientEvent:Connect(function()
 	leaveBtn.Visible = false
 	leaveStatus.Visible = false
 	status.Text = ""
+	zoneMode = nil
+	-- CHANGED: clear the pad-UI flag — Play stayed hidden forever after stepping off a pad.
+	gui:SetAttribute("PadMode", "")
 end)
 
 local lastPartySeconds = math.huge
