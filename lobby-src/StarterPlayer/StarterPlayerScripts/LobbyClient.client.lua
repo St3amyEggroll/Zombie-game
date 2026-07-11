@@ -1057,12 +1057,12 @@ local CASES_ICON = "rbxassetid://83465359983310"
 local dockBtns = {} -- every dock button + badge, one table (200-local ceiling)
 do
 	local DOCK_ICONS = { -- paste your photo ids here ("rbxassetid://..." or the number). "" = emoji.
-		inventory = CASES_ICON,
+		inventory = "115878886159962",
 		weapons = "102091580612843",
 		daily = "",
 		shop = "71412141929869",
 		pass = "",
-		settings = "",
+		settings = "95184250372206",
 		codes = "",
 	}
 	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", pass = "🏅", settings = "⚙️", codes = "🔑" }
