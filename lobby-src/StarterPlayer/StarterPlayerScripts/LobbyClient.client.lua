@@ -616,11 +616,11 @@ gui.Name = "LobbyHUD"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.
 gui.Parent = playerGui
 lattach(gui)
 
--- Coins: V2-A — a dark rounded pill floating MID-LEFT, coin icon + gold number, sitting just above
--- the LEVEL card (which is also mid-left now). Auto-sizes to the number.
+-- Coins: a dark rounded pill BOTTOM-LEFT, coin icon + gold number. Auto-sizes to the number.
+-- (Mid-left is reserved for the upcoming daily-quests panel.)
 local COIN_ICON_ID = "rbxassetid://84729396970772"
 local coinsRow = Instance.new("Frame")
-coinsRow.AnchorPoint = Vector2.new(0, 0.5); coinsRow.Position = UDim2.new(0, 16, 0.5, -45)
+coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -12)
 coinsRow.Size = UDim2.fromOffset(0, 54); coinsRow.AutomaticSize = Enum.AutomaticSize.X
 coinsRow.BackgroundColor3 = Color3.fromRGB(10, 8, 16); coinsRow.BackgroundTransparency = 0.28
 coinsRow.BorderSizePixel = 0; coinsRow.Parent = gui
