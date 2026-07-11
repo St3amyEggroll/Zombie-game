@@ -2449,16 +2449,16 @@ CaseResult.OnClientEvent:Connect(function(res)
 end)
 
 -- =====================================================================================================
--- ===== EXCLUSIVE SHOP ===== the approved TAB MARKET build (per the final mock):
---   · four INDIVIDUAL square tab buttons floating LEFT of the panel — white border, translucent black
---     fill, owner photos (emoji stand-ins until the ids arrive), dimmed when inactive, red ! on DAILY
---     when the free spin is unclaimed
---   · FEATURED — pull ticker, the pack (band/pool/gold footer with BIG open pills + gifts), pity bar
+-- ===== EXCLUSIVE SHOP ===== the approved S3 DOCK-DRIVEN build (per the final mock):
+--   · NO tabs anywhere — the dock's Shop/Daily/Pass/Codes buttons ARE the navigation, each deep-links
+--     straight to its page; the header retitles per page (the old left tab rail is deleted)
+--   · FEATURED — pull ticker, the pack (band w/ LIMITED chip + GONE IN, big tier cards, gold footer
+--     with the three ×N Robux pills + ONE gold GIFT button), labeled pity meter
 --   · DAILY — the wheel: 8 reward chips in a ring, light-chaser spin, one FREE spin/day + Robux
---     re-spins, streak line (the streak fattens the jackpot slice server-side)
+--     re-spins, streak flame chip (the streak fattens the jackpot slice server-side)
 --   · PASSES & COINS — the 3 gamepasses, 4 coin bundles, one-time STARTER PACK
 --   · CODES — the redeem bar
--- The header retitles per tab. Everything scoped in this do-block (the 200-local ceiling).
+-- Everything scoped in this do-block (the 200-local ceiling).
 -- =====================================================================================================
 do
 	local ShopSync   = remotes:WaitForChild("ShopSync")
@@ -2472,12 +2472,9 @@ do
 	-- ===== TUNABLES =====
 	-- (the shop button moved into the DOCK — its image lives in DOCK_ICONS.shop up top)
 	local SHOP_GOLD = Color3.fromRGB(240, 165, 10)
-	-- The tab buttons' photos: paste one image id per tab ("rbxassetid://..." or the number).
-	-- Blank = the emoji stand-in shows until you send the image.
+	-- CHANGED (S3): no tab buttons anymore — just the page ids + what the header says on each.
 	local TABS = {
 		order = { "featured", "daily", "passes", "codes" },
-		icons = { featured = "", daily = "", passes = "", codes = "" },
-		emoji = { featured = "⭐", daily = "🎡", passes = "🎫", codes = "🔑" },
 		titles = { featured = "EXCLUSIVE SHOP", daily = "DAILY WHEEL", passes = "PASSES & COINS", codes = "CODES" },
 	}
 	-- Paste each gamepass id when you create it (Creator Hub → Passes). 0 = the card answers SOON.
@@ -2585,80 +2582,14 @@ do
 		S.page[id] = pg
 	end
 
-	-- ===== THE TAB BUTTONS ===== individual squares floating LEFT of the panel: white border,
-	-- translucent black fill, your photo (emoji until then). Active = bright + thick border.
-	S.tabBtns = {}
-	for i, id in TABS.order do
-		local b = Instance.new("ImageButton")
-		b.Name = "Tab_" .. id
-		b.Position = UDim2.fromOffset(-88, 56 + (i - 1) * 94)
-		b.Size = UDim2.fromOffset(70, 70)
-		b.BackgroundColor3 = Color3.fromRGB(10, 11, 8)
-		b.BackgroundTransparency = 0.28
-		b.BorderSizePixel = 0
-		b.ScaleType = Enum.ScaleType.Fit
-		b.Parent = S.root
-		local bc = Instance.new("UICorner")
-		bc.CornerRadius = UDim.new(0, 12)
-		bc.Parent = b
-		local ring = Instance.new("UIStroke")
-		ring.Color = Color3.new(1, 1, 1)
-		ring.Thickness = 3.5
-		ring.Parent = b
-		local icon = TABS.icons[id]
-		if icon ~= "" then
-			b.Image = icon:match("^%d+$") and ("rbxassetid://" .. icon) or icon
-		else
-			local e = sticker(b, TABS.emoji[id], 30)
-			e.Size = UDim2.fromScale(1, 1)
-			e.ZIndex = 2
-		end
-		local dim = Instance.new("Frame") -- inactive shade
-		dim.Size = UDim2.fromScale(1, 1)
-		dim.BackgroundColor3 = Color3.new(0, 0, 0)
-		dim.BackgroundTransparency = 0.5
-		dim.BorderSizePixel = 0
-		dim.ZIndex = 5
-		dim.Visible = (id ~= "featured")
-		dim.Parent = b
-		local dc = Instance.new("UICorner")
-		dc.CornerRadius = UDim.new(0, 12)
-		dc.Parent = dim
-		S.tabBtns[id] = { btn = b, ring = ring, dim = dim }
-		b.Activated:Connect(function()
-			lplay("Click")
-			S.setTab(id)
-		end)
-	end
-	do -- the red ! on DAILY while the free spin is unclaimed
-		local badge = Instance.new("Frame")
-		badge.AnchorPoint = Vector2.new(1, 0)
-		badge.Position = UDim2.new(1, 9, 0, -9)
-		badge.Size = UDim2.fromOffset(22, 22)
-		badge.BackgroundColor3 = Color3.fromRGB(224, 34, 34)
-		badge.BorderSizePixel = 0
-		badge.ZIndex = 6
-		badge.Parent = S.tabBtns.daily.btn
-		local c = Instance.new("UICorner")
-		c.CornerRadius = UDim.new(1, 0)
-		c.Parent = badge
-		ledge(badge, TBLACK, 2.5)
-		local ex = sticker(badge, "!", 14)
-		ex.Size = UDim2.fromScale(1, 1)
-		ex.ZIndex = 7
-		S.dailyBadge = badge
-	end
-
+	-- CHANGED (S3): the tab rail is GONE — the dock's Shop/Daily/Pass/Codes buttons are the only
+	-- navigation (wired at the bottom of this block). setTab just flips pages + retitles the header.
 	S.setTab = function(id)
 		S.tab = id
 		for k, pg in S.page do
 			pg.Visible = (k == id)
 		end
 		S.title.Text = TABS.titles[id]
-		for k, t in S.tabBtns do
-			t.dim.Visible = (k ~= id)
-			t.ring.Thickness = (k == id) and 4.5 or 3.5
-		end
 	end
 
 	-- =====================================================================================================
@@ -2730,8 +2661,27 @@ do
 		sg.Parent = sheen
 		S.packTitle = sticker(band, "PACK", 20)
 		S.packTitle.Position = UDim2.fromOffset(14, 0)
-		S.packTitle.Size = UDim2.fromOffset(340, 32)
+		S.packTitle.Size = UDim2.fromOffset(280, 32)
 		S.packTitle.TextXAlignment = Enum.TextXAlignment.Left
+		S.packTitle.AutomaticSize = Enum.AutomaticSize.X
+		local lim = Instance.new("Frame") -- NEW: the LIMITED chip riding next to the title
+		lim.AnchorPoint = Vector2.new(0, 0.5)
+		lim.Position = UDim2.fromOffset(14, 16)
+		lim.Size = UDim2.fromOffset(74, 20)
+		lim.BorderSizePixel = 0
+		lim.ZIndex = 5
+		lim.Parent = band
+		local lc = Instance.new("UICorner")
+		lc.CornerRadius = UDim.new(1, 0)
+		lc.Parent = lim
+		absGrad(lim, Color3.fromRGB(255, 138, 92), Color3.fromRGB(180, 30, 14))
+		ledge(lim, TBLACK, 2)
+		local ll2 = sticker(lim, "LIMITED", 11)
+		ll2.Size = UDim2.fromScale(1, 1)
+		ll2.ZIndex = 6
+		S.packTitle:GetPropertyChangedSignal("TextBounds"):Connect(function()
+			lim.Position = UDim2.fromOffset(14 + S.packTitle.TextBounds.X + 12, 16)
+		end)
 		local gl = Instance.new("TextLabel") -- "GONE IN" in the band's own dark red, not sticker white
 		gl.AnchorPoint = Vector2.new(1, 0.5)
 		gl.Position = UDim2.new(1, -96, 0.5, -1)
@@ -2789,8 +2739,8 @@ do
 		seam.ZIndex = 4
 		seam.Parent = S.foot
 		S.footCap = Instance.new("TextLabel") -- says WHAT you're buying + which gun is modeling
-		S.footCap.Position = UDim2.fromOffset(12, 0)
-		S.footCap.Size = UDim2.fromOffset(120, 72)
+		S.footCap.Position = UDim2.fromOffset(10, 0)
+		S.footCap.Size = UDim2.fromOffset(112, 72)
 		S.footCap.BackgroundTransparency = 1
 		S.footCap.FontFace = BODYB_FACE
 		S.footCap.TextSize = 11
@@ -2812,20 +2762,21 @@ do
 		return d and d.pack and tonumber(d.pack["product" .. count]) or 0
 	end
 
-	-- One "Open xN" stack: label over [BIG green Robux pill][BIG pink gift square].
+	-- One "Open ×N" stack: label over a BIG green Robux pill. (Per-pill gift squares are gone —
+	-- gifting lives on the single gold GIFT button at the footer's end now.)
 	local function mkOpen(count, x)
 		local stack = Instance.new("Frame")
 		stack.Position = UDim2.fromOffset(x, 0)
-		stack.Size = UDim2.fromOffset(160, 72)
+		stack.Size = UDim2.fromOffset(134, 72)
 		stack.BackgroundTransparency = 1
 		stack.ZIndex = 4
 		stack.Parent = S.foot
 		local lbl = sticker(stack, "Open x" .. count, 14)
 		lbl.Position = UDim2.fromOffset(0, 3)
-		lbl.Size = UDim2.fromOffset(112, 16)
+		lbl.Size = UDim2.fromOffset(134, 16)
 		local pill = Instance.new("TextButton")
 		pill.Position = UDim2.fromOffset(0, 22)
-		pill.Size = UDim2.fromOffset(112, 44)
+		pill.Size = UDim2.fromOffset(134, 44)
 		pill.BorderSizePixel = 0
 		pill.AutoButtonColor = true
 		pill.Text = ""
@@ -2859,30 +2810,6 @@ do
 		local oc = Instance.new("UICorner")
 		oc.CornerRadius = UDim.new(0, math.floor(6 * 1.8 + 2))
 		oc.Parent = overlay
-		local gift = Instance.new("TextButton")
-		gift.Position = UDim2.fromOffset(116, 22)
-		gift.Size = UDim2.fromOffset(44, 44)
-		gift.BorderSizePixel = 0
-		gift.FontFace = TITLE_FACE
-		gift.TextSize = 22
-		gift.TextColor3 = Color3.new(1, 1, 1)
-		gift.Text = "🎁"
-		gift.ZIndex = 5
-		gift.Parent = stack
-		corner(gift, 6)
-		absGrad(gift, Color3.fromRGB(212, 71, 158), Color3.fromRGB(110, 22, 84)) -- deeper magenta, less neon
-		ledge(gift, TBLACK, 3)
-		gift.Activated:Connect(function()
-			if rolling then
-				return
-			end
-			if productFor(count) < 1 then
-				lplay("Error")
-				S.say("ROBUX PRODUCT NOT SET UP YET — COMING SOON", DIMTEXT)
-				return
-			end
-			S.openGiftPicker(count)
-		end)
 		pill.Activated:Connect(function()
 			if rolling then
 				return
@@ -2899,9 +2826,40 @@ do
 		end)
 		return { price = price, gem = gem, overlay = overlay }
 	end
-	S.p1 = mkOpen(1, 142)
-	S.p3 = mkOpen(3, 304)
-	S.p10 = mkOpen(10, 466)
+	S.p1 = mkOpen(1, 130)
+	S.p3 = mkOpen(3, 272)
+	S.p10 = mkOpen(10, 414)
+	do -- NEW: the ONE gold GIFT button (the picker asks who + how many)
+		local lbl = sticker(S.foot, "Gift", 14)
+		lbl.Position = UDim2.fromOffset(556, 3)
+		lbl.Size = UDim2.fromOffset(62, 16)
+		lbl.ZIndex = 4
+		local g = Instance.new("TextButton")
+		g.Position = UDim2.fromOffset(556, 22)
+		g.Size = UDim2.fromOffset(62, 44)
+		g.BorderSizePixel = 0
+		g.AutoButtonColor = true
+		g.FontFace = TITLE_FACE
+		g.TextSize = 22
+		g.TextColor3 = Color3.new(1, 1, 1)
+		g.Text = "🎁"
+		g.ZIndex = 5
+		g.Parent = S.foot
+		corner(g, 6)
+		absGrad(g, Color3.fromRGB(255, 217, 122), Color3.fromRGB(168, 106, 8), Color3.fromRGB(224, 158, 32))
+		ledge(g, TBLACK, 3)
+		g.Activated:Connect(function()
+			if rolling then
+				return
+			end
+			if productFor(1) < 1 then
+				lplay("Error")
+				S.say("ROBUX PRODUCT NOT SET UP YET — COMING SOON", DIMTEXT)
+				return
+			end
+			S.openGiftPicker(1)
+		end)
+	end
 	-- One pill's live state: a real Robux price, or the quiet grey SOON (no dead dashes, ever).
 	S.setPill = function(e, robux)
 		if robux then
@@ -2964,8 +2922,11 @@ do
 	-- ===== TAB 2: DAILY WHEEL ===== 8 reward chips in a ring + light-chaser spin.
 	-- =====================================================================================================
 	do
+		local cap = sticker(S.page.daily, "TODAY'S WHEEL", 13, Color3.fromRGB(255, 210, 62))
+		cap.Position = UDim2.fromOffset(20, 16)
+		cap.Size = UDim2.fromOffset(240, 18)
 		local wheel = Instance.new("Frame")
-		wheel.Position = UDim2.fromOffset(20, 14)
+		wheel.Position = UDim2.fromOffset(20, 42)
 		wheel.Size = UDim2.fromOffset(240, 240)
 		wheel.BackgroundColor3 = Color3.fromRGB(22, 25, 16)
 		wheel.BorderSizePixel = 0
@@ -3006,18 +2967,32 @@ do
 		ledge(ptr, TBLACK, 2.5)
 
 		S.wheelResult = sticker(S.page.daily, "", 15, ACCENT)
-		S.wheelResult.Position = UDim2.fromOffset(0, 262)
+		S.wheelResult.Position = UDim2.fromOffset(0, 288)
 		S.wheelResult.Size = UDim2.fromOffset(280, 40)
 		S.wheelResult.TextWrapped = true
 
-		-- Right column: the pitch + buttons.
-		local t = sticker(S.page.daily, "ONE FREE SPIN EVERY DAY", 17)
-		t.Position = UDim2.fromOffset(292, 20)
-		t.Size = UDim2.fromOffset(338, 24)
+		-- Right column (renovated): title → streak flame chip → pitch → big SPIN FREE → dark re-spin card.
+		local t = sticker(S.page.daily, "ONE FREE SPIN EVERY DAY", 19)
+		t.Position = UDim2.fromOffset(292, 14)
+		t.Size = UDim2.fromOffset(338, 26)
 		t.TextXAlignment = Enum.TextXAlignment.Left
+		S.streakChip = Instance.new("Frame") -- the streak lives up top as a gold-ringed chip now
+		S.streakChip.Position = UDim2.fromOffset(292, 46)
+		S.streakChip.Size = UDim2.fromOffset(338, 26)
+		S.streakChip.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
+		S.streakChip.BorderSizePixel = 0
+		S.streakChip.Parent = S.page.daily
+		corner(S.streakChip, 13)
+		ledge(S.streakChip, Color3.fromRGB(255, 210, 62), 2, 0.35)
+		S.streakLbl = sticker(S.streakChip, "", 12, Color3.fromRGB(255, 210, 62))
+		S.streakLbl.Position = UDim2.fromOffset(12, 0)
+		S.streakLbl.Size = UDim2.new(1, -20, 1, 0)
+		S.streakLbl.TextXAlignment = Enum.TextXAlignment.Left
+		S.streakLbl.TextTruncate = Enum.TextTruncate.AtEnd
+		S.streakLbl.ZIndex = 5
 		local d = Instance.new("TextLabel")
-		d.Position = UDim2.fromOffset(292, 50)
-		d.Size = UDim2.fromOffset(338, 52)
+		d.Position = UDim2.fromOffset(292, 82)
+		d.Size = UDim2.fromOffset(338, 48)
 		d.BackgroundTransparency = 1
 		d.FontFace = BODYB_FACE
 		d.TextSize = 12
@@ -3029,8 +3004,8 @@ do
 		d.Parent = S.page.daily
 
 		S.spinBtn = Instance.new("TextButton")
-		S.spinBtn.Position = UDim2.fromOffset(292, 112)
-		S.spinBtn.Size = UDim2.fromOffset(250, 54)
+		S.spinBtn.Position = UDim2.fromOffset(292, 138)
+		S.spinBtn.Size = UDim2.fromOffset(338, 58)
 		S.spinBtn.BorderSizePixel = 0
 		S.spinBtn.AutoButtonColor = true
 		S.spinBtn.Text = ""
@@ -3058,16 +3033,17 @@ do
 			WheelSpin:FireServer()
 		end)
 
-		local rb = Instance.new("TextButton")
-		rb.Position = UDim2.fromOffset(292, 180)
-		rb.Size = UDim2.fromOffset(200, 42)
+		local rb = Instance.new("TextButton") -- CHANGED: dark secondary card (SPIN FREE is the hero)
+		rb.Position = UDim2.fromOffset(292, 208)
+		rb.Size = UDim2.fromOffset(338, 46)
+		rb.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
 		rb.BorderSizePixel = 0
 		rb.AutoButtonColor = true
 		rb.Text = ""
 		rb.Parent = S.page.daily
-		corner(rb, 6)
-		absGrad(rb, Color3.fromRGB(198, 247, 122), Color3.fromRGB(47, 138, 16), Color3.fromRGB(89, 193, 34))
+		corner(rb, 8)
 		ledge(rb, TBLACK, 3)
+		ledge(rb, Color3.fromRGB(89, 193, 34), 1.5, 0.45)
 		do
 			local wrap = Instance.new("Frame")
 			wrap.Size = UDim2.fromScale(1, 1)
@@ -3087,13 +3063,12 @@ do
 			S.respinLbl.ZIndex = 6
 		end
 		S.respinNote = Instance.new("TextLabel")
-		S.respinNote.Position = UDim2.fromOffset(500, 180)
-		S.respinNote.Size = UDim2.fromOffset(130, 42)
+		S.respinNote.Position = UDim2.fromOffset(292, 258)
+		S.respinNote.Size = UDim2.fromOffset(338, 16)
 		S.respinNote.BackgroundTransparency = 1
 		S.respinNote.FontFace = BODYB_FACE
 		S.respinNote.TextSize = 10
 		S.respinNote.TextColor3 = DIMTEXT
-		S.respinNote.TextWrapped = true
 		S.respinNote.TextXAlignment = Enum.TextXAlignment.Left
 		S.respinNote.Text = "(Robux re-spins, up to 3/day)"
 		S.respinNote.Parent = S.page.daily
@@ -3120,10 +3095,6 @@ do
 			MarketplaceService:PromptProductPurchase(localPlayer, pid)
 		end)
 
-		S.streakLbl = sticker(S.page.daily, "", 13, Color3.fromRGB(255, 210, 62))
-		S.streakLbl.Position = UDim2.fromOffset(292, 240)
-		S.streakLbl.Size = UDim2.fromOffset(338, 20)
-		S.streakLbl.TextXAlignment = Enum.TextXAlignment.Left
 	end
 
 	-- Build the 8 reward chips around the wheel once the segment data arrives.
@@ -3349,27 +3320,30 @@ do
 		for i, gp in GAMEPASSES do
 			local card = Instance.new("TextButton")
 			card.Position = UDim2.fromOffset((i - 1) * 216, 0)
-			card.Size = UDim2.fromOffset(200, 118)
+			card.Size = UDim2.fromOffset(200, 132) -- CHANGED: taller — the subtitle gets 2 real lines
 			card.BorderSizePixel = 0
 			card.AutoButtonColor = true
 			card.Text = ""
 			card.Parent = S.page.passes
-			corner(card, 6)
+			corner(card, 8)
 			absGrad(card, gp.color, gp.color2)
 			ledge(card, TBLACK, 3)
+			ledge(card, Color3.new(1, 1, 1), 1.5, 0.82) -- faint inner rim, same glass trick as the dock
 			drawEmblem(card, gp.emblem)
-			local nm = sticker(card, gp.name, 17)
-			nm.Position = UDim2.fromOffset(0, 42)
+			local nm = sticker(card, gp.name, 18)
+			nm.Position = UDim2.fromOffset(0, 44)
 			nm.Size = UDim2.new(1, 0, 0, 22)
 			nm.ZIndex = 5
 			local sub = Instance.new("TextLabel")
-			sub.Position = UDim2.fromOffset(0, 64)
-			sub.Size = UDim2.new(1, -8, 0, 13)
+			sub.Position = UDim2.fromOffset(10, 68)
+			sub.Size = UDim2.new(1, -20, 0, 24)
 			sub.BackgroundTransparency = 1
 			sub.FontFace = BODYB_FACE
-			sub.TextSize = 9
+			sub.TextSize = 10
 			sub.TextColor3 = Color3.new(1, 1, 1)
-			sub.TextTransparency = 0.25
+			sub.TextTransparency = 0.2
+			sub.TextWrapped = true
+			sub.TextYAlignment = Enum.TextYAlignment.Top
 			sub.ZIndex = 5
 			sub.Text = gp.sub
 			sub.Parent = card
@@ -3440,25 +3414,42 @@ do
 			end)
 		end
 
-		local bt = sticker(S.page.passes, "COIN BUNDLES", 16)
-		bt.Position = UDim2.fromOffset(0, 132)
-		bt.Size = UDim2.new(1, 0, 0, 20)
+		local bt = sticker(S.page.passes, "COIN BUNDLES", 14, Color3.fromRGB(255, 210, 62))
+		bt.Position = UDim2.fromOffset(0, 144)
+		bt.Size = UDim2.fromOffset(130, 18)
+		bt.TextXAlignment = Enum.TextXAlignment.Left
+		local rule = Instance.new("Frame") -- hairline pulling the section together
+		rule.Position = UDim2.fromOffset(138, 152)
+		rule.Size = UDim2.new(1, -140, 0, 2)
+		rule.BackgroundColor3 = Color3.fromRGB(255, 210, 62)
+		rule.BackgroundTransparency = 0.75
+		rule.BorderSizePixel = 0
+		rule.Parent = S.page.passes
 
 		S.bundleBtns = {}
 		for i = 1, 4 do
 			local card = Instance.new("TextButton")
-			card.Position = UDim2.fromOffset((i - 1) * 161, 160)
-			card.Size = UDim2.fromOffset(150, 92)
+			card.Position = UDim2.fromOffset((i - 1) * 161, 170)
+			card.Size = UDim2.fromOffset(150, 96)
 			card.BorderSizePixel = 0
 			card.AutoButtonColor = true
 			card.Text = ""
 			card.Parent = S.page.passes
-			corner(card, 6)
+			corner(card, 8)
 			absGrad(card, Color3.fromRGB(37, 74, 99), Color3.fromRGB(19, 42, 58))
 			ledge(card, TBLACK, 3)
-			local amt = sticker(card, "--", 16, Color3.fromRGB(255, 210, 62))
-			amt.Position = UDim2.fromOffset(0, 12)
-			amt.Size = UDim2.new(1, 0, 0, 22)
+			local ci = Instance.new("ImageLabel") -- the real coin art, not a text row
+			ci.AnchorPoint = Vector2.new(0.5, 0)
+			ci.Position = UDim2.new(0.5, 0, 0, 6)
+			ci.Size = UDim2.fromOffset(26, 26)
+			ci.BackgroundTransparency = 1
+			ci.ScaleType = Enum.ScaleType.Fit
+			ci.Image = "rbxassetid://84729396970772"
+			ci.ZIndex = 5
+			ci.Parent = card
+			local amt = sticker(card, "--", 15, Color3.fromRGB(255, 210, 62))
+			amt.Position = UDim2.fromOffset(0, 34)
+			amt.Size = UDim2.new(1, 0, 0, 20)
 			amt.ZIndex = 5
 			local pill = Instance.new("Frame")
 			pill.AnchorPoint = Vector2.new(0.5, 1)
@@ -3515,8 +3506,8 @@ do
 		end
 
 		S.starterBar = Instance.new("TextButton")
-		S.starterBar.Position = UDim2.fromOffset(0, 266)
-		S.starterBar.Size = UDim2.new(1, -2, 0, 48)
+		S.starterBar.Position = UDim2.fromOffset(0, 280)
+		S.starterBar.Size = UDim2.new(1, -2, 0, 52)
 		S.starterBar.BorderSizePixel = 0
 		S.starterBar.AutoButtonColor = true
 		S.starterBar.Text = ""
@@ -3527,12 +3518,12 @@ do
 		do
 			local nm = sticker(S.starterBar, "STARTER PACK", 17, Color3.fromRGB(255, 122, 226))
 			nm.Position = UDim2.fromOffset(14, 0)
-			nm.Size = UDim2.fromOffset(160, 48)
+			nm.Size = UDim2.fromOffset(160, 52)
 			nm.TextXAlignment = Enum.TextXAlignment.Left
 			nm.ZIndex = 5
 			local ct = Instance.new("TextLabel")
 			ct.Position = UDim2.fromOffset(184, 0)
-			ct.Size = UDim2.fromOffset(260, 48)
+			ct.Size = UDim2.fromOffset(260, 52)
 			ct.BackgroundTransparency = 1
 			ct.FontFace = BODYB_FACE
 			ct.TextSize = 12
@@ -3660,9 +3651,42 @@ do
 		t.Position = UDim2.fromOffset(0, 10)
 		t.Size = UDim2.new(1, 0, 0, 26)
 		t.ZIndex = 31
+		-- NEW: how-many chips (the footer has ONE gift button now, so the picker asks the count).
+		S.giftCount = 1
+		S.countChips = {}
+		local counts = { 1, 3, 10 }
+		for i, n in counts do
+			local chip = Instance.new("TextButton")
+			chip.Position = UDim2.fromOffset(14 + (i - 1) * 92, 42)
+			chip.Size = UDim2.fromOffset(86, 30)
+			chip.BorderSizePixel = 0
+			chip.AutoButtonColor = false
+			chip.FontFace = TITLE_FACE
+			chip.TextSize = 15
+			chip.TextColor3 = Color3.new(1, 1, 1)
+			chip.Text = "×" .. n
+			chip.ZIndex = 31
+			chip.Parent = S.picker
+			corner(chip, 6)
+			ledge(chip, TBLACK, 2.5)
+			S.countChips[i] = { btn = chip, n = n }
+			chip.Activated:Connect(function()
+				S.giftCount = n
+				S.paintCountChips()
+			end)
+		end
+		S.paintCountChips = function()
+			for _, e in S.countChips do
+				local on = (e.n == S.giftCount)
+				local ok = productFor(e.n) > 0
+				e.btn.BackgroundColor3 = on and Color3.fromRGB(89, 193, 34) or TRACK
+				e.btn.TextColor3 = ok and Color3.new(1, 1, 1) or DIMTEXT
+				e.btn.Text = "×" .. e.n .. (ok and "" or " —")
+			end
+		end
 		S.pickList = Instance.new("ScrollingFrame")
-		S.pickList.Position = UDim2.fromOffset(14, 46)
-		S.pickList.Size = UDim2.new(1, -28, 1, -108)
+		S.pickList.Position = UDim2.fromOffset(14, 82)
+		S.pickList.Size = UDim2.new(1, -28, 1, -144)
 		S.pickList.BackgroundTransparency = 1
 		S.pickList.BorderSizePixel = 0
 		S.pickList.ScrollBarThickness = 5
@@ -3693,6 +3717,8 @@ do
 	end
 	S.openGiftPicker = function(count)
 		clearChildren(S.pickList)
+		S.giftCount = count or 1
+		S.paintCountChips()
 		local others = 0
 		for _, plr in Players:GetPlayers() do
 			if plr ~= localPlayer then
@@ -3710,11 +3736,13 @@ do
 				corner(row, 6)
 				ledge(row, TBLACK, 2.5)
 				row.Activated:Connect(function()
-					S.picker.Visible = false
-					local pid = productFor(count)
+					local pid = productFor(S.giftCount) -- CHANGED: the picker's ×N chips pick the size
 					if pid < 1 then
+						lplay("Error")
+						S.say("THAT PACK SIZE ISN'T SET UP YET", DIMTEXT)
 						return
 					end
+					S.picker.Visible = false
 					ShopGift:FireServer(plr.UserId) -- arm the gift, THEN prompt the same product
 					lplay("Buy")
 					MarketplaceService:PromptProductPurchase(localPlayer, pid)
@@ -3959,8 +3987,7 @@ do
 			S.streakLbl.Text = streak > 1
 				and ("🔥 STREAK: %d DAYS — THE JACKPOT SLICE IS FATTER"):format(streak)
 				or "CLAIM DAILY TO BUILD A STREAK — IT FATTENS THE JACKPOT"
-			S.dailyBadge.Visible = not w.freeUsed
-			dockBtns.dailyBadge.Visible = not w.freeUsed -- the dock button calls it out too
+			dockBtns.dailyBadge.Visible = not w.freeUsed -- the dock's Daily button carries the "!"
 		end
 
 		-- PASSES: bundle amounts/prices + starter state
@@ -4035,9 +4062,8 @@ do
 		if S.root.Visible then
 			S.render()
 		else
-			-- keep the DAILY badges honest even while closed (the dock button pulses interest)
+			-- keep the DAILY badge honest even while closed (the dock button pulses interest)
 			if p.wheel then
-				S.dailyBadge.Visible = not p.wheel.freeUsed
 				dockBtns.dailyBadge.Visible = not p.wheel.freeUsed
 			end
 		end
