@@ -57,6 +57,7 @@ local TEMPLATE = {
 	ownedWeapons = { "pistol" },      -- weapons you own (pistol = free starter; the rest come from cases)
 	-- ===== LOBBY INVENTORY (managed by the LOBBY place; the game just preserves these on save) =====
 	loadout      = { "pistol" },      -- the up-to-2 guns you carry into runs (picked in the lobby inventory)
+	class        = "",                -- equipped CLASS id (picked in the lobby showcase; ClassConfig applies it)
 	cases        = { common = 3 },    -- unopened cases by RARITY id -> count (3 free Common Cases to start)
 	gunLevels    = { pistol = 1 },    -- [weaponId] = persistent level 1..10 (Clash-Royale copies system;
 	gunCopies    = {},                --   upgraded in the LOBBY — the game only READS these for combat stats)

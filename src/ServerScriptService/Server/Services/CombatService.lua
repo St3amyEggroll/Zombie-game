@@ -19,6 +19,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
+local ClassConfig = require(Config.ClassConfig)
 local WeaponConfig = require(Config.WeaponConfig)
 local GunLevelConfig = require(Config.GunLevelConfig)
 local AnimationConfig = require(Config.AnimationConfig)
@@ -220,8 +221,16 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- to AimController's lock rule, so what locks is exactly what hits. Distance/falloff stay 3D.
 	local flatDir = Vector3.new(dir.X, 0, dir.Z)
 	flatDir = (flatDir.Magnitude > 0.01) and flatDir.Unit or dir
-	-- Damage = base weapon damage (potions + the buff draft were removed; buffOf stays for future use).
+	-- Damage = base weapon damage (potions + the buff draft were removed; buffOf stays for future use),
+	-- times the SOLDIER class's damage multiplier when equipped (picked in the lobby showcase).
 	local baseDamage = eff.damage * (1 + buffOf(ps, "damage"))
+	do
+		local data = DataService.Get(player)
+		local cls = data and ClassConfig.Get(data.class)
+		if cls and cls.damageMult then
+			baseDamage *= cls.damageMult
+		end
+	end
 	local arcRange = GameConfig.ArcRange
 	-- Pellet weapons can hit across a WIDER arc than the global cone (weapon.spreadArc — the shotgun
 	-- sprays the crowd, not one line). The client lock rule stays on the narrower global arc, which is

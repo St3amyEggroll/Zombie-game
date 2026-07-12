@@ -13,10 +13,18 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
+local ClassConfig = require(Config.ClassConfig)
 local Remotes = require(Modules.Remotes)
 
 local MatchService = require(script.Parent.MatchService)
 local SecurityService = require(script.Parent.SecurityService)
+local DataService = require(script.Parent.DataService)
+
+-- The player's equipped class def (picked in the lobby, rides the shared profile). nil = no class.
+local function classOf(player: Player)
+	local data = DataService.Get(player)
+	return data and ClassConfig.Get(data.class) or nil
+end
 
 local PlayerStateService = {}
 
@@ -52,11 +60,13 @@ end
 local function computeMoveSpeed(player: Player): number
 	local ps = MatchService.GetPlayerState(player)
 	local buff = (ps and ps.buffs and ps.buffs.walkspeed) or 0
-	return GameConfig.PlayerWalkSpeed * (1 + buff)
+	local cls = classOf(player) -- RUNNER's +speed (sprint stacks on top)
+	return GameConfig.PlayerWalkSpeed * (1 + buff) * ((cls and cls.speedMult) or 1)
 end
 
-local function computeMaxHealth(_player: Player): number
-	return GameConfig.PlayerMaxHealth
+local function computeMaxHealth(player: Player): number
+	local cls = classOf(player) -- JUGGERNAUT's +HP
+	return GameConfig.PlayerMaxHealth + ((cls and cls.healthBonus) or 0)
 end
 
 local function fireHealth(player: Player, humanoid: Humanoid)

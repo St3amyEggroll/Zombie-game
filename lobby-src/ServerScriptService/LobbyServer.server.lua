@@ -250,6 +250,10 @@ for _, l in GUNS_BY_RARITY do
 end
 local GUN_DUP_COINS = { common = 150, uncommon = 300, rare = 600, epic = 1200, legendary = 2500 }
 
+-- ===== CLASSES (C1 passive kits) ===== picked in the class SHOWCASE (camera-on-your-character screen).
+-- The GAME place applies the passives (its ClassConfig mirrors these numbers BY HAND — change both).
+local CLASS_IDS = { soldier = true, juggernaut = true, runner = true, scavenger = true }
+
 -- ===== GUN LEVELS (the Clash-Royale copies system) =====
 -- Cases pay out COPIES of the rolled gun. Stack enough copies + pay Coins to level the gun up (10 levels);
 -- upgrading CONSUMES the copies. The LEVEL is what the game place reads for combat stats — keep MaxLevel
@@ -767,6 +771,7 @@ local function readProfile(player)
 		shop = sanitizeShop(data.shop),
 		skins = sanitizeSkins(data.skins),
 		settings = sanitizeSettings(data.settings),
+		class = CLASS_IDS[tostring(data.class)] and tostring(data.class) or "", -- equipped class (showcase)
 		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
 		starter = data.starter == true, -- STARTER PACK is one purchase ever
 		vipDay = math.floor(tonumber(data.vipDay) or 0), -- last day the VIP daily crate was granted
@@ -856,6 +861,7 @@ local function persist(player)
 			old.wheel = prof.wheel
 			old.vipDay = prof.vipDay
 			old.quests = prof.quests
+			old.class = prof.class
 			return old
 		end)
 	end)
@@ -2904,6 +2910,25 @@ end)
 -- DAILY QUESTS: a fresh client asks for the board (same join-race fix as InvRequest).
 QuestSync.OnServerEvent:Connect(function(player)
 	pushQuests(player)
+end)
+
+-- CLASSES: equip a class from the showcase ("" clears it). The game place reads prof.class on load.
+local ClassEquip = mk("ClassEquip")
+ClassEquip.OnServerEvent:Connect(function(player, id)
+	if not allow(player, "Buy") then
+		return
+	end
+	id = tostring(id or "")
+	if id ~= "" and not CLASS_IDS[id] then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return
+	end
+	prof.class = id
+	markDirty(player)
+	StatsRemote:FireClient(player, prof) -- the showcase reads s.class for the EQUIPPED badge
 end)
 
 -- Equip / clear a skin on a gun you own.

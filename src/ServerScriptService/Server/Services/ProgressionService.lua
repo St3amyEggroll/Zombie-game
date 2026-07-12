@@ -13,6 +13,7 @@ local Modules = Shared:WaitForChild("Modules")
 
 local ProgressionConfig = require(Config.ProgressionConfig)
 local GameConfig = require(Config.GameConfig)
+local ClassConfig = require(Config.ClassConfig)
 local Remotes = require(Modules.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -26,6 +27,13 @@ local ProgressionService = {}
 local function awardCoins(player: Player, amount: number)
 	if amount <= 0 then
 		return
+	end
+	do -- SCAVENGER class: every run coin payout scales up (stacks with the 2x Coins pass in AddMoney)
+		local data = DataService.Get(player)
+		local cls = data and ClassConfig.Get(data.class)
+		if cls and cls.coinsMult then
+			amount = math.floor(amount * cls.coinsMult + 0.5)
+		end
 	end
 	DataService.AddMoney(player, amount)
 	local ps = MatchService.GetPlayerState(player)
