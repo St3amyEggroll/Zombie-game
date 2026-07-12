@@ -4778,9 +4778,16 @@ do
 			end
 		end
 		local n = #P.members
-		if n == 0 then -- solo: one subtle "party up" chip
+		if n == 0 then -- solo: YOUR avatar chip + the "party up" invite chip beside it
+			local meHolder = chipBase(nil, localPlayer.UserId)
+			meHolder.LayoutOrder = 1
+			local meNm = P.text(meHolder, localPlayer.DisplayName or localPlayer.Name, 11)
+			meNm.AnchorPoint = Vector2.new(0.5, 1)
+			meNm.Position = UDim2.new(0.5, 0, 1, 0)
+			meNm.Size = UDim2.fromOffset(64, 14)
+			meNm.TextTruncate = Enum.TextTruncate.AtEnd
 			local holder, circ = chipBase("+", nil)
-			holder.LayoutOrder = 1
+			holder.LayoutOrder = 2
 			local nm = P.text(holder, "Party", 11)
 			nm.AnchorPoint = Vector2.new(0.5, 1)
 			nm.Position = UDim2.new(0.5, 0, 1, 0)
