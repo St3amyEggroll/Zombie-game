@@ -4206,29 +4206,24 @@ do
 end
 
 -- =====================================================================================================
--- ===== CLASS SHOWCASE (the approved L2) ===== Classes dock button → the HUD hides and the camera
--- glides to a CLONE OF YOUR AVATAR on the "ClassStage" part (build one in Studio; fallback = a spot in
--- front of you). Class cards ride the bottom as a locker carousel — clicking one recolors the stage
--- glow + rewrites the stat chip; SELECT equips it (server-validated, applies NEXT RUN, game-side
--- passives). No skins here — this screen is classes only. ← flies the camera home.
--- =====================================================================================================
+-- ===== CLASS SHOWCASE ===== Classes dock button → the HUD hides and the camera PANS to the owner-
+-- placed display character (build a Model named "ClassCharacter" — or "ClassStage" — anywhere in the
+-- lobby; code spawns NOTHING). The class list is the approved L4-style LEFT panel: rows with an icon
+-- circle, name, stat line, EQUIPPED badge; the SELECT button at the bottom equips (server-validated,
+-- applies NEXT RUN via the game's ClassConfig). No gun skins here. ← flies the camera home.
 do
 	local ClassEquipR = remotes:WaitForChild("ClassEquip")
 	local TS = game:GetService("TweenService")
 	local CLASSES = { -- mirrors the game's ClassConfig BY HAND (separate place)
-		{ id = "soldier", emoji = "🎖️", name = "SOLDIER", line = "+12% gun damage", color = Color3.fromRGB(217, 166, 22),
-			stats = { { "GUN DAMAGE", "+12%" } } },
-		{ id = "juggernaut", emoji = "🛡️", name = "JUGGERNAUT", line = "+50 max HP", color = Color3.fromRGB(58, 134, 184),
-			stats = { { "MAX HP", "+50" } } },
-		{ id = "runner", emoji = "👟", name = "RUNNER", line = "+15% move speed", color = Color3.fromRGB(124, 219, 35),
-			stats = { { "MOVE SPEED", "+15%" } } },
-		{ id = "scavenger", emoji = "🪙", name = "SCAVENGER", line = "+25% coins from runs", color = Color3.fromRGB(230, 180, 76),
-			stats = { { "RUN COINS", "+25%" } } },
+		{ id = "soldier", emoji = "🎖️", name = "SOLDIER", line = "+12% GUN DAMAGE" },
+		{ id = "juggernaut", emoji = "🛡️", name = "JUGGERNAUT", line = "+50 MAX HP" },
+		{ id = "runner", emoji = "👟", name = "RUNNER", line = "+15% MOVE SPEED" },
+		{ id = "scavenger", emoji = "🪙", name = "SCAVENGER", line = "+25% COINS FROM RUNS" },
 	}
 	local HIDE_GUIS = { "LobbyHUD", "LobbyInventory", "LobbyXP", "LobbyQuests", "LobbySquad", "LobbyCoins",
 		"LobbyShop", "LobbySettings", "LobbyDockFade" }
 
-	local C = { open = false, sel = 1, equipped = "", cards = {} } -- one table (200-local ceiling)
+	local C = { open = false, sel = 1, equipped = "", rows = {}, movedCam = false } -- one table (local ceiling)
 
 	C.gui = Instance.new("ScreenGui")
 	C.gui.Name = "LobbyClassShowcase"
@@ -4280,44 +4275,133 @@ do
 		end)
 	end
 
-	-- top-right: the stat chip + SELECT button
+	-- THE LEFT PANEL (the approved L4 rows, minus skins)
 	do
-		local chip = Instance.new("Frame")
-		chip.AnchorPoint = Vector2.new(1, 0)
-		chip.Position = UDim2.new(1, -16, 0, 14)
-		chip.Size = UDim2.fromOffset(230, 150)
-		chip.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
-		chip.BackgroundTransparency = 0.1
-		chip.BorderSizePixel = 0
-		chip.Parent = C.gui
-		corner(chip, 12)
-		ledge(chip, TBLACK, 3)
-		C.statTitle = C.text(chip, "", 18)
-		C.statTitle.Position = UDim2.fromOffset(14, 8)
-		C.statTitle.Size = UDim2.new(1, -28, 0, 24)
-		C.statTitle.TextXAlignment = Enum.TextXAlignment.Left
-		C.statLines = Instance.new("Frame")
-		C.statLines.Position = UDim2.fromOffset(14, 38)
-		C.statLines.Size = UDim2.new(1, -28, 0, 60)
-		C.statLines.BackgroundTransparency = 1
-		C.statLines.Parent = chip
+		local panel = Instance.new("Frame")
+		panel.AnchorPoint = Vector2.new(0, 0.5)
+		panel.Position = UDim2.new(0, 16, 0.5, 10)
+		panel.Size = UDim2.fromOffset(300, 428)
+		panel.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
+		panel.BackgroundTransparency = 0.08
+		panel.BorderSizePixel = 0
+		panel.Parent = C.gui
+		corner(panel, 14)
+		ledge(panel, TBLACK, 3)
+		local t = C.text(panel, "PICK YOUR CLASS", 18)
+		t.Position = UDim2.fromOffset(16, 10)
+		t.Size = UDim2.new(1, -32, 0, 24)
+		t.TextXAlignment = Enum.TextXAlignment.Left
+		C.list = Instance.new("ScrollingFrame") -- scrolls when more classes land later
+		C.list.Position = UDim2.fromOffset(12, 44)
+		C.list.Size = UDim2.new(1, -24, 1, -112)
+		C.list.BackgroundTransparency = 1
+		C.list.BorderSizePixel = 0
+		C.list.ScrollBarThickness = 5
+		C.list.CanvasSize = UDim2.new()
+		C.list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		C.list.Parent = panel
+		local ll = Instance.new("UIListLayout")
+		ll.Padding = UDim.new(0, 8)
+		ll.SortOrder = Enum.SortOrder.LayoutOrder
+		ll.Parent = C.list
+		for i, e in ipairs(CLASSES) do
+			local row = Instance.new("TextButton")
+			row.LayoutOrder = i
+			row.Size = UDim2.new(1, -6, 0, 62)
+			row.BackgroundColor3 = Color3.fromRGB(28, 31, 22)
+			row.BorderSizePixel = 0
+			row.AutoButtonColor = false
+			row.Text = ""
+			row.Parent = C.list
+			corner(row, 10)
+			ldepth(row)
+			local ring = ledge(row, TBLACK, 2.5)
+			local ic = Instance.new("Frame") -- dark glass icon circle (the dock family)
+			ic.AnchorPoint = Vector2.new(0, 0.5)
+			ic.Position = UDim2.new(0, 9, 0.5, 0)
+			ic.Size = UDim2.fromOffset(44, 44)
+			ic.BackgroundColor3 = Color3.new(1, 1, 1)
+			ic.BorderSizePixel = 0
+			ic.ZIndex = 3
+			ic.Parent = row
+			local icc = Instance.new("UICorner")
+			icc.CornerRadius = UDim.new(1, 0)
+			icc.Parent = ic
+			local ig = Instance.new("UIGradient")
+			ig.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 55, 64)),
+				ColorSequenceKeypoint.new(0.35, Color3.fromRGB(26, 27, 33)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 14, 18)),
+			})
+			ig.Rotation = 90
+			ig.Parent = ic
+			ledge(ic, Color3.new(1, 1, 1), 1.2, 0.85)
+			local em = C.text(ic, e.emoji, 20)
+			em.Size = UDim2.fromScale(1, 1)
+			em.ZIndex = 4
+			local nm = C.text(row, e.name, 15)
+			nm.Position = UDim2.fromOffset(62, 10)
+			nm.Size = UDim2.new(1, -70, 0, 18)
+			nm.TextXAlignment = Enum.TextXAlignment.Left
+			local ln = Instance.new("TextLabel")
+			ln.Position = UDim2.fromOffset(62, 32)
+			ln.Size = UDim2.new(1, -70, 0, 14)
+			ln.BackgroundTransparency = 1
+			ln.FontFace = BODYB_FACE
+			ln.TextSize = 10
+			ln.TextColor3 = DIMTEXT
+			ln.TextXAlignment = Enum.TextXAlignment.Left
+			ln.Text = e.line
+			ln.Parent = row
+			local badge = C.text(row, "EQUIPPED", 9, Color3.fromRGB(18, 51, 8))
+			badge.AnchorPoint = Vector2.new(1, 0)
+			badge.Position = UDim2.new(1, 6, 0, -8)
+			badge.Size = UDim2.fromOffset(64, 18)
+			badge.BackgroundTransparency = 0
+			badge.BackgroundColor3 = ACCENT
+			badge.Visible = false
+			badge.ZIndex = 7
+			do
+				local bc = Instance.new("UICorner")
+				bc.CornerRadius = UDim.new(1, 0)
+				bc.Parent = badge
+				ledge(badge, TBLACK, 2)
+			end
+			C.rows[i] = { row = row, ring = ring, badge = badge }
+			row.Activated:Connect(function()
+				lplay("Click")
+				C.sel = i
+				C.refresh()
+			end)
+		end
 		C.selBtn = Instance.new("TextButton")
 		C.selBtn.AnchorPoint = Vector2.new(0.5, 1)
-		C.selBtn.Position = UDim2.new(0.5, 0, 1, -10)
-		C.selBtn.Size = UDim2.new(1, -24, 0, 36)
+		C.selBtn.Position = UDim2.new(0.5, 0, 1, -34)
+		C.selBtn.Size = UDim2.new(1, -24, 0, 44)
 		C.selBtn.BorderSizePixel = 0
 		C.selBtn.AutoButtonColor = true
 		C.selBtn.Text = ""
 		C.selBtn.BackgroundColor3 = Color3.new(1, 1, 1)
-		C.selBtn.Parent = chip
-		corner(C.selBtn, 9)
+		C.selBtn.Parent = panel
+		corner(C.selBtn, 10)
 		C.selGrad = Instance.new("UIGradient")
 		C.selGrad.Rotation = 90
 		C.selGrad.Parent = C.selBtn
 		ledge(C.selBtn, TBLACK, 2.5)
-		C.selLbl = C.text(C.selBtn, "SELECT", 15)
+		C.selLbl = C.text(C.selBtn, "SELECT", 16)
 		C.selLbl.Size = UDim2.fromScale(1, 1)
 		C.selLbl.ZIndex = 7
+		C.hint = Instance.new("TextLabel") -- shows only when the display character is missing
+		C.hint.AnchorPoint = Vector2.new(0.5, 1)
+		C.hint.Position = UDim2.new(0.5, 0, 1, -8)
+		C.hint.Size = UDim2.new(1, -24, 0, 20)
+		C.hint.BackgroundTransparency = 1
+		C.hint.FontFace = BODYB_FACE
+		C.hint.TextSize = 9
+		C.hint.TextColor3 = ORANGE
+		C.hint.Visible = false
+		C.hint.Text = 'PLACE A MODEL NAMED "ClassCharacter" — THE CAMERA PANS TO IT'
+		C.hint.Parent = panel
 		C.selBtn.Activated:Connect(function()
 			local e = CLASSES[C.sel]
 			if e.id == C.equipped then
@@ -4330,157 +4414,23 @@ do
 		end)
 	end
 
-	-- bottom: the class carousel
-	do
-		local row = Instance.new("Frame")
-		row.AnchorPoint = Vector2.new(0.5, 1)
-		row.Position = UDim2.new(0.5, 0, 1, -12)
-		row.Size = UDim2.fromOffset(4 * 150 + 3 * 12, 116)
-		row.BackgroundTransparency = 1
-		row.Parent = C.gui
-		for i, e in ipairs(CLASSES) do
-			local card = Instance.new("TextButton")
-			card.AnchorPoint = Vector2.new(0, 1)
-			card.Position = UDim2.new(0, (i - 1) * 162, 1, 0)
-			card.Size = UDim2.fromOffset(150, 104)
-			card.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
-			card.BackgroundTransparency = 0.1
-			card.BorderSizePixel = 0
-			card.AutoButtonColor = false
-			card.Text = ""
-			card.Parent = row
-			corner(card, 12)
-			local ring = ledge(card, TBLACK, 3)
-			local em = Instance.new("Frame")
-			em.AnchorPoint = Vector2.new(0.5, 0)
-			em.Position = UDim2.new(0.5, 0, 0, 8)
-			em.Size = UDim2.fromOffset(40, 40)
-			em.BackgroundColor3 = Color3.new(1, 1, 1)
-			em.BorderSizePixel = 0
-			em.Parent = card
-			local ec = Instance.new("UICorner")
-			ec.CornerRadius = UDim.new(1, 0)
-			ec.Parent = em
-			local eg = Instance.new("UIGradient")
-			eg.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 55, 64)),
-				ColorSequenceKeypoint.new(0.35, Color3.fromRGB(26, 27, 33)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 14, 18)),
-			})
-			eg.Rotation = 90
-			eg.Parent = em
-			local ee = C.text(em, e.emoji, 20)
-			ee.Size = UDim2.fromScale(1, 1)
-			local nm = C.text(card, e.name, 14)
-			nm.Position = UDim2.fromOffset(0, 52)
-			nm.Size = UDim2.new(1, 0, 0, 18)
-			local ln = Instance.new("TextLabel")
-			ln.Position = UDim2.fromOffset(6, 74)
-			ln.Size = UDim2.new(1, -12, 0, 22)
-			ln.BackgroundTransparency = 1
-			ln.FontFace = BODYB_FACE
-			ln.TextSize = 10
-			ln.TextColor3 = DIMTEXT
-			ln.TextWrapped = true
-			ln.Text = e.line:upper()
-			ln.Parent = card
-			local badge = C.text(card, "EQUIPPED", 9, Color3.fromRGB(18, 51, 8))
-			badge.AnchorPoint = Vector2.new(1, 0)
-			badge.Position = UDim2.new(1, 6, 0, -9)
-			badge.Size = UDim2.fromOffset(64, 18)
-			badge.BackgroundTransparency = 0
-			badge.BackgroundColor3 = ACCENT
-			badge.Visible = false
-			badge.ZIndex = 7
-			do
-				local bc = Instance.new("UICorner")
-				bc.CornerRadius = UDim.new(1, 0)
-				bc.Parent = badge
-				ledge(badge, TBLACK, 2)
-			end
-			C.cards[i] = { card = card, ring = ring, badge = badge }
-			card.Activated:Connect(function()
-				lplay("Click")
-				C.sel = i
-				C.refresh()
-			end)
-		end
-	end
-
-	-- stage helpers ---------------------------------------------------------------------------------
-	local function findStage()
+	-- The OWNER-PLACED display character (nothing is spawned): a Model or Part named ClassCharacter /
+	-- ClassStage anywhere in Workspace.
+	local function findDisplay()
 		for _, d in workspace:GetDescendants() do
-			if d:IsA("BasePart") and d.Name:lower() == "classstage" then
+			local n = d.Name:lower()
+			if (n == "classcharacter" or n == "classstage") and (d:IsA("Model") or d:IsA("BasePart")) then
 				return d
 			end
 		end
 		return nil
 	end
-	local function makeClone()
-		local char = localPlayer.Character
-		if not char or not char:FindFirstChild("HumanoidRootPart") then
-			return nil
-		end
-		char.Archivable = true
-		local cl = char:Clone()
-		char.Archivable = false
-		if not cl then
-			return nil
-		end
-		cl.Name = "ClassShowcaseClone"
-		for _, d in cl:GetDescendants() do
-			if d:IsA("BaseScript") or d:IsA("Sound") or d:IsA("BillboardGui") then
-				d:Destroy()
-			elseif d:IsA("BasePart") then
-				d.Anchored = true
-				d.CanCollide = false
-			end
-		end
-		local hum = cl:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		end
-		return cl
-	end
 
 	C.refresh = function()
 		local e = CLASSES[C.sel]
-		for i, c in C.cards do
-			local on = (i == C.sel)
-			c.ring.Color = on and ACCENT or TBLACK
-			c.ring.Thickness = on and 3 or 3
-			TS:Create(c.card, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Position = UDim2.new(0, (i - 1) * 162, 1, on and -10 or 0) }):Play()
-			c.badge.Visible = (CLASSES[i].id == C.equipped)
-		end
-		C.statTitle.Text = e.emoji .. " " .. e.name
-		for _, ch in C.statLines:GetChildren() do
-			ch:Destroy()
-		end
-		local rows = { table.unpack(e.stats) }
-		table.insert(rows, { "APPLIES", "NEXT RUN" })
-		for i, s in ipairs(rows) do
-			local l = Instance.new("TextLabel")
-			l.Position = UDim2.fromOffset(0, (i - 1) * 20)
-			l.Size = UDim2.new(1, 0, 0, 18)
-			l.BackgroundTransparency = 1
-			l.FontFace = BODYB_FACE
-			l.TextSize = 12
-			l.TextColor3 = DIMTEXT
-			l.TextXAlignment = Enum.TextXAlignment.Left
-			l.Text = s[1]
-			l.Parent = C.statLines
-			local v = Instance.new("TextLabel")
-			v.AnchorPoint = Vector2.new(1, 0)
-			v.Position = UDim2.new(1, 0, 0, (i - 1) * 20)
-			v.Size = UDim2.fromOffset(90, 18)
-			v.BackgroundTransparency = 1
-			v.FontFace = BODYB_FACE
-			v.TextSize = 12
-			v.TextColor3 = ACCENT
-			v.TextXAlignment = Enum.TextXAlignment.Right
-			v.Text = s[2]
-			v.Parent = C.statLines
+		for i, r in C.rows do
+			r.ring.Color = (i == C.sel) and ACCENT or TBLACK
+			r.badge.Visible = (CLASSES[i].id == C.equipped)
 		end
 		if e.id == C.equipped then
 			C.selGrad.Color = ColorSequence.new(Color3.fromRGB(58, 65, 48), Color3.fromRGB(38, 43, 31))
@@ -4495,9 +4445,6 @@ do
 			C.selLbl.Text = "SELECT " .. e.name
 			C.selLbl.TextColor3 = Color3.new(1, 1, 1)
 		end
-		if C.disc then
-			C.disc.Color = e.color
-		end
 	end
 
 	C.setOpen = function(on)
@@ -4506,46 +4453,27 @@ do
 		end
 		local cam = workspace.CurrentCamera
 		if on then
-			local char = localPlayer.Character
-			local root = char and char:FindFirstChild("HumanoidRootPart")
-			if not root or not cam then
-				return
-			end
-			local stage = findStage()
-			local standCF
-			if stage then
-				standCF = CFrame.new(stage.Position + Vector3.new(0, stage.Size.Y * 0.5 + 3.2, 0))
-					* CFrame.Angles(0, math.rad(stage.Orientation.Y), 0)
-			else
-				-- no ClassStage part yet: pose the clone a few studs in front of you, facing you
-				local at = root.Position + root.CFrame.LookVector * 9
-				standCF = CFrame.lookAt(at, Vector3.new(root.Position.X, at.Y, root.Position.Z))
-			end
-			C.clone = makeClone()
-			if not C.clone then
-				return
-			end
 			C.open = true
-			C.standCF = standCF
-			C.clone:PivotTo(standCF)
-			C.clone.Parent = workspace
-			local disc = Instance.new("Part") -- the class-colored stage glow
-			disc.Shape = Enum.PartType.Cylinder
-			disc.Size = Vector3.new(0.25, 8, 8)
-			disc.CFrame = CFrame.new(standCF.Position - Vector3.new(0, 2.9, 0)) * CFrame.Angles(0, 0, math.rad(90))
-			disc.Anchored = true
-			disc.CanCollide = false
-			disc.CanQuery = false
-			disc.Material = Enum.Material.Neon
-			disc.Color = CLASSES[C.sel].color
-			disc.Transparency = 0.55
-			disc.Parent = workspace
-			C.disc = disc
-			C.savedCamCF = cam.CFrame
-			cam.CameraType = Enum.CameraType.Scriptable
-			local camPos = standCF.Position + standCF.LookVector * 10 + Vector3.new(0, 2.2, 0)
-			TS:Create(cam, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ CFrame = CFrame.lookAt(camPos, standCF.Position + Vector3.new(0, 0.6, 0)) }):Play()
+			lplay("Open")
+			local disp = findDisplay()
+			C.movedCam = false
+			C.hint.Visible = (disp == nil)
+			if disp and cam then
+				-- frame THEIR character: front of its pivot, distance from its size
+				local cf, size
+				if disp:IsA("Model") then
+					cf, size = disp:GetBoundingBox()
+				else
+					cf, size = disp.CFrame, disp.Size
+				end
+				local dist = math.max(size.X, size.Y, size.Z) * 1.35 + 4
+				local camPos = cf.Position + cf.LookVector * dist + Vector3.new(0, size.Y * 0.18 + 1, 0)
+				C.savedCamCF = cam.CFrame
+				C.movedCam = true
+				cam.CameraType = Enum.CameraType.Scriptable
+				TS:Create(cam, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ CFrame = CFrame.lookAt(camPos, cf.Position + Vector3.new(0, size.Y * 0.05, 0)) }):Play()
+			end
 			for _, n in HIDE_GUIS do
 				local g = playerGui:FindFirstChild(n)
 				if g then
@@ -4553,30 +4481,10 @@ do
 				end
 			end
 			C.gui.Enabled = true
-			lplay("Open")
-			local ang = 0
-			C.rot = RunService.RenderStepped:Connect(function(dt)
-				ang += dt * 0.45 -- slow catwalk turn
-				if C.clone and C.clone.Parent then
-					C.clone:PivotTo(C.standCF * CFrame.Angles(0, ang, 0))
-				end
-			end)
 			C.refresh()
 		else
 			C.open = false
 			lplay("Close")
-			if C.rot then
-				C.rot:Disconnect()
-				C.rot = nil
-			end
-			if C.clone then
-				C.clone:Destroy()
-				C.clone = nil
-			end
-			if C.disc then
-				C.disc:Destroy()
-				C.disc = nil
-			end
 			C.gui.Enabled = false
 			for _, n in HIDE_GUIS do
 				local g = playerGui:FindFirstChild(n)
@@ -4584,7 +4492,7 @@ do
 					g.Enabled = true
 				end
 			end
-			if cam then
+			if cam and C.movedCam then
 				local tw = TS:Create(cam, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 					{ CFrame = C.savedCamCF or cam.CFrame })
 				tw.Completed:Once(function()
@@ -4613,6 +4521,7 @@ do
 		end
 	end)
 end
+
 
 -- =====================================================================================================
 -- ===== RUN SUMMARY CARD ("Run over — Wave 14 · 87 kills · +215 Coins") ===============================
