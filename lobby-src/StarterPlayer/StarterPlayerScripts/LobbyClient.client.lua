@@ -476,6 +476,7 @@ local SOUND_IDS = {
 	Buy           = "136519378894463", -- shop/gun purchase
 	Upgrade       = "", -- (retired with gun upgrading; slot kept)
 	Equip         = "81102724493720", -- weapon/skin equipped
+	LevelUp       = "341542294", -- account level up (the bottom-right bar fills over)
 	ReelTick      = "", -- each case-reel tile passing [tick]
 	RevealLow     = "", -- common/uncommon/rare pull [small reward sting]
 	RevealHigh    = "", -- epic/legendary pull [big reward sting]
@@ -483,7 +484,7 @@ local SOUND_IDS = {
 	TeleportGo    = "", -- party countdown ends [teleport whoosh]
 }
 local SOUND_VOL = { -- base volume per slot (before the sliders)
-	Music = 0.45, Click = 0.4, ReelTick = 0.35, RevealJackpot = 0.8,
+	Music = 0.45, Click = 0.4, ReelTick = 0.35, RevealJackpot = 0.8, LevelUp = 0.7,
 }
 
 local volMaster, volMusic, volSfx = 1, 0.6, 1
@@ -1123,13 +1124,13 @@ do
 		weapons = "102091580612843",
 		daily = "85053185478907",
 		shop = "71412141929869",
-		pass = "",
+		classes = "", -- CHANGED: the Pass slot is CLASSES now (passes moved inside the shop)
 		settings = "94140673883223",
 		codes = "106591567271932",
 	}
-	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", pass = "🏅", settings = "⚙️", codes = "🔑" }
-	local ORDER = { "inventory", "weapons", "daily", "shop", "pass", "settings", "codes" }
-	local LABELS = { inventory = "Inventory", weapons = "Weapons", daily = "Daily", shop = "Shop", pass = "Pass", settings = "Settings", codes = "Codes" }
+	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", classes = "🛡️", settings = "⚙️", codes = "🔑" }
+	local ORDER = { "inventory", "weapons", "daily", "shop", "classes", "settings", "codes" }
+	local LABELS = { inventory = "Inventory", weapons = "Weapons", daily = "Daily", shop = "Shop", classes = "Classes", settings = "Settings", codes = "Codes" }
 
 	-- The faded black bar behind everything (pure gradient, no border — melts into the floor).
 	local fade = Instance.new("Frame")
@@ -2028,6 +2029,9 @@ local function renderInvDetail()
 			if e.kind == "gun" then
 				local gw = weaponInfo(e.id)
 				lootRow(order, "WEAPON — " .. (gw and gw.name or e.id):upper(), GOLD, ("%.1f%%"):format(e.pct or 0))
+			elseif e.kind == "guns" then -- the GUN pack: whole gun-rarity rows
+				local rname = ((invData.catalog.rarities[e.rarity] or {}).name or e.rarity):upper()
+				lootRow(order, "GUNS — " .. rname, rarityColor(e.rarity), ("%.1f%%"):format(e.pct or 0))
 			else
 				local rname = ((invData.catalog.rarities[e.rarity] or {}).name or e.rarity):upper()
 				lootRow(order, "SKINS — " .. rname, rarityColor(e.rarity), ("%.1f%%"):format(e.pct or 0))
@@ -2596,14 +2600,42 @@ do
 		S.page[id] = pg
 	end
 
-	-- CHANGED (S3): the tab rail is GONE — the dock's Shop/Daily/Pass/Codes buttons are the only
-	-- navigation (wired at the bottom of this block). setTab just flips pages + retitles the header.
+	-- CHANGED (S3): the tab rail is GONE — the dock's Shop/Daily/Codes buttons are the only outside
+	-- navigation. PASSES lives INSIDE the shop now: a gold chip in the header flips pack <-> passes.
 	S.setTab = function(id)
 		S.tab = id
 		for k, pg in S.page do
 			pg.Visible = (k == id)
 		end
 		S.title.Text = TABS.titles[id]
+		if S.passChip then
+			S.passChip.Visible = (id == "featured" or id == "passes")
+			S.passChip.Text = (id == "passes") and "← BACK TO PACK" or "PASSES & COINS"
+		end
+	end
+	do -- the header's PASSES chip (left of the red X)
+		local bar = S.title.Parent
+		local chip = Instance.new("TextButton")
+		chip.AnchorPoint = Vector2.new(1, 0.5)
+		chip.Position = UDim2.new(1, -66, 0.5, 0)
+		chip.Size = UDim2.fromOffset(158, 34)
+		chip.BackgroundColor3 = Color3.fromRGB(10, 11, 8)
+		chip.BackgroundTransparency = 0.2
+		chip.BorderSizePixel = 0
+		chip.AutoButtonColor = true
+		chip.FontFace = TITLE_FACE
+		chip.TextSize = 14
+		chip.TextColor3 = Color3.fromRGB(255, 213, 122)
+		chip.Text = "PASSES & COINS"
+		chip.ZIndex = 5
+		chip.Parent = bar
+		corner(chip, 8)
+		ledge(chip, TBLACK, 2)
+		S.passChip = chip
+		chip.Activated:Connect(function()
+			lplay("Click")
+			S.setTab(S.tab == "passes" and "featured" or "passes")
+		end)
 	end
 
 	-- =====================================================================================================
@@ -2762,7 +2794,7 @@ do
 		S.footCap.TextWrapped = true
 		S.footCap.TextXAlignment = Enum.TextXAlignment.Left
 		S.footCap.ZIndex = 4
-		S.footCap.Text = "GUN SKINS — THEY FIT EVERY GUN YOU OWN"
+		S.footCap.Text = "NEW GUNS — PULLS PREFER ONES YOU DON'T OWN"
 		S.footCap.Parent = S.foot
 		local capS = Instance.new("UIStroke")
 		capS.Color = TBLACK
@@ -3834,7 +3866,7 @@ do
 		-- FEATURED: the four tier CARDS — your equipped gun rendered wearing each tier's skin.
 		local pk = d.pack
 		if pk then
-			S.packTitle.Text = (pk.name or "PACK"):upper():gsub("%s*SKIN%s*CRATE", ""):gsub("%s*CASE", "") .. " SKIN PACK"
+			S.packTitle.Text = (pk.name or "GUN PACK"):upper() -- CHANGED: the pack pays GUNS now
 			S.setPill(S.p1, pk.robux1)
 			S.setPill(S.p3, pk.robux3)
 			S.setPill(S.p10, pk.robux10)
@@ -3848,7 +3880,7 @@ do
 			else
 				local entries = {}
 				for _, e in disp.loot do
-					if e.kind == "skins" then
+					if e.kind == "skins" or e.kind == "guns" then
 						table.insert(entries, e)
 					end
 				end
@@ -3856,22 +3888,40 @@ do
 					return (a.pct or 100) < (b.pct or 100)
 				end)
 				local myGun = (invData.loadout and (invData.loadout[1] or invData.loadout[2])) or "pistol"
-				local gunInfo = invData.catalog.weapons[myGun]
-				S.footCap.Text = ("GUN SKINS — SHOWN ON YOUR %s"):format(((gunInfo and gunInfo.name) or myGun):upper())
+				S.footCap.Text = "NEW GUNS — PULLS PREFER ONES YOU DON'T OWN · DUPES PAY COINS"
 				local PREF = { common = "worn", rare = "toxic", legendary = "gold", divine = "void" }
 				for i = 1, math.min(4, #entries) do
 					local e = entries[i]
 					local tierCol = rarityColor(e.rarity)
-					-- the tier's face skin for MY gun (canonical name first, else first of the rarity)
-					local sk = PREF[e.rarity] and invData.catalog.skins[myGun .. "_" .. PREF[e.rarity]]
-					if not sk or sk.rarity ~= e.rarity then
-						local best
-						for id, s2 in invData.catalog.skins do
-							if s2.gun == myGun and s2.rarity == e.rarity and (not best or id < best) then
-								best = id
+					local sk, showGun, gunIsNew
+					if e.kind == "guns" then
+						-- a gun of this rarity fronts the card — one you DON'T own yet when possible
+						local bestOwned, bestNew
+						for id, w2 in invData.catalog.weapons do
+							if w2.rarity == e.rarity then
+								if table.find(invData.owned or {}, id) then
+									if not bestOwned or id < bestOwned then
+										bestOwned = id
+									end
+								elseif not bestNew or id < bestNew then
+									bestNew = id
+								end
 							end
 						end
-						sk = best and invData.catalog.skins[best] or sk
+						showGun = bestNew or bestOwned
+						gunIsNew = bestNew ~= nil
+					else
+						-- the tier's face skin for MY gun (canonical name first, else first of the rarity)
+						sk = PREF[e.rarity] and invData.catalog.skins[myGun .. "_" .. PREF[e.rarity]]
+						if not sk or sk.rarity ~= e.rarity then
+							local best
+							for id, s2 in invData.catalog.skins do
+								if s2.gun == myGun and s2.rarity == e.rarity and (not best or id < best) then
+									best = id
+								end
+							end
+							sk = best and invData.catalog.skins[best] or sk
+						end
 					end
 					local card = Instance.new("Frame")
 					card.Position = UDim2.fromOffset(10 + (i - 1) * 154, 10)
@@ -3886,8 +3936,13 @@ do
 					if i == 1 then -- the rarest blazes: an extra soft halo ring
 						ledge(card, tierCol, 7, 0.78)
 					end
-					local vp = sk and (makeGunViewport(sk.id, false) or makeGunViewport(myGun, false, nil, sk.tint))
-						or makeGunViewport(myGun, false)
+					local vp
+					if showGun then
+						vp = makeGunViewport(showGun, false)
+					else
+						vp = sk and (makeGunViewport(sk.id, false) or makeGunViewport(myGun, false, nil, sk.tint))
+							or makeGunViewport(myGun, false)
+					end
 					if vp then
 						vp.Position = UDim2.fromOffset(0, 8)
 						vp.Size = UDim2.new(1, 0, 0, 100)
@@ -3914,7 +3969,14 @@ do
 						c.CornerRadius = UDim.new(1, 0)
 						c.Parent = gl
 					end
-					local nm = sticker(card, (sk and sk.skin or e.rarity):upper() .. " SKIN", 15)
+					local nmText
+					if showGun then
+						local gw = invData.catalog.weapons[showGun]
+						nmText = gunIsNew and ((gw and gw.name or showGun):upper()) or "GUN + COINS"
+					else
+						nmText = (sk and sk.skin or e.rarity):upper() .. " SKIN"
+					end
+					local nm = sticker(card, nmText, 15)
 					nm.Position = UDim2.fromOffset(0, 118)
 					nm.Size = UDim2.new(1, 0, 0, 18)
 					nm.ZIndex = 4
@@ -4128,9 +4190,38 @@ do
 	dockBtns.daily.Activated:Connect(function()
 		openShopTab("daily")
 	end)
-	dockBtns.pass.Activated:Connect(function()
-		openShopTab("passes")
-	end)
+	-- CHANGED: the Pass slot is CLASSES now — a placeholder panel until the class system lands.
+	do
+		local cRoot, cBody, _, cX = chromePanel(S.gui, 460, 200, Color3.fromRGB(70, 46, 120), "CLASSES")
+		cBody.Visible = false
+		cBody:GetPropertyChangedSignal("Visible"):Connect(function()
+			cRoot.Visible = cBody.Visible
+		end)
+		local note = sticker(cBody, "COMING SOON", 26)
+		note.Position = UDim2.fromOffset(0, 48)
+		note.Size = UDim2.new(1, 0, 0, 30)
+		local sub = Instance.new("TextLabel")
+		sub.Position = UDim2.fromOffset(30, 92)
+		sub.Size = UDim2.new(1, -60, 0, 48)
+		sub.BackgroundTransparency = 1
+		sub.FontFace = BODYB_FACE
+		sub.TextSize = 13
+		sub.TextColor3 = DIMTEXT
+		sub.TextWrapped = true
+		sub.Text = "Pick a CLASS before each run — its own perks, look, and playstyle. Under construction."
+		sub.Parent = cBody
+		cX.Activated:Connect(function()
+			lplay("Close")
+			cBody.Visible = false
+		end)
+		dockBtns.classes.Activated:Connect(function()
+			lplay("Click")
+			cBody.Visible = not cBody.Visible
+			if cBody.Visible then
+				closeShop()
+			end
+		end)
+	end
 	dockBtns.codes.Activated:Connect(function()
 		openShopTab("codes")
 	end)
@@ -4383,6 +4474,398 @@ do
 		syncXpBar()
 	end)
 	task.delay(3, renderAll) -- saved volumes arrive async via Stats
+end
+
+-- ===== SQUAD (top-center avatar party) ===== circular avatar-headshot chips for you + your buddies,
+-- a "+" chip to invite (avatar picker), a red ✕ to leave, crown on the leader. Accepting an invite
+-- happens on a top-center card. When the leader locks in a run on a pad, the server summons everyone.
+-- =====================================================================================================
+do
+	local SquadSyncR = remotes:WaitForChild("SquadSync")
+	local SquadInviteR = remotes:WaitForChild("SquadInvite")
+	local SquadRespondR = remotes:WaitForChild("SquadRespond")
+	local SquadLeaveR = remotes:WaitForChild("SquadLeave")
+	local TS = game:GetService("TweenService")
+
+	local P = { members = {} } -- one table (200-local ceiling)
+
+	P.gui = Instance.new("ScreenGui")
+	P.gui.Name = "LobbySquad"
+	P.gui.ResetOnSpawn = false
+	P.gui.IgnoreGuiInset = true
+	P.gui.DisplayOrder = 13
+	P.gui.Parent = playerGui
+	lattach(P.gui)
+
+	P.text = function(parent, str, size, colr)
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.FontFace = TITLE_FACE
+		l.TextSize = size
+		l.TextColor3 = colr or Color3.new(1, 1, 1)
+		l.Text = str
+		l.ZIndex = 6
+		local st = Instance.new("UIStroke")
+		st.Color = TBLACK
+		st.Thickness = math.clamp(size / 8, 2, 3)
+		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		st.Parent = l
+		l.Parent = parent
+		return l
+	end
+
+	P.row = Instance.new("Frame") -- the chips row, top-center
+	P.row.AnchorPoint = Vector2.new(0.5, 0)
+	P.row.Position = UDim2.new(0.5, 0, 0, 10)
+	P.row.Size = UDim2.fromOffset(0, 66)
+	P.row.AutomaticSize = Enum.AutomaticSize.X
+	P.row.BackgroundTransparency = 1
+	P.row.Parent = P.gui
+	do
+		local ll = Instance.new("UIListLayout")
+		ll.FillDirection = Enum.FillDirection.Horizontal
+		ll.VerticalAlignment = Enum.VerticalAlignment.Top
+		ll.SortOrder = Enum.SortOrder.LayoutOrder
+		ll.Padding = UDim.new(0, 10)
+		ll.Parent = P.row
+	end
+
+	P.msgLbl = P.text(P.gui, "", 13, Color3.fromRGB(255, 213, 122)) -- little status line under the row
+	P.msgLbl.AnchorPoint = Vector2.new(0.5, 0)
+	P.msgLbl.Position = UDim2.new(0.5, 0, 0, 78)
+	P.msgLbl.Size = UDim2.fromOffset(500, 18)
+	P.msg = function(t)
+		P.msgLbl.Text = t
+		local my = os.clock()
+		P.msgAt = my
+		task.delay(3.5, function()
+			if P.msgAt == my then
+				P.msgLbl.Text = ""
+			end
+		end)
+	end
+
+	-- One circular chip: avatar headshot (or a drawn glyph), rim, optional crown, name underneath.
+	local function chipBase(glyph, uid, rimColor)
+		local holder = Instance.new("Frame")
+		holder.Size = UDim2.fromOffset(52, 66)
+		holder.BackgroundTransparency = 1
+		holder.Parent = P.row
+		local circ = Instance.new("ImageButton")
+		circ.AnchorPoint = Vector2.new(0.5, 0)
+		circ.Position = UDim2.new(0.5, 0, 0, 0)
+		circ.Size = UDim2.fromOffset(48, 48)
+		circ.BackgroundColor3 = Color3.new(1, 1, 1)
+		circ.BorderSizePixel = 0
+		circ.ZIndex = 5
+		circ.Parent = holder
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(1, 0)
+		cc.Parent = circ
+		local cg = Instance.new("UIGradient") -- dark glass base (same as the dock)
+		cg.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 55, 64)),
+			ColorSequenceKeypoint.new(0.35, Color3.fromRGB(26, 27, 33)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 14, 18)),
+		})
+		cg.Rotation = 90
+		cg.Parent = circ
+		ledge(circ, rimColor or Color3.new(1, 1, 1), 1.6, rimColor and 0.1 or 0.75)
+		if uid then
+			local img = Instance.new("ImageLabel")
+			img.Size = UDim2.fromScale(1, 1)
+			img.BackgroundTransparency = 1
+			img.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(uid)
+			img.ZIndex = 6
+			img.Parent = circ
+			local ic = Instance.new("UICorner")
+			ic.CornerRadius = UDim.new(1, 0)
+			ic.Parent = img
+		elseif glyph then
+			local g = P.text(circ, glyph, 22)
+			g.Size = UDim2.fromScale(1, 1)
+			g.ZIndex = 6
+		end
+		-- pop-in + hover juice
+		local sc = Instance.new("UIScale")
+		sc.Scale = 0.6
+		sc.Parent = holder
+		TS:Create(sc, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		circ.MouseEnter:Connect(function()
+			TS:Create(sc, TweenInfo.new(0.09), { Scale = 1.08 }):Play()
+		end)
+		circ.MouseLeave:Connect(function()
+			TS:Create(sc, TweenInfo.new(0.09), { Scale = 1 }):Play()
+		end)
+		return holder, circ
+	end
+
+	-- The invite PICKER (who's in the server, not already squadded with me).
+	P.picker = Instance.new("Frame")
+	P.picker.AnchorPoint = Vector2.new(0.5, 0)
+	P.picker.Position = UDim2.new(0.5, 0, 0, 84)
+	P.picker.Size = UDim2.fromOffset(280, 250)
+	P.picker.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
+	P.picker.BackgroundTransparency = 0.05
+	P.picker.BorderSizePixel = 0
+	P.picker.Visible = false
+	P.picker.ZIndex = 20
+	P.picker.Parent = P.gui
+	corner(P.picker, 12)
+	ledge(P.picker, TBLACK, 3)
+	do
+		local t = P.text(P.picker, "INVITE TO SQUAD", 16)
+		t.Position = UDim2.fromOffset(0, 8)
+		t.Size = UDim2.new(1, 0, 0, 22)
+		t.ZIndex = 21
+		P.pickList = Instance.new("ScrollingFrame")
+		P.pickList.Position = UDim2.fromOffset(12, 38)
+		P.pickList.Size = UDim2.new(1, -24, 1, -50)
+		P.pickList.BackgroundTransparency = 1
+		P.pickList.BorderSizePixel = 0
+		P.pickList.ScrollBarThickness = 5
+		P.pickList.CanvasSize = UDim2.new()
+		P.pickList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		P.pickList.ZIndex = 21
+		P.pickList.Parent = P.picker
+		local ll = Instance.new("UIListLayout")
+		ll.Padding = UDim.new(0, 6)
+		ll.Parent = P.pickList
+	end
+	P.openPicker = function()
+		clearChildren(P.pickList)
+		local inSquad = {}
+		for _, m in P.members do
+			inSquad[m.id] = true
+		end
+		local others = 0
+		for _, plr in Players:GetPlayers() do
+			if plr ~= localPlayer and not inSquad[plr.UserId] then
+				others += 1
+				local row = Instance.new("TextButton")
+				row.Size = UDim2.new(1, -6, 0, 44)
+				row.BackgroundColor3 = darker(PANEL2, 0.2)
+				row.BorderSizePixel = 0
+				row.Text = ""
+				row.ZIndex = 21
+				row.Parent = P.pickList
+				corner(row, 8)
+				ledge(row, TBLACK, 2)
+				local av = Instance.new("ImageLabel")
+				av.Position = UDim2.fromOffset(4, 4)
+				av.Size = UDim2.fromOffset(36, 36)
+				av.BackgroundColor3 = Color3.fromRGB(26, 27, 33)
+				av.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(plr.UserId)
+				av.ZIndex = 22
+				av.Parent = row
+				local ac = Instance.new("UICorner")
+				ac.CornerRadius = UDim.new(1, 0)
+				ac.Parent = av
+				local nm = P.text(row, plr.DisplayName or plr.Name, 14)
+				nm.Position = UDim2.fromOffset(48, 0)
+				nm.Size = UDim2.new(1, -56, 1, 0)
+				nm.TextXAlignment = Enum.TextXAlignment.Left
+				nm.ZIndex = 22
+				row.Activated:Connect(function()
+					P.picker.Visible = false
+					SquadInviteR:FireServer(plr.UserId)
+				end)
+			end
+		end
+		if others == 0 then
+			P.msg("NO ONE ELSE HERE — INVITE A FRIEND TO THE GAME!")
+			return
+		end
+		P.picker.Visible = true
+	end
+
+	-- The incoming-invite CARD.
+	P.invite = Instance.new("Frame")
+	P.invite.AnchorPoint = Vector2.new(0.5, 0)
+	P.invite.Position = UDim2.new(0.5, 0, 0, -110)
+	P.invite.Size = UDim2.fromOffset(320, 96)
+	P.invite.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
+	P.invite.BackgroundTransparency = 0.05
+	P.invite.BorderSizePixel = 0
+	P.invite.ZIndex = 30
+	P.invite.Parent = P.gui
+	corner(P.invite, 12)
+	ledge(P.invite, TBLACK, 3)
+	ledge(P.invite, ACCENT, 1.5, 0.5)
+	do
+		P.invAv = Instance.new("ImageLabel")
+		P.invAv.Position = UDim2.fromOffset(10, 10)
+		P.invAv.Size = UDim2.fromOffset(44, 44)
+		P.invAv.BackgroundColor3 = Color3.fromRGB(26, 27, 33)
+		P.invAv.ZIndex = 31
+		P.invAv.Parent = P.invite
+		local ac = Instance.new("UICorner")
+		ac.CornerRadius = UDim.new(1, 0)
+		ac.Parent = P.invAv
+		P.invLbl = P.text(P.invite, "", 14)
+		P.invLbl.Position = UDim2.fromOffset(64, 10)
+		P.invLbl.Size = UDim2.new(1, -74, 0, 44)
+		P.invLbl.TextXAlignment = Enum.TextXAlignment.Left
+		P.invLbl.TextWrapped = true
+		P.invLbl.ZIndex = 31
+		local acc = Instance.new("TextButton")
+		acc.Position = UDim2.fromOffset(10, 60)
+		acc.Size = UDim2.new(0.5, -15, 0, 28)
+		acc.BorderSizePixel = 0
+		acc.AutoButtonColor = true
+		acc.Text = ""
+		acc.ZIndex = 31
+		acc.Parent = P.invite
+		corner(acc, 8)
+		acc.BackgroundColor3 = Color3.new(1, 1, 1)
+		local ag = Instance.new("UIGradient")
+		ag.Color = ColorSequence.new(Color3.fromRGB(198, 247, 122), Color3.fromRGB(71, 138, 22))
+		ag.Rotation = 90
+		ag.Parent = acc
+		ledge(acc, TBLACK, 2.5)
+		local al = P.text(acc, "ACCEPT", 14)
+		al.Size = UDim2.fromScale(1, 1)
+		al.ZIndex = 32
+		local dec = Instance.new("TextButton")
+		dec.AnchorPoint = Vector2.new(1, 0)
+		dec.Position = UDim2.new(1, -10, 0, 60)
+		dec.Size = UDim2.new(0.5, -15, 0, 28)
+		dec.BackgroundColor3 = TRACK
+		dec.BorderSizePixel = 0
+		dec.AutoButtonColor = true
+		dec.Text = ""
+		dec.ZIndex = 31
+		dec.Parent = P.invite
+		corner(dec, 8)
+		ledge(dec, TBLACK, 2.5)
+		local dl = P.text(dec, "DECLINE", 14)
+		dl.Size = UDim2.fromScale(1, 1)
+		dl.ZIndex = 32
+		P.hideInvite = function()
+			TS:Create(P.invite, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ Position = UDim2.new(0.5, 0, 0, -110) }):Play()
+		end
+		acc.Activated:Connect(function()
+			lplay("Equip")
+			SquadRespondR:FireServer(true)
+			P.hideInvite()
+		end)
+		dec.Activated:Connect(function()
+			lplay("Click")
+			SquadRespondR:FireServer(false)
+			P.hideInvite()
+		end)
+	end
+	P.showInvite = function(inv)
+		P.invAv.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(tonumber(inv.id) or 0)
+		P.invLbl.Text = tostring(inv.name or "?"):upper() .. " WANTS TO PARTY UP"
+		lplay("Open")
+		TS:Create(P.invite, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Position = UDim2.new(0.5, 0, 0, 12) }):Play()
+		local my = os.clock()
+		P.invAt = my
+		task.delay(30, function()
+			if P.invAt == my then
+				P.hideInvite()
+			end
+		end)
+	end
+
+	P.render = function()
+		for _, c in P.row:GetChildren() do
+			if c:IsA("Frame") then
+				c:Destroy()
+			end
+		end
+		local n = #P.members
+		if n == 0 then -- solo: one subtle "party up" chip
+			local holder, circ = chipBase("+", nil)
+			holder.LayoutOrder = 1
+			local nm = P.text(holder, "Party", 11)
+			nm.AnchorPoint = Vector2.new(0.5, 1)
+			nm.Position = UDim2.new(0.5, 0, 1, 0)
+			nm.Size = UDim2.fromOffset(60, 14)
+			circ.Activated:Connect(function()
+				lplay("Click")
+				if P.picker.Visible then
+					P.picker.Visible = false
+				else
+					P.openPicker()
+				end
+			end)
+			return
+		end
+		local meLeader = false
+		for i, m in ipairs(P.members) do
+			if m.leader and m.id == localPlayer.UserId then
+				meLeader = true
+			end
+			local holder = chipBase(nil, m.id, m.leader and GOLD or nil)
+			holder.LayoutOrder = 10 + i
+			if m.leader then
+				local crown = P.text(holder, "👑", 14)
+				crown.AnchorPoint = Vector2.new(1, 0)
+				crown.Position = UDim2.new(1, 4, 0, -8)
+				crown.Size = UDim2.fromOffset(20, 18)
+				crown.ZIndex = 7
+			end
+			local nm = P.text(holder, m.name or "?", 11)
+			nm.AnchorPoint = Vector2.new(0.5, 1)
+			nm.Position = UDim2.new(0.5, 0, 1, 0)
+			nm.Size = UDim2.fromOffset(64, 14)
+			nm.TextTruncate = Enum.TextTruncate.AtEnd
+		end
+		if meLeader and n < 4 then -- leader can add more
+			local holder, circ = chipBase("+", nil)
+			holder.LayoutOrder = 90
+			circ.Activated:Connect(function()
+				lplay("Click")
+				if P.picker.Visible then
+					P.picker.Visible = false
+				else
+					P.openPicker()
+				end
+			end)
+		end
+		do -- leave chip (everyone)
+			local holder, circ = chipBase("✕", nil)
+			holder.LayoutOrder = 99
+			circ.Size = UDim2.fromOffset(34, 34)
+			circ.Position = UDim2.new(0.5, 0, 0, 7)
+			local rim = nil
+			for _, d in circ:GetChildren() do
+				if d:IsA("UIStroke") then
+					rim = d
+				end
+			end
+			if rim then
+				rim.Color = Color3.fromRGB(224, 60, 44)
+				rim.Transparency = 0.2
+			end
+			circ.Activated:Connect(function()
+				lplay("Close")
+				SquadLeaveR:FireServer()
+			end)
+		end
+	end
+	P.render()
+
+	SquadSyncR.OnClientEvent:Connect(function(d)
+		if typeof(d) ~= "table" then
+			return
+		end
+		if typeof(d.members) == "table" then
+			P.members = d.members
+			P.picker.Visible = false
+			P.render()
+		end
+		if typeof(d.invite) == "table" then
+			P.showInvite(d.invite)
+		end
+		if d.msg then
+			P.msg(tostring(d.msg))
+		end
+	end)
 end
 
 -- ===== DAILY QUESTS (edge tab → stamp card) ===== the slim QUESTS rail hugging the left edge with
@@ -4984,9 +5467,14 @@ do
 		return nil
 	end
 
+	local prevLevel = nil
 	local function refresh()
 		local level, into, need = levelInfo(localPlayer:GetAttribute("AccountXP") or 0)
 		localPlayer:SetAttribute("AccountLevel", level) -- the shop pane reads this to gate level-locked guns
+		if prevLevel and level > prevLevel then
+			lplay("LevelUp") -- NEW: the owner's level-up sting
+		end
+		prevLevel = level
 		lvl.Text = "LVL " .. level
 		if need > 0 then
 			fill.Size = UDim2.new(math.clamp(into / need, 0, 1), 0, 1, 0)

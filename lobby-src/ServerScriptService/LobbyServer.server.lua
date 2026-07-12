@@ -232,6 +232,23 @@ local CASES = {
 for rarity, c in CASES do
 	c.name = RARITY[rarity].name .. " Skin Crate"
 end
+-- CHANGED (owner request): the featured EXCLUSIVE PACK pays GUNS now, not skins. Its own virtual
+-- case id ("gunpack") keeps the regular rarity crates skins-only. A pull rolls a gun RARITY from
+-- gunWeights, then grants a gun you DON'T own yet (prefers the rolled rarity); when you own them
+-- all, the pull pays big dupe coins instead.
+CASES.gunpack = {
+	name = "Exclusive Gun Pack",
+	gunWeights = { uncommon = 30, rare = 34, epic = 24, legendary = 12 },
+}
+local GUNS_BY_RARITY = {} -- gun rarity -> sorted { weaponId }
+for id, w in WEAPONS do
+	GUNS_BY_RARITY[w.rarity] = GUNS_BY_RARITY[w.rarity] or {}
+	table.insert(GUNS_BY_RARITY[w.rarity], id)
+end
+for _, l in GUNS_BY_RARITY do
+	table.sort(l)
+end
+local GUN_DUP_COINS = { common = 150, uncommon = 300, rare = 600, epic = 1200, legendary = 2500 }
 
 -- ===== GUN LEVELS (the Clash-Royale copies system) =====
 -- Cases pay out COPIES of the rolled gun. Stack enough copies + pay Coins to level the gun up (10 levels);
@@ -448,21 +465,44 @@ local CATALOG = {
 		end
 		table.sort(allSkinIds)
 		for rarity, c in CASES do
+			if c.skinWeights then
+				local total = 0
+				for _, weight in c.skinWeights do
+					total += weight
+				end
+				local odds = {}
+				-- Item-level "WHAT'S INSIDE" list the featured pane renders — skin-rarity rows only
+				-- (CHANGED: guns removed from crates).
+				local loot = {}
+				for _, sr in RARITY_ORDER do
+					if c.skinWeights[sr] then
+						table.insert(odds, { rarity = sr, pct = (c.skinWeights[sr] / total) * 100 })
+						table.insert(loot, { kind = "skins", rarity = sr, pct = (c.skinWeights[sr] / total) * 100 })
+					end
+				end
+				t[rarity] = { name = c.name, rarity = rarity, poolIds = table.clone(allSkinIds), odds = odds, loot = loot, image = c.image }
+			end
+		end
+		-- The GUN pack's display entry: gun-rarity loot rows + every gun as the reel pool.
+		do
+			local gunIds = {}
+			for id in WEAPONS do
+				table.insert(gunIds, id)
+			end
+			table.sort(gunIds)
+			local gw = CASES.gunpack.gunWeights
 			local total = 0
-			for _, weight in c.skinWeights do
+			for _, weight in gw do
 				total += weight
 			end
-			local odds = {}
-			-- Item-level "WHAT'S INSIDE" list the featured pane renders — skin-rarity rows only
-			-- (CHANGED: guns removed from crates).
-			local loot = {}
-			for _, sr in RARITY_ORDER do
-				if c.skinWeights[sr] then
-					table.insert(odds, { rarity = sr, pct = (c.skinWeights[sr] / total) * 100 })
-					table.insert(loot, { kind = "skins", rarity = sr, pct = (c.skinWeights[sr] / total) * 100 })
+			local odds, loot = {}, {}
+			for _, rid in RARITY_ORDER do
+				if gw[rid] then
+					table.insert(odds, { rarity = rid, pct = (gw[rid] / total) * 100 })
+					table.insert(loot, { kind = "guns", rarity = rid, pct = (gw[rid] / total) * 100 })
 				end
 			end
-			t[rarity] = { name = c.name, rarity = rarity, poolIds = table.clone(allSkinIds), odds = odds, loot = loot, image = c.image }
+			t.gunpack = { name = CASES.gunpack.name, rarity = "legendary", poolIds = gunIds, odds = odds, loot = loot }
 		end
 		return t
 	end)(),
@@ -1334,6 +1374,66 @@ local function doOpenCase(player, prof, caseId)
 	if prof.cases[caseId] <= 0 then
 		prof.cases[caseId] = nil
 	end
+	-- THE GUN PACK (the featured Robux pack): rolls a GUN — always one you don't own when possible
+	-- (prefers the rolled rarity), auto-equips into an empty slot; own them all and it pays big dupe
+	-- coins. Skips the skin pity counter entirely.
+	if caseId == "gunpack" then
+		local gw = CASES.gunpack.gunWeights
+		local total = 0
+		for _, weight in gw do
+			total += weight
+		end
+		local r = rng:NextNumber(0, total)
+		local acc, chosen = 0, "rare"
+		for _, rid in RARITY_ORDER do
+			if gw[rid] then
+				acc += gw[rid]
+				if r <= acc then
+					chosen = rid
+					break
+				end
+			end
+		end
+		local function unownedOf(rid)
+			local l = {}
+			for _, id in GUNS_BY_RARITY[rid] or {} do
+				if not table.find(prof.ownedWeapons, id) then
+					table.insert(l, id)
+				end
+			end
+			return l
+		end
+		local pool = unownedOf(chosen)
+		if #pool == 0 then -- rolled rarity all owned: any unowned gun still beats a dupe
+			for _, rid in RARITY_ORDER do
+				local l = unownedOf(rid)
+				if #l > 0 then
+					pool, chosen = l, rid
+					break
+				end
+			end
+		end
+		if #pool > 0 then
+			local wonGun = pool[rng:NextInteger(1, #pool)]
+			table.insert(prof.ownedWeapons, wonGun)
+			prof.gunLevels[wonGun] = prof.gunLevels[wonGun] or 1
+			local sl = slotFor(wonGun)
+			if not prof.loadout[sl] then
+				prof.loadout[sl] = wonGun
+				refreshCarry(player)
+			end
+			local wr = WEAPONS[wonGun].rarity
+			if wr == "epic" or wr == "legendary" then
+				ShopTicker:FireAllClients({ name = player.DisplayName or player.Name, item = WEAPONS[wonGun].name, rarity = wr })
+			end
+			return { caseId = caseId, wonId = wonGun, coins = 0, unlocked = true }
+		end
+		local list = GUNS_BY_RARITY[chosen] or GUNS_BY_RARITY.rare
+		local wonGun = list[rng:NextInteger(1, #list)]
+		local c = GUN_DUP_COINS[WEAPONS[wonGun].rarity] or 500
+		prof.lobbyMoney += c
+		return { caseId = caseId, wonId = wonGun, coins = c, unlocked = false, maxed = true }
+	end
 	-- SKINS ONLY (guns removed from crates): the pull is always a skin; duplicates convert to coins.
 	-- PITY: at PityEvery-1 opens without a legendary+, this open is FORCED to legendary/divine
 	-- (weighted by this crate's own top-tier weights).
@@ -1429,9 +1529,10 @@ local function shopSnapshot(prof, enter)
 		coins = prof.lobbyMoney,
 		slots = slots,
 		-- The featured EXCLUSIVE PACK — ROBUX ONLY (Developer Product ids + live Robux prices).
+		-- CHANGED: the pack is the GUN pack now (guns, not skins).
 		pack = {
-			caseId = shop.pack,
-			name = CASES[shop.pack].name,
+			caseId = "gunpack",
+			name = CASES.gunpack.name,
 			product1 = SHOP.PackProducts[1],
 			product3 = SHOP.PackProducts[3],
 			product10 = SHOP.PackProducts[10],
@@ -1780,8 +1881,7 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	end
 
 	if packCount then
-		local shop = ensureShopState(prof)
-		local caseId = shop.pack
+		local caseId = "gunpack" -- CHANGED: the featured pack pays GUNS now
 		-- GIFT armed? Deliver to the recipient instead (still in the server + profile loaded).
 		local gift = pendingGift[player.UserId]
 		pendingGift[player.UserId] = nil
@@ -1834,6 +1934,156 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	StatsRemote:FireClient(player, prof)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
+
+-- ===== SQUADS (the top-center avatar party) ===== invite buddies from the chips row; the squad rides
+-- ABOVE the pads: when the leader locks a run in on a pad (FinalizeParty), every member is summoned
+-- onto that pad automatically and the normal pad flow takes them into the run together.
+local SQUAD_MAX = 4
+local squads = {} -- leaderUserId -> { leader = userId, members = { userId, ... } (leader included) }
+local squadOf = {} -- userId -> leaderUserId
+local squadInvites = {} -- targetUserId -> { from = userId, at = os.clock() } (one pending, 60s)
+local SquadSync = mk("SquadSync") -- S->C: {members={{id,name,leader?}}} | {invite={id,name}} | {msg}
+local SquadInvite = mk("SquadInvite") -- C->S: (targetUserId)
+local SquadRespond = mk("SquadRespond") -- C->S: (true = accept, false = decline)
+local SquadLeave = mk("SquadLeave") -- C->S: ()
+
+local function squadPush(leaderId)
+	local s = squads[leaderId]
+	if not s then
+		return
+	end
+	local payload = { members = {} }
+	for _, uid in s.members do
+		local pl = Players:GetPlayerByUserId(uid)
+		table.insert(payload.members, {
+			id = uid,
+			name = pl and (pl.DisplayName or pl.Name) or "?",
+			leader = (uid == s.leader) or nil,
+		})
+	end
+	for _, uid in s.members do
+		local pl = Players:GetPlayerByUserId(uid)
+		if pl then
+			SquadSync:FireClient(pl, payload)
+		end
+	end
+end
+
+local function squadRemove(player)
+	squadInvites[player.UserId] = nil
+	local lid = squadOf[player.UserId]
+	if not lid then
+		return
+	end
+	local s = squads[lid]
+	squadOf[player.UserId] = nil
+	if not s then
+		return
+	end
+	for i = #s.members, 1, -1 do
+		if s.members[i] == player.UserId then
+			table.remove(s.members, i)
+		end
+	end
+	if player.Parent then
+		SquadSync:FireClient(player, { members = {} })
+	end
+	if #s.members <= 1 then -- a squad of one dissolves
+		for _, uid in s.members do
+			squadOf[uid] = nil
+			local pl = Players:GetPlayerByUserId(uid)
+			if pl then
+				SquadSync:FireClient(pl, { members = {} })
+			end
+		end
+		squads[lid] = nil
+		return
+	end
+	if lid == player.UserId then -- the leader left: promote the first remaining member
+		local newLead = s.members[1]
+		s.leader = newLead
+		squads[newLead] = s
+		squads[lid] = nil
+		for _, uid in s.members do
+			squadOf[uid] = newLead
+		end
+	end
+	squadPush(s.leader)
+end
+
+SquadInvite.OnServerEvent:Connect(function(player, targetId)
+	if not allow(player, "Party") then
+		return
+	end
+	targetId = math.floor(tonumber(targetId) or 0)
+	local target = Players:GetPlayerByUserId(targetId)
+	if not target or target == player then
+		return
+	end
+	local lid = squadOf[player.UserId]
+	local s = lid and squads[lid]
+	if s and s.leader ~= player.UserId then
+		SquadSync:FireClient(player, { msg = "ONLY THE LEADER CAN INVITE" })
+		return
+	end
+	if s and #s.members >= SQUAD_MAX then
+		SquadSync:FireClient(player, { msg = "SQUAD FULL (4 MAX)" })
+		return
+	end
+	if squadOf[targetId] then
+		SquadSync:FireClient(player, { msg = (target.DisplayName or target.Name):upper() .. " IS ALREADY IN A SQUAD" })
+		return
+	end
+	local inv = squadInvites[targetId]
+	if inv and os.clock() - inv.at < 60 then
+		SquadSync:FireClient(player, { msg = "THEY ALREADY HAVE AN INVITE PENDING" })
+		return
+	end
+	squadInvites[targetId] = { from = player.UserId, at = os.clock() }
+	SquadSync:FireClient(target, { invite = { id = player.UserId, name = player.DisplayName or player.Name } })
+	SquadSync:FireClient(player, { msg = "INVITE SENT TO " .. (target.DisplayName or target.Name):upper() })
+end)
+
+SquadRespond.OnServerEvent:Connect(function(player, accept)
+	if not allow(player, "Party") then
+		return
+	end
+	local inv = squadInvites[player.UserId]
+	squadInvites[player.UserId] = nil
+	if not inv or os.clock() - inv.at > 60 then
+		return
+	end
+	local from = Players:GetPlayerByUserId(inv.from)
+	if accept ~= true then
+		if from then
+			SquadSync:FireClient(from, { msg = (player.DisplayName or player.Name):upper() .. " DECLINED" })
+		end
+		return
+	end
+	if not from or squadOf[player.UserId] then
+		return
+	end
+	local s = squads[squadOf[inv.from] or inv.from]
+	if not s then -- inviter had no squad yet: this accept founds it
+		s = { leader = inv.from, members = { inv.from } }
+		squads[inv.from] = s
+		squadOf[inv.from] = inv.from
+	end
+	if #s.members >= SQUAD_MAX then
+		SquadSync:FireClient(player, { msg = "THAT SQUAD FILLED UP" })
+		return
+	end
+	table.insert(s.members, player.UserId)
+	squadOf[player.UserId] = s.leader
+	squadPush(s.leader)
+end)
+
+SquadLeave.OnServerEvent:Connect(function(player)
+	if not allow(player, "Party") then
+		return
+	end
+	squadRemove(player)
+end)
 
 -- ===== PARTY PADS =====
 -- parties[zonePart] = { state="config"|"open", host, map, difficulty, size, members={}, deadline, billboard }
@@ -2145,6 +2395,21 @@ FinalizeParty.OnServerEvent:Connect(function(player, sel)
 	party.state = "open"
 	party.deadline = os.clock() + PARTY_WAIT
 	lastMode[player.UserId] = nil -- re-send: host's UI flips from config to party view
+	-- SQUAD: the leader locked in a run — make room and summon every member onto this pad. The normal
+	-- zone tick adds them to the party (their own difficulty locks still apply).
+	local s = squads[squadOf[player.UserId] or 0]
+	if s and s.leader == player.UserId then
+		party.size = math.clamp(math.max(party.size, #s.members), 1, 4)
+		for _, uid in s.members do
+			if uid ~= player.UserId then
+				local pl = Players:GetPlayerByUserId(uid)
+				local root = pl and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+				if root then
+					root.CFrame = CFrame.new(party.zone.Position + Vector3.new(0, party.zone.Size.Y * 0.5 + 3.5, 0))
+				end
+			end
+		end
+	end
 	updateBillboard(party.zone, party)
 end)
 
@@ -2523,6 +2788,7 @@ for _, pl in Players:GetPlayers() do
 end
 Players.PlayerRemoving:Connect(function(pl)
 	removeFromParty(pl)
+	squadRemove(pl) -- squads: drop them + promote a new leader if needed
 	persist(pl) -- immediate write on leave (flushes anything the batch loop hasn't gotten to)
 	profileCache[pl.UserId] = nil
 	dirty[pl.UserId] = nil
