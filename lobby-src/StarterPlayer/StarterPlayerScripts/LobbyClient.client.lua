@@ -4214,11 +4214,15 @@ end
 do
 	local ClassEquipR = remotes:WaitForChild("ClassEquip")
 	local TS = game:GetService("TweenService")
-	local CLASSES = { -- mirrors the game's ClassConfig BY HAND (separate place)
-		{ id = "soldier", emoji = "🎖️", name = "SOLDIER", line = "+12% GUN DAMAGE" },
-		{ id = "juggernaut", emoji = "🛡️", name = "JUGGERNAUT", line = "+50 MAX HP" },
-		{ id = "runner", emoji = "👟", name = "RUNNER", line = "+15% MOVE SPEED" },
-		{ id = "scavenger", emoji = "🪙", name = "SCAVENGER", line = "+25% COINS FROM RUNS" },
+	local CLASSES = { -- mirrors the game's ClassConfig BY HAND; c0/c1 = each row's own colour (G watermark)
+		{ id = "soldier", emoji = "🎖️", name = "SOLDIER", line = "+12% GUN DAMAGE · APPLIES NEXT RUN",
+			c0 = Color3.fromRGB(150, 30, 22), c1 = Color3.fromRGB(206, 60, 42) },
+		{ id = "juggernaut", emoji = "🛡️", name = "JUGGERNAUT", line = "+50 MAX HP · APPLIES NEXT RUN",
+			c0 = Color3.fromRGB(29, 61, 82), c1 = Color3.fromRGB(58, 132, 178) },
+		{ id = "runner", emoji = "👟", name = "RUNNER", line = "+15% MOVE SPEED · APPLIES NEXT RUN",
+			c0 = Color3.fromRGB(38, 74, 20), c1 = Color3.fromRGB(96, 168, 40) },
+		{ id = "scavenger", emoji = "🪙", name = "SCAVENGER", line = "+25% RUN COINS · APPLIES NEXT RUN",
+			c0 = Color3.fromRGB(120, 88, 18), c1 = Color3.fromRGB(206, 158, 52) },
 	}
 	local HIDE_GUIS = { "LobbyHUD", "LobbyInventory", "LobbyXP", "LobbyQuests", "LobbySquad", "LobbyCoins",
 		"LobbyShop", "LobbySettings", "LobbyDockFade" }
@@ -4251,49 +4255,43 @@ do
 		return l
 	end
 
-	-- top-left: back chip + title
+	-- screen title (top-left, orients the player); the panel carries its own header + red X
 	do
-		local b = Instance.new("TextButton")
-		b.Position = UDim2.fromOffset(16, 14)
-		b.Size = UDim2.fromOffset(44, 44)
-		b.BackgroundColor3 = Color3.fromRGB(10, 8, 16)
-		b.BackgroundTransparency = 0.15
-		b.BorderSizePixel = 0
-		b.AutoButtonColor = true
-		b.Text = ""
-		b.Parent = C.gui
-		corner(b, 10)
-		ledge(b, TBLACK, 2.5)
-		local a = C.text(b, "←", 20, ACCENT)
-		a.Size = UDim2.fromScale(1, 1)
 		local t = C.text(C.gui, "CLASSES", 26)
-		t.Position = UDim2.fromOffset(72, 18)
+		t.Position = UDim2.fromOffset(20, 16)
 		t.Size = UDim2.fromOffset(240, 36)
 		t.TextXAlignment = Enum.TextXAlignment.Left
-		b.Activated:Connect(function()
-			C.setOpen(false)
-		end)
 	end
 
-	-- THE LEFT PANEL (the approved L4 rows, minus skins)
+	-- THE LEFT PANEL — G watermark rows (each its own colour), red X, glow-pulse SELECT (J1)
 	do
 		local panel = Instance.new("Frame")
 		panel.AnchorPoint = Vector2.new(0, 0.5)
 		panel.Position = UDim2.new(0, 16, 0.5, 10)
-		panel.Size = UDim2.fromOffset(300, 428)
+		panel.Size = UDim2.fromOffset(330, 452)
 		panel.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
 		panel.BackgroundTransparency = 0.08
 		panel.BorderSizePixel = 0
 		panel.Parent = C.gui
-		corner(panel, 14)
+		corner(panel, 16)
 		ledge(panel, TBLACK, 3)
 		local t = C.text(panel, "PICK YOUR CLASS", 18)
-		t.Position = UDim2.fromOffset(16, 10)
-		t.Size = UDim2.new(1, -32, 0, 24)
+		t.Position = UDim2.fromOffset(16, 12)
+		t.Size = UDim2.new(1, -70, 0, 24)
 		t.TextXAlignment = Enum.TextXAlignment.Left
+
+		-- the chunky red X, exactly like every other panel
+		local x = redX(panel, 40, 20)
+		x.Position = UDim2.new(1, -8, 0, 8)
+		x.ZIndex = 12
+		x.Activated:Connect(function()
+			lplay("Close")
+			C.setOpen(false)
+		end)
+
 		C.list = Instance.new("ScrollingFrame") -- scrolls when more classes land later
-		C.list.Position = UDim2.fromOffset(12, 44)
-		C.list.Size = UDim2.new(1, -24, 1, -112)
+		C.list.Position = UDim2.fromOffset(12, 48)
+		C.list.Size = UDim2.new(1, -24, 1, -122)
 		C.list.BackgroundTransparency = 1
 		C.list.BorderSizePixel = 0
 		C.list.ScrollBarThickness = 5
@@ -4301,96 +4299,138 @@ do
 		C.list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		C.list.Parent = panel
 		local ll = Instance.new("UIListLayout")
-		ll.Padding = UDim.new(0, 8)
+		ll.Padding = UDim.new(0, 9)
 		ll.SortOrder = Enum.SortOrder.LayoutOrder
 		ll.Parent = C.list
+
 		for i, e in ipairs(CLASSES) do
 			local row = Instance.new("TextButton")
 			row.LayoutOrder = i
-			row.Size = UDim2.new(1, -6, 0, 62)
-			row.BackgroundColor3 = Color3.fromRGB(28, 31, 22)
+			row.Size = UDim2.new(1, -6, 0, 68)
+			row.BackgroundColor3 = Color3.new(1, 1, 1) -- white base; the gradient carries the class colour
 			row.BorderSizePixel = 0
 			row.AutoButtonColor = false
+			row.ClipsDescendants = true -- the big watermark emoji bleeds inside the row
 			row.Text = ""
 			row.Parent = C.list
-			corner(row, 10)
-			ldepth(row)
-			local ring = ledge(row, TBLACK, 2.5)
-			local ic = Instance.new("Frame") -- dark glass icon circle (the dock family)
-			ic.AnchorPoint = Vector2.new(0, 0.5)
-			ic.Position = UDim2.new(0, 9, 0.5, 0)
-			ic.Size = UDim2.fromOffset(44, 44)
-			ic.BackgroundColor3 = Color3.new(1, 1, 1)
-			ic.BorderSizePixel = 0
-			ic.ZIndex = 3
-			ic.Parent = row
-			local icc = Instance.new("UICorner")
-			icc.CornerRadius = UDim.new(1, 0)
-			icc.Parent = ic
-			local ig = Instance.new("UIGradient")
-			ig.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(52, 55, 64)),
-				ColorSequenceKeypoint.new(0.35, Color3.fromRGB(26, 27, 33)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 14, 18)),
-			})
-			ig.Rotation = 90
-			ig.Parent = ic
-			ledge(ic, Color3.new(1, 1, 1), 1.2, 0.85)
-			local em = C.text(ic, e.emoji, 20)
-			em.Size = UDim2.fromScale(1, 1)
-			em.ZIndex = 4
-			local nm = C.text(row, e.name, 15)
-			nm.Position = UDim2.fromOffset(62, 10)
-			nm.Size = UDim2.new(1, -70, 0, 18)
+			corner(row, 14)
+			local rg = Instance.new("UIGradient") -- horizontal dark→light class colour
+			rg.Color = ColorSequence.new(e.c0, e.c1)
+			rg.Rotation = 0
+			rg.Parent = row
+			local ring = ledge(row, TBLACK, 3)
+			-- huge faded emblem watermark, top-right
+			local wm = Instance.new("TextLabel")
+			wm.AnchorPoint = Vector2.new(1, 0)
+			wm.Position = UDim2.new(1, 8, 0, -14)
+			wm.Size = UDim2.fromOffset(84, 84)
+			wm.BackgroundTransparency = 1
+			wm.FontFace = TITLE_FACE
+			wm.TextSize = 76
+			wm.Text = e.emoji
+			wm.TextTransparency = 0.82
+			wm.ZIndex = 2
+			wm.Parent = row
+			-- name + stat, on top
+			local nm = C.text(row, e.name, 19)
+			nm.Position = UDim2.fromOffset(15, 12)
+			nm.Size = UDim2.new(1, -30, 0, 22)
 			nm.TextXAlignment = Enum.TextXAlignment.Left
+			nm.ZIndex = 4
 			local ln = Instance.new("TextLabel")
-			ln.Position = UDim2.fromOffset(62, 32)
-			ln.Size = UDim2.new(1, -70, 0, 14)
+			ln.Position = UDim2.fromOffset(15, 38)
+			ln.Size = UDim2.new(1, -30, 0, 16)
 			ln.BackgroundTransparency = 1
 			ln.FontFace = BODYB_FACE
 			ln.TextSize = 10
-			ln.TextColor3 = DIMTEXT
+			ln.TextColor3 = Color3.fromRGB(240, 232, 210)
 			ln.TextXAlignment = Enum.TextXAlignment.Left
 			ln.Text = e.line
+			ln.ZIndex = 4
 			ln.Parent = row
-			local badge = C.text(row, "EQUIPPED", 9, Color3.fromRGB(18, 51, 8))
+			local lns = Instance.new("UIStroke")
+			lns.Color = TBLACK
+			lns.Thickness = 1.5
+			lns.Transparency = 0.35
+			lns.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+			lns.Parent = ln
+			-- EQUIPPED badge (shows on YOUR class), and the dim veil for un-selected rows
+			local badge = C.text(row, "EQUIPPED", 9, Color3.fromRGB(210, 245, 190))
 			badge.AnchorPoint = Vector2.new(1, 0)
-			badge.Position = UDim2.new(1, 6, 0, -8)
-			badge.Size = UDim2.fromOffset(64, 18)
+			badge.Position = UDim2.new(1, -10, 0, 8)
+			badge.Size = UDim2.fromOffset(66, 18)
 			badge.BackgroundTransparency = 0
-			badge.BackgroundColor3 = ACCENT
+			badge.BackgroundColor3 = Color3.fromRGB(13, 18, 6)
 			badge.Visible = false
-			badge.ZIndex = 7
+			badge.ZIndex = 9
 			do
 				local bc = Instance.new("UICorner")
 				bc.CornerRadius = UDim.new(1, 0)
 				bc.Parent = badge
-				ledge(badge, TBLACK, 2)
+				ledge(badge, Color3.fromRGB(191, 245, 138), 1.5, 0.5)
 			end
-			C.rows[i] = { row = row, ring = ring, badge = badge }
+			local dim = Instance.new("Frame") -- G's "unselected rows desaturate/darken"
+			dim.Size = UDim2.fromScale(1, 1)
+			dim.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
+			dim.BackgroundTransparency = 0.5
+			dim.BorderSizePixel = 0
+			dim.ZIndex = 8
+			dim.Parent = row
+			local dc = Instance.new("UICorner")
+			dc.CornerRadius = UDim.new(0, 14)
+			dc.Parent = dim
+
+			C.rows[i] = { row = row, ring = ring, badge = badge, dim = dim }
 			row.Activated:Connect(function()
 				lplay("Click")
 				C.sel = i
 				C.refresh()
 			end)
 		end
+
+		-- J1 GLOW PULSE — a soft green aura BEHIND the SELECT button (stacked translucent frames), pulsing
+		C.halo = Instance.new("Frame")
+		C.halo.AnchorPoint = Vector2.new(0.5, 1)
+		C.halo.Position = UDim2.new(0.5, 0, 1, -34)
+		C.halo.Size = UDim2.new(1, -24, 0, 48)
+		C.halo.BackgroundTransparency = 1
+		C.halo.ZIndex = 1
+		C.halo.Parent = panel
+		for _, pad in { 5, 11, 18, 26 } do
+			local g = Instance.new("Frame")
+			g.AnchorPoint = Vector2.new(0.5, 0.5)
+			g.Position = UDim2.fromScale(0.5, 0.5)
+			g.Size = UDim2.new(1, pad * 2, 1, pad * 2)
+			g.BackgroundColor3 = Color3.fromRGB(124, 219, 35)
+			g.BackgroundTransparency = 0.5 + (pad / 26) * 0.42 -- fades outward
+			g.BorderSizePixel = 0
+			g.ZIndex = 1
+			g.Parent = C.halo
+			local gc = Instance.new("UICorner")
+			gc.CornerRadius = UDim.new(0, 16)
+			gc.Parent = g
+		end
+		local haloScale = Instance.new("UIScale")
+		haloScale.Parent = C.halo
+		TS:Create(haloScale, TweenInfo.new(0.95, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Scale = 1.06 }):Play() -- breathes forever (auto-loops); hidden when equipped
+
 		C.selBtn = Instance.new("TextButton")
 		C.selBtn.AnchorPoint = Vector2.new(0.5, 1)
 		C.selBtn.Position = UDim2.new(0.5, 0, 1, -34)
-		C.selBtn.Size = UDim2.new(1, -24, 0, 44)
+		C.selBtn.Size = UDim2.new(1, -24, 0, 48)
 		C.selBtn.BorderSizePixel = 0
-		C.selBtn.AutoButtonColor = true
-		C.selBtn.Text = ""
-		C.selBtn.BackgroundColor3 = Color3.new(1, 1, 1)
+		C.selBtn.AutoButtonColor = false
+		C.selBtn.FontFace = TITLE_FACE
+		C.selBtn.TextSize = 20
+		C.selBtn.TextColor3 = Color3.new(1, 1, 1)
+		C.selBtn.Text = "SELECT"
+		C.selBtn.BackgroundColor3 = ACCENT
+		C.selBtn.ZIndex = 3
 		C.selBtn.Parent = panel
 		corner(C.selBtn, 10)
-		C.selGrad = Instance.new("UIGradient")
-		C.selGrad.Rotation = 90
-		C.selGrad.Parent = C.selBtn
-		ledge(C.selBtn, TBLACK, 2.5)
-		C.selLbl = C.text(C.selBtn, "SELECT", 16)
-		C.selLbl.Size = UDim2.fromScale(1, 1)
-		C.selLbl.ZIndex = 7
+		lbevel(C.selBtn) -- the shared slab/face 3D button (gradient + press) — matches every other CTA
+
 		C.hint = Instance.new("TextLabel") -- shows only when the display character is missing
 		C.hint.AnchorPoint = Vector2.new(0.5, 1)
 		C.hint.Position = UDim2.new(0.5, 0, 1, -8)
@@ -4401,6 +4441,7 @@ do
 		C.hint.TextColor3 = ORANGE
 		C.hint.Visible = false
 		C.hint.Text = 'PLACE A MODEL NAMED "ClassCharacter" — THE CAMERA PANS TO IT'
+		C.hint.ZIndex = 5
 		C.hint.Parent = panel
 		C.selBtn.Activated:Connect(function()
 			local e = CLASSES[C.sel]
@@ -4429,21 +4470,23 @@ do
 	C.refresh = function()
 		local e = CLASSES[C.sel]
 		for i, r in C.rows do
-			r.ring.Color = (i == C.sel) and ACCENT or TBLACK
+			local seld = (i == C.sel)
+			r.ring.Color = seld and Color3.new(1, 1, 1) or TBLACK -- selected row gets the white ring (G)
+			r.ring.Thickness = seld and 3.5 or 3
+			r.dim.Visible = not seld -- only your selection stays full-colour; the rest darken
 			r.badge.Visible = (CLASSES[i].id == C.equipped)
 		end
+		-- SELECT button + its glow: green CTA when it's not yours, dark "EQUIPPED" (no glow) when it is.
 		if e.id == C.equipped then
-			C.selGrad.Color = ColorSequence.new(Color3.fromRGB(58, 65, 48), Color3.fromRGB(38, 43, 31))
-			C.selLbl.Text = "EQUIPPED ✓"
-			C.selLbl.TextColor3 = ACCENT
+			C.selBtn.BackgroundColor3 = Color3.fromRGB(42, 58, 30)
+			C.selBtn.Text = "EQUIPPED ✓"
+			C.selBtn.TextColor3 = Color3.fromRGB(155, 226, 74)
+			C.halo.Visible = false
 		else
-			C.selGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(211, 247, 160)),
-				ColorSequenceKeypoint.new(0.45, Color3.fromRGB(124, 219, 35)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(75, 140, 23)),
-			})
-			C.selLbl.Text = "SELECT " .. e.name
-			C.selLbl.TextColor3 = Color3.new(1, 1, 1)
+			C.selBtn.BackgroundColor3 = ACCENT
+			C.selBtn.Text = "SELECT " .. e.name
+			C.selBtn.TextColor3 = Color3.new(1, 1, 1)
+			C.halo.Visible = true
 		end
 	end
 
