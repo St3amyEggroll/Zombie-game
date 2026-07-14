@@ -4495,11 +4495,18 @@ do
 			return
 		end
 		local cam = workspace.CurrentCamera
+		-- CHANGED (camera-desync guard): every transition gets a fresh token; a close tween that finishes
+		-- AFTER a re-open won't yank the camera back to Custom (rapid close->reopen used to strand it).
+		C.gen = (C.gen or 0) + 1
+		local myGen = C.gen
+		if C.camTween then
+			C.camTween:Cancel() -- never let two camera tweens fight
+			C.camTween = nil
+		end
 		if on then
 			C.open = true
 			lplay("Open")
 			local disp = findDisplay()
-			C.movedCam = false
 			C.hint.Visible = (disp == nil)
 			if disp and cam then
 				-- frame THEIR character: front of its pivot, distance from its size
@@ -4511,11 +4518,14 @@ do
 				end
 				local dist = math.max(size.X, size.Y, size.Z) * 1.35 + 4
 				local camPos = cf.Position + cf.LookVector * dist + Vector3.new(0, size.Y * 0.18 + 1, 0)
-				C.savedCamCF = cam.CFrame
+				if C.savedCamCF == nil then -- only capture HOME once (a reopen mid-restore must not save a scriptable CF)
+					C.savedCamCF = cam.CFrame
+				end
 				C.movedCam = true
 				cam.CameraType = Enum.CameraType.Scriptable
-				TS:Create(cam, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-					{ CFrame = CFrame.lookAt(camPos, cf.Position + Vector3.new(0, size.Y * 0.05, 0)) }):Play()
+				C.camTween = TS:Create(cam, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ CFrame = CFrame.lookAt(camPos, cf.Position + Vector3.new(0, size.Y * 0.05, 0)) })
+				C.camTween:Play()
 			end
 			for _, n in HIDE_GUIS do
 				local g = playerGui:FindFirstChild(n)
@@ -4536,12 +4546,16 @@ do
 				end
 			end
 			if cam and C.movedCam then
-				local tw = TS:Create(cam, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				C.camTween = TS:Create(cam, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 					{ CFrame = C.savedCamCF or cam.CFrame })
-				tw.Completed:Once(function()
-					cam.CameraType = Enum.CameraType.Custom -- hand control back to the normal camera
+				C.camTween.Completed:Once(function()
+					if myGen == C.gen and not C.open then -- still the latest close → safe to hand control back
+						cam.CameraType = Enum.CameraType.Custom
+						C.movedCam = false
+						C.savedCamCF = nil
+					end
 				end)
-				tw:Play()
+				C.camTween:Play()
 			end
 		end
 	end
@@ -4549,6 +4563,31 @@ do
 	dockBtns.classes.Activated:Connect(function()
 		lplay("Click")
 		C.setOpen(not C.open)
+	end)
+	-- A respawn/reset while the showcase is open must never strand the camera in Scriptable.
+	localPlayer.CharacterAdded:Connect(function()
+		if not C.open then
+			return
+		end
+		C.open = false
+		C.gen = (C.gen or 0) + 1
+		if C.camTween then
+			C.camTween:Cancel()
+			C.camTween = nil
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			cam.CameraType = Enum.CameraType.Custom -- let Roblox re-attach to the fresh character
+		end
+		C.movedCam = false
+		C.savedCamCF = nil
+		C.gui.Enabled = false
+		for _, n in HIDE_GUIS do
+			local g = playerGui:FindFirstChild(n)
+			if g then
+				g.Enabled = true
+			end
+		end
 	end)
 	StatsRemote.OnClientEvent:Connect(function(s)
 		if typeof(s) == "table" and typeof(s.class) == "string" then

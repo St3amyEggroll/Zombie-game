@@ -702,7 +702,16 @@ function MatchService.Start()
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
+		-- FIX: a disconnect must bank the run (so matchesPlayed/best wave count) AND re-check team-wipe —
+		-- otherwise the LAST living player quitting strands the dead spectators and the wave loop spins
+		-- forever. Mirror what LEAVE does, minus the teleport (they're already gone).
+		local ps = state.players[player.UserId]
+		if ps and ps.inMatch then
+			ps.inMatch = false
+			bankRun(player, ps)
+		end
 		state.players[player.UserId] = nil
+		MatchService.CheckTeamWipe()
 	end)
 
 	-- LEAVE (the small HUD button beside the wave readout): bank THIS player's run and send them home.

@@ -834,40 +834,51 @@ end
 local dirty = {} -- userId -> true (profile changed since the last write)
 local PERSIST_FLUSH_SECONDS = 30
 
+-- CHANGED: retries with backoff (like the game place's saveAsync) and RETURNS success so money/teleport
+-- paths can react to a failed write instead of assuming durability.
 local function persist(player)
 	local prof = profileCache[player.UserId]
 	if not prof or prof.noPersist then
 		dirty[player.UserId] = nil
-		return
+		return true -- nothing to write is "success" (fallback profiles are intentionally not saved)
 	end
-	local ok = pcall(function()
-		store:UpdateAsync("Player_" .. player.UserId, function(old)
-			old = (typeof(old) == "table") and old or {}
-			old.ownedWeapons = prof.ownedWeapons
-			old.loadout = prof.loadout
-			old.selectedWeapon = prof.loadout[1] -- legacy field (older game builds read it)
-			old.cases = prof.cases
-			old.potions = prof.potions
-			old.gunLevels = prof.gunLevels
-			old.gunCopies = prof.gunCopies
-			old.lobbyMoney = prof.lobbyMoney
-			old.shop = prof.shop
-			old.skins = prof.skins
-			old.settings = prof.settings
-			old.redeemed = prof.redeemed
-			old.receipts = prof.receipts
-			old.pity = prof.pity
-			old.starter = prof.starter
-			old.wheel = prof.wheel
-			old.vipDay = prof.vipDay
-			old.quests = prof.quests
-			old.class = prof.class
-			return old
+	local ok = false
+	for attempt = 1, 4 do
+		ok = pcall(function()
+			store:UpdateAsync("Player_" .. player.UserId, function(old)
+				old = (typeof(old) == "table") and old or {}
+				old.ownedWeapons = prof.ownedWeapons
+				old.loadout = prof.loadout
+				old.selectedWeapon = prof.loadout[1] -- legacy field (older game builds read it)
+				old.cases = prof.cases
+				old.potions = prof.potions
+				old.gunLevels = prof.gunLevels
+				old.gunCopies = prof.gunCopies
+				old.lobbyMoney = prof.lobbyMoney
+				old.shop = prof.shop
+				old.skins = prof.skins
+				old.settings = prof.settings
+				old.redeemed = prof.redeemed
+				old.receipts = prof.receipts
+				old.pity = prof.pity
+				old.starter = prof.starter
+				old.wheel = prof.wheel
+				old.vipDay = prof.vipDay
+				old.quests = prof.quests
+				old.class = prof.class
+				return old
+			end)
 		end)
-	end)
+		if ok then
+			break
+		end
+		warn(("[LobbyServer] persist failed for %s (attempt %d) — retrying"):format(player.Name, attempt))
+		task.wait(attempt) -- 1s, 2s, 3s backoff
+	end
 	if ok then
 		dirty[player.UserId] = nil
-	end -- on failure the dirty flag stays; the flush loop retries
+	end -- on failure the dirty flag stays; the flush loop keeps retrying
+	return ok
 end
 
 local function markDirty(player)
@@ -1882,9 +1893,15 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		return Enum.ProductPurchaseDecision.PurchaseGranted -- retry of an already-granted receipt
 	end
 	table.insert(prof.receipts, receiptInfo.PurchaseId)
-	if #prof.receipts > 50 then
+	if #prof.receipts > 200 then -- CHANGED: 50 was too small; an evicted id lets a slow retry double-grant
 		table.remove(prof.receipts, 1)
 	end
+
+	-- CHANGED (receipt-safety): the reward + the receipt id are applied to the profile, THEN written
+	-- atomically. We only tell Roblox PurchaseGranted once the write is CONFIRMED durable — a failed
+	-- write returns NotProcessedYet so Roblox retries later (and the flush loop keeps retrying too),
+	-- instead of the old "grant immediately, hope the save lands" which lost paid Robux on a blip.
+	local saved = true
 
 	if packCount then
 		local caseId = "gunpack" -- CHANGED: the featured pack pays GUNS now
@@ -1896,25 +1913,30 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 			local tprof = target and profileCache[gift.to]
 			if target and tprof and not tprof.noPersist then
 				tprof.cases[caseId] = (tprof.cases[caseId] or 0) + packCount
-				persist(player) -- buyer: the receipt record
-				persist(target) -- recipient: the crates
+				markDirty(target) -- backstop: keep retrying the recipient write via the flush loop
+				local recipientSaved = persist(target) -- recipient: the crates (retried inline)
+				local buyerSaved = persist(player) -- buyer: the receipt record
 				ShopGift:FireClient(player, { sent = true, to = target.DisplayName or target.Name, count = packCount })
 				ShopGift:FireClient(target, { from = player.DisplayName or player.Name, name = CASES[caseId].name, count = packCount })
 				pushInv(target)
 				pushShop(player)
 				print(("[LobbyServer] %s gifted %dx %s to %s"):format(player.Name, packCount, caseId, target.Name))
-				return Enum.ProductPurchaseDecision.PurchaseGranted
+				-- grant only when the BUYER's receipt is durable; recipient crates keep retrying via dirty
+				if buyerSaved and recipientSaved then
+					return Enum.ProductPurchaseDecision.PurchaseGranted
+				end
+				return Enum.ProductPurchaseDecision.NotProcessedYet
 			end
 			-- recipient left mid-purchase: fall through — the buyer keeps the pack, no Robux lost
 		end
 		prof.cases[caseId] = (prof.cases[caseId] or 0) + packCount
 		local result = doOpenCase(player, prof, caseId)
 		result.chain = packCount - 1 -- the client reel auto-opens the rest from inventory
-		persist(player)
+		saved = persist(player)
 		CaseResult:FireClient(player, result)
 	elseif bundle then
 		prof.lobbyMoney += bundle.coins
-		persist(player)
+		saved = persist(player)
 		print(("[LobbyServer] %s bought a coin bundle: +%d"):format(player.Name, bundle.coins))
 	elseif isStarter then
 		if prof.starter then
@@ -1927,17 +1949,28 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 			end
 			prof.lobbyMoney += SHOP.StarterCoins
 		end
-		persist(player)
+		saved = persist(player)
 	elseif isWheel then
-		wheelClaimDay(prof) -- a paid spin on a fresh day claims the day + streak too
-		prof.wheel.paid = (prof.wheel.paid or 0) + 1
-		local idx, rewardText = doWheelSpin(player, prof)
-		persist(player)
-		WheelSpin:FireClient(player, { seg = idx, reward = rewardText, streak = prof.wheel.streak, paid = true })
+		-- CHANGED: enforce the paid-spin cap server-side (was buyable past MaxPaidSpins). On a fresh day
+		-- the day-claim resets paid to 0 first, so day-one paid spins still work.
+		wheelClaimDay(prof)
+		if (prof.wheel.paid or 0) >= WHEEL.MaxPaidSpins then
+			prof.lobbyMoney += 1000 -- over the daily cap: never eat Robux — pay a coin fallback instead
+			saved = persist(player)
+			WheelSpin:FireClient(player, { failed = true, msg = "DAILY RE-SPINS MAXED — REFUNDED 1,000 COINS" })
+		else
+			prof.wheel.paid = (prof.wheel.paid or 0) + 1
+			local idx, rewardText = doWheelSpin(player, prof)
+			saved = persist(player)
+			WheelSpin:FireClient(player, { seg = idx, reward = rewardText, streak = prof.wheel.streak, paid = true })
+		end
 	end
 	pushShop(player)
 	pushInv(player)
 	StatsRemote:FireClient(player, prof)
+	if not saved then
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- not durable yet — let Roblox retry
+	end
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
@@ -2271,9 +2304,23 @@ local function dissolveAndLaunch(party)
 		return
 	end
 	task.spawn(function()
-		-- Save everyone's inventory BEFORE they leave, so the game server loads their latest data.
+		-- Save everyone BEFORE they leave so the game server loads their latest data. CHANGED: only
+		-- teleport players whose save is CONFIRMED durable — the two places full-overwrite shared fields,
+		-- so sending a player in on stale data ROLLS BACK their lobby progress. A failed save (rare, after
+		-- 4 retries) holds that player in the lobby instead of risking a rollback.
+		local safe = {}
 		for _, pl in list do
-			persist(pl)
+			if persist(pl) then
+				table.insert(safe, pl)
+			else
+				warn(("[LobbyServer] %s save failed pre-teleport — held in lobby (no rollback)"):format(pl.Name))
+				if pl.Parent and profileCache[pl.UserId] then
+					StatsRemote:FireClient(pl, profileCache[pl.UserId])
+				end
+			end
+		end
+		if #safe == 0 then
+			return
 		end
 		local ok, code = pcall(function()
 			return TeleportService:ReserveServer(GAME_PLACE_ID)
@@ -2282,10 +2329,10 @@ local function dissolveAndLaunch(party)
 		if ok and code then
 			options.ReservedServerAccessCode = code
 		end
-		options:SetTeleportData({ startRun = true, map = party.map, difficulty = party.difficulty, partySize = #list })
+		options:SetTeleportData({ startRun = true, map = party.map, difficulty = party.difficulty, partySize = #safe })
 		for attempt = 1, TELEPORT_RETRIES do
 			local alive = {}
-			for _, pl in list do
+			for _, pl in safe do
 				if pl.Parent then
 					table.insert(alive, pl)
 				end
@@ -2802,6 +2849,8 @@ Players.PlayerRemoving:Connect(function(pl)
 	inZonePart[pl.UserId] = nil
 	inShopZone[pl.UserId] = nil
 	lastMode[pl.UserId] = nil
+	pendingGift[pl.UserId] = nil -- FIX: gift arm-state was never cleared on leave (leak)
+	squadInvites[pl.UserId] = nil
 end)
 
 -- Batched persistence: dirty profiles get written every PERSIST_FLUSH_SECONDS instead of per action.
@@ -2909,6 +2958,9 @@ end)
 
 -- DAILY QUESTS: a fresh client asks for the board (same join-race fix as InvRequest).
 QuestSync.OnServerEvent:Connect(function(player)
+	if not allow(player, "Inv") then -- FIX: was the only C->S pull with no rate-limit gate
+		return
+	end
 	pushQuests(player)
 end)
 

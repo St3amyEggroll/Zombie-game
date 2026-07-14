@@ -4,8 +4,12 @@
 -- All client-side. Four lines + an optional center dot; restyle the numbers in the TUNABLES below.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+
+local Modules = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules")
+local UITheme = require(Modules.UITheme) -- FIX: was used (Layer.Crosshair) but never required — crashed on build()
 
 local InputController = require(script.Parent.InputController)
 

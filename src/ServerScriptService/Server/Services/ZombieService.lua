@@ -86,6 +86,7 @@ local JUMP_CHECK_RATE  = 0.25   -- seconds between a zombie's "should I jump thi
 local OBSTACLE_AHEAD   = 3      -- studs ahead the zombie probes for a ledge/obstacle to jump
 local STUCK_REPLAN     = 0.9    -- seconds of no progress before a direct-chaser switches to pathfinding
 local MAX_LIFETIME     = 120    -- backstop: a zombie alive this long is force-killed (anti soft-lock).
+local BOSS_UNSTUCK     = 22     -- a boss wedged/unreachable this long is RELOCATED near a player (not killed)
                                -- High so big hordes don't get culled mid-chase; STUCK_TIMEOUT handles real wedges.
 local SPAWN_HEIGHT     = 3      -- studs above a spawn point to drop a zombie
 local SPAWNPOINT_NEAR  = 160    -- studs: prefer ZombieSpawn parts within this range of a living player (Islands)
@@ -1941,6 +1942,23 @@ local function think(record, now: number)
 		if (now - record.lastMoveTime) > STUCK_TIMEOUT or (now - record.spawnTime) > MAX_LIFETIME then
 			record.hum.Health = 0
 			return
+		end
+	else
+		-- FIX (boss soft-lock): a boss can't force-kill itself (that fires "Boss Defeated" / a free
+		-- victory), so a boss that hasn't moved for BOSS_UNSTUCK is RELOCATED to a fresh valid spawn
+		-- near a living player — breaking any unreachable-geometry / stranded-island lock without ending
+		-- the fight. Throttled so it can't teleport-spam; the wave loop can no longer spin forever.
+		if (now - record.lastMoveTime) > BOSS_UNSTUCK and now >= (record.nextRelocate or 0) then
+			local cf = getSpawnCFrame()
+			if cf then
+				if record.model and record.model.PrimaryPart then
+					record.model:PivotTo(cf + Vector3.new(0, 2, 0))
+				elseif record.root then
+					record.root.CFrame = cf + Vector3.new(0, 2, 0)
+				end
+				record.lastMoveTime = now
+				record.nextRelocate = now + 6
+			end
 		end
 	end
 
