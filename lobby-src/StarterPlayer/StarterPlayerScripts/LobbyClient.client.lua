@@ -2205,6 +2205,163 @@ renderActive = function()
 	end
 end
 
+-- Reusable INVENTORY-CARD FACE (the v3 ticket look) as a plain Frame — so the reel tiles, the reveal,
+-- and the multi-open summary all render the SAME card as the inventory/weapons grid. Fills `parent`.
+-- opts = { kind, id, name, color, rarityName, locked?, image?, barH?, corner?, ring?, ringW? }
+local function cardFace(parent, opts)
+	local col = opts.color or Color3.fromRGB(150, 150, 160)
+	local barH = opts.barH or 30
+	local f = Instance.new("Frame")
+	f.Size = UDim2.fromScale(1, 1)
+	f.BackgroundColor3 = Color3.fromRGB(28, 33, 23)
+	f.BorderSizePixel = 0
+	f.ClipsDescendants = true
+	f.Parent = parent
+	corner(f, opts.corner or 12)
+	ledge(f, opts.ring or TBLACK, opts.ringW or 3)
+	local art = Instance.new("Frame") -- white base + rarity-tint vertical gradient (same as invCard)
+	art.Size = UDim2.new(1, 0, 1, -(barH + 3))
+	art.BackgroundColor3 = Color3.new(1, 1, 1)
+	art.BorderSizePixel = 0
+	art.Parent = f
+	local ag = Instance.new("UIGradient")
+	if opts.locked then
+		ag.Color = ColorSequence.new(Color3.fromRGB(36, 41, 32), Color3.fromRGB(24, 28, 19))
+	else
+		ag.Color = ColorSequence.new(Color3.fromRGB(32, 38, 26):Lerp(col, 0.16), Color3.fromRGB(25, 30, 20))
+	end
+	ag.Rotation = 90
+	ag.Parent = art
+	local sep = Instance.new("Frame") -- 3px black separator over the bar
+	sep.AnchorPoint = Vector2.new(0, 1)
+	sep.Position = UDim2.new(0, 0, 1, -barH)
+	sep.Size = UDim2.new(1, 0, 0, 3)
+	sep.BackgroundColor3 = TBLACK
+	sep.BorderSizePixel = 0
+	sep.ZIndex = 3
+	sep.Parent = f
+	local showed = false
+	local vp
+	if opts.kind == "skin" then
+		local sk = skinInfo(opts.id)
+		vp = makeGunViewport(opts.id, false) or (sk and makeGunViewport(sk.gun, false, nil, sk.tint))
+	elseif opts.kind == "weapon" then
+		vp = makeGunViewport(opts.id, false)
+	elseif opts.kind == "case" then
+		vp = makeGunViewport(opts.id, false, "CrateDisplay")
+	end
+	if vp then
+		vp.AnchorPoint = Vector2.new(0.5, 0.5)
+		vp.Position = UDim2.new(0.5, 0, 0.5, -math.floor((barH + 3) / 2))
+		vp.Size = UDim2.new(1, -10, 1, -(barH + 16))
+		vp.ZIndex = 2
+		if opts.locked then
+			vp.ImageColor3 = Color3.new(0, 0, 0)
+			vp.ImageTransparency = 0.1
+		end
+		vp.Parent = f
+		showed = true
+	end
+	if not showed and typeof(opts.image) == "string" and opts.image ~= "" then
+		local img = Instance.new("ImageLabel")
+		img.AnchorPoint = Vector2.new(0.5, 0.5)
+		img.Position = UDim2.new(0.5, 0, 0.5, -math.floor((barH + 3) / 2))
+		img.Size = UDim2.new(1, -10, 1, -(barH + 16))
+		img.BackgroundTransparency = 1
+		img.Image = opts.image
+		img.ScaleType = Enum.ScaleType.Fit
+		img.ZIndex = 2
+		img.Parent = f
+		showed = true
+	end
+	if not showed then
+		local noml = Instance.new("TextLabel")
+		noml.AnchorPoint = Vector2.new(0.5, 0.5)
+		noml.Position = UDim2.new(0.5, 0, 0.5, -math.floor((barH + 3) / 2))
+		noml.Size = UDim2.new(1, -14, 0, 40)
+		noml.BackgroundTransparency = 1
+		noml.FontFace = TITLE_FACE
+		noml.TextSize = 14
+		noml.TextWrapped = true
+		noml.TextColor3 = opts.locked and DIMTEXT or col
+		noml.Text = opts.name or ""
+		noml.ZIndex = 2
+		noml.Parent = f
+		local nstr = Instance.new("UIStroke")
+		nstr.Color = TBLACK
+		nstr.Thickness = 2
+		nstr.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		nstr.Parent = noml
+	end
+	local bar = Instance.new("Frame")
+	bar.AnchorPoint = Vector2.new(0, 1)
+	bar.Position = UDim2.new(0, 0, 1, 0)
+	bar.Size = UDim2.new(1, 0, 0, barH)
+	bar.BackgroundColor3 = opts.locked and Color3.fromRGB(58, 65, 52) or col
+	bar.BorderSizePixel = 0
+	bar.ZIndex = 3
+	bar.Parent = f
+	local nm = Instance.new("TextLabel")
+	nm.Position = UDim2.fromOffset(4, 2)
+	nm.Size = UDim2.new(1, -8, 0, barH > 24 and 16 or barH - 4)
+	nm.BackgroundTransparency = 1
+	nm.FontFace = TITLE_FACE
+	nm.TextSize = barH > 24 and 13 or 11
+	nm.ZIndex = 4
+	nm.TextTruncate = Enum.TextTruncate.AtEnd
+	nm.TextColor3 = opts.locked and DIMTEXT or Color3.new(1, 1, 1)
+	nm.Text = string.upper(opts.name or "")
+	nm.Parent = bar
+	local nmStroke = Instance.new("UIStroke")
+	nmStroke.Color = TBLACK
+	nmStroke.Thickness = 2
+	nmStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	nmStroke.Parent = nm
+	if barH > 24 and opts.rarityName then
+		local sub = Instance.new("TextLabel")
+		sub.Position = UDim2.fromOffset(4, 18)
+		sub.Size = UDim2.new(1, -8, 0, 11)
+		sub.BackgroundTransparency = 1
+		sub.FontFace = BODYB_FACE
+		sub.TextSize = 9
+		sub.ZIndex = 4
+		sub.TextColor3 = TBLACK
+		sub.TextTransparency = 0.25
+		sub.Text = string.upper(opts.rarityName)
+		sub.Parent = bar
+	end
+	return f
+end
+
+-- Card opts for a rolled item id (skin or weapon), + the rarity info.
+local function itemCardOpts(id, extra)
+	local info = skinInfo(id)
+	local kind = "skin"
+	if not info then
+		info = weaponInfo(id)
+		kind = "weapon"
+	end
+	local rname = ""
+	if info and invData and invData.catalog.rarities[info.rarity] then
+		rname = invData.catalog.rarities[info.rarity].name
+	elseif info then
+		rname = info.rarity
+	end
+	local o = {
+		kind = kind,
+		id = id,
+		name = (info and info.name) or id,
+		color = info and rarityColor(info.rarity) or Color3.fromRGB(150, 150, 160),
+		rarityName = rname,
+	}
+	if extra then
+		for k, v in extra do
+			o[k] = v
+		end
+	end
+	return o, info
+end
+
 -- ===== CASE-OPENING REEL (CS:GO-style horizontal scroll) =====
 local TILE_W, GAP = 100, 8
 local STEP = TILE_W + GAP
@@ -2235,9 +2392,72 @@ window.BackgroundColor3 = darker(PANEL, 0.35); window.BorderSizePixel = 0; windo
 corner(window, 10)
 local strip = Instance.new("Frame")
 strip.Position = UDim2.fromOffset(0, 0); strip.Size = UDim2.fromOffset(N_TILES * STEP, REEL_H); strip.BackgroundTransparency = 1; strip.ZIndex = 6; strip.Parent = window
+-- EDGE FADES: tiles dissolve into the panel colour at both ends of the window (classic case feel).
+local RV = {} -- reel-effect state, collapsed into one local (200-local ceiling)
+RV.reelBG = darker(PANEL, 0.35)
+RV.fadeL = Instance.new("Frame")
+RV.fadeL.AnchorPoint = Vector2.new(0, 0.5); RV.fadeL.Position = UDim2.new(0, 0, 0.5, 0); RV.fadeL.Size = UDim2.new(0, 96, 1, 0)
+RV.fadeL.BackgroundColor3 = RV.reelBG; RV.fadeL.BorderSizePixel = 0; RV.fadeL.ZIndex = 7; RV.fadeL.Parent = window
+do
+	local g = Instance.new("UIGradient")
+	g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) })
+	g.Parent = RV.fadeL
+end
+RV.fadeR = Instance.new("Frame")
+RV.fadeR.AnchorPoint = Vector2.new(1, 0.5); RV.fadeR.Position = UDim2.new(1, 0, 0.5, 0); RV.fadeR.Size = UDim2.new(0, 96, 1, 0)
+RV.fadeR.BackgroundColor3 = RV.reelBG; RV.fadeR.BorderSizePixel = 0; RV.fadeR.ZIndex = 7; RV.fadeR.Parent = window
+do
+	local g = Instance.new("UIGradient")
+	g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
+	g.Parent = RV.fadeR
+end
+-- GLOWING DOUBLE POINTER (over the window centre, in `reel` so it isn't clipped): line + two diamonds.
 local pointer = Instance.new("Frame")
 pointer.AnchorPoint = Vector2.new(0.5, 0.5); pointer.Position = UDim2.fromScale(0.5, 0.5); pointer.Size = UDim2.fromOffset(3, REEL_H)
-pointer.BackgroundColor3 = ACCENT; pointer.BorderSizePixel = 0; pointer.ZIndex = 8; pointer.Parent = window
+pointer.BackgroundColor3 = ACCENT; pointer.BorderSizePixel = 0; pointer.ZIndex = 9; pointer.Parent = reel
+do
+	local ps = Instance.new("UIStroke"); ps.Color = ACCENT; ps.Thickness = 3; ps.Transparency = 0.55; ps.Parent = pointer -- soft glow
+	for _, top in { true, false } do
+		local d = Instance.new("Frame")
+		d.AnchorPoint = Vector2.new(0.5, 0.5)
+		d.Position = UDim2.new(0.5, 0, top and 0 or 1, top and -3 or 3)
+		d.Size = UDim2.fromOffset(16, 16)
+		d.Rotation = 45
+		d.BackgroundColor3 = ACCENT
+		d.BorderSizePixel = 0
+		d.ZIndex = 9
+		d.Parent = pointer
+		ledge(d, TBLACK, 2)
+	end
+end
+-- RARITY GLOW behind the window centre + a starburst — hidden during the spin, bloom in on RV.reveal.
+RV.reveal = Instance.new("Frame")
+RV.reveal.AnchorPoint = Vector2.new(0.5, 0.5); RV.reveal.Position = UDim2.fromScale(0.5, 0.5); RV.reveal.Size = UDim2.fromOffset(REEL_W, REEL_H)
+RV.reveal.BackgroundTransparency = 1; RV.reveal.ZIndex = 5; RV.reveal.Visible = false; RV.reveal.Parent = reel
+RV.burst = Instance.new("Frame")
+RV.burst.AnchorPoint = Vector2.new(0.5, 0.5); RV.burst.Position = UDim2.fromScale(0.5, 0.5); RV.burst.Size = UDim2.fromOffset(2, 2)
+RV.burst.BackgroundTransparency = 1; RV.burst.ZIndex = 5; RV.burst.Parent = RV.reveal
+RV.burstRays = {}
+for i = 1, 12 do
+	local ray = Instance.new("Frame")
+	ray.AnchorPoint = Vector2.new(0.5, 0.5); ray.Position = UDim2.fromScale(0.5, 0.5)
+	ray.Size = UDim2.fromOffset(6, 320); ray.Rotation = (i - 1) * 30
+	ray.BackgroundColor3 = ACCENT; ray.BackgroundTransparency = 0.75; ray.BorderSizePixel = 0
+	ray.ZIndex = 5; ray.Parent = RV.burst
+	RV.burstRays[i] = ray
+end
+RV.ribbon = Instance.new("Frame") -- rarity RV.ribbon banner above the winning card
+RV.ribbon.AnchorPoint = Vector2.new(0.5, 1); RV.ribbon.Position = UDim2.new(0.5, 0, 0.5, -(REEL_H / 2) - 6)
+RV.ribbon.Size = UDim2.fromOffset(150, 26); RV.ribbon.BackgroundColor3 = ACCENT; RV.ribbon.BorderSizePixel = 0
+RV.ribbon.ZIndex = 10; RV.ribbon.Visible = false; RV.ribbon.Parent = reel
+corner(RV.ribbon, 6); ledge(RV.ribbon, TBLACK, 2.5)
+RV.ribbonLbl = Instance.new("TextLabel")
+RV.ribbonLbl.Size = UDim2.fromScale(1, 1); RV.ribbonLbl.BackgroundTransparency = 1; RV.ribbonLbl.FontFace = TITLE_FACE
+RV.ribbonLbl.TextSize = 15; RV.ribbonLbl.TextColor3 = Color3.new(1, 1, 1); RV.ribbonLbl.ZIndex = 11; RV.ribbonLbl.Text = ""; RV.ribbonLbl.Parent = RV.ribbon
+do
+	local rs = Instance.new("UIStroke"); rs.Color = TBLACK; rs.Thickness = 2.5
+	rs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; rs.Parent = RV.ribbonLbl
+end
 local resultLabel = Instance.new("TextLabel")
 resultLabel.AnchorPoint = Vector2.new(0.5, 0); resultLabel.Position = UDim2.new(0.5, 0, 0.5, REEL_H / 2 + 16); resultLabel.Size = UDim2.fromOffset(560, 30)
 resultLabel.BackgroundTransparency = 1; resultLabel.FontFace = TITLE_FACE; resultLabel.TextSize = 26; resultLabel.Text = ""
@@ -2247,8 +2467,37 @@ reelBtn.AnchorPoint = Vector2.new(0.5, 1); reelBtn.Position = UDim2.new(0.5, 0, 
 reelBtn.BackgroundColor3 = CARD; reelBtn.FontFace = BODYB_FACE; reelBtn.TextSize = 18; reelBtn.TextColor3 = TEXTCOL
 reelBtn.Text = "SKIP"; reelBtn.ZIndex = 7; reelBtn.Parent = reel; corner(reelBtn, 8); ledge(reelBtn, TBLACK, 2.5); lbevel(reelBtn)
 
+-- MULTI-OPEN SUMMARY: a grid of the SAME cards for x3/x10 (so it isn't N slow reveals). Hidden by default.
+RV.summary = Instance.new("Frame")
+RV.summary.Size = UDim2.fromScale(1, 1); RV.summary.BackgroundTransparency = 1; RV.summary.ZIndex = 8
+RV.summary.Visible = false; RV.summary.Parent = reel
+RV.summaryTitle = Instance.new("TextLabel")
+RV.summaryTitle.Position = UDim2.fromOffset(0, 22); RV.summaryTitle.Size = UDim2.new(1, 0, 0, 30)
+RV.summaryTitle.BackgroundTransparency = 1; RV.summaryTitle.FontFace = TITLE_FACE; RV.summaryTitle.TextSize = 22
+RV.summaryTitle.TextColor3 = GOLD; RV.summaryTitle.Text = ""; RV.summaryTitle.ZIndex = 9; RV.summaryTitle.Parent = RV.summary
+do
+	local st = Instance.new("UIStroke"); st.Color = TBLACK; st.Thickness = 2.5
+	st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; st.Parent = RV.summaryTitle
+end
+RV.summaryGrid = Instance.new("Frame")
+RV.summaryGrid.AnchorPoint = Vector2.new(0.5, 0); RV.summaryGrid.Position = UDim2.new(0.5, 0, 0, 64)
+RV.summaryGrid.Size = UDim2.fromOffset(680, 300); RV.summaryGrid.BackgroundTransparency = 1; RV.summaryGrid.ZIndex = 9; RV.summaryGrid.Parent = RV.summary
+do
+	local gl = Instance.new("UIGridLayout")
+	gl.CellSize = UDim2.fromOffset(126, 118); gl.CellPadding = UDim2.fromOffset(8, 8)
+	gl.HorizontalAlignment = Enum.HorizontalAlignment.Center; gl.SortOrder = Enum.SortOrder.LayoutOrder
+	gl.Parent = RV.summaryGrid
+end
+RV.summaryFoot = Instance.new("TextLabel")
+RV.summaryFoot.AnchorPoint = Vector2.new(0.5, 1); RV.summaryFoot.Position = UDim2.new(0.5, 0, 1, -92)
+RV.summaryFoot.Size = UDim2.new(1, 0, 0, 24); RV.summaryFoot.BackgroundTransparency = 1; RV.summaryFoot.FontFace = BODYB_FACE
+RV.summaryFoot.TextSize = 16; RV.summaryFoot.TextColor3 = ACCENT; RV.summaryFoot.Text = ""; RV.summaryFoot.ZIndex = 9; RV.summaryFoot.Parent = RV.summary
+
 local activeTween = nil
 local finishReel = nil
+RV.reelBatch = {} -- accumulates every pull of a multi-open, drives the RV.summary grid
+RV.reelFF = false -- fast-forwarding the rest of a batch (no reels for pulls 2..N)
+RV.reelPackName = "PACK"
 
 playReel = function(caseId, wonId, res)
 	local disp = invData.catalog.cases[caseId]
@@ -2256,42 +2505,24 @@ playReel = function(caseId, wonId, res)
 	for _, c in strip:GetChildren() do c:Destroy() end
 	for i = 1, N_TILES do
 		local id = (i == WIN_INDEX) and wonId or poolIds[math.random(1, #poolIds)]
-		local info = skinInfo(id) or weaponInfo(id)
-		local col = info and rarityColor(info.rarity) or Color3.fromRGB(150, 150, 160)
-		local tile = Instance.new("Frame")
-		tile.Position = UDim2.fromOffset((i - 1) * STEP, 8); tile.Size = UDim2.fromOffset(TILE_W, REEL_H - 16)
-		tile.BackgroundColor3 = col:Lerp(BLACK, 0.5); tile.BorderSizePixel = 0; tile.ZIndex = 6; tile.Parent = strip
-		corner(tile, 8)
-		local ts = Instance.new("UIStroke"); ts.Color = col; ts.Thickness = 1.5; ts.Parent = tile
-		local sInfo = skinInfo(id)
-		-- Skin art order: the skin's IMAGE if the owner supplied one, else its model, else the base gun
-		-- (tinted when the skin has a tint color).
-		local tvp
-		if sInfo and sInfo.image then
-			tvp = Instance.new("ImageLabel")
-			tvp.BackgroundTransparency = 1
-			tvp.Image = sInfo.image
-			tvp.ScaleType = Enum.ScaleType.Fit
-		else
-			tvp = makeGunViewport(id, false) or (sInfo and makeGunViewport(sInfo.gun, false, nil, sInfo.tint))
-		end
-		if tvp then
-			tvp.Position = UDim2.new(0, 0, 0, 0); tvp.Size = UDim2.new(1, 0, 1, 0); tvp.ZIndex = 6; tvp.Parent = tile
-		end
-		local tbar = Instance.new("Frame"); tbar.Position = UDim2.fromOffset(0, 0); tbar.Size = UDim2.new(1, 0, 0, 4)
-		tbar.BackgroundColor3 = col; tbar.BorderSizePixel = 0; tbar.ZIndex = 7; tbar.Parent = tile
-		local nm = Instance.new("TextLabel")
-		nm.Position = UDim2.fromOffset(4, 34); nm.Size = UDim2.new(1, -8, 0, 26); nm.BackgroundTransparency = 1
-		nm.FontFace = BODYB_FACE; nm.TextSize = 13; nm.TextColor3 = TEXTCOL
-		nm.Text = info and info.name or id; nm.TextScaled = true; nm.ZIndex = 7; nm.Parent = tile
-		local rr = Instance.new("TextLabel")
-		rr.Position = UDim2.fromOffset(4, 64); rr.Size = UDim2.new(1, -8, 0, 16); rr.BackgroundTransparency = 1
-		rr.FontFace = BODY_FACE; rr.TextSize = 11; rr.TextColor3 = col
-		rr.Text = info and invData.catalog.rarities[info.rarity].name or ""; rr.TextScaled = true; rr.ZIndex = 7; rr.Parent = tile
+		local holder = Instance.new("Frame") -- each reel tile is the SAME inventory card, via cardFace
+		holder.Position = UDim2.fromOffset((i - 1) * STEP, 8)
+		holder.Size = UDim2.fromOffset(TILE_W, REEL_H - 16)
+		holder.BackgroundTransparency = 1
+		holder.ZIndex = 6
+		holder.Parent = strip
+		cardFace(holder, itemCardOpts(id, { barH = 24, corner = 10 }))
 	end
 
+	RV.summary.Visible = false
+	RV.reveal.Visible = false
+	RV.ribbon.Visible = false
+	window.Visible = true
+	pointer.Visible = true
 	reelTitle.Text = "OPENING " .. (disp and disp.name or "CASE"):upper()
+	reelTitle.Visible = true
 	resultLabel.Text = ""
+	resultLabel.Visible = true
 	reelBtn.Text = "SKIP"; reelBtn.BackgroundColor3 = CARD; reelBtn.TextColor3 = TEXTCOL
 	reel.Visible = true
 
@@ -2308,15 +2539,46 @@ playReel = function(caseId, wonId, res)
 		local info = skinInfo(wonId) or weaponInfo(wonId)
 		local col = info and rarityColor(info.rarity) or TEXTCOL
 		local wonName = info and info.name or wonId
+		local r = info and info.rarity or "common"
+		local rname = (info and invData.catalog.rarities[info.rarity] and invData.catalog.rarities[info.rarity].name) or r
+		local hi = (r == "legendary" or r == "divine" or r == "mythic" or r == "epic")
+		-- EFFECTS: rarity glow RV.burst + starburst behind the winning card, a rarity RV.ribbon above it, and
+		-- the result line below. The RV.burst blooms bigger/brighter the rarer the pull.
+		for _, ray in RV.burstRays do
+			ray.BackgroundColor3 = col
+			ray.BackgroundTransparency = 1
+			ray.Size = UDim2.fromOffset(6, 40)
+		end
+		RV.reveal.Visible = true
+		local bloom = hi and 1 or 0.55
+		for _, ray in RV.burstRays do
+			TweenService:Create(ray, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ BackgroundTransparency = hi and 0.7 or 0.86, Size = UDim2.fromOffset(6, 340 * bloom) }):Play()
+		end
+		TweenService:Create(RV.burst, TweenInfo.new(9, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+			{ Rotation = 360 }):Play() -- slow shimmer
+		RV.ribbon.BackgroundColor3 = col
+		RV.ribbonLbl.Text = string.upper(rname)
+		RV.ribbon.Visible = true
+		RV.ribbon.Size = UDim2.fromOffset(60, 26)
+		TweenService:Create(RV.ribbon, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Size = UDim2.fromOffset(150, 26) }):Play()
 		if res.unlocked then
 			resultLabel.TextColor3 = col
-			resultLabel.Text = ("Unlocked %s!"):format(wonName)
+			resultLabel.Text = ("★ NEW — %s UNLOCKED!"):format(string.upper(wonName))
 		else
-			resultLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
-			resultLabel.Text = ("Duplicate %s → 🪙 %d"):format(wonName, tonumber(res.coins) or 0)
+			resultLabel.TextColor3 = Color3.fromRGB(255, 213, 122)
+			resultLabel.Text = ("DUPLICATE %s → 🪙 %d"):format(string.upper(wonName), tonumber(res.coins) or 0)
 		end
 		reelBtn.Text = "CONTINUE"; reelBtn.BackgroundColor3 = SELBG; reelBtn.TextColor3 = TEXTCOL
-		local r = info and info.rarity or "common"
+		-- a little screen-punch on the reel, bigger for rarer pulls
+		local kick = hi and 6 or 3
+		TweenService:Create(reel, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Position = UDim2.new(0.5, math.random(-kick, kick), 0.5, math.random(-kick, kick)) }):Play()
+		task.delay(0.08, function()
+			TweenService:Create(reel, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ Position = UDim2.fromScale(0.5, 0.5) }):Play()
+		end)
 		if res.unlocked and (r == "legendary" or r == "divine") or r == "divine" then
 			lplay("RevealJackpot")
 		elseif r == "epic" or r == "legendary" then
@@ -2332,7 +2594,7 @@ playReel = function(caseId, wonId, res)
 	end)
 	activeTween:Play()
 
-	-- Tick as tiles sweep past the pointer (self-disconnects at reveal).
+	-- Tick as tiles sweep past the pointer (self-disconnects at RV.reveal).
 	local lastTickIdx = math.floor(-strip.Position.X.Offset / STEP)
 	local tickConn
 	tickConn = RunService.RenderStepped:Connect(function()
@@ -2348,25 +2610,78 @@ playReel = function(caseId, wonId, res)
 	end)
 end
 
+-- Build the multi-open RV.summary grid (same cards) once a batch finishes fast-forwarding.
+local function showSummary()
+	window.Visible = false
+	pointer.Visible = false
+	RV.reveal.Visible = false
+	RV.ribbon.Visible = false
+	reelTitle.Visible = false
+	resultLabel.Visible = false
+	for _, c in RV.summaryGrid:GetChildren() do
+		if c:IsA("Frame") then
+			c:Destroy()
+		end
+	end
+	local newCount, dupeCoins = 0, 0
+	for i, e in ipairs(RV.reelBatch) do
+		if e.unlocked then
+			newCount += 1
+		else
+			dupeCoins += tonumber(e.coins) or 0
+		end
+		local holder = Instance.new("Frame")
+		holder.LayoutOrder = i
+		holder.BackgroundTransparency = 1
+		holder.Parent = RV.summaryGrid
+		cardFace(holder, itemCardOpts(e.id, { barH = 22, corner = 10 }))
+		if e.unlocked then
+			local nb = Instance.new("TextLabel")
+			nb.Position = UDim2.fromOffset(5, 5); nb.Size = UDim2.fromOffset(36, 16)
+			nb.BackgroundColor3 = Color3.fromRGB(224, 28, 14); nb.BorderSizePixel = 0
+			nb.FontFace = TITLE_FACE; nb.TextSize = 10; nb.TextColor3 = Color3.new(1, 1, 1)
+			nb.Text = "NEW"; nb.ZIndex = 12; nb.Parent = holder
+			corner(nb, 4); ledge(nb, Color3.new(1, 1, 1), 1.5, 0.4)
+		end
+	end
+	RV.summaryTitle.Text = ("YOU OPENED %d× %s"):format(#RV.reelBatch, string.upper(RV.reelPackName))
+	RV.summaryFoot.Text = ("%d NEW · %d DUPES → 🪙 %d COINS"):format(newCount, #RV.reelBatch - newCount, dupeCoins)
+	RV.summary.Visible = true
+	reelBtn.Text = "CLAIM"; reelBtn.BackgroundColor3 = GOLD; reelBtn.TextColor3 = Color3.new(1, 1, 1)
+	lplay("RevealHigh")
+end
+
 reelBtn.Activated:Connect(function()
 	if not finishReel then return end
-	if reelBtn.Text == "CONTINUE" then
-		-- OPEN ALL: chain straight into the next crate while any are queued (and still in stock).
-		local q = invPanel:GetAttribute("OpenQueue") or 0
-		local qc = invPanel:GetAttribute("QueueCase")
-		if q > 0 and typeof(qc) == "string" and invData and (invData.cases[qc] or 0) > 0 then
-			invPanel:SetAttribute("OpenQueue", q - 1)
-			reel.Visible = false
-			armRollTimeout()
-			OpenCase:FireServer({ caseId = qc }) -- `rolling` stays true until the chain ends
-			return
-		end
+	if reelBtn.Text == "SKIP" then
+		finishReel() -- snap to the result
+		return
+	end
+	-- CONTINUE / CLAIM.
+	if RV.summary.Visible then -- end of a multi-open: close out
 		reel.Visible = false
 		rolling = false
+		RV.reelFF = false
 		renderActive()
-	else
-		finishReel() -- SKIP: snap to the result
+		return
 	end
+	local q = invPanel:GetAttribute("OpenQueue") or 0
+	local qc = invPanel:GetAttribute("QueueCase")
+	if q > 0 and typeof(qc) == "string" and invData and (invData.cases[qc] or 0) > 0 then
+		-- FAST-FORWARD the rest of the batch straight into the RV.summary grid (no more slow reels).
+		RV.reelFF = true
+		invPanel:SetAttribute("OpenQueue", q - 1)
+		RV.reveal.Visible = false
+		RV.ribbon.Visible = false
+		reelTitle.Text = "OPENING THE REST..."
+		armRollTimeout()
+		OpenCase:FireServer({ caseId = qc }) -- `rolling` stays true until the batch ends
+		return
+	end
+	-- single open finished
+	reel.Visible = false
+	rolling = false
+	renderActive()
 end)
 
 -- Watchdog: `rolling` is set the moment an open is requested; if no CaseResult ever arrives (server
@@ -2375,8 +2690,11 @@ armRollTimeout = function()
 	rollToken += 1
 	local myToken = rollToken
 	task.delay(6, function()
-		if rolling and myToken == rollToken and not reel.Visible then
+		-- fires if a reply is lost while chaining (reel hidden) OR fast-forwarding (reel up, reelFF set)
+		if rolling and myToken == rollToken and (not reel.Visible or RV.reelFF) then
+			RV.reelFF = false
 			rolling = false
+			reel.Visible = false
 			renderActive()
 		end
 	end)
@@ -2446,6 +2764,7 @@ CaseResult.OnClientEvent:Connect(function(res)
 	if typeof(res) ~= "table" or res.failed or not res.caseId then
 		lplay("Error")
 		invPanel:SetAttribute("OpenQueue", 0)
+		RV.reelFF = false
 		rolling = false
 		if invPanel.Visible then
 			renderActive() -- restore any "..." button state
@@ -2456,12 +2775,29 @@ CaseResult.OnClientEvent:Connect(function(res)
 		showTab("cases") -- make sure we're on the cases view behind the reel
 		selectedInv = { kind = "case", id = res.caseId } -- CONTINUE lands back on this crate's page
 	end
-	-- NEW: server-initiated multi-opens (the Robux pack) ride in with a `chain` count — queue the rest
-	-- so CONTINUE opens them back-to-back exactly like OPEN ALL.
+	RV.reelPackName = (invData and invData.catalog.cases[res.caseId] and invData.catalog.cases[res.caseId].name) or "PACK"
+	-- NEW: server-initiated multi-opens (the Robux pack) ride in with a `chain` count — queue the rest.
 	if tonumber(res.chain) and res.chain > 0 then
 		invPanel:SetAttribute("QueueCase", res.caseId)
 		invPanel:SetAttribute("OpenQueue", res.chain)
 	end
+	if RV.reelFF then
+		-- fast-forwarding pulls 2..N of a batch: accumulate silently, no reel; resolve into the RV.summary
+		table.insert(RV.reelBatch, { id = res.wonId, unlocked = res.unlocked, coins = res.coins })
+		local q = invPanel:GetAttribute("OpenQueue") or 0
+		local qc = invPanel:GetAttribute("QueueCase")
+		if q > 0 and typeof(qc) == "string" and invData and (invData.cases[qc] or 0) > 0 then
+			invPanel:SetAttribute("OpenQueue", q - 1)
+			armRollTimeout()
+			OpenCase:FireServer({ caseId = qc })
+		else
+			RV.reelFF = false
+			showSummary()
+		end
+		return
+	end
+	-- FIRST pull of a (possibly multi-) open: start a fresh batch and play the full reel.
+	RV.reelBatch = { { id = res.wonId, unlocked = res.unlocked, coins = res.coins } }
 	rolling = true -- a reel is on screen (Robux opens arrive without a client-side request)
 	playReel(res.caseId, res.wonId, res)
 end)
