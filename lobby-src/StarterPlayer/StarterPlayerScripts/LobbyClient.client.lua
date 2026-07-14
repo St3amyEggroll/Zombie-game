@@ -4606,6 +4606,153 @@ end
 
 
 -- =====================================================================================================
+-- ===== GLOBAL BEST-WAVE LEADERBOARD (world board) ===== renders the server's LeaderboardSync onto a
+-- SurfaceGui on a part/model named "Leaderboard" you place in the lobby (tag-driven, like the rest of
+-- the map). No board placed = nothing renders (no error). Top 3 get gold/silver/bronze; your own
+-- best + rank shows in the footer.
+-- =====================================================================================================
+do
+	local LeaderboardSync = remotes:WaitForChild("LeaderboardSync")
+	local MEDAL = { Color3.fromRGB(255, 213, 92), Color3.fromRGB(206, 212, 222), Color3.fromRGB(205, 140, 74) }
+	local L = { rows = {}, built = false }
+
+	local function findBoard()
+		for _, d in workspace:GetDescendants() do
+			if d.Name:lower() == "leaderboard" then
+				if d:IsA("BasePart") then
+					return d
+				elseif d:IsA("Model") and d.PrimaryPart then
+					return d.PrimaryPart
+				end
+			end
+		end
+		return nil
+	end
+
+	local function build(part)
+		if L.built then
+			return
+		end
+		L.built = true
+		local sg = Instance.new("SurfaceGui")
+		sg.Name = "LeaderboardGui"
+		sg.Face = Enum.NormalId.Front
+		sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		sg.PixelsPerStud = 48
+		sg.CanvasSize = Vector2.new(560, 780)
+		sg.LightInfluence = 0
+		sg.Adornee = part
+		sg.Parent = part
+		local bg = Instance.new("Frame")
+		bg.Size = UDim2.fromScale(1, 1)
+		bg.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
+		bg.BorderSizePixel = 0
+		bg.Parent = sg
+		ldepth(bg)
+		local title = Instance.new("TextLabel")
+		title.Position = UDim2.fromOffset(0, 14); title.Size = UDim2.new(1, 0, 0, 48)
+		title.BackgroundTransparency = 1; title.FontFace = TITLE_FACE; title.TextSize = 34
+		title.TextColor3 = GOLD; title.Text = "TOP SURVIVORS"; title.Parent = bg
+		local st = Instance.new("UIStroke"); st.Color = TBLACK; st.Thickness = 3; st.Parent = title
+		local sub = Instance.new("TextLabel")
+		sub.Position = UDim2.fromOffset(0, 58); sub.Size = UDim2.new(1, 0, 0, 22)
+		sub.BackgroundTransparency = 1; sub.FontFace = BODYB_FACE; sub.TextSize = 15
+		sub.TextColor3 = DIMTEXT; sub.Text = "HIGHEST WAVE REACHED · GLOBAL"; sub.Parent = bg
+		L.list = Instance.new("Frame")
+		L.list.Position = UDim2.fromOffset(16, 92); L.list.Size = UDim2.new(1, -32, 1, -150)
+		L.list.BackgroundTransparency = 1; L.list.Parent = bg
+		local ll = Instance.new("UIListLayout"); ll.Padding = UDim.new(0, 4); ll.Parent = L.list
+		L.foot = Instance.new("TextLabel")
+		L.foot.AnchorPoint = Vector2.new(0.5, 1); L.foot.Position = UDim2.new(0.5, 0, 1, -14)
+		L.foot.Size = UDim2.new(1, -32, 0, 40); L.foot.BackgroundColor3 = Color3.fromRGB(28, 31, 22)
+		L.foot.BorderSizePixel = 0; L.foot.FontFace = TITLE_FACE; L.foot.TextSize = 20
+		L.foot.TextColor3 = ACCENT; L.foot.Text = "YOU: —"; L.foot.Parent = bg
+		corner(L.foot, 8); ledge(L.foot, TBLACK, 2.5)
+		local fs = Instance.new("UIStroke"); fs.Color = TBLACK; fs.Thickness = 2
+		fs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; fs.Parent = L.foot
+	end
+
+	local function render(data)
+		if not L.list then
+			return
+		end
+		for _, c in L.list:GetChildren() do
+			if c:IsA("Frame") then
+				c:Destroy()
+			end
+		end
+		local top = (typeof(data.top) == "table") and data.top or {}
+		if #top == 0 then
+			local empty = Instance.new("TextLabel")
+			empty.Size = UDim2.new(1, 0, 0, 40); empty.BackgroundTransparency = 1
+			empty.FontFace = BODYB_FACE; empty.TextSize = 16; empty.TextColor3 = DIMTEXT
+			empty.Text = "NO RUNS YET — BE THE FIRST!"; empty.Parent = L.list
+			-- (a bare label in a Frame-only clear: wrap it so the clear loop above skips it next time)
+			local holder = Instance.new("Frame"); holder.Size = UDim2.new(1, 0, 0, 40)
+			holder.BackgroundTransparency = 1; holder.Parent = L.list
+			empty.Parent = holder
+		end
+		for _, e in ipairs(top) do
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, 0, 0, 26); row.BorderSizePixel = 0
+			row.BackgroundColor3 = (e.rank <= 3) and Color3.fromRGB(34, 33, 24) or Color3.fromRGB(24, 25, 18)
+			row.Parent = L.list
+			corner(row, 5)
+			local medal = MEDAL[e.rank]
+			local rk = Instance.new("TextLabel")
+			rk.Position = UDim2.fromOffset(8, 0); rk.Size = UDim2.fromOffset(44, 26); rk.BackgroundTransparency = 1
+			rk.FontFace = TITLE_FACE; rk.TextSize = 16; rk.TextXAlignment = Enum.TextXAlignment.Left
+			rk.TextColor3 = medal or DIMTEXT; rk.Text = "#" .. e.rank; rk.Parent = row
+			local nm = Instance.new("TextLabel")
+			nm.Position = UDim2.fromOffset(56, 0); nm.Size = UDim2.new(1, -150, 1, 0); nm.BackgroundTransparency = 1
+			nm.FontFace = BODYB_FACE; nm.TextSize = 15; nm.TextXAlignment = Enum.TextXAlignment.Left
+			nm.TextTruncate = Enum.TextTruncate.AtEnd; nm.TextColor3 = medal or TEXTCOL
+			nm.Text = tostring(e.name or "?"); nm.Parent = row
+			local wv = Instance.new("TextLabel")
+			wv.AnchorPoint = Vector2.new(1, 0); wv.Position = UDim2.new(1, -10, 0, 0); wv.Size = UDim2.fromOffset(96, 26)
+			wv.BackgroundTransparency = 1; wv.FontFace = TITLE_FACE; wv.TextSize = 16
+			wv.TextXAlignment = Enum.TextXAlignment.Right; wv.TextColor3 = medal or ACCENT
+			wv.Text = "WAVE " .. tostring(e.wave or 0); wv.Parent = row
+		end
+		if L.foot then
+			local you = data.you or {}
+			if (you.wave or 0) <= 0 then
+				L.foot.Text = "YOU: NO RUN YET"
+			elseif you.rank then
+				L.foot.Text = ("YOU: WAVE %d  ·  RANK #%d"):format(you.wave, you.rank)
+			else
+				L.foot.Text = ("YOU: WAVE %d  ·  OUTSIDE TOP %d"):format(you.wave, #top > 0 and #top or 25)
+			end
+		end
+	end
+
+	LeaderboardSync.OnClientEvent:Connect(function(data)
+		if typeof(data) ~= "table" then
+			return
+		end
+		local part = findBoard()
+		if part then
+			build(part)
+			render(data)
+		end
+	end)
+	-- pull on startup, then keep it fresh
+	task.spawn(function()
+		for _ = 1, 10 do -- give a streamed-in board a chance to appear
+			LeaderboardSync:FireServer()
+			if L.built then
+				break
+			end
+			task.wait(3)
+		end
+		while true do
+			task.wait(60)
+			LeaderboardSync:FireServer()
+		end
+	end)
+end
+
+-- =====================================================================================================
 -- ===== RUN SUMMARY CARD ("Run over — Wave 14 · 87 kills · +215 Coins") ===============================
 -- =====================================================================================================
 -- The game place sends { summary = { wave, kills, money, win? } } in TeleportData when it returns you

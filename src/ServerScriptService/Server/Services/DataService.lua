@@ -70,6 +70,8 @@ local TEMPLATE = {
 }
 
 local store = DataStoreService:GetDataStore(STORE_NAME)
+-- Global best-wave board (the lobby reads GetSortedAsync off this and renders the leaderboard).
+local bestWaveBoard = DataStoreService:GetOrderedDataStore("ZR_BestWave_v1")
 
 -- userId -> { data, dirty, saving }
 local sessions: { [number]: any } = {}
@@ -351,6 +353,13 @@ function DataService.UpdateBestWave(player: Player, wave: number): boolean
 	if wave > (data.bestWave or 0) then
 		data.bestWave = wave
 		markDirty(player)
+		-- publish to the GLOBAL best-wave board (non-blocking; the lobby renders it on the leaderboard)
+		local uid = player.UserId
+		task.spawn(function()
+			pcall(function()
+				bestWaveBoard:SetAsync(tostring(uid), wave)
+			end)
+		end)
 		return true
 	end
 	return false

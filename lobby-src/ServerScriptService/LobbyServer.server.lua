@@ -574,6 +574,8 @@ local SetShake      = mk("SetShake")      -- C->S: (bool) persist the camera-sha
 
 -- ===== PROFILE =====
 local store = DataStoreService:GetDataStore(STORE_NAME)
+-- Global best-wave board (the game place writes it via SetAsync on a new personal best).
+local bestWaveBoard = DataStoreService:GetOrderedDataStore("ZR_BestWave_v1")
 local profileCache = {} -- userId -> profile
 
 local function sanitizeOwned(v)
@@ -2851,6 +2853,80 @@ Players.PlayerRemoving:Connect(function(pl)
 	lastMode[pl.UserId] = nil
 	pendingGift[pl.UserId] = nil -- FIX: gift arm-state was never cleared on leave (leak)
 	squadInvites[pl.UserId] = nil
+end)
+
+-- ===== GLOBAL BEST-WAVE LEADERBOARD ===== the game place writes each new personal best to the
+-- ZR_BestWave_v1 OrderedDataStore; here we read the top N + resolve names + tell each player their own
+-- rank, and push it to clients (they render it on a board named "Leaderboard" and the run-summary card).
+local LeaderboardSync = mk("LeaderboardSync") -- S->C: {top={{rank,name,wave}}, you={wave,rank}} · C->S: request
+local LB_TOP = 25
+local lbTop = {} -- cached ordered list of { rank, userId, name, wave }
+local lbNameCache = {} -- userId -> name (GetNameFromUserIdAsync is throttle-prone; cache forever)
+
+local function lbName(userId)
+	if lbNameCache[userId] then
+		return lbNameCache[userId]
+	end
+	local ok, name = pcall(function()
+		return Players:GetNameFromUserIdAsync(userId)
+	end)
+	name = (ok and name) or ("Player" .. userId)
+	lbNameCache[userId] = name
+	return name
+end
+
+local function refreshLeaderboard()
+	local ok, pages = pcall(function()
+		return bestWaveBoard:GetSortedAsync(false, LB_TOP) -- false = descending (highest wave first)
+	end)
+	if not ok or not pages then
+		return
+	end
+	local page = pages:GetCurrentPage()
+	local out = {}
+	for i, entry in ipairs(page) do
+		local uid = tonumber(entry.key) or 0
+		table.insert(out, { rank = i, userId = uid, name = lbName(uid), wave = tonumber(entry.value) or 0 })
+	end
+	lbTop = out
+end
+
+local function pushLeaderboard(player)
+	local prof = profileCache[player.UserId]
+	local youWave = prof and tonumber(prof.bestWave) or 0
+	local youRank -- exact only if they're on the visible top page; else nil ("out of top N")
+	for _, e in lbTop do
+		if e.userId == player.UserId then
+			youRank = e.rank
+		end
+	end
+	LeaderboardSync:FireClient(player, {
+		top = (function()
+			local t = {}
+			for _, e in lbTop do
+				table.insert(t, { rank = e.rank, name = e.name, wave = e.wave })
+			end
+			return t
+		end)(),
+		you = { wave = youWave, rank = youRank },
+	})
+end
+
+LeaderboardSync.OnServerEvent:Connect(function(player)
+	if not allow(player, "Inv") then
+		return
+	end
+	pushLeaderboard(player)
+end)
+
+task.spawn(function()
+	while true do
+		refreshLeaderboard()
+		for _, pl in Players:GetPlayers() do
+			pushLeaderboard(pl)
+		end
+		task.wait(120) -- the board is global + slow-moving; a 2-minute refresh is plenty and DS-friendly
+	end
 end)
 
 -- Batched persistence: dirty profiles get written every PERSIST_FLUSH_SECONDS instead of per action.
