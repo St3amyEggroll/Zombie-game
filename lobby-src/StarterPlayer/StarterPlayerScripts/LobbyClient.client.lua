@@ -267,8 +267,10 @@ local function redX(parentGui, size, tsize)
 	for _, rot in { 45, -45 } do -- CHANGED: fatter cross (3px got lost on the big header button)
 		local bar = Instance.new("Frame")
 		bar.AnchorPoint = Vector2.new(0.5, 0.5); bar.Position = UDim2.fromScale(0.5, 0.5)
-		bar.Size = UDim2.new(0.55, 0, 0, math.max(4, math.floor(size / 9))); bar.Rotation = rot
-		bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255); bar.BorderSizePixel = 0; bar.ZIndex = 5; bar.Parent = x
+		bar.Size = UDim2.new(0.55, 0, 0, math.max(4, math.floor(size / 8))); bar.Rotation = rot
+		-- ZIndex 20: above the button fill under BOTH Sibling and Global ZIndexBehavior (a caller that
+		-- bumps x.ZIndex, e.g. the class panel's X, would otherwise bury the cross under Global behavior).
+		bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255); bar.BorderSizePixel = 0; bar.ZIndex = 20; bar.Parent = x
 		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = bar
 	end
 	do -- NEW: juice — tweened hover grow + press squish
@@ -1992,7 +1994,7 @@ local function renderInvDetail()
 			lockLbl.BackgroundTransparency = 1; lockLbl.FontFace = BODYB_FACE; lockLbl.TextSize = 17
 			lockLbl.TextXAlignment = Enum.TextXAlignment.Left; lockLbl.TextColor3 = DIMTEXT
 			lockLbl.Text = "🔒 UNLOCKS AT LEVEL " .. reqLevel; lockLbl.Parent = invDetail
-			local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), GHOSTA, GHOSTB, DIMTEXT)
+			local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), GHOSTA, GHOSTB, TEXTCOL)
 			note.AutoButtonColor = false
 			note.Position = UDim2.fromOffset(RIGHT_X, H - 62); note.Size = UDim2.fromOffset(RIGHT_W, 54)
 		end
@@ -2062,7 +2064,7 @@ local function renderInvDetail()
 				end)
 			end
 		else
-			local open = paneButton("NONE LEFT", GHOSTA, GHOSTB, DIMTEXT)
+			local open = paneButton("NONE LEFT", GHOSTA, GHOSTB, TEXTCOL)
 			open.AutoButtonColor = false
 			open.Position = UDim2.fromOffset(RIGHT_X, H - 60); open.Size = UDim2.fromOffset(RIGHT_W, 54)
 		end
@@ -4814,9 +4816,9 @@ do
 		end
 		-- SELECT button + its glow: green CTA when it's not yours, dark "EQUIPPED" (no glow) when it is.
 		if e.id == C.equipped then
-			C.selBtn.BackgroundColor3 = Color3.fromRGB(42, 58, 30)
+			C.selBtn.BackgroundColor3 = Color3.fromRGB(56, 92, 34) -- clearer green (near-black read as dead)
 			C.selBtn.Text = "EQUIPPED ✓"
-			C.selBtn.TextColor3 = Color3.fromRGB(155, 226, 74)
+			C.selBtn.TextColor3 = Color3.new(1, 1, 1) -- WHITE: green text read as black under the fat stroke
 			C.halo.Visible = false
 		else
 			C.selBtn.BackgroundColor3 = ACCENT
