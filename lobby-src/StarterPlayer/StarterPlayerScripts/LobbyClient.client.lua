@@ -138,11 +138,18 @@ local function lbevel(o)
 	-- UIListLayouts: those empty ghost tiles in the run-setup panel.) Gradients only multiply, so the
 	-- face is white and the gradient carries ABSOLUTE colors.
 	local white = Color3.new(1, 1, 1)
+	local label = nil -- hoisted: the ZIndex sync (below) needs it even for non-text buttons
 	local face = Instance.new("Frame")
 	face.Name = "Face"
 	face.Size = UDim2.new(1, 0, 1, -5) -- the slab shows as a 5px lip below
 	face.BackgroundColor3 = white
 	face.BorderSizePixel = 0
+	-- CRITICAL (the "black pill" bug): the lobby renders under ZIndexBehavior.Global (every content
+	-- element in this file is hand-assigned an ascending ZIndex because of it). Under Global a child does
+	-- NOT auto-draw above its parent — so on any button with a raised ZIndex (reel CONTINUE = 7, class
+	-- SELECT = 3) this bright Face + its text label (default ZIndex 1) got BURIED under the button's own
+	-- dark slab, rendering as a solid dark/black pill with no visible text. Force them above the slab.
+	face.ZIndex = o.ZIndex + 1
 	local hostCorner = o:FindFirstChildOfClass("UICorner")
 	if o:IsA("GuiButton") then
 		-- COPY the game button: raw 10px corners (the shared corner() curve makes ~13px bulbous pills —
@@ -175,7 +182,7 @@ local function lbevel(o)
 	face.Parent = o
 	if o:IsA("TextButton") then
 		-- the button's own text renders UNDER children — mirror it onto a label on the face
-		local label = Instance.new("TextLabel")
+		label = Instance.new("TextLabel")
 		label.Name = "Label"
 		label.BackgroundTransparency = 1
 		label.Size = UDim2.fromScale(1, 1)
@@ -183,6 +190,7 @@ local function lbevel(o)
 		label.TextSize = o.TextSize
 		label.TextColor3 = o.TextColor3
 		label.Text = o.Text
+		label.ZIndex = o.ZIndex + 2 -- above the Face (o.ZIndex+1) under Global ZIndexBehavior
 		label.Parent = face
 		local ls = Instance.new("UIStroke")
 		ls.Color = TBLACK
@@ -202,6 +210,10 @@ local function lbevel(o)
 			label.TextColor3 = o.TextColor3
 		end)
 	end
+	o:GetPropertyChangedSignal("ZIndex"):Connect(function()
+		face.ZIndex = o.ZIndex + 1 -- keep the face/text above the slab if the button is restacked later
+		if label then label.ZIndex = o.ZIndex + 2 end
+	end)
 	-- Signals fire deferred, so a boolean re-entry flag can't stop us reacting to
 	-- our own slab write (every recolor would re-darken and spiral toward black).
 	-- Instead remember the exact color we wrote and skip the echo by value.
@@ -2470,7 +2482,9 @@ resultLabel.TextColor3 = TEXTCOL; resultLabel.ZIndex = 7; resultLabel.Parent = r
 local reelBtn = Instance.new("TextButton") -- doubles as Skip (while rolling) and Continue (after)
 reelBtn.AnchorPoint = Vector2.new(0.5, 1); reelBtn.Position = UDim2.new(0.5, 0, 1, -34); reelBtn.Size = UDim2.fromOffset(200, 44)
 reelBtn.BackgroundColor3 = CARD; reelBtn.FontFace = BODYB_FACE; reelBtn.TextSize = 18; reelBtn.TextColor3 = TEXTCOL
-reelBtn.Text = "SKIP"; reelBtn.ZIndex = 7; reelBtn.Parent = reel; corner(reelBtn, 8); ledge(reelBtn, TBLACK, 2.5); lbevel(reelBtn)
+-- ZIndex 9 (was 7): its lbevel Face/Label land at 10/11 — clearly above the summary overlay (8) and
+-- window (6) in every state (SKIP / CONTINUE / CLAIM), so the button never sits under another layer.
+reelBtn.Text = "SKIP"; reelBtn.ZIndex = 9; reelBtn.Parent = reel; corner(reelBtn, 8); ledge(reelBtn, TBLACK, 2.5); lbevel(reelBtn)
 
 -- MULTI-OPEN SUMMARY: a grid of the SAME cards for x3/x10 (so it isn't N slow reveals). Hidden by default.
 RV.summary = Instance.new("Frame")
@@ -4680,7 +4694,7 @@ do
 			nm.Position = UDim2.fromOffset(15, 12)
 			nm.Size = UDim2.new(1, -30, 0, 22)
 			nm.TextXAlignment = Enum.TextXAlignment.Left
-			nm.ZIndex = 4
+			nm.ZIndex = 10 -- ABOVE the dim veil (8): the name/stat must stay readable on unselected rows
 			local ln = Instance.new("TextLabel")
 			ln.Position = UDim2.fromOffset(15, 37)
 			ln.Size = UDim2.new(1, -30, 0, 18)
@@ -4691,7 +4705,7 @@ do
 			ln.TextXAlignment = Enum.TextXAlignment.Left
 			ln.TextTruncate = Enum.TextTruncate.AtEnd
 			ln.Text = e.line
-			ln.ZIndex = 4
+			ln.ZIndex = 10 -- ABOVE the dim veil (8) so the stat line never reads as blacked-out
 			ln.Parent = row
 			local lns = Instance.new("UIStroke")
 			lns.Color = TBLACK
@@ -4707,7 +4721,7 @@ do
 			badge.BackgroundTransparency = 0
 			badge.BackgroundColor3 = Color3.fromRGB(13, 18, 6)
 			badge.Visible = false
-			badge.ZIndex = 9
+			badge.ZIndex = 12 -- above the raised name/stat (10) and the dim veil (8)
 			do
 				local bc = Instance.new("UICorner")
 				bc.CornerRadius = UDim.new(1, 0)
