@@ -97,9 +97,10 @@ local function lattach(screenGui)
 		local cam = workspace.CurrentCamera
 		local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
 		local sc = math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.55, 1.3)
-		-- touch bump AFTER the clamp — applied before, the 0.55 floor swallowed it on small phones
+		-- touch bump AFTER the clamp — applied before, the 0.55 floor swallowed it on small phones.
+		-- CHANGED: bigger bump (1.12 -> 1.3) — the lobby UI read too small on phones.
 		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
-			sc *= 1.12
+			sc *= 1.3
 		end
 		return sc * UI_SCALE_MULT
 	end
@@ -185,7 +186,9 @@ local function lbevel(o)
 		label.Parent = face
 		local ls = Instance.new("UIStroke")
 		ls.Color = TBLACK
-		ls.Thickness = 3 -- wide sticker outline on the text, like LEAVE / SKIP WAVE
+		-- CHANGED: 3px merged the letters of longer labels (CONTINUE / SELECT JUGGERNAUT) into a solid
+		-- black blob. 1.5 keeps a crisp sticker outline without swallowing the fill.
+		ls.Thickness = 1.5
 		ls.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 		ls.Parent = label
 		o.TextTransparency = 1
@@ -4629,10 +4632,13 @@ do
 
 		C.list = Instance.new("ScrollingFrame") -- scrolls when more classes land later
 		C.list.Position = UDim2.fromOffset(12, 48)
-		C.list.Size = UDim2.new(1, -24, 1, -122)
+		C.list.Size = UDim2.new(1, -20, 1, -122)
 		C.list.BackgroundTransparency = 1
 		C.list.BorderSizePixel = 0
-		C.list.ScrollBarThickness = 5
+		C.list.ScrollBarThickness = 8 -- CHANGED: visible, so it reads as a scroll list for more classes
+		C.list.ScrollBarImageColor3 = Color3.fromRGB(180, 186, 160)
+		C.list.ScrollBarImageTransparency = 0.15
+		C.list.ScrollingDirection = Enum.ScrollingDirection.Y
 		C.list.CanvasSize = UDim2.new()
 		C.list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		C.list.Parent = panel
@@ -4676,20 +4682,21 @@ do
 			nm.TextXAlignment = Enum.TextXAlignment.Left
 			nm.ZIndex = 4
 			local ln = Instance.new("TextLabel")
-			ln.Position = UDim2.fromOffset(15, 38)
-			ln.Size = UDim2.new(1, -30, 0, 16)
+			ln.Position = UDim2.fromOffset(15, 37)
+			ln.Size = UDim2.new(1, -30, 0, 18)
 			ln.BackgroundTransparency = 1
 			ln.FontFace = BODYB_FACE
-			ln.TextSize = 10
-			ln.TextColor3 = Color3.fromRGB(240, 232, 210)
+			ln.TextSize = 13 -- CHANGED: bigger + white + thin stroke (was 10px near-bone, read black)
+			ln.TextColor3 = Color3.new(1, 1, 1)
 			ln.TextXAlignment = Enum.TextXAlignment.Left
+			ln.TextTruncate = Enum.TextTruncate.AtEnd
 			ln.Text = e.line
 			ln.ZIndex = 4
 			ln.Parent = row
 			local lns = Instance.new("UIStroke")
 			lns.Color = TBLACK
-			lns.Thickness = 1.5
-			lns.Transparency = 0.35
+			lns.Thickness = 1
+			lns.Transparency = 0.5
 			lns.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 			lns.Parent = ln
 			-- EQUIPPED badge (shows on YOUR class), and the dim veil for un-selected rows
