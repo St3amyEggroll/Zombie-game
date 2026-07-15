@@ -905,6 +905,9 @@ StatsRemote.OnClientEvent:Connect(function(s)
 	-- Account XP drives the level bar; expose it as an attribute so the XP-bar block (below) can react
 	-- without a new top-level local (this client sits at Luau's 200-local ceiling).
 	localPlayer:SetAttribute("AccountXP", tonumber(s.xp) or 0)
+	-- Expose the first-join tour flag as an attribute too (this handler is connected early, so it catches
+	-- the join snapshot; the tour block below reads the attribute rather than racing the remote event).
+	localPlayer:SetAttribute("TutDone", s.tutDone == true)
 	moneyLabel.Text = fmt(s.lobbyMoney or 0)
 	bestLabel.Text = "BEST: WAVE " .. tostring(s.bestWave or 0)
 	-- All profile-load retries failed: this session runs on a fallback that will NEVER be saved
@@ -6162,6 +6165,187 @@ do
 	localPlayer:GetAttributeChangedSignal("InvVersion"):Connect(refresh)
 	task.delay(2, refresh)
 	refresh()
+end
+
+-- ===== FIRST-JOIN POINTER TOUR ===== new players ONLY, once. A dim overlay spotlights each lobby system
+-- in turn (coins -> shop -> classes -> daily -> play) with a callout + NEXT/SKIP, then lets them play.
+-- It reads each target's LIVE AbsolutePosition (real screen pixels), so this ScreenGui is intentionally
+-- NOT lattach'd. Gated on the profile's tutDone flag (mirrored to the "TutDone" player attribute above).
+-- Everything hangs on one table T so the block adds a single main-chunk local (the 200-local ceiling).
+do
+	local T = {}
+	T.done = remotes:WaitForChild("TutorialDone")
+	T.i = 1
+	T.gui = Instance.new("ScreenGui")
+	T.gui.Name = "LobbyTutorial"
+	T.gui.ResetOnSpawn = false
+	T.gui.IgnoreGuiInset = true
+	T.gui.DisplayOrder = 35 -- above panels/coins, below toasts(40)/warnings(90)
+	T.gui.Enabled = false
+	T.gui.Parent = playerGui
+
+	T.catcher = Instance.new("TextButton") -- swallows every click to the HUD behind; NEXT/SKIP sit above it
+	T.catcher.Size = UDim2.fromScale(1, 1); T.catcher.BackgroundTransparency = 1; T.catcher.Text = ""
+	T.catcher.AutoButtonColor = false; T.catcher.ZIndex = 1; T.catcher.Parent = T.gui
+
+	T.dim = {} -- four dark panels leave a clear window over the current target
+	for k = 1, 4 do
+		local f = Instance.new("Frame")
+		f.BackgroundColor3 = Color3.fromRGB(4, 6, 3); f.BackgroundTransparency = 0.28
+		f.BorderSizePixel = 0; f.ZIndex = 2; f.Parent = T.gui
+		T.dim[k] = f
+	end
+
+	T.ring = Instance.new("Frame")
+	T.ring.BackgroundTransparency = 1; T.ring.ZIndex = 3; T.ring.Parent = T.gui
+	do
+		local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 14); rc.Parent = T.ring
+		local rs = Instance.new("UIStroke"); rs.Color = ACCENT; rs.Thickness = 3; rs.Parent = T.ring
+	end
+
+	T.card = Instance.new("Frame")
+	T.card.Size = UDim2.fromOffset(330, 158); T.card.BackgroundColor3 = PANEL
+	T.card.BorderSizePixel = 0; T.card.ZIndex = 5; T.card.Parent = T.gui
+	corner(T.card, 10); ledge(T.card, TBLACK, 3); ledge(T.card, ACCENT, 1.5, 0.4)
+
+	T.stepLbl = Instance.new("TextLabel")
+	T.stepLbl.Position = UDim2.fromOffset(14, -11); T.stepLbl.Size = UDim2.fromOffset(56, 22)
+	T.stepLbl.BackgroundColor3 = ACCENT; T.stepLbl.BorderSizePixel = 0
+	T.stepLbl.FontFace = TITLE_FACE; T.stepLbl.TextSize = 13; T.stepLbl.TextColor3 = Color3.fromRGB(14, 18, 6)
+	T.stepLbl.Text = "1 / 5"; T.stepLbl.ZIndex = 6; T.stepLbl.Parent = T.card
+	corner(T.stepLbl, 5); ledge(T.stepLbl, TBLACK, 2)
+
+	T.title = Instance.new("TextLabel")
+	T.title.Position = UDim2.fromOffset(16, 18); T.title.Size = UDim2.new(1, -32, 0, 26)
+	T.title.BackgroundTransparency = 1; T.title.FontFace = TITLE_FACE; T.title.TextSize = 19
+	T.title.TextColor3 = Color3.new(1, 1, 1); T.title.TextXAlignment = Enum.TextXAlignment.Left
+	T.title.ZIndex = 6; T.title.Parent = T.card
+
+	T.body = Instance.new("TextLabel")
+	T.body.Position = UDim2.fromOffset(16, 47); T.body.Size = UDim2.new(1, -32, 0, 62)
+	T.body.BackgroundTransparency = 1; T.body.FontFace = BODYB_FACE; T.body.TextSize = 14
+	T.body.TextColor3 = TEXTCOL; T.body.TextWrapped = true; T.body.TextXAlignment = Enum.TextXAlignment.Left
+	T.body.TextYAlignment = Enum.TextYAlignment.Top; T.body.ZIndex = 6; T.body.Parent = T.card
+
+	T.skip = Instance.new("TextButton")
+	T.skip.AnchorPoint = Vector2.new(0, 1); T.skip.Position = UDim2.new(0, 16, 1, -14)
+	T.skip.Size = UDim2.fromOffset(96, 30); T.skip.BackgroundTransparency = 1
+	T.skip.FontFace = BODYB_FACE; T.skip.TextSize = 12; T.skip.TextColor3 = DIMTEXT
+	T.skip.Text = "SKIP TOUR"; T.skip.TextXAlignment = Enum.TextXAlignment.Left; T.skip.ZIndex = 6; T.skip.Parent = T.card
+
+	T.next = Instance.new("TextButton")
+	T.next.AnchorPoint = Vector2.new(1, 1); T.next.Position = UDim2.new(1, -14, 1, -12)
+	T.next.Size = UDim2.fromOffset(122, 40); T.next.BackgroundColor3 = ACCENT; T.next.BorderSizePixel = 0
+	T.next.FontFace = TITLE_FACE; T.next.TextSize = 16; T.next.TextColor3 = Color3.new(1, 1, 1)
+	T.next.Text = "NEXT"; T.next.ZIndex = 6; T.next.Parent = T.card
+	corner(T.next, 8); ledge(T.next, TBLACK, 2.5); lbevel(T.next)
+
+	T.steps = {
+		{ get = function() return coinsRow end, title = "YOUR COINS",
+			body = "This is your cash. Earn it in runs, then spend it in the shop on guns and upgrades." },
+		{ get = function() return dockBtns.shop end, title = "THE SHOP",
+			body = "Buy new guns and upgrade the ones you own. You can open it anytime with the B key." },
+		{ get = function() return dockBtns.classes end, title = "CLASSES",
+			body = "Pick a class perk - extra gun damage, more health, faster move speed, or bonus coins." },
+		{ get = function() return dockBtns.daily end, title = "DAILY REWARD",
+			body = "Spin the wheel once a day for a free reward. Come back daily to build a streak." },
+		{ get = function() return playBtn end, title = "READY?",
+			body = "Step on a pad or hit PLAY to start your first run. Kill zombies, get paid, survive. Good luck!" },
+	}
+
+	T.finish = function()
+		if not T.gui.Enabled then
+			return
+		end
+		T.gui.Enabled = false
+		T.done:FireServer()
+	end
+
+	T.place = function(target)
+		local cam = workspace.CurrentCamera
+		local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+		local pos, size = target.AbsolutePosition, target.AbsoluteSize
+		local pad = 12
+		local x, y = math.floor(pos.X - pad), math.floor(pos.Y - pad)
+		local w, h = math.floor(size.X + pad * 2), math.floor(size.Y + pad * 2)
+		T.dim[1].Position = UDim2.fromOffset(0, 0); T.dim[1].Size = UDim2.fromOffset(vp.X, math.max(0, y))
+		T.dim[2].Position = UDim2.fromOffset(0, y + h); T.dim[2].Size = UDim2.fromOffset(vp.X, math.max(0, vp.Y - (y + h)))
+		T.dim[3].Position = UDim2.fromOffset(0, y); T.dim[3].Size = UDim2.fromOffset(math.max(0, x), h)
+		T.dim[4].Position = UDim2.fromOffset(x + w, y); T.dim[4].Size = UDim2.fromOffset(math.max(0, vp.X - (x + w)), h)
+		T.ring.Position = UDim2.fromOffset(x, y); T.ring.Size = UDim2.fromOffset(w, h)
+		local cardW, cardH = 330, 158
+		local cx = math.clamp(math.floor(pos.X + size.X / 2 - cardW / 2), 12, math.max(12, vp.X - cardW - 12))
+		local cy
+		if (y + h / 2) > vp.Y / 2 then
+			cy = y - cardH - 18
+		else
+			cy = y + h + 18
+		end
+		cy = math.clamp(cy, 12, math.max(12, vp.Y - cardH - 12))
+		T.card.Position = UDim2.fromOffset(cx, cy)
+	end
+
+	T.show = function(i)
+		local step = T.steps[i]
+		if not step then
+			return T.finish()
+		end
+		local target = step.get()
+		if not target or target.AbsoluteSize.X < 2 then -- target missing/unrendered → skip it
+			if i < #T.steps then
+				return T.show(i + 1)
+			end
+			return T.finish()
+		end
+		T.i = i
+		T.stepLbl.Text = ("%d / %d"):format(i, #T.steps)
+		T.title.Text = step.title
+		T.body.Text = step.body
+		T.next.Text = (i >= #T.steps) and "LET'S GO" or "NEXT"
+		T.place(target)
+	end
+
+	T.next.Activated:Connect(function()
+		lplay("Click")
+		if T.i >= #T.steps then
+			T.finish()
+		else
+			T.show(T.i + 1)
+		end
+	end)
+	T.skip.Activated:Connect(function()
+		lplay("Click")
+		T.finish()
+	end)
+
+	do
+		local cam = workspace.CurrentCamera
+		if cam then
+			cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+				if T.gui.Enabled and T.steps[T.i] then
+					local tg = T.steps[T.i].get()
+					if tg then
+						T.place(tg)
+					end
+				end
+			end)
+		end
+	end
+
+	T.maybeStart = function()
+		if T.ran then
+			return
+		end
+		if localPlayer:GetAttribute("TutDone") ~= false then -- nil (not loaded yet) or true → don't run
+			return
+		end
+		T.ran = true
+		T.gui.Enabled = true
+		task.wait(0.15) -- let the HUD's AbsolutePositions settle before measuring
+		T.show(1)
+	end
+	localPlayer:GetAttributeChangedSignal("TutDone"):Connect(T.maybeStart)
+	task.defer(T.maybeStart)
 end
 
 -- EVERYTHING is wired — now PULL a fresh snapshot. The server's join-time pushes often fire while

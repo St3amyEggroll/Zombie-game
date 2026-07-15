@@ -799,6 +799,7 @@ local function readProfile(player)
 		class = CLASS_IDS[tostring(data.class)] and tostring(data.class) or "", -- equipped class (showcase)
 		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
 		starter = data.starter == true, -- STARTER PACK is one purchase ever
+		tutDone = data.tutDone == true, -- first-join pointer tour already shown (once per account)
 		vipDay = math.floor(tonumber(data.vipDay) or 0), -- last day the VIP daily crate was granted
 		wheel = (function() -- daily wheel: last claim day, claim streak, paid re-spins today
 			local w = (typeof(data.wheel) == "table") and data.wheel or {}
@@ -891,6 +892,7 @@ local function persist(player)
 				old.vipDay = prof.vipDay
 				old.quests = prof.quests
 				old.class = prof.class
+				old.tutDone = prof.tutDone
 				return old
 			end)
 		end)
@@ -3167,6 +3169,17 @@ ClassEquip.OnServerEvent:Connect(function(player, id)
 	prof.class = id
 	markDirty(player)
 	StatsRemote:FireClient(player, prof) -- the showcase reads s.class for the EQUIPPED badge
+end)
+
+-- First-join pointer tour finished (or skipped): remember it so it never auto-runs again. Idempotent.
+local TutorialDone = mk("TutorialDone")
+TutorialDone.OnServerEvent:Connect(function(player)
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist or prof.tutDone then
+		return
+	end
+	prof.tutDone = true
+	markDirty(player)
 end)
 
 -- Equip / clear a skin on a gun you own.
