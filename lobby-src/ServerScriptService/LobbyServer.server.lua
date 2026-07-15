@@ -1,11 +1,11 @@
 -- LobbyServer (LOBBY PLACE ONLY) — walkable hub with PARTY PADS + the inventory.
 --
 -- PARTY FLOW (one party per LoadingZone pad):
---   1. Player A steps on an empty pad -> becomes the HOST and gets the setup menu (Map / Difficulty / Size).
+--   1. Player A steps on an empty pad -> becomes the HOST and gets the setup menu (Map / Size).
 --      While A is setting up, the pad is LOCKED — anyone else stepping on is told to wait.
 --   2. A presses PLAY -> settings are FINALIZED. A's menu collapses to just party info + a LEAVE button,
 --      and a billboard above the pad shows the settings + player count + countdown.
---   3. Others step on the pad to JOIN — but only if they've UNLOCKED that map + difficulty (otherwise they
+--   3. Others step on the pad to JOIN — but only if they've UNLOCKED that map (otherwise they
 --      are told what they're missing). Members see party info + LEAVE.
 --   4. The party launches when FULL, or when the 30s countdown ends (with whoever joined). Everyone
 --      teleports together into a fresh private game server.
@@ -34,9 +34,9 @@ local CollectionService = game:GetService("CollectionService")
 -- ===== CONFIG (keep in sync with the game's GameConfig) =====
 local GAME_PLACE_ID    = 140566663451993 -- the gameplay place (PLAY teleports here; the lobby is the START place)
 local STORE_NAME       = "PlayerData_v2"
-local DIFFS            = { "easy", "medium", "hard", "nightmare", "endless" } -- endless: beat Nightmare to unlock
-local FINAL_DIFF       = "nightmare" -- beating THIS unlocks the next world (Endless is a bonus mode, not a gate)
-local WORLDS           = { "forest", "islands" } -- islands unlocks after beating forest:nightmare (worldUnlocked)
+local WORLDS             = { "forest", "islands" } -- ONE difficulty per world now (the old Easy..Endless
+-- ladder is GONE); a world unlocks at an ACCOUNT LEVEL (below), and every run is endless + extraction.
+local WORLD_UNLOCK_LEVEL = { forest = 0, islands = 8 } -- must mirror GameConfig.WorldUnlockLevel
 local ALL_WORLDS_OPEN  = true -- OPEN EVERY MAP for now (skips the beat-the-previous-world gate; flip to false to re-lock)
 local PARTY_WAIT       = 30   -- seconds an OPEN party waits before launching with whoever joined
 local FULL_GRACE       = 5    -- once the party is FULL (incl. solo), the countdown drops to this — a short
@@ -567,9 +567,9 @@ end
 local StatsRemote   = mk("Stats")         -- S->C: money/best wave
 local ZoneEnter     = mk("ZoneEnter")     -- S->C: ({mode="config"|"party"|"blocked", ...}) pad UI state
 local ZoneLeave     = mk("ZoneLeave")     -- S->C: close the pad UI
-local FinalizeParty = mk("FinalizeParty") -- C->S: {map, difficulty, size} host locks in the settings
+local FinalizeParty = mk("FinalizeParty") -- C->S: {map, size} host locks in the settings
 local LeaveParty    = mk("LeaveParty")    -- C->S: leave the party (moves you off the pad)
-local PartyStatus   = mk("PartyStatus")   -- S->C: {map, difficulty, size, count, seconds} live party state
+local PartyStatus   = mk("PartyStatus")   -- S->C: {map, size, count, seconds} live party state
 -- Inventory
 local InvRequest    = mk("InvRequest")    -- C->S: (please send my inventory)
 local InvSync       = mk("InvSync")       -- S->C: full inventory snapshot + catalog
@@ -1304,41 +1304,24 @@ local function indexOf(t, v)
 	return nil
 end
 
-local function worldUnlocked(completed, world)
+-- Worlds gate by ACCOUNT LEVEL now (no more "beat Nightmare" chains). One difficulty per world.
+local function worldUnlocked(prof, world)
 	if ALL_WORLDS_OPEN then
 		return true
 	end
-	local i = indexOf(WORLDS, world) or 1
-	if i <= 1 then
-		return true
-	end
-	return completed[WORLDS[i - 1] .. ":" .. FINAL_DIFF] == true
-end
-
-local function diffUnlocked(completed, world, difficulty)
-	if not worldUnlocked(completed, world) then
+	if not indexOf(WORLDS, world) then
 		return false
 	end
-	local di = indexOf(DIFFS, difficulty)
-	if not di then
-		return false
-	end
-	if di <= 1 then
-		return true
-	end
-	return completed[world .. ":" .. DIFFS[di - 1]] == true
+	local need = WORLD_UNLOCK_LEVEL[world] or 0
+	return accountLevel((typeof(prof) == "table" and tonumber(prof.xp)) or 0) >= need
 end
 
 local function unlockPayload(profile)
 	local worlds = {}
 	for _, w in WORLDS do
-		local diffs = {}
-		for _, d in DIFFS do
-			diffs[d] = diffUnlocked(profile.completed, w, d)
-		end
-		worlds[w] = { unlocked = worldUnlocked(profile.completed, w), diffs = diffs }
+		worlds[w] = { unlocked = worldUnlocked(profile, w), level = WORLD_UNLOCK_LEVEL[w] or 0 }
 	end
-	return { worldOrder = WORLDS, order = DIFFS, worlds = worlds }
+	return { worldOrder = WORLDS, worlds = worlds }
 end
 
 -- ===== RATE LIMITING (token buckets — the lobby's SecurityService-lite) =====
@@ -2187,7 +2170,7 @@ SquadLeave.OnServerEvent:Connect(function(player)
 end)
 
 -- ===== PARTY PADS =====
--- parties[zonePart] = { state="config"|"open", host, map, difficulty, size, members={}, deadline, billboard }
+-- parties[zonePart] = { state="config"|"open", host, map, size, members={}, deadline, billboard }
 local parties = {}
 local playerParty = {}  -- userId -> party
 local inZonePart = {}   -- userId -> zone Part they're standing in
@@ -2369,7 +2352,7 @@ local function updateBillboard(zone, party)
 		label.Text = "Setting up..."
 	else
 		local secs = math.max(0, math.ceil(party.deadline - os.clock()))
-		label.Text = ("%s · %s\n%d/%d · %ds"):format(cap(party.map), cap(party.difficulty), #party.members, party.size, secs)
+		label.Text = ("%s\n%d/%d · %ds"):format(cap(party.map), #party.members, party.size, secs)
 	end
 end
 
@@ -2443,7 +2426,7 @@ local function dissolveAndLaunch(party)
 		if ok and code then
 			options.ReservedServerAccessCode = code
 		end
-		options:SetTeleportData({ startRun = true, map = party.map, difficulty = party.difficulty, partySize = #safe })
+		options:SetTeleportData({ startRun = true, map = party.map, partySize = #safe })
 		for attempt = 1, TELEPORT_RETRIES do
 			local alive = {}
 			for _, pl in safe do
@@ -2477,7 +2460,7 @@ local function evaluateZone(player, zone)
 		else
 			sendMode(player, "party", {
 				mode = "party",
-				map = party.map, difficulty = party.difficulty, size = party.size,
+				map = party.map, size = party.size,
 				isHost = party.host == player,
 			})
 		end
@@ -2521,10 +2504,10 @@ local function evaluateZone(player, zone)
 	else -- open
 		if #party.members >= party.size then
 			sendMode(player, "blockedFull", { mode = "blocked", reason = "This party is full." })
-		elseif not diffUnlocked(prof.completed, party.map, party.difficulty) then
+		elseif not worldUnlocked(prof, party.map) then
 			sendMode(player, "blockedLock", {
 				mode = "blocked",
-				reason = ("You haven't unlocked %s · %s yet."):format(cap(party.map), cap(party.difficulty)),
+				reason = ("You haven't unlocked %s yet — reach account level %d."):format(cap(party.map), WORLD_UNLOCK_LEVEL[party.map] or 0),
 			})
 		else
 			table.insert(party.members, player)
@@ -2533,7 +2516,7 @@ local function evaluateZone(player, zone)
 			updateBillboard(zone, party) -- joining the last open slot raises the wall behind them
 			sendMode(player, "party", {
 				mode = "party",
-				map = party.map, difficulty = party.difficulty, size = party.size,
+				map = party.map, size = party.size,
 				isHost = false,
 			})
 		end
@@ -2549,21 +2532,20 @@ FinalizeParty.OnServerEvent:Connect(function(player, sel)
 		return
 	end
 	local prof = profileCache[player.UserId]
-	local map, difficulty, size = tostring(sel.map), tostring(sel.difficulty), tonumber(sel.size)
-	if not indexOf(WORLDS, map) or not indexOf(DIFFS, difficulty) then
+	local map, size = tostring(sel.map), tonumber(sel.size)
+	if not indexOf(WORLDS, map) then
 		return
 	end
-	if not prof or not diffUnlocked(prof.completed, map, difficulty) then
+	if not prof or not worldUnlocked(prof, map) then
 		return
 	end
 	party.map = map
-	party.difficulty = difficulty
 	party.size = math.clamp(math.floor(size or 1), 1, 4)
 	party.state = "open"
 	party.deadline = os.clock() + PARTY_WAIT
 	lastMode[player.UserId] = nil -- re-send: host's UI flips from config to party view
 	-- SQUAD: the leader locked in a run — make room and summon every member onto this pad. The normal
-	-- zone tick adds them to the party (their own difficulty locks still apply).
+	-- zone tick adds them to the party (their own world unlock still applies).
 	local s = squads[squadOf[player.UserId] or 0]
 	if s and s.leader == player.UserId then
 		party.size = math.clamp(math.max(party.size, #s.members), 1, 4)
@@ -2800,7 +2782,7 @@ local function tick()
 				local secs = math.max(0, math.ceil(party.deadline - now))
 				for _, pl in party.members do
 					PartyStatus:FireClient(pl, {
-						map = party.map, difficulty = party.difficulty, size = party.size,
+						map = party.map, size = party.size,
 						count = #party.members, seconds = secs,
 					})
 				end

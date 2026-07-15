@@ -123,7 +123,7 @@ local function lattach(screenGui)
 	end
 end
 
-local sel = { map = "forest", difficulty = "easy", size = 1 }
+local sel = { map = "forest", size = 1 } -- ONE difficulty per world now — the run is endless + extraction
 local unlocks = nil       -- unlock payload while configuring a pad
 local zoneMode = nil      -- "config" | "party" | "blocked" (what the pad UI is showing)
 
@@ -687,7 +687,7 @@ bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestL
 -- selection panel
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.fromOffset(600, 490); panel.BackgroundColor3 = PANEL -- taller: square map photo buttons
+panel.Size = UDim2.fromOffset(600, 402); panel.BackgroundColor3 = PANEL -- square map photos + size row
 panel.BackgroundTransparency = 0.12; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
 corner(panel, 8)
 lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, HEADER_COLORS.play, 2.5, 0.05)
@@ -727,10 +727,8 @@ end
 
 local mapLbl = sectionLabel("MAP", 58)
 local mapRow = row(82, 118) -- taller row for square photo buttons
-local diffLbl = sectionLabel("DIFFICULTY", 210)
-local diffRow = row(234, 52)
-local sizeLbl = sectionLabel("PARTY SIZE", 298)
-local sizeRow = row(322, 48)
+local sizeLbl = sectionLabel("PARTY SIZE", 214)
+local sizeRow = row(238, 48)
 
 
 -- PARTY MODE has no panel at all: just one BIG red LEAVE button at the bottom of the screen with a
@@ -754,7 +752,7 @@ blockedMsg.Position = UDim2.new(0, 24, 0, 110); blockedMsg.Size = UDim2.new(1, -
 blockedMsg.FontFace = BODYB_FACE; blockedMsg.TextSize = 17; blockedMsg.TextWrapped = true
 blockedMsg.TextColor3 = TEXTCOL; blockedMsg.Text = ""; blockedMsg.Visible = false; blockedMsg.Parent = panel
 
-local mapBtns, diffBtns, sizeBtns = {}, {}, {}
+local mapBtns, sizeBtns = {}, {}
 
 local play = Instance.new("TextButton")
 play.AnchorPoint = Vector2.new(0.5, 1); play.Position = UDim2.new(0.5, 0, 1, -40); play.Size = UDim2.fromOffset(320, 56)
@@ -774,8 +772,7 @@ ledge(status, TBLACK, 1.5) -- text outline (no named local: this file sits at Lu
 -- ===== RENDER =====
 local function refresh()
 	if not unlocks then return end
-	status.Text = ("%s  ·  %s  ·  PARTY OF %d"):format(
-		cap(sel.map or "?"):upper(), cap(sel.difficulty or "?"):upper(), tonumber(sel.size) or 1)
+	status.Text = ("%s  ·  PARTY OF %d"):format(cap(sel.map or "?"):upper(), tonumber(sel.size) or 1)
 	-- map buttons — each is a SQUARE PHOTO of the map itself (owner-supplied; add a line per world)
 	local MAP_IMAGES = { forest = "rbxassetid://85349059800026" }
 	for _, b in mapBtns do b:Destroy() end
@@ -820,25 +817,6 @@ local function refresh()
 		end)
 		table.insert(mapBtns, b)
 	end
-	-- difficulty buttons
-	for _, b in diffBtns do b:Destroy() end
-	diffBtns = {}
-	local worldInfo = unlocks.worlds[sel.map]
-	for _, d in unlocks.order do
-		local unlocked = worldInfo and worldInfo.diffs[d]
-		local b = button(diffRow, 100, 48, unlocked and cap(d) or (cap(d) .. " 🔒")) -- 94px: five fit (incl. Endless)
-		b.LayoutOrder = #diffBtns + 1
-		if not unlocked then
-			b.AutoButtonColor = false; b.BackgroundColor3 = DIM; b.TextColor3 = Color3.fromRGB(150, 150, 160)
-		else
-			b.BackgroundColor3 = (sel.difficulty == d) and SELBG or CARD
-			b.TextColor3 = TEXTCOL -- selection shows in the fill, text stays normal
-		end
-		b.Activated:Connect(function()
-			if unlocked then sel.difficulty = d; refresh() end
-		end)
-		table.insert(diffBtns, b)
-	end
 	-- size buttons
 	for _, b in sizeBtns do b:Destroy() end
 	sizeBtns = {}
@@ -854,22 +832,11 @@ local function refresh()
 	end
 end
 
--- default difficulty = first unlocked for the selected map
-local function pickDefaultDifficulty()
-	local info = unlocks and unlocks.worlds[sel.map]
-	if info then
-		for _, d in unlocks.order do
-			if info.diffs[d] then sel.difficulty = d; return end
-		end
-	end
-end
-
 -- Show/hide the three pad-UI modes inside the one panel.
 local function setPanelMode(mode)
 	zoneMode = mode
 	local config = (mode == "config")
 	mapLbl.Visible = config; mapRow.Visible = config
-	diffLbl.Visible = config; diffRow.Visible = config
 	sizeLbl.Visible = config; sizeRow.Visible = config
 	blockedMsg.Visible = (mode == "blocked")
 	play.Visible = config
@@ -942,14 +909,13 @@ ZoneEnter.OnClientEvent:Connect(function(p)
 		unlocks = p.unlocks
 		if unlocks then
 			if not unlocks.worlds[sel.map] then sel.map = unlocks.worldOrder[1] end
-			pickDefaultDifficulty()
 		end
 		sel.size = 1
 		setPanelMode("config")
 		refresh()
 	elseif p.mode == "party" then
 		setPanelMode("party")
-		leaveStatus.Text = ("%s  ·  %s  —  waiting for players..."):format(cap(p.map or "?"), cap(p.difficulty or "?"))
+		leaveStatus.Text = ("%s  —  waiting for players..."):format(cap(p.map or "?"))
 	else
 		setPanelMode("blocked")
 		blockedMsg.Text = p.reason or "You can't join this pad right now."
@@ -981,7 +947,7 @@ end)
 
 play.Activated:Connect(function()
 	if zoneMode == "config" then
-		FinalizeParty:FireServer({ map = sel.map, difficulty = sel.difficulty, size = sel.size })
+		FinalizeParty:FireServer({ map = sel.map, size = sel.size })
 	end
 end)
 
