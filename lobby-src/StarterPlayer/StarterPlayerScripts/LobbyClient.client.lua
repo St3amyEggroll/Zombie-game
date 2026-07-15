@@ -2199,8 +2199,8 @@ local function renderWeaponsGrid()
 end
 
 local function renderCasesGrid()
-	-- The INVENTORY screen: the crates you HAVE (only owned ones — no empty placeholders), then your
-	-- guns. Skins are NOT separate items — they live on their gun's info sheet as swatches.
+	-- The INVENTORY screen: JUST the crates you HAVE (only owned ones — no empty placeholders). Guns live
+	-- on the WEAPONS screen now (removed here per owner request). Skins live on each gun's info sheet.
 	local out = {}
 	for _, caseId in invData.catalog.rarityOrder do
 		local disp = invData.catalog.cases[caseId]
@@ -2213,29 +2213,6 @@ local function renderCasesGrid()
 				name = rname, color = rarityColor(caseId), count = count, subText = "CRATE",
 			})
 		end
-	end
-	local gunIds = {}
-	for id in invData.catalog.weapons do
-		if ownsGun(id) then
-			table.insert(gunIds, id)
-		end
-	end
-	table.sort(gunIds, function(a, b)
-		local wa, wb = weaponInfo(a), weaponInfo(b)
-		if (wa.unlock or 0) ~= (wb.unlock or 0) then
-			return (wa.unlock or 0) < (wb.unlock or 0)
-		end
-		return a < b
-	end)
-	for _, id in gunIds do
-		local w = weaponInfo(id)
-		table.insert(out, { kind = "weapon", id = id })
-		local isEq = invData.loadout[1] == id or invData.loadout[2] == id
-		invCard({
-			kind = "weapon", id = id, name = w.name, color = rarityColor(w.rarity), order = #out,
-			image = w.image, chip = isEq and "EQUIPPED" or nil,
-			subText = ((invData.catalog.rarities[w.rarity] or {}).name or ""):upper(),
-		})
 	end
 	if #out == 0 then
 		local msg = Instance.new("TextLabel")
@@ -2303,11 +2280,15 @@ end
 local function cardFace(parent, opts)
 	local col = opts.color or Color3.fromRGB(150, 150, 160)
 	local barH = opts.barH or 30
+	-- Z BASE: this GUI renders under ZIndexBehavior.Global, so a card placed over an OPAQUE background
+	-- (the reel window) needs its layers lifted above it — pass opts.z. Default 1 = the inventory look.
+	local z = opts.z or 1
 	local f = Instance.new("Frame")
 	f.Size = UDim2.fromScale(1, 1)
 	f.BackgroundColor3 = Color3.fromRGB(28, 33, 23)
 	f.BorderSizePixel = 0
 	f.ClipsDescendants = true
+	f.ZIndex = z
 	f.Parent = parent
 	corner(f, opts.corner or 12)
 	ledge(f, opts.ring or TBLACK, opts.ringW or 3)
@@ -2315,6 +2296,7 @@ local function cardFace(parent, opts)
 	art.Size = UDim2.new(1, 0, 1, -(barH + 3))
 	art.BackgroundColor3 = Color3.new(1, 1, 1)
 	art.BorderSizePixel = 0
+	art.ZIndex = z
 	art.Parent = f
 	local ag = Instance.new("UIGradient")
 	if opts.locked then
@@ -2330,7 +2312,7 @@ local function cardFace(parent, opts)
 	sep.Size = UDim2.new(1, 0, 0, 3)
 	sep.BackgroundColor3 = TBLACK
 	sep.BorderSizePixel = 0
-	sep.ZIndex = 3
+	sep.ZIndex = z + 2
 	sep.Parent = f
 	local showed = false
 	local vp
@@ -2346,7 +2328,7 @@ local function cardFace(parent, opts)
 		vp.AnchorPoint = Vector2.new(0.5, 0.5)
 		vp.Position = UDim2.new(0.5, 0, 0.5, -math.floor((barH + 3) / 2))
 		vp.Size = UDim2.new(1, -10, 1, -(barH + 16))
-		vp.ZIndex = 2
+		vp.ZIndex = z + 1
 		if opts.locked then
 			vp.ImageColor3 = Color3.new(0, 0, 0)
 			vp.ImageTransparency = 0.1
@@ -2362,7 +2344,7 @@ local function cardFace(parent, opts)
 		img.BackgroundTransparency = 1
 		img.Image = opts.image
 		img.ScaleType = Enum.ScaleType.Fit
-		img.ZIndex = 2
+		img.ZIndex = z + 1
 		img.Parent = f
 		showed = true
 	end
@@ -2377,7 +2359,7 @@ local function cardFace(parent, opts)
 		noml.TextWrapped = true
 		noml.TextColor3 = opts.locked and DIMTEXT or col
 		noml.Text = opts.name or ""
-		noml.ZIndex = 2
+		noml.ZIndex = z + 1
 		noml.Parent = f
 		local nstr = Instance.new("UIStroke")
 		nstr.Color = TBLACK
@@ -2391,7 +2373,7 @@ local function cardFace(parent, opts)
 	bar.Size = UDim2.new(1, 0, 0, barH)
 	bar.BackgroundColor3 = opts.locked and Color3.fromRGB(58, 65, 52) or col
 	bar.BorderSizePixel = 0
-	bar.ZIndex = 3
+	bar.ZIndex = z + 2
 	bar.Parent = f
 	local nm = Instance.new("TextLabel")
 	nm.Position = UDim2.fromOffset(4, 2)
@@ -2399,7 +2381,7 @@ local function cardFace(parent, opts)
 	nm.BackgroundTransparency = 1
 	nm.FontFace = TITLE_FACE
 	nm.TextSize = barH > 24 and 13 or 11
-	nm.ZIndex = 4
+	nm.ZIndex = z + 3
 	nm.TextTruncate = Enum.TextTruncate.AtEnd
 	nm.TextColor3 = opts.locked and DIMTEXT or Color3.new(1, 1, 1)
 	nm.Text = string.upper(opts.name or "")
@@ -2416,7 +2398,7 @@ local function cardFace(parent, opts)
 		sub.BackgroundTransparency = 1
 		sub.FontFace = BODYB_FACE
 		sub.TextSize = 9
-		sub.ZIndex = 4
+		sub.ZIndex = z + 3
 		sub.TextColor3 = TBLACK
 		sub.TextTransparency = 0.25
 		sub.Text = string.upper(opts.rarityName)
@@ -2472,24 +2454,27 @@ lattach(reelGui)
 local reel = Instance.new("Frame") -- overlay while opening
 reel.AnchorPoint = Vector2.new(0.5, 0.5); reel.Position = UDim2.fromScale(0.5, 0.5)
 reel.Size = UDim2.fromOffset(760, 480); reel.BackgroundColor3 = darker(PANEL, 0.45); reel.BackgroundTransparency = 0
-reel.BorderSizePixel = 0; reel.Visible = false; reel.ZIndex = 5; reel.Parent = reelGui; corner(reel, 8)
+-- ZINDEX (this GUI is ZIndexBehavior.Global, so children do NOT auto-draw above parents): the reel bg
+-- sits at 1; the opaque window at 3; the scrolling tiles at 5+ (cardFace z=5) so they clear the window;
+-- fades/title/result 12; ribbon 14/15; pointer 16; summary 18-24; the SKIP/CONTINUE button on top at 26.
+reel.BorderSizePixel = 0; reel.Visible = false; reel.ZIndex = 1; reel.Parent = reelGui; corner(reel, 8)
 lstuds(reel); ledge(reel, TBLACK, 3); ledge(reel, ACCENT, 1, 0.45)
 local reelTitle = Instance.new("TextLabel")
 reelTitle.Position = UDim2.new(0, 0, 0, 40); reelTitle.Size = UDim2.new(1, 0, 0, 30); reelTitle.BackgroundTransparency = 1
 reelTitle.FontFace = TITLE_FACE; reelTitle.TextSize = 18; reelTitle.TextColor3 = DIMTEXT
-reelTitle.Text = "OPENING..."; reelTitle.ZIndex = 6; reelTitle.Parent = reel
+reelTitle.Text = "OPENING..."; reelTitle.ZIndex = 12; reelTitle.Parent = reel
 local window = Instance.new("Frame")
 window.AnchorPoint = Vector2.new(0.5, 0.5); window.Position = UDim2.fromScale(0.5, 0.5); window.Size = UDim2.fromOffset(REEL_W, REEL_H)
-window.BackgroundColor3 = darker(PANEL, 0.35); window.BorderSizePixel = 0; window.ClipsDescendants = true; window.ZIndex = 6; window.Parent = reel
+window.BackgroundColor3 = darker(PANEL, 0.35); window.BorderSizePixel = 0; window.ClipsDescendants = true; window.ZIndex = 3; window.Parent = reel
 corner(window, 10)
 local strip = Instance.new("Frame")
-strip.Position = UDim2.fromOffset(0, 0); strip.Size = UDim2.fromOffset(N_TILES * STEP, REEL_H); strip.BackgroundTransparency = 1; strip.ZIndex = 6; strip.Parent = window
+strip.Position = UDim2.fromOffset(0, 0); strip.Size = UDim2.fromOffset(N_TILES * STEP, REEL_H); strip.BackgroundTransparency = 1; strip.ZIndex = 4; strip.Parent = window
 -- EDGE FADES: tiles dissolve into the panel colour at both ends of the window (classic case feel).
 local RV = {} -- reel-effect state, collapsed into one local (200-local ceiling)
 RV.reelBG = darker(PANEL, 0.35)
 RV.fadeL = Instance.new("Frame")
 RV.fadeL.AnchorPoint = Vector2.new(0, 0.5); RV.fadeL.Position = UDim2.new(0, 0, 0.5, 0); RV.fadeL.Size = UDim2.new(0, 96, 1, 0)
-RV.fadeL.BackgroundColor3 = RV.reelBG; RV.fadeL.BorderSizePixel = 0; RV.fadeL.ZIndex = 7; RV.fadeL.Parent = window
+RV.fadeL.BackgroundColor3 = RV.reelBG; RV.fadeL.BorderSizePixel = 0; RV.fadeL.ZIndex = 12; RV.fadeL.Parent = window
 do
 	local g = Instance.new("UIGradient")
 	g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) })
@@ -2497,7 +2482,7 @@ do
 end
 RV.fadeR = Instance.new("Frame")
 RV.fadeR.AnchorPoint = Vector2.new(1, 0.5); RV.fadeR.Position = UDim2.new(1, 0, 0.5, 0); RV.fadeR.Size = UDim2.new(0, 96, 1, 0)
-RV.fadeR.BackgroundColor3 = RV.reelBG; RV.fadeR.BorderSizePixel = 0; RV.fadeR.ZIndex = 7; RV.fadeR.Parent = window
+RV.fadeR.BackgroundColor3 = RV.reelBG; RV.fadeR.BorderSizePixel = 0; RV.fadeR.ZIndex = 12; RV.fadeR.Parent = window
 do
 	local g = Instance.new("UIGradient")
 	g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
@@ -2506,7 +2491,7 @@ end
 -- GLOWING DOUBLE POINTER (over the window centre, in `reel` so it isn't clipped): line + two diamonds.
 local pointer = Instance.new("Frame")
 pointer.AnchorPoint = Vector2.new(0.5, 0.5); pointer.Position = UDim2.fromScale(0.5, 0.5); pointer.Size = UDim2.fromOffset(3, REEL_H)
-pointer.BackgroundColor3 = ACCENT; pointer.BorderSizePixel = 0; pointer.ZIndex = 9; pointer.Parent = reel
+pointer.BackgroundColor3 = ACCENT; pointer.BorderSizePixel = 0; pointer.ZIndex = 16; pointer.Parent = reel
 do
 	local ps = Instance.new("UIStroke"); ps.Color = ACCENT; ps.Thickness = 3; ps.Transparency = 0.55; ps.Parent = pointer -- soft glow
 	for _, top in { true, false } do
@@ -2517,7 +2502,7 @@ do
 		d.Rotation = 45
 		d.BackgroundColor3 = ACCENT
 		d.BorderSizePixel = 0
-		d.ZIndex = 9
+		d.ZIndex = 16
 		d.Parent = pointer
 		ledge(d, TBLACK, 2)
 	end
@@ -2525,27 +2510,27 @@ end
 -- RARITY GLOW behind the window centre + a starburst — hidden during the spin, bloom in on RV.reveal.
 RV.reveal = Instance.new("Frame")
 RV.reveal.AnchorPoint = Vector2.new(0.5, 0.5); RV.reveal.Position = UDim2.fromScale(0.5, 0.5); RV.reveal.Size = UDim2.fromOffset(REEL_W, REEL_H)
-RV.reveal.BackgroundTransparency = 1; RV.reveal.ZIndex = 5; RV.reveal.Visible = false; RV.reveal.Parent = reel
+RV.reveal.BackgroundTransparency = 1; RV.reveal.ZIndex = 4; RV.reveal.Visible = false; RV.reveal.Parent = reel
 RV.burst = Instance.new("Frame")
 RV.burst.AnchorPoint = Vector2.new(0.5, 0.5); RV.burst.Position = UDim2.fromScale(0.5, 0.5); RV.burst.Size = UDim2.fromOffset(2, 2)
-RV.burst.BackgroundTransparency = 1; RV.burst.ZIndex = 5; RV.burst.Parent = RV.reveal
+RV.burst.BackgroundTransparency = 1; RV.burst.ZIndex = 4; RV.burst.Parent = RV.reveal
 RV.burstRays = {}
 for i = 1, 12 do
 	local ray = Instance.new("Frame")
 	ray.AnchorPoint = Vector2.new(0.5, 0.5); ray.Position = UDim2.fromScale(0.5, 0.5)
 	ray.Size = UDim2.fromOffset(6, 320); ray.Rotation = (i - 1) * 30
 	ray.BackgroundColor3 = ACCENT; ray.BackgroundTransparency = 0.75; ray.BorderSizePixel = 0
-	ray.ZIndex = 5; ray.Parent = RV.burst
+	ray.ZIndex = 4; ray.Parent = RV.burst
 	RV.burstRays[i] = ray
 end
 RV.ribbon = Instance.new("Frame") -- rarity RV.ribbon banner above the winning card
 RV.ribbon.AnchorPoint = Vector2.new(0.5, 1); RV.ribbon.Position = UDim2.new(0.5, 0, 0.5, -(REEL_H / 2) - 6)
 RV.ribbon.Size = UDim2.fromOffset(150, 26); RV.ribbon.BackgroundColor3 = ACCENT; RV.ribbon.BorderSizePixel = 0
-RV.ribbon.ZIndex = 10; RV.ribbon.Visible = false; RV.ribbon.Parent = reel
+RV.ribbon.ZIndex = 14; RV.ribbon.Visible = false; RV.ribbon.Parent = reel
 corner(RV.ribbon, 6); ledge(RV.ribbon, TBLACK, 2.5)
 RV.ribbonLbl = Instance.new("TextLabel")
 RV.ribbonLbl.Size = UDim2.fromScale(1, 1); RV.ribbonLbl.BackgroundTransparency = 1; RV.ribbonLbl.FontFace = TITLE_FACE
-RV.ribbonLbl.TextSize = 15; RV.ribbonLbl.TextColor3 = Color3.new(1, 1, 1); RV.ribbonLbl.ZIndex = 11; RV.ribbonLbl.Text = ""; RV.ribbonLbl.Parent = RV.ribbon
+RV.ribbonLbl.TextSize = 15; RV.ribbonLbl.TextColor3 = Color3.new(1, 1, 1); RV.ribbonLbl.ZIndex = 15; RV.ribbonLbl.Text = ""; RV.ribbonLbl.Parent = RV.ribbon
 do
 	local rs = Instance.new("UIStroke"); rs.Color = TBLACK; rs.Thickness = 2.5
 	rs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; rs.Parent = RV.ribbonLbl
@@ -2553,29 +2538,29 @@ end
 local resultLabel = Instance.new("TextLabel")
 resultLabel.AnchorPoint = Vector2.new(0.5, 0); resultLabel.Position = UDim2.new(0.5, 0, 0.5, REEL_H / 2 + 16); resultLabel.Size = UDim2.fromOffset(560, 30)
 resultLabel.BackgroundTransparency = 1; resultLabel.FontFace = TITLE_FACE; resultLabel.TextSize = 26; resultLabel.Text = ""
-resultLabel.TextColor3 = TEXTCOL; resultLabel.ZIndex = 7; resultLabel.Parent = reel
+resultLabel.TextColor3 = TEXTCOL; resultLabel.ZIndex = 12; resultLabel.Parent = reel
 local reelBtn = Instance.new("TextButton") -- doubles as Skip (while rolling) and Continue (after)
 reelBtn.AnchorPoint = Vector2.new(0.5, 1); reelBtn.Position = UDim2.new(0.5, 0, 1, -34); reelBtn.Size = UDim2.fromOffset(200, 44)
 reelBtn.BackgroundColor3 = CARD; reelBtn.FontFace = BODYB_FACE; reelBtn.TextSize = 18; reelBtn.TextColor3 = TEXTCOL
--- ZIndex 9 (was 7): its lbevel Face/Label land at 10/11 — clearly above the summary overlay (8) and
+-- ZIndex 26: its lbevel Face/Label land at 27/28 — clearly above the summary (18-24) and
 -- window (6) in every state (SKIP / CONTINUE / CLAIM), so the button never sits under another layer.
-reelBtn.Text = "SKIP"; reelBtn.ZIndex = 9; reelBtn.Parent = reel; corner(reelBtn, 8); ledge(reelBtn, TBLACK, 2.5); lbevel(reelBtn)
+reelBtn.Text = "SKIP"; reelBtn.ZIndex = 26; reelBtn.Parent = reel; corner(reelBtn, 8); ledge(reelBtn, TBLACK, 2.5); lbevel(reelBtn)
 
 -- MULTI-OPEN SUMMARY: a grid of the SAME cards for x3/x10 (so it isn't N slow reveals). Hidden by default.
 RV.summary = Instance.new("Frame")
-RV.summary.Size = UDim2.fromScale(1, 1); RV.summary.BackgroundTransparency = 1; RV.summary.ZIndex = 8
+RV.summary.Size = UDim2.fromScale(1, 1); RV.summary.BackgroundTransparency = 1; RV.summary.ZIndex = 18
 RV.summary.Visible = false; RV.summary.Parent = reel
 RV.summaryTitle = Instance.new("TextLabel")
 RV.summaryTitle.Position = UDim2.fromOffset(0, 22); RV.summaryTitle.Size = UDim2.new(1, 0, 0, 30)
 RV.summaryTitle.BackgroundTransparency = 1; RV.summaryTitle.FontFace = TITLE_FACE; RV.summaryTitle.TextSize = 22
-RV.summaryTitle.TextColor3 = GOLD; RV.summaryTitle.Text = ""; RV.summaryTitle.ZIndex = 9; RV.summaryTitle.Parent = RV.summary
+RV.summaryTitle.TextColor3 = GOLD; RV.summaryTitle.Text = ""; RV.summaryTitle.ZIndex = 19; RV.summaryTitle.Parent = RV.summary
 do
 	local st = Instance.new("UIStroke"); st.Color = TBLACK; st.Thickness = 2.5
 	st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; st.Parent = RV.summaryTitle
 end
 RV.summaryGrid = Instance.new("Frame")
 RV.summaryGrid.AnchorPoint = Vector2.new(0.5, 0); RV.summaryGrid.Position = UDim2.new(0.5, 0, 0, 64)
-RV.summaryGrid.Size = UDim2.fromOffset(680, 300); RV.summaryGrid.BackgroundTransparency = 1; RV.summaryGrid.ZIndex = 9; RV.summaryGrid.Parent = RV.summary
+RV.summaryGrid.Size = UDim2.fromOffset(680, 300); RV.summaryGrid.BackgroundTransparency = 1; RV.summaryGrid.ZIndex = 19; RV.summaryGrid.Parent = RV.summary
 do
 	local gl = Instance.new("UIGridLayout")
 	gl.CellSize = UDim2.fromOffset(126, 118); gl.CellPadding = UDim2.fromOffset(8, 8)
@@ -2585,7 +2570,7 @@ end
 RV.summaryFoot = Instance.new("TextLabel")
 RV.summaryFoot.AnchorPoint = Vector2.new(0.5, 1); RV.summaryFoot.Position = UDim2.new(0.5, 0, 1, -92)
 RV.summaryFoot.Size = UDim2.new(1, 0, 0, 24); RV.summaryFoot.BackgroundTransparency = 1; RV.summaryFoot.FontFace = BODYB_FACE
-RV.summaryFoot.TextSize = 16; RV.summaryFoot.TextColor3 = ACCENT; RV.summaryFoot.Text = ""; RV.summaryFoot.ZIndex = 9; RV.summaryFoot.Parent = RV.summary
+RV.summaryFoot.TextSize = 16; RV.summaryFoot.TextColor3 = ACCENT; RV.summaryFoot.Text = ""; RV.summaryFoot.ZIndex = 19; RV.summaryFoot.Parent = RV.summary
 
 local activeTween = nil
 local finishReel = nil
@@ -2603,9 +2588,9 @@ playReel = function(caseId, wonId, res)
 		holder.Position = UDim2.fromOffset((i - 1) * STEP, 8)
 		holder.Size = UDim2.fromOffset(TILE_W, REEL_H - 16)
 		holder.BackgroundTransparency = 1
-		holder.ZIndex = 6
+		holder.ZIndex = 5
 		holder.Parent = strip
-		cardFace(holder, itemCardOpts(id, { barH = 24, corner = 10 }))
+		cardFace(holder, itemCardOpts(id, { barH = 24, corner = 10, z = 5 })) -- z=5: clears the window bg (3)
 	end
 
 	RV.summary.Visible = false
@@ -2728,13 +2713,13 @@ local function showSummary()
 		holder.LayoutOrder = i
 		holder.BackgroundTransparency = 1
 		holder.Parent = RV.summaryGrid
-		cardFace(holder, itemCardOpts(e.id, { barH = 22, corner = 10 }))
+		cardFace(holder, itemCardOpts(e.id, { barH = 22, corner = 10, z = 19 })) -- z=19: above the summary bg (18)
 		if e.unlocked then
 			local nb = Instance.new("TextLabel")
 			nb.Position = UDim2.fromOffset(5, 5); nb.Size = UDim2.fromOffset(36, 16)
 			nb.BackgroundColor3 = Color3.fromRGB(224, 28, 14); nb.BorderSizePixel = 0
 			nb.FontFace = TITLE_FACE; nb.TextSize = 10; nb.TextColor3 = Color3.new(1, 1, 1)
-			nb.Text = "NEW"; nb.ZIndex = 12; nb.Parent = holder
+			nb.Text = "NEW"; nb.ZIndex = 24; nb.Parent = holder
 			corner(nb, 4); ledge(nb, Color3.new(1, 1, 1), 1.5, 0.4)
 		end
 	end
