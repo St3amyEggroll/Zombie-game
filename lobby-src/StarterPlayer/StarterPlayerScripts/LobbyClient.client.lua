@@ -1448,6 +1448,61 @@ local selectedInv = nil -- { kind = "weapon"|"case"|"potion", id } — drives th
 local renderActive -- forward decl (grid + detail render)
 local playReel -- forward decl (the reel section below assigns it)
 
+-- WEAPON CATEGORY sub-tabs: LEVEL / CRATE / EVENT. Only shown on the WEAPONS screen; the current pick
+-- rides on invGrid:GetAttribute("WeaponCat") (an attribute, not a new local — the client is at Luau's
+-- 200-local ceiling). Guns declare which bucket they live in via WEAPONS[id].source ("level" default).
+do
+	local catRow = Instance.new("Frame")
+	catRow.Name = "WeaponCatRow"
+	catRow.Position = UDim2.fromOffset(16, CONTENT_Y)
+	catRow.Size = UDim2.fromOffset(PANEL_W - 32, 34)
+	catRow.BackgroundTransparency = 1
+	catRow.Visible = false
+	catRow.Parent = invPanel
+	local ll = Instance.new("UIListLayout")
+	ll.FillDirection = Enum.FillDirection.Horizontal
+	ll.Padding = UDim.new(0, 8)
+	ll.Parent = catRow
+	invGrid:SetAttribute("WeaponCat", "level")
+	local defs = { { "level", "LEVEL" }, { "crate", "CRATE" }, { "event", "EVENT" } }
+	local btns = {}
+	local function paint()
+		local cur = invGrid:GetAttribute("WeaponCat") or "level"
+		for _, b in btns do
+			local on = b:GetAttribute("cat") == cur
+			b.BackgroundColor3 = on and ACCENT or CARD
+			b.TextColor3 = on and Color3.new(1, 1, 1) or TEXTCOL
+		end
+	end
+	for i, d in defs do
+		local b = Instance.new("TextButton")
+		b.Name = "Cat_" .. d[1]
+		b:SetAttribute("cat", d[1])
+		b.LayoutOrder = i
+		b.Size = UDim2.fromOffset(122, 34)
+		b.BackgroundColor3 = CARD
+		b.AutoButtonColor = true
+		b.FontFace = BODYB_FACE
+		b.TextSize = 15
+		b.TextColor3 = TEXTCOL
+		b.Text = d[2]
+		b.Parent = catRow
+		corner(b, 6)
+		ledge(b, TBLACK, 2)
+		table.insert(btns, b)
+		b.Activated:Connect(function()
+			if invGrid:GetAttribute("WeaponCat") == d[1] then
+				return
+			end
+			invGrid:SetAttribute("WeaponCat", d[1])
+			lplay("Click")
+			paint()
+			if renderActive then renderActive() end
+		end)
+	end
+	paint()
+end
+
 local function invSelect(kind, id)
 	print(("[LobbyInv] card clicked: %s %s"):format(tostring(kind), tostring(id))) -- diagnostic breadcrumb
 	selectedInv = { kind = kind, id = id } -- pane is permanent; clicking just features the item
@@ -2088,10 +2143,24 @@ end
 
 -- ===== GRID RENDERS ===== each returns the ordered id list so the pane can default to the first item.
 local function renderWeaponsGrid()
-	-- EVERY gun shows (locked ones carry their Coin price) — guns are bought, crates only pay skins.
+	-- EVERY gun in the SELECTED category shows (locked ones carry their unlock). Category comes from the
+	-- LEVEL/CRATE/EVENT sub-tabs (invGrid attribute); a gun's bucket is WEAPONS[id].source (default level).
+	local cat = invGrid:GetAttribute("WeaponCat") or "level"
 	local ids = {}
 	for id in invData.catalog.weapons do
-		table.insert(ids, id)
+		if (weaponInfo(id).source or "level") == cat then
+			table.insert(ids, id)
+		end
+	end
+	if #ids == 0 then
+		local msg = Instance.new("TextLabel")
+		msg.Size = UDim2.fromOffset(360, 60); msg.BackgroundTransparency = 1; msg.FontFace = BODYB_FACE
+		msg.TextSize = 14; msg.TextWrapped = true; msg.TextColor3 = DIMTEXT
+		msg.Text = (cat == "crate") and "No crate guns yet — pull them from CRATES in the shop!"
+			or (cat == "event") and "No event guns right now — check back during events!"
+			or "No guns here yet."
+		msg.Parent = invGrid
+		return {}
 	end
 	table.sort(ids, function(a, b) -- LADDER order: the grid IS the unlock road
 		local wa, wb = weaponInfo(a), weaponInfo(b)
@@ -2183,6 +2252,12 @@ local function showTab(id)
 	selectedInv = nil -- switching screens resets the featured pane
 	invTitle.Text = (id == "weapons") and "WEAPONS" or "INVENTORY"
 	invDetail.Visible = false; invGrid.Visible = true; invHint.Visible = true -- back to GRID mode
+	-- WEAPONS screen carries the LEVEL/CRATE/EVENT sub-tab row; the grid drops below it. INVENTORY doesn't.
+	local catRow = invPanel:FindFirstChild("WeaponCatRow")
+	if catRow then catRow.Visible = (id == "weapons") end
+	local gy = (id == "weapons") and (CONTENT_Y + 44) or CONTENT_Y
+	invGrid.Position = UDim2.fromOffset(16, gy)
+	invGrid.Size = UDim2.fromOffset(PANEL_W - 32, PANEL_H - gy - 16 - 24)
 	local hc = (id == "weapons") and HEADER_COLORS.guns or Color3.fromRGB(18, 69, 90) -- mockup: blue INVENTORY header
 	invRecolor(hc)
 end

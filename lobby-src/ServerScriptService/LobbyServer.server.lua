@@ -165,6 +165,18 @@ for id, w in WEAPONS do
 	w.knockback = WEAPON_KNOCKBACK[id] or 0
 end
 
+-- ===== GUN CATEGORY ===== which inventory bucket a gun lives in, shown as the LEVEL / CRATE / EVENT
+-- sub-tabs on the WEAPONS screen. "level" = the coin ladder (level-gated); "crate" = pulled from crates;
+-- "event" = limited-time. Add an id here to move it out of Level; anything unlisted defaults to "level".
+local WEAPON_SOURCE = {
+	-- examples (uncomment / edit to taste):
+	-- raygun = "crate", plasma = "crate",
+	-- rocket = "event",
+}
+for id, w in WEAPONS do
+	w.source = WEAPON_SOURCE[id] or "level"
+end
+
 -- Account level from cumulative XP — mirrors the game place's ProgressionConfig curve (keep in sync).
 local LEVEL_BASE_XP, LEVEL_GROWTH, LEVEL_MAX = 120, 1.18, 100
 local function accountLevel(totalXP)
