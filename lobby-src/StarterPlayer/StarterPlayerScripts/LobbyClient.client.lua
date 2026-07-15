@@ -3029,6 +3029,9 @@ do
 	S.featScroll.ScrollBarImageTransparency = 0.2
 	S.featScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 	S.featScroll.CanvasSize = UDim2.fromOffset(0, 712) -- pack (~344) + the passes block (~360)
+	-- ZIndexBehavior.Global: the scrollbar draws at the frame's OWN ZIndex, so it must out-rank the pack
+	-- (2) + its band/foot/buy (3-5) + the passes cards (6) or it gets painted over and vanishes.
+	S.featScroll.ZIndex = 8
 	S.featScroll.Parent = S.page.featured
 	-- Page_passes still exists (the passes builder fills it) but now lives INSIDE the featured scroll,
 	-- below the pack, always visible — NOT a nav page (setTab skips it).
@@ -3068,11 +3071,11 @@ do
 	corner(S.ticker, 4)
 	ledge(S.ticker, TBLACK, 2.5)
 	S.layoutFeatured = function() -- the pack rides up when there's no ticker row
-		S.pack.Position = UDim2.fromOffset(2, S.ticker.Visible and 32 or 4)
+		S.pack.Position = UDim2.fromOffset(0, S.ticker.Visible and 32 or 4) -- x=0: aligns with ticker + passes
 	end
 
 	S.pack = Instance.new("Frame")
-	S.pack.Position = UDim2.fromOffset(2, 32)
+	S.pack.Position = UDim2.fromOffset(0, 32)
 	S.pack.Size = UDim2.fromOffset(628, 304)
 	S.pack.BorderSizePixel = 0
 	S.pack.ClipsDescendants = true
