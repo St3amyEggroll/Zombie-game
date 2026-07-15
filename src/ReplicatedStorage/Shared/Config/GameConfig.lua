@@ -88,49 +88,54 @@ GameConfig.SprintRegenPerSec = 15
 GameConfig.DebugUnlockAllWeapons = false  -- every player starts owning every weapon
 GameConfig.DebugStartWave        = 0      -- start the match at this wave (0 = normal, start at wave 1)
 
--- ===== DIFFICULTY ===== (set by the lobby; caps how far a run goes — clearing the final wave = VICTORY)
--- Each mode defines its own wave count, roster, and boss schedule. Per-mode fields:
---   maxWave    = final wave (clearing it = victory; math.huge = Endless).
---   mult       = ×zombie HP + damage.
---   speedMult  = ×zombie speed (Nightmare/Endless run a touch faster).
---   roster     = ONLY these enemy ids spawn (whitelist). exclude = every enemy EXCEPT these (blacklist).
---                Omit both = every enemy allowed by the map/round. (Bosses are separate — see `bosses`.)
---   bosses     = { [wave] = bossId } scheduled bosses. Endless has none → it cycles bosses every 10th wave.
---   earlyBonus = extra zombies at wave 1, tapering to 0 by the final wave — front-loads the horde WITHOUT
---                changing the final-wave size (Nightmare piles them on early but ends like Hard).
-GameConfig.Difficulties = {
-	easy      = { name = "Easy",      maxWave = 10, mult = 1.0,
-		roster = { "default", "speedy", "lead", "leaper" }, bosses = { [10] = "boss" } },
-	medium    = { name = "Medium",    maxWave = 15, mult = 1.6,
-		exclude = { bombzombie = true, leapertank = true, necromancer = true },
-		bosses = { [10] = "boss", [15] = "lumberjack" } },
-	hard      = { name = "Hard",      maxWave = 20, mult = 2.4,
-		bosses = { [10] = "boss", [20] = "necromancer" } }, -- every enemy
-	nightmare = { name = "Nightmare", maxWave = 20, mult = 2.4, speedMult = 1.12, earlyBonus = 1.5,
-		bosses = { [10] = "boss", [20] = "necromancer" } }, -- = Hard, a bit faster + a lot more early
-	-- Unlocked by BEATING Nightmare: no final wave, no victory — the run only ends on a wipe. Bosses cycle
-	-- every 10th wave so case drops keep flowing at depth.
-	endless   = { name = "Endless",   maxWave = math.huge, mult = 2.4, speedMult = 1.12 },
+-- ===== ONE DIFFICULTY (the old Easy..Nightmare/Endless system is GONE) =====
+-- Every world runs ENDLESS waves with ONE tuning curve; a run only ends by EXTRACTION (cash out) or a
+-- team wipe. Worlds get harder via their own mult/speedMult (see Maps below) on top of these baselines.
+GameConfig.WaveMult   = 1.6                                    -- ×zombie HP + damage baseline (all worlds)
+GameConfig.BossEvery  = 10                                     -- a boss every Nth wave...
+GameConfig.BossRoster = { "boss", "lumberjack", "necromancer" } -- ...cycling this roster forever
+
+GameConfig.Worlds        = { "forest", "islands" }
+GameConfig.DefaultMap    = "forest"
+GameConfig.AllWorldsOpen = true -- OPEN EVERY MAP for now (must mirror the lobby's ALL_WORLDS_OPEN, or the
+                                -- game re-validates the teleport and silently swaps the map back to Default)
+-- Worlds unlock by ACCOUNT LEVEL now (no more "beat Nightmare" gates). Tune per world; 0 = always open.
+GameConfig.WorldUnlockLevel = { forest = 0, islands = 8 }
+
+-- ===== EXTRACTION (cash out or double down — THE run loop) =====
+-- Every `Every` waves the wave break becomes an EXTRACTION WINDOW: each player chooses CASH OUT (bank
+-- this run's Coins × the current multiplier and leave) or ride on (DOUBLE DOWN: the multiplier climbs
+-- by MultPerStage and the horde keeps coming). A team wipe pays the BASE Coins only — no multiplier.
+GameConfig.Extraction = {
+	Every = 5,            -- an extraction window after every Nth wave
+	WindowSeconds = 20,   -- how long the choice stays open
+	MultPerStage = 0.5,   -- declined windows raise the payout multiplier: 1.0x -> 1.5x -> 2.0x -> ...
 }
-GameConfig.DefaultDifficulty = "nightmare"  -- used in Studio / if the lobby didn't send one
-GameConfig.VictoryBonusCoins = 250          -- persistent Coins awarded for completing (winning) a run
 
--- Progression: difficulties unlock in ORDER (beat Easy → Medium unlocks, etc.); beating a world's LAST
--- difficulty (nightmare) unlocks the next World. Only Forest exists so far.
-GameConfig.DifficultyOrder = { "easy", "medium", "hard", "nightmare", "endless" }
-GameConfig.Worlds          = { "forest", "islands" }
-GameConfig.DefaultMap      = "forest"
-GameConfig.AllWorldsOpen   = true -- OPEN EVERY MAP for now (must mirror the lobby's ALL_WORLDS_OPEN, or the
-                                  -- game re-validates the teleport and silently swaps the map back to Default)
+-- ===== RANDOM IN-RUN EVENTS ===== (EventService) — each wave can fire ONE surprise event.
+GameConfig.Events = {
+	ChancePerWave = 0.35, -- roll at each wave start
+	FirstWave = 3,        -- no events before this wave (let players settle in)
+	CooldownWaves = 2,    -- min waves between events
+	Weights = { supplydrop = 3, fog = 3, nest = 3, meteors = 3 }, -- relative pick weights (0 disables one)
+	SupplyDropCoins = 150,     -- Coins for EVERY in-run player when the crate is opened
+	NestSeconds = 18,          -- how long the nest spits crawlers (destroyed by wave-clear like any zombie)
+	NestSpawnEvery = 3,        -- seconds between nest spawn bursts
+	FogSeconds = 25,           -- how long the fog sits
+	MeteorSeconds = 14,        -- how long the shower lasts
+	MeteorDamage = 25,         -- to players inside a blast
+	MeteorRadius = 9,          -- studs
+}
 
--- ===== MAPS / WORLDS ===== how each world plays.
+-- ===== MAPS / WORLDS ===== how each world plays (this IS the difficulty table now — one row per world).
 --   emerge         = how zombies surface: "grave" (dig out of the ground) | "water" (rise from the ocean).
 --   useSpawnPoints = true → spawn AT ZombieSpawn-tagged parts (place them where zombies appear); false →
 --                    spawn ~35 studs from a random living player (the Forest default).
+--   mult/speedMult = ×zombie HP+damage / ×speed for THIS world (on top of GameConfig.WaveMult).
 -- Add a world = add a row here + build its map + tag its spawns (see MAPS.md).
 GameConfig.Maps = {
-	forest  = { emerge = "grave", useSpawnPoints = false },
-	islands = { emerge = "water", useSpawnPoints = true },
+	forest  = { emerge = "grave", useSpawnPoints = false, mult = 1.0, speedMult = 1.0 },
+	islands = { emerge = "water", useSpawnPoints = true, mult = 1.3, speedMult = 1.06 },
 }
 
 -- ===== PRE-RUN COUNTDOWN ===== waves don't start until the whole party has loaded in (or the timer

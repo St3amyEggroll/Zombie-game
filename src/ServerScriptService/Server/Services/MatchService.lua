@@ -34,6 +34,7 @@ local MapService = require(script.Parent.MapService)
 
 -- Required lazily in Start() to break the cycle (Match -> Zombie -> PlayerState -> Match).
 local ZombieService
+local EventService
 
 local MatchService = {}
 
@@ -50,9 +51,8 @@ local LIVE = not RunService:IsStudio()
 local state = {
 	phase = "Lobby",       -- Lobby | Playing | RoundBreak
 	round = 0,             -- the current SHARED wave
-	difficulty = nil,      -- "easy" | "medium" | "hard" | "nightmare" (set when the run starts)
-	map = nil,             -- which world this run is (e.g. "forest")
-	maxWave = 0,           -- the difficulty's final wave — clearing it wins the run
+	map = nil,             -- which world this run is (e.g. "forest") — the ONLY difficulty knob now
+	extractMult = 1,       -- the CASH OUT payout multiplier; +MultPerStage per declined extraction window
 	zombiesRemaining = 0,
 	zombiesAlive = 0,
 	waveDowned = false,    -- did ANYONE go down during the current wave (breaks the flawless streak)
@@ -169,17 +169,13 @@ local function resetRunState(player: Player, ps)
 	ps.equippedWeapon = ps.ownedWeapons[1] or "pistol"
 end
 
--- Zombies owed this wave (CLAUDE.md §8) — scaled by player count. `earlyBonus` (Nightmare) front-loads the
--- horde: +earlyBonus× zombies at wave 1, tapering to +0 by the final wave (so the final wave matches Hard).
-local function computeCount(round: number, playerCount: number, earlyBonus: number?, maxWave: number?): number
+-- Zombies owed this wave (CLAUDE.md §8) — scaled by player count. One curve for everyone now (the old
+-- per-difficulty earlyBonus front-loading went with the difficulty system).
+local function computeCount(round: number, playerCount: number): number
 	local c = GameConfig.BaseZombiesPerRound
 		* (GameConfig.RoundZombieGrowth ^ (round - 1))
 		* (1 + (math.max(1, playerCount) - 1) * GameConfig.PlayerCountScale)
-	if earlyBonus and earlyBonus > 0 and maxWave and maxWave < math.huge and maxWave > 1 then
-		local t = math.clamp((round - 1) / (maxWave - 1), 0, 1) -- 0 at wave 1 → 1 at the final wave
-		c *= (1 + earlyBonus * (1 - t))
-	end
-	-- Deep Endless waves would otherwise owe thousands of zombies and never clear.
+	-- Deep waves would otherwise owe thousands of zombies and never clear.
 	return math.clamp(math.floor(c), 1, GameConfig.MaxZombiesPerWave or math.huge)
 end
 
@@ -301,25 +297,16 @@ spawnCharacter = function(player: Player)
 	end
 end
 
--- ===== RUN END ===== (shared by team-wipe and victory)
--- Bank every in-run player (win adds the Coins bonus + world unlock) and send them back to the lobby.
+-- ===== RUN END ===== a team wipe (or everyone leaving) pays the BASE Coins only — the extraction
+-- multiplier is the reward for CASHING OUT alive (see extractPlayer). No victory: waves never end.
 local wipeToken = 0 -- bumping this cancels any pending wipe-grace timer (revive bought / run already over)
-local function endRun(win: boolean)
+local function endRun()
 	wipeToken += 1
 	for _, player in Players:GetPlayers() do
 		local ps = state.players[player.UserId]
 		if ps and ps.inMatch then
 			ps.inMatch = false
-			if win then
-				DataService.AddMoney(player, GameConfig.VictoryBonusCoins)
-				DataService.MarkCompleted(player, state.map or GameConfig.DefaultMap, state.difficulty) -- unlock next
-				DataService.AddWin(player) -- overhead tag + Wins leaderboard column
-			end
 			local summary = bankRun(player, ps)
-			if win then
-				summary.win = true
-				summary.money = (summary.money or 0) + GameConfig.VictoryBonusCoins
-			end
 			if LIVE then
 				teleportToLobby(player, summary) -- published: back to the lobby place
 			else
@@ -331,6 +318,35 @@ local function endRun(win: boolean)
 			end
 		end
 	end
+end
+
+-- CASH OUT: bank the run's Coins × the current multiplier (the bonus part is granted here — the base was
+-- already earned live), count it as a WIN (overhead tag + leaderboard), and send them home. The run keeps
+-- going for anyone who doubled down.
+local function extractPlayer(player: Player, ps)
+	if not ps.inMatch then
+		return
+	end
+	ps.inMatch = false
+	local bonus = math.floor((ps.lobbyEarned or 0) * (state.extractMult - 1))
+	if bonus > 0 then
+		DataService.AddMoney(player, bonus)
+	end
+	DataService.AddWin(player) -- extracting alive IS the win now
+	local summary = bankRun(player, ps)
+	summary.win = true
+	summary.money = (summary.money or 0) + bonus
+	print(("[MatchService] %s CASHED OUT at wave %d (x%.1f, +%d bonus)"):format(player.Name, state.round, state.extractMult, bonus))
+	if LIVE then
+		task.spawn(teleportToLobby, player, summary)
+	else
+		task.delay(STUDIO_RESTART_DELAY, function()
+			if player.Parent then
+				startRunFor(player)
+			end
+		end)
+	end
+	MatchService.CheckTeamWipe() -- the stayers might all be dead spectators — don't strand them
 end
 
 -- If NOBODY in the run is still alive (everyone's dead/spectating), the run is over for everyone.
@@ -352,7 +368,7 @@ function MatchService.CheckTeamWipe()
 		-- if nobody buys back in. Without a product id, the old instant wipe stands.
 		local reviveId = tonumber(GameConfig.ReviveProductId) or 0
 		if reviveId <= 0 then
-			endRun(false) -- team wipe: bank + back to the lobby
+			endRun() -- team wipe: bank + back to the lobby
 			return
 		end
 		wipeToken += 1
@@ -372,7 +388,7 @@ function MatchService.CheckTeamWipe()
 					end
 				end
 			end
-			endRun(false) -- still a wipe: bank + back to the lobby
+			endRun() -- still a wipe: bank + back to the lobby
 		end)
 	end
 end
@@ -395,21 +411,19 @@ function MatchService.RobuxRevive(player: Player): boolean
 end
 
 -- ===== THE RUN (endless, shared) =====
--- Run cleared its difficulty's final wave → VICTORY: bank everyone (+ a Coins bonus) and send them home.
-local function winRun()
-	endRun(true)
-end
-
+-- No victory wave anymore: the run goes until everyone extracts (cash out) or the team wipes.
 runMatch = function()
-	-- Difficulty (from the lobby, else the default) sets the final wave; clearing it wins the run.
-	state.difficulty = state.difficulty or GameConfig.DefaultDifficulty
-	local diff = GameConfig.Difficulties[state.difficulty] or GameConfig.Difficulties[GameConfig.DefaultDifficulty]
-	state.maxWave = diff.maxWave
-	ZombieService.SetDifficulty(diff) -- stat scale + speed + roster/exclude for this mode
+	-- ONE difficulty: the world's own tuning row (GameConfig.Maps) on top of the WaveMult baseline.
+	local world = GameConfig.Maps[state.map or GameConfig.DefaultMap] or GameConfig.Maps[GameConfig.DefaultMap]
+	ZombieService.SetDifficulty({
+		mult = GameConfig.WaveMult * (world.mult or 1),
+		speedMult = world.speedMult or 1,
+	})
 	ZombieService.SetMap(state.map or GameConfig.DefaultMap) -- roster + how zombies emerge (grave vs water)
 
 	state.waveDowned = false
 	state.flawlessStreak = 0
+	state.extractMult = 1
 
 	-- TEST: jump straight to GameConfig.DebugStartWave (0 = normal start at wave 1).
 	state.round = (GameConfig.DebugStartWave and GameConfig.DebugStartWave > 0) and GameConfig.DebugStartWave or 1
@@ -442,23 +456,22 @@ runMatch = function()
 	Remotes.Get("RoundChanged"):FireAllClients(state.round)
 
 	while anyInMatch() do
-		local count = computeCount(state.round, inMatchCount(), diff.earlyBonus, diff.maxWave)
+		local count = computeCount(state.round, inMatchCount())
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
 		local waveTotal = count               -- this wave's owed count (denominator for the count bar)
 		local lastRemaining = -1
 		Remotes.Get("WaveProgress"):FireAllClients(count, waveTotal)
 
-		-- Bosses come from the difficulty's own schedule (diff.bosses). Endless has none, so it cycles the
-		-- boss roster every 10th wave to keep boss-kill case drops flowing forever. Boss HP scales × players.
-		local bossId = diff.bosses and diff.bosses[state.round]
-		if not bossId and diff.maxWave == math.huge and state.round % 10 == 0 then
-			local roster = { "boss", "lumberjack", "necromancer" }
-			bossId = roster[math.floor(state.round / 10 - 1) % #roster + 1]
-		end
-		if bossId then
+		-- A boss every BossEvery-th wave, cycling the roster forever. Boss HP scales × players.
+		if GameConfig.BossEvery > 0 and state.round % GameConfig.BossEvery == 0 then
+			local roster = GameConfig.BossRoster
+			local bossId = roster[math.floor(state.round / GameConfig.BossEvery - 1) % #roster + 1]
 			ZombieService.SpawnBoss(state.round, bossId, inMatchCount())
 		end
+
+		-- RANDOM EVENT roll (EventService): each wave can fire ONE surprise (supply drop / fog / nest / meteors).
+		EventService.OnWaveStart(state.round)
 
 		while not ZombieService.IsRoundCleared() do
 			if not anyInMatch() then
@@ -491,25 +504,47 @@ runMatch = function()
 
 		waveClearedEvent:Fire(state.round) -- GameInventoryService drops wave-clear cases off this
 
-		-- Cleared the difficulty's FINAL wave → victory.
-		if state.round >= state.maxWave then
-			winRun()
+		setPhase("RoundBreak")
+		-- EXTRACTION WINDOW (every Nth wave): each player chooses CASH OUT (leave with pot × multiplier)
+		-- or DOUBLE DOWN (stay; the multiplier climbs when the window closes).
+		local ex = GameConfig.Extraction
+		if ex.Every > 0 and state.round % ex.Every == 0 and anyInMatch() then
+			local nextMult = state.extractMult + ex.MultPerStage
+			MatchService.ForEachPlayer(function(player, ps)
+				Remotes.Get("ExtractWindow"):FireClient(player, {
+					seconds = ex.WindowSeconds,
+					mult = state.extractMult,
+					nextMult = nextMult,
+					pot = ps.lobbyEarned or 0,
+				})
+			end)
+			local deadline = os.clock() + ex.WindowSeconds
+			while os.clock() < deadline and anyInMatch() do
+				task.wait(0.25)
+			end
+			Remotes.Get("ExtractWindow"):FireAllClients({ seconds = 0 }) -- close the prompt
+			if not anyInMatch() then
+				break -- everyone cashed out — the run is over
+			end
+			state.extractMult = nextMult -- the stayers doubled down
+			Remotes.Get("ExtractMult"):FireAllClients(state.extractMult)
+		else
+			task.wait(GameConfig.RoundBreakSeconds)
+		end
+		if not anyInMatch() then
 			break
 		end
-
-		setPhase("RoundBreak")
-		task.wait(GameConfig.RoundBreakSeconds)
 		state.round += 1
 		Remotes.Get("RoundChanged"):FireAllClients(state.round)
 		setPhase("Playing")
 	end
 
-	-- Run ended (victory, or everyone left): clear the field and idle back to Lobby.
+	-- Run ended (everyone extracted/left, or the wipe banked them): clear the field and idle back to Lobby.
+	EventService.StopAll()
 	ZombieService.ClearAll()
 	state.round = 0
-	state.difficulty = nil
 	state.map = nil
-	state.maxWave = 0
+	state.extractMult = 1
 	state.expectedPlayers = nil
 	state.zombiesAlive = 0
 	state.zombiesRemaining = 0
@@ -547,9 +582,9 @@ end
 -- Published game place: decide what to do with a player who is on this server. If they arrived from the
 -- lobby flagged to play, start their run; otherwise they joined the start place fresh → send them to the
 -- lobby. (Studio never calls this — it uses the in-place menu.)
--- Server-side unlock re-validation. Teleport data is client-visible + tamperable, so NEVER trust the map/
--- difficulty it claims — verify the arriving player actually unlocked them (mirrors the lobby's gate).
-local UNLOCK_FINAL_DIFF = "nightmare" -- beating a world's last gated difficulty unlocks the next world
+-- Server-side unlock re-validation. Teleport data is client-visible + tamperable, so NEVER trust the map
+-- it claims — verify the arriving player actually unlocked it. Worlds gate by ACCOUNT LEVEL now (the old
+-- "beat Nightmare to unlock the next world" chain went with the difficulty system).
 local function indexOf(list, v)
 	for i, x in list do
 		if x == v then
@@ -558,31 +593,29 @@ local function indexOf(list, v)
 	end
 	return nil
 end
-local function worldUnlocked(completed, world): boolean
-	local i = indexOf(GameConfig.Worlds, world)
-	if not i then
+local function accountLevel(totalXP: number): number
+	local ProgressionConfig = require(Config.ProgressionConfig)
+	local level, remaining = 1, math.max(0, totalXP or 0)
+	while level < (ProgressionConfig.MaxLevel or 100) do
+		local need = math.floor(ProgressionConfig.BaseLevelXP * (ProgressionConfig.LevelGrowth ^ (level - 1)))
+		if remaining < need then
+			break
+		end
+		remaining -= need
+		level += 1
+	end
+	return level
+end
+local function worldUnlocked(prof, world): boolean
+	if not indexOf(GameConfig.Worlds, world) then
 		return false
 	end
 	if GameConfig.AllWorldsOpen then
 		return true -- every (known) map open for now — matches the lobby's ALL_WORLDS_OPEN
 	end
-	if i <= 1 then
-		return true
-	end
-	return completed[GameConfig.Worlds[i - 1] .. ":" .. UNLOCK_FINAL_DIFF] == true
-end
-local function diffUnlocked(completed, world, difficulty): boolean
-	if not worldUnlocked(completed, world) then
-		return false
-	end
-	local di = indexOf(GameConfig.DifficultyOrder, difficulty)
-	if not di then
-		return false
-	end
-	if di <= 1 then
-		return true
-	end
-	return completed[world .. ":" .. GameConfig.DifficultyOrder[di - 1]] == true
+	local needLevel = (GameConfig.WorldUnlockLevel or {})[world] or 0
+	local xp = (typeof(prof) == "table" and tonumber(prof.xp)) or 0
+	return accountLevel(xp) >= needLevel
 end
 
 local function handleArrival(player: Player)
@@ -592,21 +625,15 @@ local function handleArrival(player: Player)
 	end)
 	if ok and typeof(joinData) == "table" and typeof(joinData.TeleportData) == "table" then
 		startRun = joinData.TeleportData.startRun == true
-		-- The lobby sends the chosen map + difficulty; the FIRST player to start the run sets them — but only
-		-- after re-validating against their real unlocks (a tampered teleport payload can't unlock content).
-		if startRun and not state.difficulty and typeof(joinData.TeleportData.difficulty) == "string" then
+		-- The lobby sends the chosen map; the FIRST player to start the run sets it — but only after
+		-- re-validating against their real unlocks (a tampered teleport payload can't unlock content).
+		if startRun and not state.map and typeof(joinData.TeleportData.map) == "string" then
 			local prof = DataService.WaitFor(player)
-			local completed = (typeof(prof) == "table" and typeof(prof.completed) == "table") and prof.completed or {}
-			local reqMap = (typeof(joinData.TeleportData.map) == "string") and joinData.TeleportData.map or GameConfig.DefaultMap
-			local reqDiff = joinData.TeleportData.difficulty
-			if not worldUnlocked(completed, reqMap) then
+			local reqMap = joinData.TeleportData.map
+			if not worldUnlocked(prof, reqMap) then
 				reqMap = GameConfig.DefaultMap
 			end
-			if not diffUnlocked(completed, reqMap, reqDiff) then
-				reqDiff = GameConfig.DifficultyOrder[1] -- fall back to the easiest unlocked
-			end
 			state.map = reqMap
-			state.difficulty = reqDiff
 		end
 		-- How many players the lobby teleported together — the pre-run countdown waits for all of them.
 		if startRun and typeof(joinData.TeleportData.partySize) == "number" then
@@ -621,7 +648,7 @@ local function handleArrival(player: Player)
 		-- members were being bounced back to the lobby). On a reserved game server, everyone plays.
 		warn(("[MatchService] %s arrived on a reserved server without TeleportData — joining the run anyway"):format(player.Name))
 		startRunFor(player)
-	elseif state.difficulty ~= nil or anyInMatch() then
+	elseif state.map ~= nil or anyInMatch() then
 		-- A run is already configured/underway on this server: treat the data-less arrival as a joiner.
 		startRunFor(player)
 	elseif game.PlaceId == Places.Lobby then
@@ -681,6 +708,7 @@ end
 -- ===== LIFECYCLE =====
 function MatchService.Start()
 	ZombieService = require(script.Parent.ZombieService)
+	EventService = require(script.Parent.EventService)
 	Players.CharacterAutoLoads = false -- characters spawn only when a run starts
 
 	local function onJoin(player: Player)
@@ -712,6 +740,20 @@ function MatchService.Start()
 		end
 		state.players[player.UserId] = nil
 		MatchService.CheckTeamWipe()
+	end)
+
+	-- CASH OUT (the extraction window's green button): only honored while a window is actually open
+	-- (the RoundBreak right after an extraction wave) — a stray/forged fire outside one does nothing.
+	Remotes.Get("ExtractChoice").OnServerEvent:Connect(function(player)
+		local ex = GameConfig.Extraction
+		local ps = state.players[player.UserId]
+		if not ps or not ps.inMatch then
+			return
+		end
+		if state.phase ~= "RoundBreak" or ex.Every <= 0 or state.round % ex.Every ~= 0 then
+			return
+		end
+		extractPlayer(player, ps)
 	end)
 
 	-- LEAVE (the small HUD button beside the wave readout): bank THIS player's run and send them home.

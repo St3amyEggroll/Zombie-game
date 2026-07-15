@@ -165,7 +165,7 @@ for id, t in ZombieConfig do
 	end
 end
 
--- ===== SCALING (CLAUDE.md §8) ===== set per run by MatchService from the mode's GameConfig.Difficulties entry.
+-- ===== SCALING (CLAUDE.md §8) ===== set per run by MatchService from the world's GameConfig.Maps tuning.
 local difficultyMult = 1        -- × zombie HP + damage
 local difficultySpeedMult = 1   -- × zombie speed
 local allowedTypes: { [string]: boolean }? = nil  -- roster whitelist (nil = no whitelist)
@@ -2214,6 +2214,17 @@ function ZombieService.SpawnBoss(round: number, bossId: string?, playerCount: nu
 			Remotes.Get("BossHealth"):FireAllClients(h, hum.MaxHealth)
 		end)
 	end)
+end
+
+-- NEW (EventService): spawn ONE extra zombie outside the wave's owed count — used by events (the Nest,
+-- meteor craters). Registers through the normal spawn path, so it counts as alive (the wave won't clear
+-- until it dies) and pools/cleans up like any other zombie. Optional cf overrides where it appears.
+function ZombieService.SpawnExtra(round: number, typeId: string?, cf: CFrame?)
+	local record = spawnOne(round, typeId)
+	if record and cf and record.model then
+		record.model:PivotTo(cf)
+	end
+	return record
 end
 
 -- True once every owed zombie has spawned and the world is clear of living zombies.

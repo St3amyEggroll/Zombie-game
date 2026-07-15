@@ -259,11 +259,11 @@ end
 
 -- Cases drop the moment the BOSS DIES (not at wave end): everyone in the run gets one, bursting out of
 -- the boss's corpse and homing to them. The case is BANKED (saved) immediately at the kill — the flying
--- drop is cosmetic and only fires the pickup toast — so leaving/dying mid-flight can never lose it. On
--- the difficulty's FINAL wave there's no drop at all (the victory teleport would race it): toast now.
+-- drop is cosmetic and only fires the pickup toast — so leaving/dying mid-flight can never lose it.
+-- (No more FINAL wave — runs are endless now — so the drop always flies.)
 local function onBossDied(deathPos)
 	local round = MatchService.State.round
-	local isFinal = round >= (MatchService.State.maxWave or math.huge)
+	local isFinal = false
 	local origin = deathPos and (deathPos + Vector3.new(0, 3, 0)) or nil
 	for _, player in Players:GetPlayers() do
 		local ps = MatchService.GetPlayerState(player)

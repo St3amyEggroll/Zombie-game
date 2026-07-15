@@ -212,16 +212,9 @@ end
 
 -- ===== MUSIC STATE MACHINE =====
 local musicState = { phase = "Lobby", bossAlive = false }
--- The run's difficulty (from the teleport data) picks the combat track — Nightmare gets its own loop.
-local runDifficulty = "medium"
-do
-	local ok, td = pcall(function()
-		return game:GetService("TeleportService"):GetLocalPlayerTeleportData()
-	end)
-	if ok and typeof(td) == "table" and typeof(td.difficulty) == "string" then
-		runDifficulty = td.difficulty
-	end
-end
+-- (Difficulty system removed — one combat loop for everyone; MusicNightmare only plays deep in a run.)
+local DEEP_WAVE = 15 -- from this wave on, the heavier combat loop takes over (if an id is pasted)
+local deepRun = false
 local currentTrack = nil -- name of the playing music slot
 local musicSounds = {}   -- name -> persistent looping Sound
 
@@ -279,8 +272,8 @@ local function updateMusic()
 	if inRun then
 		if musicState.bossAlive then
 			setMusic("MusicBoss")
-		elseif runDifficulty == "nightmare" and def("MusicNightmare") then
-			setMusic("MusicNightmare") -- Nightmare's own combat loop
+		elseif deepRun and def("MusicNightmare") then
+			setMusic("MusicNightmare") -- the heavier loop kicks in deep into a run
 		else
 			setMusic("MusicCombat")
 		end
@@ -427,6 +420,7 @@ function SoundController.Start()
 			SoundController.Play("WaveStart") -- the ROUND-start audio: first wave only
 		end
 		SoundController.Play("WaveBell") -- a bell rings at the start of every wave
+		deepRun = (tonumber(round) or 0) >= DEEP_WAVE -- the heavier combat loop from wave 15 on
 		musicState.phase = "Playing"
 		updateMusic()
 	end)

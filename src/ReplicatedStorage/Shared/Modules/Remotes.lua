@@ -34,6 +34,12 @@ local DEFINITIONS: { [string]: string } = {
 	StartCountdown    = "RemoteEvent",     -- S->C: (seconds) — pre-run countdown while the party loads in (0 = clear)
 	WaveProgress      = "RemoteEvent",     -- S->C: (remaining, total) — zombies left to kill this wave (drives the count bar)
 
+	-- EXTRACTION (cash out or double down) + random in-run events
+	ExtractWindow     = "RemoteEvent",     -- S->C: ({seconds, mult, nextMult, pot}) window opened; ({seconds=0}) closed
+	ExtractChoice     = "RemoteEvent",     -- C->S: CASH OUT during an open window (server re-validates the phase)
+	ExtractMult       = "RemoteEvent",     -- S->C all: (mult) — the stayers doubled down; HUD shows the new multiplier
+	RunEvent          = "RemoteEvent",     -- S->C all: (kind, payload) — event announce + client-side FX (fog, ...)
+
 	-- CombatService (THE exploit surface — server validates everything)
 	FireWeapon        = "RemoteEvent",     -- C->S: intent (weaponId, origin, direction)
 	HitConfirmed      = "RemoteEvent",     -- S->C: (position, isHeadshot, hitHumanoid, killed, damage) hit juice
