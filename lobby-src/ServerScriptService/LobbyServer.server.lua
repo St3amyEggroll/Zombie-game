@@ -339,7 +339,15 @@ local SHOP = {
 	-- Products in Creator Hub (Monetization → Developer Products) — one per open size — and paste
 	-- their ids here. 0 = that button answers "coming soon" in the shop.
 	PackWeights = { rare = 14, epic = 42, legendary = 30, mythic = 10, divine = 4 },
-	PackProducts = { [1] = 0, [3] = 0, [10] = 0 }, -- open count -> Developer Product id
+	PackProducts = { [1] = 0, [3] = 0, [10] = 0 }, -- (legacy gacha ids; unused now the pack is a bundle)
+	-- CHANGED (owner request): the EXCLUSIVE PACK is a FIXED bundle, not a gacha. One Robux purchase
+	-- grants ALL of `guns` (each: unowned = you get it; already-owned = paid out as coins) plus `coins`.
+	-- Create ONE Developer Product in Creator Hub and paste its id as productId (0 = "coming soon").
+	ExclusivePack = {
+		productId = 0,
+		guns = { "freezeray", "plasma" },
+		coins = 25000,
+	},
 
 	-- NEW: PASSES & COINS tab. COIN BUNDLES (Robux -> Coins): create 4 Developer Products, paste ids.
 	CoinBundles = {
@@ -575,6 +583,7 @@ local ShopClose     = mk("ShopClose")     -- S->C: you left the shop zone; close
 local ShopBuy       = mk("ShopBuy")       -- C->S: {slot=1..6, open=bool} buy a case | {pack=true, count=1|3|10} open the featured pack
 local ShopRedeem    = mk("ShopRedeem")    -- C->S: (code string) redeem · S->C: {ok, msg} the verdict
 local ShopGift      = mk("ShopGift")      -- C->S: (userId|nil) arm/clear gifting for your NEXT pack buy
+local PackGranted   = mk("PackGranted")   -- S->C: {guns={{id,unlocked}}, coins, dupeCoins} exclusive-bundle receipt
                                           -- S->C: {sent,to,count} buyer confirm | {from,name,count} recipient toast
 local WheelSpin     = mk("WheelSpin")     -- C->S: (no args) claim the FREE daily spin
                                           -- S->C: {seg, reward, streak} result | {failed, msg}
@@ -1561,16 +1570,31 @@ local function shopSnapshot(prof, enter)
 		endsIn = SHOP.RestockSeconds - (os.time() % SHOP.RestockSeconds),
 		coins = prof.lobbyMoney,
 		slots = slots,
-		-- The featured EXCLUSIVE PACK — ROBUX ONLY (Developer Product ids + live Robux prices).
-		-- CHANGED: the pack is the GUN pack now (guns, not skins).
+		-- The featured EXCLUSIVE PACK — now a FIXED Robux BUNDLE (guns + coins), one purchase, no gacha.
+		-- The `kind="bundle"` + guns/coins fields drive the new UI; the legacy product1/3/10 fields are
+		-- kept so the CURRENT client keeps rendering until the bundle UI ships (they can be dropped then).
 		pack = {
+			kind = "bundle",
+			name = "EXCLUSIVE GUN PACK",
+			productId = SHOP.ExclusivePack.productId,
+			robux = productPrice(SHOP.ExclusivePack.productId),
+			coins = SHOP.ExclusivePack.coins,
+			guns = (function()
+				local g = {}
+				for _, gid in SHOP.ExclusivePack.guns do
+					if WEAPONS[gid] then
+						table.insert(g, {
+							id = gid, name = WEAPONS[gid].name, rarity = WEAPONS[gid].rarity,
+							owned = table.find(prof.ownedWeapons, gid) ~= nil,
+						})
+					end
+				end
+				return g
+			end)(),
+			-- legacy (pre-bundle) fields — harmless once the new UI lands:
 			caseId = "gunpack",
-			name = CASES.gunpack.name,
-			product1 = SHOP.PackProducts[1],
-			product3 = SHOP.PackProducts[3],
-			product10 = SHOP.PackProducts[10],
-			robux1 = productPrice(SHOP.PackProducts[1]),
-			robux3 = productPrice(SHOP.PackProducts[3]),
+			product1 = SHOP.PackProducts[1], product3 = SHOP.PackProducts[3], product10 = SHOP.PackProducts[10],
+			robux1 = productPrice(SHOP.PackProducts[1]), robux3 = productPrice(SHOP.PackProducts[3]),
 			robux10 = productPrice(SHOP.PackProducts[10]),
 		},
 		-- PITY meter: opens left until the guaranteed legendary+.
@@ -1901,7 +1925,8 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	end
 	local isStarter = SHOP.StarterProductId ~= 0 and pid == SHOP.StarterProductId
 	local isWheel = WHEEL.RespinProductId ~= 0 and pid == WHEEL.RespinProductId
-	if not (packCount or bundle or isStarter or isWheel) then
+	local isExclusive = SHOP.ExclusivePack.productId ~= 0 and pid == SHOP.ExclusivePack.productId
+	if not (packCount or bundle or isStarter or isWheel or isExclusive) then
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	prof.receipts = prof.receipts or {}
@@ -1950,6 +1975,32 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		result.chain = packCount - 1 -- the client reel auto-opens the rest from inventory
 		saved = persist(player)
 		CaseResult:FireClient(player, result)
+	elseif isExclusive then
+		-- FIXED BUNDLE: grant each gun (unowned = you get it; owned = paid out as coins) + the coin lump.
+		local granted, dupeCoins = {}, 0
+		for _, gid in SHOP.ExclusivePack.guns do
+			if WEAPONS[gid] then
+				local owned = table.find(prof.ownedWeapons, gid) ~= nil
+				if owned then
+					local c = GUN_DUP_COINS[WEAPONS[gid].rarity] or 500
+					dupeCoins += c
+					prof.lobbyMoney += c
+				else
+					table.insert(prof.ownedWeapons, gid)
+					prof.gunLevels[gid] = prof.gunLevels[gid] or 1
+					local sl = slotFor(gid)
+					if not prof.loadout[sl] then
+						prof.loadout[sl] = gid
+						refreshCarry(player)
+					end
+				end
+				table.insert(granted, { id = gid, unlocked = not owned })
+			end
+		end
+		prof.lobbyMoney += SHOP.ExclusivePack.coins
+		saved = persist(player)
+		PackGranted:FireClient(player, { guns = granted, coins = SHOP.ExclusivePack.coins, dupeCoins = dupeCoins })
+		print(("[LobbyServer] %s bought the exclusive bundle (+%d coins, %d dupe coins)"):format(player.Name, SHOP.ExclusivePack.coins, dupeCoins))
 	elseif bundle then
 		prof.lobbyMoney += bundle.coins
 		saved = persist(player)
