@@ -6363,6 +6363,110 @@ do
 	task.defer(T.maybeStart)
 end
 
+-- ===== PAD GUIDE TRAIL ===== a glowing green beam trail + a bobbing arrow from the player to the NEAREST
+-- LoadingZone pad, so you always know where to go. Hides while you stand on a pad. Local-only (parented
+-- under the Camera so it never replicates or collides). Everything hangs on G (one main-chunk local).
+do
+	local RunService = game:GetService("RunService")
+	-- TUNABLE: the flowing-arrow texture (a repeating ">" chevron, like your example). Paste your own
+	-- chevron asset id here for the exact look; "" falls back to a plain glowing ribbon.
+	local TRAIL_TEXTURE = "rbxassetid://446111271"
+	local G = {}
+	G.pads = {}
+	G.padsT = 0
+	G.mark = Instance.new("Part") -- sits on the target pad; holds the beam's far end + the arrow billboard
+	G.mark.Name = "PadGuideMark"; G.mark.Anchored = true; G.mark.CanCollide = false
+	G.mark.CanQuery = false; G.mark.CanTouch = false; G.mark.Transparency = 1
+	G.mark.Size = Vector3.new(1, 1, 1); G.mark.Parent = workspace.CurrentCamera
+	G.a1 = Instance.new("Attachment"); G.a1.Parent = G.mark
+
+	G.beam = Instance.new("Beam")
+	G.beam.Attachment1 = G.a1
+	G.beam.Color = ColorSequence.new(ACCENT)
+	G.beam.LightEmission = 1
+	G.beam.FaceCamera = true
+	G.beam.Width0 = 2.4; G.beam.Width1 = 2.0 -- steady width so the chevrons read at both ends
+	G.beam.Segments = 16
+	G.beam.CurveSize0 = 4; G.beam.CurveSize1 = 4 -- a gentle arc so it reads as a path, not a laser
+	if TRAIL_TEXTURE ~= "" then
+		G.beam.Texture = TRAIL_TEXTURE
+		G.beam.TextureMode = Enum.TextureMode.Wrap
+		G.beam.TextureLength = 4 -- studs per chevron repeat
+		G.beam.TextureSpeed = 2.2 -- chevrons FLOW toward the pad (A0 -> A1)
+		G.beam.Transparency = NumberSequence.new(0) -- the texture carries its own alpha (transparent gaps)
+	else
+		G.beam.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.12), NumberSequenceKeypoint.new(1, 0.5) })
+	end
+	G.beam.Enabled = false
+	G.beam.Parent = G.mark
+
+	G.bb = Instance.new("BillboardGui")
+	G.bb.Name = "PadGuideArrow"; G.bb.Size = UDim2.fromOffset(150, 150); G.bb.AlwaysOnTop = true
+	G.bb.StudsOffsetWorldSpace = Vector3.new(0, 7, 0); G.bb.Adornee = G.mark
+	G.bb.Enabled = false; G.bb.Parent = G.mark
+	G.arrow = Instance.new("TextLabel") -- default font (SourceSans) renders the down-arrow glyph reliably
+	G.arrow.AnchorPoint = Vector2.new(0.5, 0.5); G.arrow.Position = UDim2.fromScale(0.5, 0.5)
+	G.arrow.Size = UDim2.fromOffset(120, 120); G.arrow.BackgroundTransparency = 1
+	G.arrow.TextSize = 76; G.arrow.TextColor3 = ACCENT; G.arrow.Text = "▼"; G.arrow.ZIndex = 2; G.arrow.Parent = G.bb
+	do local s = Instance.new("UIStroke"); s.Color = TBLACK; s.Thickness = 3.5; s.Parent = G.arrow end
+	G.hint = Instance.new("TextLabel")
+	G.hint.AnchorPoint = Vector2.new(0.5, 0); G.hint.Position = UDim2.fromScale(0.5, 0.9)
+	G.hint.Size = UDim2.fromOffset(190, 30); G.hint.BackgroundTransparency = 1
+	G.hint.FontFace = TITLE_FACE; G.hint.TextSize = 20; G.hint.TextColor3 = Color3.new(1, 1, 1)
+	G.hint.Text = "PLAY HERE"; G.hint.ZIndex = 2; G.hint.Parent = G.bb
+	do local s = Instance.new("UIStroke"); s.Color = TBLACK; s.Thickness = 3; s.Parent = G.hint end
+
+	G.hideAll = function()
+		G.beam.Enabled = false
+		G.bb.Enabled = false
+	end
+
+	RunService.Heartbeat:Connect(function(dt)
+		local char = localPlayer.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if not root then
+			return G.hideAll()
+		end
+		local a0 = root:FindFirstChild("PadGuideA0")
+		if not a0 then -- (re)attach the beam's near end to the current character
+			a0 = Instance.new("Attachment"); a0.Name = "PadGuideA0"; a0.Parent = root
+		end
+		G.beam.Attachment0 = a0
+		-- refresh the pad list occasionally (cheap); nearest is picked from the cache every frame
+		G.padsT -= dt
+		if G.padsT <= 0 then
+			G.padsT = 2
+			G.pads = {}
+			for _, d in workspace:GetDescendants() do
+				if d:IsA("BasePart") and string.lower(string.sub(d.Name, 1, 11)) == "loadingzone" then
+					table.insert(G.pads, d)
+				end
+			end
+		end
+		local pad, bestD
+		for _, p in G.pads do
+			if p.Parent then
+				local dd = (p.Position - root.Position).Magnitude
+				if not bestD or dd < bestD then
+					pad, bestD = p, dd
+				end
+			end
+		end
+		if not pad then
+			return G.hideAll()
+		end
+		local dx, dz = pad.Position.X - root.Position.X, pad.Position.Z - root.Position.Z
+		local dist = math.sqrt(dx * dx + dz * dz)
+		if dist < (math.max(pad.Size.X, pad.Size.Z) * 0.5 + 1.5) then -- standing on the pad → hide the guide
+			return G.hideAll()
+		end
+		G.mark.Position = Vector3.new(pad.Position.X, pad.Position.Y + pad.Size.Y * 0.5 + 0.5, pad.Position.Z)
+		G.arrow.Position = UDim2.new(0.5, 0, 0.5, math.floor(math.sin(os.clock() * 4) * 8)) -- gentle bob
+		G.beam.Enabled = true
+		G.bb.Enabled = true
+	end)
+end
+
 -- EVERYTHING is wired — now PULL a fresh snapshot. The server's join-time pushes often fire while
 -- this (big) script is still loading, so the hotbar/coins/XP missed them and sat empty until some
 -- other action triggered a resend. This request closes that race for good.
