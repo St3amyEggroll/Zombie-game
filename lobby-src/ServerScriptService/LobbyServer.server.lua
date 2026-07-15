@@ -80,7 +80,9 @@ pcall(function()
 	-- through the wall (so the host can still step off to cancel) but otherwise acts like PLAYER_GROUP.
 	PhysicsService:RegisterCollisionGroup("PadWall")
 	PhysicsService:RegisterCollisionGroup("PartyMember")
-	PhysicsService:CollisionGroupSetCollidable("PadWall", "PartyMember", false)
+	-- CHANGED: true — the wall now keeps party members IN (trapped until they press LEAVE), not just
+	-- outsiders out. Members still don't collide with other players (rule below).
+	PhysicsService:CollisionGroupSetCollidable("PadWall", "PartyMember", true)
 	PhysicsService:CollisionGroupSetCollidable("PartyMember", PLAYER_GROUP, false)
 	PhysicsService:CollisionGroupSetCollidable("PartyMember", "PartyMember", false)
 end)
@@ -2160,7 +2162,7 @@ local function ensureZoneTitle(zone)
 	title.FontFace = BB_TITLE
 	title.TextSize = 36
 	title.TextColor3 = BB_GOLD
-	title.Text = tostring(zone:GetAttribute("Label") or "START A RUN")
+	title.Text = tostring(zone:GetAttribute("Label") or "0/4")
 	title.Parent = bb
 	local ts = Instance.new("UIStroke")
 	ts.Color = Color3.fromRGB(6, 7, 5)
@@ -2190,7 +2192,7 @@ local function refreshZones()
 			local n = d.Name:lower()
 			if n:match("^loadingzone") then
 				table.insert(list, d)
-				ensureZoneTitle(d) -- persistent "START A RUN" sign so players know what the pad is
+				ensureZoneTitle(d) -- persistent "0/4" sign so players know it's an empty run pad
 			elseif n:match("^shopzone") then
 				table.insert(shopList, d)
 			end
@@ -2254,9 +2256,10 @@ local function updatePadWall(zone, party)
 		p.Anchored = true
 		p.CanQuery = false
 		p.CanTouch = false
-		p.Material = Enum.Material.ForceField
+		p.Material = Enum.Material.SmoothPlastic -- CHANGED: was ForceField
 		p.Color = Color3.fromRGB(255, 70, 70)
-		p.Transparency = 0.25
+		p.Transparency = 1 -- CHANGED: fully invisible (an unseen fence, not a red barrier)
+		p.CastShadow = false
 		p.Size = def[2]
 		p.CFrame = zone.CFrame * def[1]
 		p.CollisionGroup = "PadWall"
@@ -2267,6 +2270,10 @@ end
 
 local function updateBillboard(zone, party)
 	updatePadWall(zone, party)
+	local idle = zone:FindFirstChild("ZoneTitle")
+	if idle then
+		idle.Enabled = (party == nil) -- the live party counter takes over the idle "0/4" sign
+	end
 	local bb = zone:FindFirstChild("PartyBillboard")
 	if not party then
 		if bb then
