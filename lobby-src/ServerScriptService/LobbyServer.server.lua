@@ -2137,6 +2137,52 @@ local lastMode = {}     -- userId -> last ZoneEnter signature sent (avoids respa
 local zoneParts = {}
 local shopZoneParts = {} -- Parts named "ShopZone..." — walk on one to browse the shop
 local lastZoneScan = -math.huge
+-- PERSISTENT sign over every LoadingZone pad so players know what it is BEFORE stepping on. Owner can
+-- override the wording per-pad with a "Label" and/or "Sub" string Attribute on the zone Part; otherwise
+-- it reads "START A RUN" / "STEP ON TO PLAY". Built once, never rebuilt.
+local function ensureZoneTitle(zone)
+	if zone:FindFirstChild("ZoneTitle") then
+		return
+	end
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "ZoneTitle"
+	bb.Size = UDim2.fromOffset(380, 90)
+	bb.StudsOffsetWorldSpace = Vector3.new(0, 7, 0)
+	bb.AlwaysOnTop = true
+	bb.MaxDistance = 140
+	bb.Parent = zone
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.AnchorPoint = Vector2.new(0.5, 1)
+	title.Position = UDim2.fromScale(0.5, 0.66)
+	title.Size = UDim2.fromScale(1, 0.62)
+	title.BackgroundTransparency = 1
+	title.FontFace = BB_TITLE
+	title.TextSize = 36
+	title.TextColor3 = BB_GOLD
+	title.Text = tostring(zone:GetAttribute("Label") or "START A RUN")
+	title.Parent = bb
+	local ts = Instance.new("UIStroke")
+	ts.Color = Color3.fromRGB(6, 7, 5)
+	ts.Thickness = 3.5
+	ts.Parent = title
+	local sub = Instance.new("TextLabel")
+	sub.Name = "Sub"
+	sub.AnchorPoint = Vector2.new(0.5, 0)
+	sub.Position = UDim2.fromScale(0.5, 0.66)
+	sub.Size = UDim2.fromScale(1, 0.3)
+	sub.BackgroundTransparency = 1
+	sub.FontFace = BB_BODY
+	sub.TextSize = 18
+	sub.TextColor3 = BB_TEXT
+	sub.Text = tostring(zone:GetAttribute("Sub") or "STEP ON TO PLAY")
+	sub.Parent = bb
+	local ss = Instance.new("UIStroke")
+	ss.Color = Color3.fromRGB(6, 7, 5)
+	ss.Thickness = 2.5
+	ss.Parent = sub
+end
+
 local function refreshZones()
 	local list, shopList = {}, {}
 	for _, d in Workspace:GetDescendants() do
@@ -2144,6 +2190,7 @@ local function refreshZones()
 			local n = d.Name:lower()
 			if n:match("^loadingzone") then
 				table.insert(list, d)
+				ensureZoneTitle(d) -- persistent "START A RUN" sign so players know what the pad is
 			elseif n:match("^shopzone") then
 				table.insert(shopList, d)
 			end
@@ -2231,22 +2278,22 @@ local function updateBillboard(zone, party)
 	if not bb then
 		bb = Instance.new("BillboardGui")
 		bb.Name = "PartyBillboard"
-		bb.Size = UDim2.fromOffset(240, 60)
-		bb.StudsOffsetWorldSpace = Vector3.new(0, 7, 0)
+		bb.Size = UDim2.fromOffset(360, 104) -- CHANGED: roomier for the bigger, panel-free text
+		bb.StudsOffsetWorldSpace = Vector3.new(0, 11, 0) -- CHANGED: raised (was 7) — sits above the ZoneTitle
 		bb.AlwaysOnTop = true
 		bb.Parent = zone
 		label = Instance.new("TextLabel")
 		label.Name = "Label"
 		label.Size = UDim2.fromScale(1, 1)
-		label.BackgroundColor3 = BB_PANEL
-		label.BackgroundTransparency = 0.12
+		label.BackgroundTransparency = 1 -- CHANGED: pure floating text, no panel behind it
 		label.FontFace = BB_BODY
-		label.TextSize = 15
+		label.TextSize = 26 -- CHANGED: bigger (was 15)
 		label.TextColor3 = BB_TEXT
 		label.Parent = bb
-		local c = Instance.new("UICorner")
-		c.CornerRadius = UDim.new(0, 8)
-		c.Parent = label
+		local st = Instance.new("UIStroke") -- legibility now that the panel is gone
+		st.Color = Color3.fromRGB(6, 7, 5)
+		st.Thickness = 3
+		st.Parent = label
 	else
 		label = bb:FindFirstChild("Label")
 	end

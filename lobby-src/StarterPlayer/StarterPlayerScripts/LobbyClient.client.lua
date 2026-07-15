@@ -4571,12 +4571,16 @@ do
 	local TS = game:GetService("TweenService")
 	local CLASSES = { -- mirrors the game's ClassConfig BY HAND; c0/c1 = each row's own colour (G watermark)
 		{ id = "soldier", emoji = "🎖️", name = "SOLDIER", line = "+12% GUN DAMAGE · APPLIES NEXT RUN",
+			perk = "+12% GUN DAMAGE", anim = "", gear = "soldier",
 			c0 = Color3.fromRGB(150, 30, 22), c1 = Color3.fromRGB(206, 60, 42) },
 		{ id = "juggernaut", emoji = "🛡️", name = "JUGGERNAUT", line = "+50 MAX HP · APPLIES NEXT RUN",
+			perk = "+50 MAX HEALTH", anim = "", gear = "juggernaut",
 			c0 = Color3.fromRGB(29, 61, 82), c1 = Color3.fromRGB(58, 132, 178) },
 		{ id = "runner", emoji = "👟", name = "RUNNER", line = "+15% MOVE SPEED · APPLIES NEXT RUN",
+			perk = "+15% MOVE SPEED", anim = "", gear = "runner",
 			c0 = Color3.fromRGB(38, 74, 20), c1 = Color3.fromRGB(96, 168, 40) },
 		{ id = "scavenger", emoji = "🪙", name = "SCAVENGER", line = "+25% RUN COINS · APPLIES NEXT RUN",
+			perk = "+25% RUN COINS", anim = "", gear = "scavenger",
 			c0 = Color3.fromRGB(120, 88, 18), c1 = Color3.fromRGB(206, 158, 52) },
 	}
 	local HIDE_GUIS = { "LobbyHUD", "LobbyInventory", "LobbyXP", "LobbyQuests", "LobbySquad", "LobbyCoins",
@@ -4826,6 +4830,119 @@ do
 		return nil
 	end
 
+	-- ===== LIVE CHARACTER LOOK ===== (Pose + accessory + nameplate) — browsing a class transforms the
+	-- owner-placed display character: a tinted floating nameplate (class + perk), an ambient aura, an
+	-- OPTIONAL idle pose (e.anim assetid), and OPTIONAL gear (an Accessory or Model named e.gear inside a
+	-- Folder named "ClassGear" in Workspace or ReplicatedStorage). Missing rig / anim / gear just skips
+	-- that piece. All client-side (nothing replicates); rebuilt only when the selected class changes.
+	-- Every local below lives INSIDE these functions, so the main-chunk 200-local ceiling is untouched.
+	C.clearLook = function()
+		if C.animTrack then
+			pcall(function() C.animTrack:Stop(0.2) end)
+			C.animTrack = nil
+		end
+		for _, k in { "gear", "aura", "plate" } do
+			if C[k] then C[k]:Destroy(); C[k] = nil end
+		end
+		C.lastLook = nil
+	end
+	C.applyLook = function(e)
+		local disp = findDisplay()
+		if not disp then return end
+		if C.lastLook == e.id then return end -- already showing this class — don't restart pose/aura
+		C.lastLook = e.id
+		local root, head, hum
+		if disp:IsA("Model") then
+			root = disp.PrimaryPart or disp:FindFirstChild("HumanoidRootPart")
+				or disp:FindFirstChild("UpperTorso") or disp:FindFirstChild("Torso")
+				or disp:FindFirstChildWhichIsA("BasePart")
+			head = disp:FindFirstChild("Head") or root
+			hum = disp:FindFirstChildOfClass("Humanoid")
+		else
+			root, head = disp, disp
+		end
+		-- NAMEPLATE (rebuilt each change so tint + text always match)
+		if C.plate then C.plate:Destroy() end
+		C.plate = nil
+		if head then
+			local bb = Instance.new("BillboardGui")
+			bb.Name = "ClassPlate"; bb.Size = UDim2.fromOffset(260, 80)
+			bb.StudsOffsetWorldSpace = Vector3.new(0, 3.4, 0); bb.AlwaysOnTop = true; bb.Parent = head
+			local nm = Instance.new("TextLabel")
+			nm.AnchorPoint = Vector2.new(0.5, 1); nm.Position = UDim2.fromScale(0.5, 0.64)
+			nm.Size = UDim2.fromScale(1, 0.62); nm.BackgroundTransparency = 1
+			nm.FontFace = TITLE_FACE; nm.TextSize = 30; nm.TextColor3 = Color3.new(1, 1, 1); nm.Text = e.name
+			nm.Parent = bb
+			local ns = Instance.new("UIStroke"); ns.Color = TBLACK; ns.Thickness = 3; ns.Parent = nm
+			local pk = Instance.new("TextLabel")
+			pk.AnchorPoint = Vector2.new(0.5, 0); pk.Position = UDim2.fromScale(0.5, 0.62)
+			pk.Size = UDim2.fromScale(1, 0.34); pk.BackgroundTransparency = 1
+			pk.FontFace = BODYB_FACE; pk.TextSize = 17; pk.TextColor3 = e.c1; pk.Text = e.perk or ""
+			pk.Parent = bb
+			local ps = Instance.new("UIStroke"); ps.Color = TBLACK; ps.Thickness = 2.5; ps.Parent = pk
+			C.plate = bb
+		end
+		-- AMBIENT AURA (tinted particles) on the torso/root
+		if C.aura then C.aura:Destroy() end
+		C.aura = nil
+		if root then
+			local em = Instance.new("ParticleEmitter")
+			em.Name = "ClassAura"; em.Color = ColorSequence.new(e.c1)
+			em.Texture = "rbxasset://textures/particles/sparkles_main.dds" -- engine built-in (always loads)
+			em.Lifetime = NumberRange.new(0.8, 1.5); em.Rate = 22; em.Speed = NumberRange.new(1.5, 3)
+			em.SpreadAngle = Vector2.new(180, 180); em.LightEmission = 0.6; em.Rotation = NumberRange.new(0, 360)
+			em.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 0) })
+			em.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) })
+			em.Parent = root
+			C.aura = em
+		end
+		-- IDLE POSE (optional — needs a Humanoid rig + an anim id)
+		if C.animTrack then pcall(function() C.animTrack:Stop(0.2) end); C.animTrack = nil end
+		if hum and e.anim and e.anim ~= "" then
+			local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+			animator.Parent = hum
+			local anim = Instance.new("Animation")
+			anim.AnimationId = "rbxassetid://" .. tostring(e.anim)
+			local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+			if ok and track then
+				track.Looped = true; track.Priority = Enum.AnimationPriority.Action
+				track:Play(0.25); C.animTrack = track
+			end
+		end
+		-- GEAR (optional — an Accessory auto-welds via the Humanoid; a Model welds to the root)
+		if C.gear then C.gear:Destroy() end
+		C.gear = nil
+		if disp:IsA("Model") and e.gear and e.gear ~= "" then
+			local src
+			for _, where in { workspace, game:GetService("ReplicatedStorage") } do
+				local folder = where:FindFirstChild("ClassGear")
+				if folder then
+					src = folder:FindFirstChild(e.gear)
+					if src then break end
+				end
+			end
+			if src then
+				local clone = src:Clone()
+				if clone:IsA("Accessory") and hum then
+					pcall(function() hum:AddAccessory(clone) end)
+					C.gear = clone
+				elseif root and clone:IsA("Model") then
+					local cp = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
+					if cp then
+						clone:PivotTo(root.CFrame)
+						for _, part in clone:GetDescendants() do
+							if part:IsA("BasePart") then part.Anchored = false; part.CanCollide = false end
+						end
+						local w = Instance.new("Weld")
+						w.Part0 = root; w.Part1 = cp; w.C0 = root.CFrame:ToObjectSpace(cp.CFrame); w.Parent = cp
+						clone.Parent = disp
+						C.gear = clone
+					end
+				end
+			end
+		end
+	end
+
 	C.refresh = function()
 		local e = CLASSES[C.sel]
 		for i, r in C.rows do
@@ -4846,6 +4963,9 @@ do
 			C.selBtn.Text = "SELECT " .. e.name
 			C.selBtn.TextColor3 = Color3.new(1, 1, 1)
 			C.halo.Visible = true
+		end
+		if C.open then
+			C.applyLook(e) -- transform the display character to the class you're viewing
 		end
 	end
 
@@ -4897,6 +5017,7 @@ do
 		else
 			C.open = false
 			lplay("Close")
+			C.clearLook() -- strip the nameplate / aura / pose / gear off the display character
 			C.gui.Enabled = false
 			for _, n in HIDE_GUIS do
 				local g = playerGui:FindFirstChild(n)
@@ -4929,6 +5050,7 @@ do
 			return
 		end
 		C.open = false
+		C.clearLook() -- strip the class look off the display character on respawn
 		C.gen = (C.gen or 0) + 1
 		if C.camTween then
 			C.camTween:Cancel()
