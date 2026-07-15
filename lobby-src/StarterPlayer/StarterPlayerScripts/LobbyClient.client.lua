@@ -1125,8 +1125,8 @@ do
 		codes = "106591567271932",
 	}
 	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", classes = "🛡️", settings = "⚙️", codes = "🔑" }
-	local ORDER = { "inventory", "weapons", "daily", "shop", "classes", "settings", "codes" }
-	local LABELS = { inventory = "Inventory", weapons = "Weapons", daily = "Daily", shop = "Shop", classes = "Classes", settings = "Settings", codes = "Codes" }
+	local ORDER = { "weapons", "daily", "shop", "classes", "settings", "codes" } -- inventory merged into LOCKER
+	local LABELS = { weapons = "Locker", daily = "Daily", shop = "Shop", classes = "Classes", settings = "Settings", codes = "Codes" }
 
 	-- The faded black bar behind everything (pure gradient, no border — melts into the floor).
 	local fade = Instance.new("Frame")
@@ -1280,8 +1280,7 @@ do
 		dockBtn(i, key)
 	end
 end
-local gunsBtn = dockBtns.weapons -- keep the old names: everything downstream wires to these
-local casesBtn = dockBtns.inventory
+local gunsBtn = dockBtns.weapons -- the LOCKER button (guns + crates live in one panel now)
 
 -- PLAY — the game place's chunky slab-and-face button (UITheme.Button "primary"), synced by hand:
 -- dark slab with a 5px lip, bright toxic-gradient face with its own black ring, white stencil text,
@@ -1384,7 +1383,7 @@ local PANEL_W, PANEL_H = 940, 540
 local invPanel, invTitle, invClose, invRecolor
 do
 	local root
-	root, invPanel, invTitle, invClose, invRecolor = chromePanel(invGui, PANEL_W, PANEL_H, HEADER_COLORS.guns, "WEAPONS")
+	root, invPanel, invTitle, invClose, invRecolor = chromePanel(invGui, PANEL_W, PANEL_H, HEADER_COLORS.guns, "LOCKER")
 	invPanel.Visible = false
 	invPanel:GetPropertyChangedSignal("Visible"):Connect(function()
 		root.Visible = invPanel.Visible
@@ -1433,7 +1432,7 @@ local playReel -- forward decl (the reel section below assigns it)
 do
 	local catRow = Instance.new("Frame")
 	catRow.Name = "WeaponCatRow"
-	catRow.Position = UDim2.fromOffset(16, CONTENT_Y)
+	catRow.Position = UDim2.fromOffset(16, CONTENT_Y + 40)
 	catRow.Size = UDim2.fromOffset(PANEL_W - 32, 34)
 	catRow.BackgroundTransparency = 1
 	catRow.Visible = false
@@ -2202,20 +2201,68 @@ local function renderCasesGrid()
 	return out
 end
 
--- ===== SCREEN SWITCHING + MASTER RENDER ===== ("weapons" = the GUNS screen, "cases" = the CASES screen)
+-- ===== SCREEN SWITCHING + MASTER RENDER ===== ("weapons" = the GUNS tab, "cases" = the CRATES tab)
 local function showTab(id)
 	activeTab = id
 	selectedInv = nil -- switching screens resets the featured pane
-	invTitle.Text = (id == "weapons") and "WEAPONS" or "INVENTORY"
+	invTitle.Text = "LOCKER" -- one identity; the GUNS/CRATES tabs carry which screen you're on
 	invDetail.Visible = false; invGrid.Visible = true; invHint.Visible = true -- back to GRID mode
-	-- WEAPONS screen carries the LEVEL/CRATE/EVENT sub-tab row; the grid drops below it. INVENTORY doesn't.
+	-- repaint the top tabs (selected = bright green fill)
+	local tabRow = invPanel:FindFirstChild("LockerTabs")
+	if tabRow then
+		for _, b in tabRow:GetChildren() do
+			if b:IsA("TextButton") then
+				local on = (b.Name == "Tab_" .. id)
+				b.BackgroundColor3 = on and SELBG or CARD
+				b.TextColor3 = on and Color3.new(1, 1, 1) or TEXTCOL
+			end
+		end
+	end
+	-- GUNS carries the LEVEL/CRATE/EVENT category row under the tabs; CRATES doesn't.
 	local catRow = invPanel:FindFirstChild("WeaponCatRow")
 	if catRow then catRow.Visible = (id == "weapons") end
-	local gy = (id == "weapons") and (CONTENT_Y + 44) or CONTENT_Y
+	local gy = (id == "weapons") and (CONTENT_Y + 84) or (CONTENT_Y + 40)
 	invGrid.Position = UDim2.fromOffset(16, gy)
 	invGrid.Size = UDim2.fromOffset(PANEL_W - 32, PANEL_H - gy - 16 - 24)
-	local hc = (id == "weapons") and HEADER_COLORS.guns or Color3.fromRGB(18, 69, 90) -- mockup: blue INVENTORY header
-	invRecolor(hc)
+	invRecolor(HEADER_COLORS.guns) -- one LOCKER header color on both tabs
+end
+
+-- ===== LOCKER TOP TABS ===== one panel, two screens: GUNS (the catalog) | CRATES (your unopened cases).
+-- Built as named children so showTab can repaint without new top-level locals (200-local ceiling).
+do
+	local tabRow = Instance.new("Frame")
+	tabRow.Name = "LockerTabs"
+	tabRow.Position = UDim2.fromOffset(16, CONTENT_Y)
+	tabRow.Size = UDim2.fromOffset(PANEL_W - 32, 34)
+	tabRow.BackgroundTransparency = 1
+	tabRow.Parent = invPanel
+	local ll = Instance.new("UIListLayout")
+	ll.FillDirection = Enum.FillDirection.Horizontal
+	ll.Padding = UDim.new(0, 8)
+	ll.Parent = tabRow
+	for i, d in { { "weapons", "GUNS" }, { "cases", "CRATES" } } do
+		local b = Instance.new("TextButton")
+		b.Name = "Tab_" .. d[1]
+		b.LayoutOrder = i
+		b.Size = UDim2.fromOffset(122, 34)
+		b.BackgroundColor3 = CARD
+		b.AutoButtonColor = true
+		b.FontFace = BODYB_FACE
+		b.TextSize = 15
+		b.TextColor3 = TEXTCOL
+		b.Text = d[2]
+		b.Parent = tabRow
+		corner(b, 6)
+		ledge(b, TBLACK, 2)
+		b.Activated:Connect(function()
+			if activeTab == d[1] then
+				return
+			end
+			lplay("Click")
+			showTab(d[1])
+			renderActive()
+		end)
+	end
 end
 
 renderActive = function()
@@ -2779,9 +2826,6 @@ end
 gunsBtn.Activated:Connect(function()
 	openScreen("weapons")
 end)
-casesBtn.Activated:Connect(function()
-	openScreen("cases")
-end)
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
 		return
@@ -2810,8 +2854,8 @@ InvSync.OnClientEvent:Connect(function(snap)
 			crates += tonumber(n) or 0
 		end
 	end
-	dockBtns.inventoryBadge.Visible = crates > 0
-	dockBtns.inventoryBadge.N.Text = crates > 99 and "99+" or tostring(crates)
+	dockBtns.weaponsBadge.Visible = crates > 0
+	dockBtns.weaponsBadge.N.Text = crates > 99 and "99+" or tostring(crates)
 	if invPanel.Visible then
 		renderActive()
 	end
@@ -4268,7 +4312,6 @@ do
 	end)
 	-- Opening WEAPONS/INVENTORY (buttons or the B key) puts the shop away — one panel at a time.
 	gunsBtn.Activated:Connect(closeShop)
-	casesBtn.Activated:Connect(closeShop)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.B then
 			closeShop()

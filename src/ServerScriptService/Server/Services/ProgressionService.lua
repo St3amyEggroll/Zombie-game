@@ -46,11 +46,18 @@ end
 -- Grant XP + push it LIVE: the HUD's blue level bar listens to ProgressChanged (without this push it
 -- only refreshed on spawn — the bar looked frozen all run).
 local function awardXP(player: Player, amount: number)
+	local before = DataService.Get(player)
+	local beforeLevel = before and before.level or 0
 	DataService.AddXP(player, amount)
 	require(script.Parent.GunShopService).GrantUnlocks(player) -- level-ups grant guns LIVE (fires the showcase)
 	local data = DataService.Get(player)
 	if data then
 		Remotes.Get("ProgressChanged"):FireClient(player, data.xp, data.level, data.lobbyMoney)
+		if data.level ~= beforeLevel then
+			-- REAL-TIME overhead tag: a mid-run level-up restamps "LVL n" immediately (it used to wait
+			-- for the next respawn).
+			require(script.Parent.PlayerTagService).Refresh(player)
+		end
 	end
 end
 
