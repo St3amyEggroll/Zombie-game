@@ -113,6 +113,53 @@ local function setCollisionGroup(character: Model)
 end
 
 -- ===== CHARACTER SETUP =====
+-- Per-class cosmetic gear, welded server-side so everyone in the run sees it. Currently JUGGERNAUT wears
+-- the vest Model the owner placed in ReplicatedStorage/assets/classAssets. A non-juggernaut class, or a
+-- missing folder/model, just skips — nothing breaks. Re-runs cleanly on every respawn.
+local function applyClassGear(player: Player, character: Model)
+	local prior = character:FindFirstChild("ClassGear")
+	if prior then
+		prior:Destroy()
+	end
+	local data = DataService.Get(player)
+	if not data or data.class ~= "juggernaut" then
+		return
+	end
+	local assets = ReplicatedStorage:FindFirstChild("assets")
+	local ca = assets and assets:FindFirstChild("classAssets")
+	local src = ca and ca:FindFirstChild("vest")
+	if not src or not src:IsA("Model") then
+		return
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	local clone = src:Clone()
+	clone.Name = "ClassGear"
+	local cp = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
+	if not cp then
+		clone:Destroy()
+		return
+	end
+	clone:PivotTo(root.CFrame) -- align the vest's pivot to the torso; the model itself sets the fit
+	for _, part in clone:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+			part.CanCollide = false
+			part.Massless = true
+			part.CanQuery = false
+		end
+	end
+	local weld = Instance.new("Weld")
+	weld.Part0 = root
+	weld.Part1 = cp
+	weld.C0 = root.CFrame:ToObjectSpace(cp.CFrame)
+	weld.Parent = cp
+	clone.Parent = character
+end
+
 local function onCharacterAdded(player: Player, character: Model)
 	setCollisionGroup(character)
 	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
@@ -132,6 +179,8 @@ local function onCharacterAdded(player: Player, character: Model)
 	r.lastWalkSpeed = humanoid.WalkSpeed
 
 	fireHealth(player, humanoid)
+
+	applyClassGear(player, character) -- Juggernaut wears the vest during the run (server-welded, replicated)
 
 	-- Track external health changes (e.g. future scripted damage) so the regen timer resets on damage.
 	humanoid.HealthChanged:Connect(function(newHealth)

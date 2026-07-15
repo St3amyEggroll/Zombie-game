@@ -4631,16 +4631,16 @@ do
 	local TS = game:GetService("TweenService")
 	local CLASSES = { -- mirrors the game's ClassConfig BY HAND; c0/c1 = each row's own colour (G watermark)
 		{ id = "soldier", emoji = "🎖️", name = "SOLDIER", line = "+12% GUN DAMAGE · APPLIES NEXT RUN",
-			perk = "+12% GUN DAMAGE", anim = "", gear = "soldier",
+			perk = "+12% GUN DAMAGE", anim = "", gear = "",
 			c0 = Color3.fromRGB(150, 30, 22), c1 = Color3.fromRGB(206, 60, 42) },
 		{ id = "juggernaut", emoji = "🛡️", name = "JUGGERNAUT", line = "+50 MAX HP · APPLIES NEXT RUN",
-			perk = "+50 MAX HEALTH", anim = "", gear = "juggernaut",
+			perk = "+50 MAX HEALTH", anim = "", gear = "vest", -- the owner-added Model in assets/classAssets
 			c0 = Color3.fromRGB(29, 61, 82), c1 = Color3.fromRGB(58, 132, 178) },
 		{ id = "runner", emoji = "👟", name = "RUNNER", line = "+15% MOVE SPEED · APPLIES NEXT RUN",
-			perk = "+15% MOVE SPEED", anim = "", gear = "runner",
+			perk = "+15% MOVE SPEED", anim = "", gear = "",
 			c0 = Color3.fromRGB(38, 74, 20), c1 = Color3.fromRGB(96, 168, 40) },
 		{ id = "scavenger", emoji = "🪙", name = "SCAVENGER", line = "+25% RUN COINS · APPLIES NEXT RUN",
-			perk = "+25% RUN COINS", anim = "", gear = "scavenger",
+			perk = "+25% RUN COINS", anim = "", gear = "",
 			c0 = Color3.fromRGB(120, 88, 18), c1 = Color3.fromRGB(206, 158, 52) },
 	}
 	local HIDE_GUIS = { "LobbyHUD", "LobbyInventory", "LobbyXP", "LobbyQuests", "LobbySquad", "LobbyCoins",
@@ -4973,12 +4973,21 @@ do
 		if C.gear then C.gear:Destroy() end
 		C.gear = nil
 		if disp:IsA("Model") and e.gear and e.gear ~= "" then
+			local RS = game:GetService("ReplicatedStorage")
 			local src
-			for _, where in { workspace, game:GetService("ReplicatedStorage") } do
-				local folder = where:FindFirstChild("ClassGear")
-				if folder then
-					src = folder:FindFirstChild(e.gear)
-					if src then break end
+			-- primary: the owner's ReplicatedStorage/assets/classAssets folder (holds the vest Model)
+			local assets = RS:FindFirstChild("assets")
+			local ca = assets and assets:FindFirstChild("classAssets")
+			if ca then
+				src = ca:FindFirstChild(e.gear)
+			end
+			if not src then -- fallback: a "ClassGear" folder in Workspace or ReplicatedStorage
+				for _, where in { workspace, RS } do
+					local folder = where:FindFirstChild("ClassGear")
+					if folder then
+						src = folder:FindFirstChild(e.gear)
+						if src then break end
+					end
 				end
 			end
 			if src then
