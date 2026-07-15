@@ -6183,9 +6183,12 @@ do
 	T.gui.DisplayOrder = 35 -- above panels/coins, below toasts(40)/warnings(90)
 	T.gui.Enabled = false
 	T.gui.Parent = playerGui
+	lattach(T.gui) -- scale the card/text like the rest of the HUD; place() divides target coords by this scale
 
 	T.catcher = Instance.new("TextButton") -- swallows every click to the HUD behind; NEXT/SKIP sit above it
-	T.catcher.Size = UDim2.fromScale(1, 1); T.catcher.BackgroundTransparency = 1; T.catcher.Text = ""
+	-- fromScale(2,2) so it still covers the whole screen after the gui's UIScale shrinks it (<1 on phones)
+	T.catcher.Size = UDim2.fromScale(2, 2); T.catcher.Position = UDim2.fromScale(-0.5, -0.5)
+	T.catcher.BackgroundTransparency = 1; T.catcher.Text = ""
 	T.catcher.AutoButtonColor = false; T.catcher.ZIndex = 1; T.catcher.Parent = T.gui
 
 	T.dim = {} -- four dark panels leave a clear window over the current target
@@ -6204,39 +6207,39 @@ do
 	end
 
 	T.card = Instance.new("Frame")
-	T.card.Size = UDim2.fromOffset(330, 158); T.card.BackgroundColor3 = PANEL
+	T.card.Size = UDim2.fromOffset(430, 210); T.card.BackgroundColor3 = PANEL -- CHANGED: bigger callout
 	T.card.BorderSizePixel = 0; T.card.ZIndex = 5; T.card.Parent = T.gui
-	corner(T.card, 10); ledge(T.card, TBLACK, 3); ledge(T.card, ACCENT, 1.5, 0.4)
+	corner(T.card, 12); ledge(T.card, TBLACK, 3.5); ledge(T.card, ACCENT, 2, 0.35)
 
 	T.stepLbl = Instance.new("TextLabel")
-	T.stepLbl.Position = UDim2.fromOffset(14, -11); T.stepLbl.Size = UDim2.fromOffset(56, 22)
+	T.stepLbl.Position = UDim2.fromOffset(16, -14); T.stepLbl.Size = UDim2.fromOffset(72, 28)
 	T.stepLbl.BackgroundColor3 = ACCENT; T.stepLbl.BorderSizePixel = 0
-	T.stepLbl.FontFace = TITLE_FACE; T.stepLbl.TextSize = 13; T.stepLbl.TextColor3 = Color3.fromRGB(14, 18, 6)
+	T.stepLbl.FontFace = TITLE_FACE; T.stepLbl.TextSize = 17; T.stepLbl.TextColor3 = Color3.fromRGB(14, 18, 6)
 	T.stepLbl.Text = "1 / 5"; T.stepLbl.ZIndex = 6; T.stepLbl.Parent = T.card
-	corner(T.stepLbl, 5); ledge(T.stepLbl, TBLACK, 2)
+	corner(T.stepLbl, 6); ledge(T.stepLbl, TBLACK, 2.5)
 
 	T.title = Instance.new("TextLabel")
-	T.title.Position = UDim2.fromOffset(16, 18); T.title.Size = UDim2.new(1, -32, 0, 26)
-	T.title.BackgroundTransparency = 1; T.title.FontFace = TITLE_FACE; T.title.TextSize = 19
+	T.title.Position = UDim2.fromOffset(20, 22); T.title.Size = UDim2.new(1, -40, 0, 32)
+	T.title.BackgroundTransparency = 1; T.title.FontFace = TITLE_FACE; T.title.TextSize = 26
 	T.title.TextColor3 = Color3.new(1, 1, 1); T.title.TextXAlignment = Enum.TextXAlignment.Left
 	T.title.ZIndex = 6; T.title.Parent = T.card
 
 	T.body = Instance.new("TextLabel")
-	T.body.Position = UDim2.fromOffset(16, 47); T.body.Size = UDim2.new(1, -32, 0, 62)
-	T.body.BackgroundTransparency = 1; T.body.FontFace = BODYB_FACE; T.body.TextSize = 14
+	T.body.Position = UDim2.fromOffset(20, 60); T.body.Size = UDim2.new(1, -40, 0, 82)
+	T.body.BackgroundTransparency = 1; T.body.FontFace = BODYB_FACE; T.body.TextSize = 19
 	T.body.TextColor3 = TEXTCOL; T.body.TextWrapped = true; T.body.TextXAlignment = Enum.TextXAlignment.Left
 	T.body.TextYAlignment = Enum.TextYAlignment.Top; T.body.ZIndex = 6; T.body.Parent = T.card
 
 	T.skip = Instance.new("TextButton")
-	T.skip.AnchorPoint = Vector2.new(0, 1); T.skip.Position = UDim2.new(0, 16, 1, -14)
-	T.skip.Size = UDim2.fromOffset(96, 30); T.skip.BackgroundTransparency = 1
-	T.skip.FontFace = BODYB_FACE; T.skip.TextSize = 12; T.skip.TextColor3 = DIMTEXT
-	T.skip.Text = "SKIP TOUR"; T.skip.TextXAlignment = Enum.TextXAlignment.Left; T.skip.ZIndex = 6; T.skip.Parent = T.card
+	T.skip.AnchorPoint = Vector2.new(0, 1); T.skip.Position = UDim2.new(0, 20, 1, -18)
+	T.skip.Size = UDim2.fromOffset(130, 34); T.skip.BackgroundTransparency = 1
+	T.skip.FontFace = BODYB_FACE; T.skip.TextSize = 16; T.skip.TextColor3 = DIMTEXT
+	T.skip.Text = "SKIP TUTORIAL"; T.skip.TextXAlignment = Enum.TextXAlignment.Left; T.skip.ZIndex = 6; T.skip.Parent = T.card
 
 	T.next = Instance.new("TextButton")
-	T.next.AnchorPoint = Vector2.new(1, 1); T.next.Position = UDim2.new(1, -14, 1, -12)
-	T.next.Size = UDim2.fromOffset(122, 40); T.next.BackgroundColor3 = ACCENT; T.next.BorderSizePixel = 0
-	T.next.FontFace = TITLE_FACE; T.next.TextSize = 16; T.next.TextColor3 = Color3.new(1, 1, 1)
+	T.next.AnchorPoint = Vector2.new(1, 1); T.next.Position = UDim2.new(1, -18, 1, -16)
+	T.next.Size = UDim2.fromOffset(150, 50); T.next.BackgroundColor3 = ACCENT; T.next.BorderSizePixel = 0
+	T.next.FontFace = TITLE_FACE; T.next.TextSize = 22; T.next.TextColor3 = Color3.new(1, 1, 1)
 	T.next.Text = "NEXT"; T.next.ZIndex = 6; T.next.Parent = T.card
 	corner(T.next, 8); ledge(T.next, TBLACK, 2.5); lbevel(T.next)
 
@@ -6263,25 +6266,34 @@ do
 
 	T.place = function(target)
 		local cam = workspace.CurrentCamera
-		local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+		-- This gui is scaled by lattach; its children use PRE-scale offsets. Targets report Absolute* in
+		-- REAL screen pixels, so divide everything by our scale S to place holes/ring/card in this gui's
+		-- offset space (they then render back at the right real-pixel spot, aligned with the scaled HUD).
+		local usc = T.gui:FindFirstChild("ResponsiveScale")
+		local S = (usc and usc.Scale) or 1
+		local vpr = cam and cam.ViewportSize or Vector2.new(1280, 720)
+		local VX, VY = vpr.X / S, vpr.Y / S -- full screen in offset space
 		local pos, size = target.AbsolutePosition, target.AbsoluteSize
-		local pad = 12
-		local x, y = math.floor(pos.X - pad), math.floor(pos.Y - pad)
-		local w, h = math.floor(size.X + pad * 2), math.floor(size.Y + pad * 2)
-		T.dim[1].Position = UDim2.fromOffset(0, 0); T.dim[1].Size = UDim2.fromOffset(vp.X, math.max(0, y))
-		T.dim[2].Position = UDim2.fromOffset(0, y + h); T.dim[2].Size = UDim2.fromOffset(vp.X, math.max(0, vp.Y - (y + h)))
+		local pad = 14
+		local x = math.floor((pos.X - pad) / S)
+		local y = math.floor((pos.Y - pad) / S)
+		local w = math.floor((size.X + pad * 2) / S)
+		local h = math.floor((size.Y + pad * 2) / S)
+		T.dim[1].Position = UDim2.fromOffset(0, 0); T.dim[1].Size = UDim2.fromOffset(VX, math.max(0, y))
+		T.dim[2].Position = UDim2.fromOffset(0, y + h); T.dim[2].Size = UDim2.fromOffset(VX, math.max(0, VY - (y + h)))
 		T.dim[3].Position = UDim2.fromOffset(0, y); T.dim[3].Size = UDim2.fromOffset(math.max(0, x), h)
-		T.dim[4].Position = UDim2.fromOffset(x + w, y); T.dim[4].Size = UDim2.fromOffset(math.max(0, vp.X - (x + w)), h)
+		T.dim[4].Position = UDim2.fromOffset(x + w, y); T.dim[4].Size = UDim2.fromOffset(math.max(0, VX - (x + w)), h)
 		T.ring.Position = UDim2.fromOffset(x, y); T.ring.Size = UDim2.fromOffset(w, h)
-		local cardW, cardH = 330, 158
-		local cx = math.clamp(math.floor(pos.X + size.X / 2 - cardW / 2), 12, math.max(12, vp.X - cardW - 12))
+		local cardW, cardH = 430, 210 -- offset-space size (matches T.card.Size); renders at cardW*S
+		local tcx = (pos.X + size.X / 2) / S -- target centre X in offset space
+		local cx = math.clamp(math.floor(tcx - cardW / 2), 12, math.max(12, VX - cardW - 12))
 		local cy
-		if (y + h / 2) > vp.Y / 2 then
-			cy = y - cardH - 18
+		if (y + h / 2) > VY / 2 then -- target in the lower half → card ABOVE it
+			cy = y - cardH - 22
 		else
-			cy = y + h + 18
+			cy = y + h + 22
 		end
-		cy = math.clamp(cy, 12, math.max(12, vp.Y - cardH - 12))
+		cy = math.clamp(cy, 12, math.max(12, VY - cardH - 12))
 		T.card.Position = UDim2.fromOffset(cx, cy)
 	end
 
