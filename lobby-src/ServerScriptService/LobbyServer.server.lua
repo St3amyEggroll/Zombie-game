@@ -1570,9 +1570,7 @@ local function shopSnapshot(prof, enter)
 		endsIn = SHOP.RestockSeconds - (os.time() % SHOP.RestockSeconds),
 		coins = prof.lobbyMoney,
 		slots = slots,
-		-- The featured EXCLUSIVE PACK — now a FIXED Robux BUNDLE (guns + coins), one purchase, no gacha.
-		-- The `kind="bundle"` + guns/coins fields drive the new UI; the legacy product1/3/10 fields are
-		-- kept so the CURRENT client keeps rendering until the bundle UI ships (they can be dropped then).
+		-- The featured EXCLUSIVE PACK — a FIXED Robux BUNDLE (guns + coins), one purchase, no gacha.
 		pack = {
 			kind = "bundle",
 			name = "EXCLUSIVE GUN PACK",
@@ -1591,11 +1589,6 @@ local function shopSnapshot(prof, enter)
 				end
 				return g
 			end)(),
-			-- legacy (pre-bundle) fields — harmless once the new UI lands:
-			caseId = "gunpack",
-			product1 = SHOP.PackProducts[1], product3 = SHOP.PackProducts[3], product10 = SHOP.PackProducts[10],
-			robux1 = productPrice(SHOP.PackProducts[1]), robux3 = productPrice(SHOP.PackProducts[3]),
-			robux10 = productPrice(SHOP.PackProducts[10]),
 		},
 		-- PITY meter: opens left until the guaranteed legendary+.
 		pityLeft = math.max(1, SHOP.PityEvery - (prof.pity or 0)),
