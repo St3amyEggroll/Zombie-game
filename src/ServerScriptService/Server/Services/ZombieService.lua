@@ -836,6 +836,12 @@ local function onZombieDied(record)
 	end
 	record.dead = true
 	active[record.model] = nil
+	-- Corpses are anonymous: kill the Humanoid's built-in overhead name + health bar the moment it dies
+	-- (they lingered over ragdolls). spawnOne restores both — these models are POOLED and reused.
+	if record.hum then
+		record.hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		record.hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	end
 	clearFrost(record, false) -- drop the ice shell (the shatter below plays its own sound)
 	if record.root then
 		SoundFXService.Emit("ZDeath:" .. record.typeId, record.root.Position)
@@ -1503,6 +1509,9 @@ local function spawnOne(round: number, forcedType: string?)
 	hum.MaxHealth = hp
 	hum.Health = hp
 	hum.WalkSpeed = scaledSpeed(round, t)
+	-- Pooled reuse: death turned the overhead name/health display OFF — turn it back on for the fresh spawn.
+	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+	hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.DisplayWhenDamaged
 
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)

@@ -92,21 +92,22 @@ local function buildUI()
 	multLabel.Size = UDim2.new(1, 0, 0, 18)
 	multLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-	local cash = UITheme.Button(panel, "CASH OUT", "primary")
-	cash.Position = UDim2.new(0.5, 0, 0, 122)
+	-- DOUBLE DOWN rides on TOP in GREEN (the exciting default); CASH OUT below in RED (the bail-out).
+	stayBtn = UITheme.Button(panel, "DOUBLE DOWN", "primary")
+	stayBtn.Position = UDim2.new(0.5, 0, 0, 122)
+	stayBtn.AnchorPoint = Vector2.new(0.5, 0)
+	stayBtn.Size = UDim2.new(1, -36, 0, 56)
+	stayBtn.Activated:Connect(function()
+		gui.Enabled = false -- staying is the default: just dismiss (the window closing doubles you down)
+	end)
+
+	local cash = UITheme.Button(panel, "CASH OUT", "danger")
+	cash.Position = UDim2.new(0.5, 0, 0, 190)
 	cash.AnchorPoint = Vector2.new(0.5, 0)
-	cash.Size = UDim2.new(1, -36, 0, 56)
+	cash.Size = UDim2.new(1, -36, 0, 50)
 	cash.Activated:Connect(function()
 		Remotes.Get("ExtractChoice"):FireServer()
 		gui.Enabled = false -- the server banks + teleports; hide immediately so it can't double-fire
-	end)
-
-	stayBtn = UITheme.Button(panel, "DOUBLE DOWN", "danger")
-	stayBtn.Position = UDim2.new(0.5, 0, 0, 190)
-	stayBtn.AnchorPoint = Vector2.new(0.5, 0)
-	stayBtn.Size = UDim2.new(1, -36, 0, 50)
-	stayBtn.Activated:Connect(function()
-		gui.Enabled = false -- staying is the default: just dismiss (the window closing doubles you down)
 	end)
 
 	timeLabel = UITheme.Label(panel, "Clock", 15, nil, true)
