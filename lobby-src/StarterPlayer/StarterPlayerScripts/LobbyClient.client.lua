@@ -87,22 +87,31 @@ local function lstuds(frame, tile, transparency)
 	img.Parent = frame
 	return img
 end
--- Responsive: one live UIScale per ScreenGui (designed 1920x1080, clamped, touch bump).
+-- Responsive: one live UIScale per ScreenGui. The lobby is authored in a 1920x1080 design space.
+-- CHANGED (mobile pass): the old formula (min(vp/1920,1080) clamped 0.55-1.3, then x1.3 touch x1.2) landed
+-- WILDLY inconsistently on phones — a high-DPI phone (2532x1170) computed ~1.69 while a low-res one
+-- (1280x720) computed ~1.04, so "the same phone" looked very different. Now MOBILE fits the largest modal
+-- (the run-setup panel, ~600x490) into a fixed fraction of the SCREEN, so the UI is the SAME relative size
+-- on every device (pixel density cancels out) with finger-sized touch targets; DESKTOP stays near 1:1.
 local UserInputService = game:GetService("UserInputService")
-local UI_SCALE_MULT = 1.2 -- GLOBAL lobby size dial (game place uses its own in UITheme)
+local UI_SCALE_MULT = 1.2 -- desktop size dial (game place uses its own in UITheme)
+local FIT_W, FIT_H = 720, 500 -- largest modal footprint + margin — the mobile fit target
 local function lattach(screenGui)
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
 	local function compute()
 		local cam = workspace.CurrentCamera
 		local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
-		local sc = math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.55, 1.3)
-		-- touch bump AFTER the clamp — applied before, the 0.55 floor swallowed it on small phones.
-		-- CHANGED: bigger bump (1.12 -> 1.3) — the lobby UI read too small on phones.
 		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
-			sc *= 1.3
+			-- MOBILE: fit FIT_W x FIT_H into ~84% width / ~86% height and take the tighter axis. Because
+			-- this scales to the viewport's real pixels, the modal occupies the same fraction of the
+			-- screen (~86% tall) on a high-DPI AND a low-res phone — consistent, and always on-screen. The
+			-- 0.86 height factor also leaves the bottom HUD (dock + coins + XP) room on narrow 16:9 phones.
+			local sc = math.min(vp.X * 0.84 / FIT_W, vp.Y * 0.86 / FIT_H)
+			return math.clamp(sc, 0.6, 2.5) -- floor low enough that a tiny viewport can still fit the modal
 		end
-		return sc * UI_SCALE_MULT
+		-- DESKTOP / mouse: near 1:1 with a gentle clamp (unchanged feel).
+		return math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.7, 1.3) * UI_SCALE_MULT
 	end
 	scale.Scale = compute()
 	scale.Parent = screenGui
