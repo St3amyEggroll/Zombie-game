@@ -6194,7 +6194,10 @@ do
 	T.dim = {} -- four dark panels leave a clear window over the current target
 	for k = 1, 4 do
 		local f = Instance.new("Frame")
-		f.BackgroundColor3 = Color3.fromRGB(4, 6, 3); f.BackgroundTransparency = 0.28
+		-- CHANGED: much darker (0.28 -> 0.06). At 72% opacity, bright things (the PLAY button, the world
+		-- spotlight on the character) bled through and it read as a bright blob instead of a clean
+		-- spotlight; near-opaque, only the clear window over the target stands out.
+		f.BackgroundColor3 = Color3.fromRGB(3, 4, 2); f.BackgroundTransparency = 0.06
 		f.BorderSizePixel = 0; f.ZIndex = 2; f.Parent = T.gui
 		T.dim[k] = f
 	end
