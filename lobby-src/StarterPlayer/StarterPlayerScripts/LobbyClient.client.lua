@@ -875,6 +875,7 @@ StatsRemote.OnClientEvent:Connect(function(s)
 	-- Expose the first-join tour flag as an attribute too (this handler is connected early, so it catches
 	-- the join snapshot; the tour block below reads the attribute rather than racing the remote event).
 	localPlayer:SetAttribute("TutDone", s.tutDone == true)
+	localPlayer:SetAttribute("BestWave", tonumber(s.bestWave) or 0) -- the pad trail hides once you've run
 	moneyLabel.Text = fmt(s.lobbyMoney or 0)
 	bestLabel.Text = "BEST: WAVE " .. tostring(s.bestWave or 0)
 	-- All profile-load retries failed: this session runs on a fallback that will NEVER be saved
@@ -6388,6 +6389,12 @@ do
 	end
 
 	RunService.Heartbeat:Connect(function(dt)
+		-- NEW-PLAYER guide only: shows AFTER the tutorial finishes and ONLY until their first run is
+		-- banked (bestWave > 0 = they've played). Veterans never see it.
+		if localPlayer:GetAttribute("TutDone") ~= true
+			or (tonumber(localPlayer:GetAttribute("BestWave")) or 0) > 0 then
+			return G.hideAll()
+		end
 		local char = localPlayer.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		if not root then

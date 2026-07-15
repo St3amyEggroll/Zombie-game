@@ -56,8 +56,9 @@ local function rollFog(seconds: number)
 	end)
 end
 
--- ===== EXTRACTION CARD =====
-local gui, panel, potLabel, timeLabel, stayNote
+-- ===== EXTRACTION CARD ===== ordered TOP-DOWN rows (header → payout → buttons → countdown), nothing
+-- anchored from the bottom — the old mixed anchoring let the note render UNDER the CASH OUT button.
+local gui, panel, potLabel, multLabel, timeLabel, stayBtn
 local countdownToken = 0
 
 local function fmt(n: number): string
@@ -78,40 +79,41 @@ local function buildUI()
 	panel = UITheme.Panel(gui, "ExtractPanel")
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.42)
-	panel.Size = UDim2.fromOffset(420, 240)
+	panel.Size = UDim2.fromOffset(440, 306)
 	UITheme.Header(panel, "EXTRACTION", nil, UITheme.GOLD)
 
-	potLabel = UITheme.Title(panel, "Pot", 24)
-	potLabel.Position = UDim2.fromOffset(0, 62)
-	potLabel.Size = UDim2.new(1, 0, 0, 30)
+	potLabel = UITheme.Title(panel, "Pot", 26)
+	potLabel.Position = UDim2.fromOffset(0, 60)
+	potLabel.Size = UDim2.new(1, 0, 0, 32)
 	potLabel.TextXAlignment = Enum.TextXAlignment.Center
 
-	timeLabel = UITheme.Label(panel, "Clock", 16, nil, true)
-	timeLabel.Position = UDim2.fromOffset(0, 94)
-	timeLabel.Size = UDim2.new(1, 0, 0, 20)
-	timeLabel.TextXAlignment = Enum.TextXAlignment.Center
+	multLabel = UITheme.Label(panel, "Mult", 15, nil, true)
+	multLabel.Position = UDim2.fromOffset(0, 92)
+	multLabel.Size = UDim2.new(1, 0, 0, 18)
+	multLabel.TextXAlignment = Enum.TextXAlignment.Center
 
 	local cash = UITheme.Button(panel, "CASH OUT", "primary")
-	cash.AnchorPoint = Vector2.new(0.5, 1)
-	cash.Position = UDim2.new(0.5, 0, 1, -66)
-	cash.Size = UDim2.new(1, -32, 0, 52)
+	cash.Position = UDim2.new(0.5, 0, 0, 122)
+	cash.AnchorPoint = Vector2.new(0.5, 0)
+	cash.Size = UDim2.new(1, -36, 0, 56)
 	cash.Activated:Connect(function()
 		Remotes.Get("ExtractChoice"):FireServer()
 		gui.Enabled = false -- the server banks + teleports; hide immediately so it can't double-fire
 	end)
 
-	local stay = UITheme.Button(panel, "DOUBLE DOWN", "danger")
-	stay.AnchorPoint = Vector2.new(0.5, 1)
-	stay.Position = UDim2.new(0.5, 0, 1, -12)
-	stay.Size = UDim2.new(1, -32, 0, 46)
-	stay.Activated:Connect(function()
+	stayBtn = UITheme.Button(panel, "DOUBLE DOWN", "danger")
+	stayBtn.Position = UDim2.new(0.5, 0, 0, 190)
+	stayBtn.AnchorPoint = Vector2.new(0.5, 0)
+	stayBtn.Size = UDim2.new(1, -36, 0, 50)
+	stayBtn.Activated:Connect(function()
 		gui.Enabled = false -- staying is the default: just dismiss (the window closing doubles you down)
 	end)
 
-	stayNote = UITheme.Label(panel, "StayNote", 13)
-	stayNote.Position = UDim2.fromOffset(0, 116)
-	stayNote.Size = UDim2.new(1, 0, 0, 18)
-	stayNote.TextXAlignment = Enum.TextXAlignment.Center
+	timeLabel = UITheme.Label(panel, "Clock", 15, nil, true)
+	timeLabel.AnchorPoint = Vector2.new(0.5, 1)
+	timeLabel.Position = UDim2.new(0.5, 0, 1, -12)
+	timeLabel.Size = UDim2.new(1, 0, 0, 18)
+	timeLabel.TextXAlignment = Enum.TextXAlignment.Center
 end
 
 local function showWindow(info)
@@ -123,8 +125,9 @@ local function showWindow(info)
 	local pot = tonumber(info.pot) or 0
 	local mult = tonumber(info.mult) or 1
 	local nextMult = tonumber(info.nextMult) or (mult + 0.5)
-	potLabel.Text = ("CASH OUT: %s COINS  (x%.1f)"):format(fmt(math.floor(pot * mult)), mult)
-	stayNote.Text = ("or DOUBLE DOWN — payout climbs to x%.1f"):format(nextMult)
+	potLabel.Text = ("CASH OUT %s COINS"):format(fmt(math.floor(pot * mult)))
+	multLabel.Text = ("current payout x%.1f"):format(mult)
+	stayBtn.Text = ("DOUBLE DOWN  →  x%.1f"):format(nextMult) -- the risk lives ON the button now
 	gui.Enabled = true
 	countdownToken += 1
 	local myTok = countdownToken
@@ -135,7 +138,7 @@ local function showWindow(info)
 			if left <= 0 then
 				break
 			end
-			timeLabel.Text = ("horde returns in %ds"):format(math.ceil(left))
+			timeLabel.Text = ("HORDE RETURNS IN %ds"):format(math.ceil(left))
 			task.wait(0.2)
 		end
 		if myTok == countdownToken then
