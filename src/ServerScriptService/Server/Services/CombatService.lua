@@ -121,13 +121,14 @@ local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
 					hitEvent:Fire(player, rec.model, false, weaponId, dealt)
 					if killed then
 						killEvent:Fire(player, rec.model, false, weaponId)
-						-- NEW: splash kills (rocket/plasma) confirm to the shooter too, so they get the
-						-- kill juice + loot-coin burst that direct hits already had.
-						Remotes.Get("HitConfirmed"):FireClient(player, root.Position, false, true, true,
-							math.floor(dealt + 0.5), false, rec.model:GetAttribute("IsSpecial") == true)
 					else
 						ZombieService.Hit(rec, center, 24)
 					end
+					-- CHANGED: confirm EVERY splash hit to the shooter (not just kills), so AoE weapons
+					-- (rocket/plasma) show damage numbers on everything they hit instead of feeling silent.
+					-- The client's damage-number budget caps the visual so a horde-wide blast can't lag.
+					Remotes.Get("HitConfirmed"):FireClient(player, root.Position, false, true, killed,
+						math.floor(dealt + 0.5), false, rec.model:GetAttribute("IsSpecial") == true)
 				end
 			end
 		end

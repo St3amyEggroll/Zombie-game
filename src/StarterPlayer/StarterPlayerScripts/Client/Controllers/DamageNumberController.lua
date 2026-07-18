@@ -27,6 +27,12 @@ local KILL_COLOR = Color3.fromRGB(255, 70, 70)
 
 local anchorFolder
 
+-- BUDGET: hard cap on simultaneous numbers so no source can churn instances — AoE weapons now pop a
+-- number per splashed zombie (rocket/plasma into a horde), and this keeps that from ever lagging.
+-- Kills always show (the payoff); non-kill hits are dropped once the screen is already full.
+local MAX_ACTIVE = 44
+local activeCount = 0
+
 local function spawnNumber(pos: Vector3, text: string, color: Color3, scale: number)
 	local part = Instance.new("Part")
 	part.Anchored = true
@@ -57,6 +63,10 @@ local function spawnNumber(pos: Vector3, text: string, color: Color3, scale: num
 
 	TweenService:Create(part, TweenInfo.new(LIFE), { CFrame = part.CFrame + Vector3.new(0, RISE, 0) }):Play()
 	TweenService:Create(label, TweenInfo.new(LIFE), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	activeCount += 1
+	part.Destroying:Once(function()
+		activeCount -= 1
+	end)
 	Debris:AddItem(part, LIFE)
 end
 
@@ -64,6 +74,10 @@ local CRIT_COLOR = Color3.fromRGB(255, 150, 40) -- critical hits pop ORANGE
 
 local function onHitConfirmed(position: Vector3, isHeadshot: boolean, hitHumanoid: boolean, killed: boolean, damage: number?, isCrit: boolean?)
 	if not hitHumanoid or not damage or damage <= 0 then
+		return
+	end
+	-- Over budget: still show KILLS (the payoff moment), drop ordinary hit numbers.
+	if activeCount >= MAX_ACTIVE and not killed then
 		return
 	end
 	local color, scale = HIT_COLOR, 1

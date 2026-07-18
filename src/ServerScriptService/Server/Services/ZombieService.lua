@@ -1009,7 +1009,11 @@ local function ensureTag(record)
 	end
 	bb.Nm.Text = record.type.name or record.typeId
 	bb.Track.Fill.Size = UDim2.fromScale(1, 1)
-	bb.Enabled = false -- anonymous until first blood
+	-- CHANGED: grunts stay anonymous until first blood, but a BOMB ZOMBIE (looks like a grunt, explodes
+	-- on you) and BOSSES are named from spawn — you must be able to identify and prioritize them before
+	-- contact. The colored threat outline (client) is the at-a-distance signal; this is the name.
+	local named = record.isBoss or record.typeId == "bombzombie"
+	bb.Enabled = named
 	record.tag = bb
 	record.tagBar = bb.Track.Fill
 end
@@ -1593,6 +1597,11 @@ local function spawnOne(round: number, forcedType: string?)
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)
 	model:SetAttribute("IsSpecial", t.isSpecial)
+	-- NEW: the type id + threat flags, so the CLIENT can color threat outlines and identify dangerous
+	-- archetypes AT A DISTANCE (the "specials force you to move" loop). Many high-threat types
+	-- (bomb/lead/leaper/ghost/speedy) aren't flagged isSpecial, so the client keys off ZType directly.
+	model:SetAttribute("ZType", t.id)
+	model:SetAttribute("ZBomb", t.isBomb == true)
 	-- NEW: aliveness flag for clients (no Humanoid to read anymore) — AimController skips ZDead corpses.
 	model:SetAttribute("ZDead", false)
 
