@@ -1860,7 +1860,10 @@ local function grounded(record): boolean
 	end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { record.model }
+	-- Exclude EVERY zombie, not just this one: zombies don't collide with each other, so a ray that
+	-- lands on a packed horde-mate must not count as footing (that was the "stacking" bug — hover
+	-- perched walkers on each other's heads).
+	params.FilterDescendantsInstances = { zombieFolder }
 	return Workspace:Raycast(root.Position, Vector3.new(0, -4.5, 0), params) ~= nil
 end
 
@@ -1887,7 +1890,7 @@ local function hover(record)
 	end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { record.model }
+	params.FilterDescendantsInstances = { zombieFolder } -- ignore ALL zombies (see grounded) — real ground only
 	-- Cast from ABOVE the root: if the rig has already punched into the floor, a ray from root height
 	-- starts INSIDE the floor part and sails through it (that was the freeze-ray "zombie in the ground"
 	-- bug — rapid knockback resets let it penetrate, then the ray missed the surface it was under).

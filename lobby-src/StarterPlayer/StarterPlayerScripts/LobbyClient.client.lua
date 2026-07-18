@@ -1444,7 +1444,7 @@ do
 	ll.Padding = UDim.new(0, 8)
 	ll.Parent = catRow
 	invGrid:SetAttribute("WeaponCat", "level")
-	local defs = { { "level", "LEVEL" }, { "crate", "CRATE" }, { "event", "EVENT" } }
+	local defs = { { "level", "LEVEL" }, { "event", "EVENT" } } -- CRATE tab removed (collided with the CRATES side tab)
 	local btns = {}
 	local function paint()
 		local cur = invGrid:GetAttribute("WeaponCat") or "level"
@@ -1515,7 +1515,9 @@ local function invCard(opts)
 	fc.CornerRadius = UDim.new(0, 12)
 	fc.Parent = f
 	-- Ring states: selected gold / next-unlock gold / plain black.
-	ledge(f, (isSel or opts.nextUp) and GOLD or TBLACK, (isSel or opts.nextUp) and 3.5 or 3)
+	-- EQUIPPED guns wear a thick TOXIC ring (gold stays for selection/next-up)
+	ledge(f, (opts.equipped and ACCENT) or ((isSel or opts.nextUp) and GOLD) or TBLACK,
+		(opts.equipped or isSel or opts.nextUp) and 3.5 or 3)
 
 	-- ART WINDOW: white frame + absolute-color gradient (gradients only multiply, same trick as the
 	-- buttons) — faint rarity tint at the top fading to near-black.
@@ -1636,7 +1638,36 @@ local function invCard(opts)
 	sub.Text = opts.subText or ""
 	sub.Parent = bar
 
-	if opts.chip then -- sticker chip hanging top-left (EQUIPPED toxic / NEXT UP gold / PRIM etc.)
+	if opts.equipped then
+		-- EQUIPPED: a full-width toxic band sitting right on top of the rarity bar — unmissable, and it
+		-- stays off the gun art (the old floating chip covered the render).
+		local band = Instance.new("TextLabel")
+		band.AnchorPoint = Vector2.new(0, 1)
+		band.Position = UDim2.new(0, 0, 1, -BAR_H)
+		band.Size = UDim2.new(1, 0, 0, 18)
+		band.BackgroundColor3 = ACCENT
+		band.BorderSizePixel = 0
+		band.ZIndex = 4
+		band.FontFace = TITLE_FACE
+		band.TextSize = 12
+		band.TextColor3 = Color3.new(1, 1, 1)
+		band.Text = "✓ EQUIPPED"
+		band.Parent = f
+		local bs = Instance.new("UIStroke")
+		bs.Color = TBLACK
+		bs.Thickness = 2
+		bs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		bs.Parent = band
+		local seam = Instance.new("Frame")
+		seam.AnchorPoint = Vector2.new(0, 0)
+		seam.Position = UDim2.new(0, 0, 0, 0)
+		seam.Size = UDim2.new(1, 0, 0, 2)
+		seam.BackgroundColor3 = TBLACK
+		seam.BorderSizePixel = 0
+		seam.ZIndex = 5
+		seam.Parent = band
+	end
+	if opts.chip then -- sticker chip hanging top-left (NEXT UP gold / PRIM etc.)
 		local isGoldChip = opts.chip == "NEXT UP"
 		local chip = Instance.new("TextLabel")
 		chip.Position = UDim2.fromOffset(6, 6)
@@ -2170,7 +2201,8 @@ local function renderWeaponsGrid()
 			order = i, image = w.image,
 			nextUp = (id == nextUnlockId) or nil,
 			lockLevel = (not owned) and (w.unlock or 0) or nil,
-			chip = isEq and "EQUIPPED" or ((id == nextUnlockId) and "NEXT UP") or nil,
+			equipped = isEq or nil,
+			chip = ((id == nextUnlockId) and "NEXT UP") or nil,
 			subText = owned and ((invData.catalog.rarities[w.rarity] or {}).name or ""):upper() or "",
 			locked = not owned,
 		})
@@ -5615,35 +5647,31 @@ do
 		return l
 	end
 
-	-- THE TILE — the collapsed tab is a SQUARE dock-style button now (the tall bookmark + floating
-	-- arrow read as odd): scroll icon on top, QUESTS underneath, the open/close chevron tucked inside.
+	-- THE RAIL — a clean STRAIGHT-EDGED rectangle flush to the screen edge (no rounding, no tile):
+	-- vertical QUESTS text, the open/close chevron at the bottom, red badge on the corner.
 	Q.rail = Instance.new("TextButton")
 	Q.rail.Name = "QuestRail"
 	Q.rail.AnchorPoint = Vector2.new(0, 0.5)
-	Q.rail.Position = UDim2.new(0, 12, 0.5, 0)
-	Q.rail.Size = UDim2.fromOffset(66, 66)
+	Q.rail.Position = UDim2.new(0, 0, 0.5, 0)
+	Q.rail.Size = UDim2.fromOffset(44, 168)
 	Q.rail.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
 	Q.rail.BackgroundTransparency = 0.08
 	Q.rail.BorderSizePixel = 0
 	Q.rail.AutoButtonColor = true
 	Q.rail.Text = ""
 	Q.rail.Parent = Q.gui
-	corner(Q.rail, 10)
 	ledge(Q.rail, TBLACK, 3)
 	do
-		local ic = Q.text(Q.rail, "📜", 22)
-		ic.AnchorPoint = Vector2.new(0.5, 0)
-		ic.Position = UDim2.new(0.5, 0, 0, 5)
-		ic.Size = UDim2.fromOffset(30, 26)
-		local vt = Q.text(Q.rail, "QUESTS", 11, Color3.fromRGB(217, 247, 184))
-		vt.AnchorPoint = Vector2.new(0.5, 1)
-		vt.Position = UDim2.new(0.5, 0, 1, -4)
-		vt.Size = UDim2.fromOffset(64, 14)
+		local vt = Q.text(Q.rail, "QUESTS", 15, Color3.fromRGB(217, 247, 184))
+		vt.AnchorPoint = Vector2.new(0.5, 0.5)
+		vt.Position = UDim2.new(0.5, 0, 0.5, -8)
+		vt.Size = UDim2.fromOffset(130, 20)
+		vt.Rotation = -90
 	end
-	Q.arrow = Q.text(Q.rail, "▶", 11, ACCENT)
-	Q.arrow.AnchorPoint = Vector2.new(1, 0.5)
-	Q.arrow.Position = UDim2.new(1, -3, 0, 18)
-	Q.arrow.Size = UDim2.fromOffset(12, 12)
+	Q.arrow = Q.text(Q.rail, "▶", 13, ACCENT)
+	Q.arrow.AnchorPoint = Vector2.new(0.5, 1)
+	Q.arrow.Position = UDim2.new(0.5, 0, 1, -6)
+	Q.arrow.Size = UDim2.fromOffset(16, 16)
 	Q.badge = Instance.new("Frame")
 	Q.badge.AnchorPoint = Vector2.new(1, 0)
 	Q.badge.Position = UDim2.new(1, 8, 0, -8)
