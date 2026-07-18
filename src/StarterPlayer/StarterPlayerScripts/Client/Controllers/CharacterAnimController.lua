@@ -57,6 +57,7 @@ end
 local holdTracks: { [Model]: AnimationTrack } = {}
 local holdTokens: { [Model]: number } = {} -- generation counter: a newer applyHold cancels older waits
 local animCache: { [string]: Animation } = {}
+local warnedIds: { [string]: boolean } = {} -- never-loaded assets we've already warned about
 
 local function getAnim(id: string): Animation
 	local a = animCache[id]
@@ -200,7 +201,10 @@ local function applyHold(character: Model)
 				track:Play(0)
 			end
 		else
-			warn(("[CharacterAnimController] hold animation %s never loaded — is it uploaded by the GAME OWNER? Using the procedural stance."):format(id))
+			if not warnedIds[id] then -- once per asset, not per re-assert
+				warnedIds[id] = true
+				warn(("[CharacterAnimController] hold animation %s never loaded — is it uploaded by the GAME OWNER? Using the procedural stance."):format(id))
+			end
 			track:Stop(0)
 			applyProcPose(character)
 		end
@@ -209,6 +213,14 @@ end
 
 local function watchCharacter(character: Model)
 	task.spawn(applyHold, character) -- apply whatever's already stamped (late joiners see current poses)
+	-- FRESH-SPAWN RE-ASSERT (the "no pose until I switch guns" bug): on a brand-new character the track
+	-- can get loaded into the Animator the local Animate script created, which the engine abandons once
+	-- the SERVER's Animator replicates a beat later — the pose plays into the void. Re-running applyHold
+	-- shortly after spawn reloads the track on whichever Animator actually survived. Idempotent: it
+	-- stops + replays the same looped pose (no visible blip), and the token guard keeps a real gun
+	-- switch in between as the winner.
+	task.delay(1.5, applyHold, character)
+	task.delay(4, applyHold, character)
 	character:GetAttributeChangedSignal("HoldAnimId"):Connect(function()
 		task.spawn(applyHold, character)
 	end)
