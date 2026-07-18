@@ -683,8 +683,25 @@ coinsRow.BackgroundColor3 = Color3.fromRGB(19, 20, 15); coinsRow.BackgroundTrans
 coinsRow.BorderSizePixel = 0; coinsRow.Parent = coinsGui
 corner(coinsRow, 27); ledge(coinsRow, TBLACK, 3); ledge(coinsRow, Color3.new(1, 1, 1), 1.5, 0.75)
 local coinPad = Instance.new("UIPadding")
-coinPad.PaddingLeft = UDim.new(0, 6); coinPad.PaddingRight = UDim.new(0, 18)
+coinPad.PaddingLeft = UDim.new(0, 6); coinPad.PaddingRight = UDim.new(0, 52) -- room for the + button
 coinPad.Parent = coinsRow
+do -- NEW: gold "+" beside the coins (same as in-game) — deep-links to the shop's coin bundles.
+	-- Built here, WIRED later where openShopTab exists (scope): stored on LC for the shop block.
+	local plus = Instance.new("TextButton")
+	plus.Name = "GetCoinsPlus"
+	plus.AnchorPoint = Vector2.new(1, 0.5)
+	plus.Position = UDim2.new(1, 40, 0.5, 0)
+	plus.Size = UDim2.fromOffset(30, 30)
+	plus.BackgroundColor3 = GOLD
+	plus.FontFace = TITLE_FACE
+	plus.TextSize = 22
+	plus.TextColor3 = Color3.fromRGB(36, 26, 4)
+	plus.Text = "+"
+	plus.Parent = coinsRow
+	corner(plus, 9)
+	ledge(plus, TBLACK, 2.5)
+	LC.coinPlusBtn = plus
+end
 local coinIcon = Instance.new("ImageLabel")
 coinIcon.AnchorPoint = Vector2.new(0, 0.5); coinIcon.Position = UDim2.new(0, 0, 0.5, 0)
 coinIcon.Size = UDim2.fromOffset(42, 42); coinIcon.BackgroundTransparency = 1
@@ -4398,6 +4415,11 @@ do
 	dockBtns.shop.Activated:Connect(function()
 		openShopTab("featured")
 	end)
+	if LC.coinPlusBtn then -- the coins pill's "+" (built in the coins block): straight to coin bundles
+		LC.coinPlusBtn.Activated:Connect(function()
+			openShopTab("featured") -- Passes & Coins scroll under the pack on the featured page
+		end)
+	end
 	dockBtns.daily.Activated:Connect(function()
 		openShopTab("daily")
 	end)
