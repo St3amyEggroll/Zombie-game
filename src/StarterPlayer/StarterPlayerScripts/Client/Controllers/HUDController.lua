@@ -45,6 +45,7 @@ local coinPopScale -- UIScale on the coins label (pickup pop)
 local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
 local extractChip                    -- NEW: persistent "next cash-out / live payout multiplier" line
 local extractMult, currentRound = 1, 0 -- so the extraction loop is legible BETWEEN the choice windows
+local leaveBtn                        -- hoisted: hidden during an open extraction window (see below)
 local levelLabel, levelFill
 local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
@@ -206,7 +207,7 @@ local function build()
 		end
 	end
 
-	local leaveBtn = UITheme.Button(waveRow, "LEAVE", "danger")
+	leaveBtn = UITheme.Button(waveRow, "LEAVE", "danger")
 	leaveBtn.Name = "LeaveButton"
 	leaveBtn.Position = UDim2.fromOffset(178 - 8 - 82, 0) -- LEFT of the bar (skip sits on the right)
 	leaveBtn.Size = UDim2.fromOffset(82, 26)
@@ -503,6 +504,9 @@ function HUDController.Start()
 		if currentRound <= 1 then
 			extractMult = 1 -- a fresh run resets the payout multiplier (server does the same)
 		end
+		if leaveBtn then
+			leaveBtn.Visible = true -- the horde is back: any extraction window has closed, restore LEAVE
+		end
 		updateExtractChip()
 		if tonumber(round) == 1 then
 			-- The round-start audio leads by 1s; the text lands on its beat.
@@ -518,6 +522,16 @@ function HUDController.Start()
 	Remotes.Get("ExtractMult").OnClientEvent:Connect(function(mult)
 		extractMult = tonumber(mult) or 1
 		updateExtractChip()
+	end)
+
+	-- LEAVE is a footgun during a cash-out window: leaving banks only the base and skips the WIN + bonus,
+	-- while CASH OUT (on the extraction card) always pays at least as much. So hide LEAVE while the window
+	-- is open — the card's CASH OUT / DOUBLE DOWN are the exits — and bring it back when the wave resumes.
+	Remotes.Get("ExtractWindow").OnClientEvent:Connect(function(info)
+		local open = typeof(info) == "table" and (tonumber(info.seconds) or 0) > 0
+		if leaveBtn then
+			leaveBtn.Visible = not open
+		end
 	end)
 
 	-- Pre-run countdown (waiting for the party to load in): shown in the wave slot until the run starts.
