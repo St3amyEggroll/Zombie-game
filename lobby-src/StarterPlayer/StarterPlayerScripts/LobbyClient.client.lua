@@ -2324,6 +2324,10 @@ do
 			renderActive()
 		end)
 	end
+	-- INSPECT mode owns the whole panel — the rail ducks out (its BACK button sat right on CRATES).
+	invDetail:GetPropertyChangedSignal("Visible"):Connect(function()
+		rail.Visible = not invDetail.Visible
+	end)
 end
 
 renderActive = function()

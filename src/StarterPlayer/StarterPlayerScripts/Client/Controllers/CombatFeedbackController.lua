@@ -134,49 +134,80 @@ end
 -- (one Heartbeat connection for all bolts — cheap even with a horde firing). No dynamic light.
 local activeBolts: { any } = {}
 
--- FLAMETHROWER: no bolts — a cone of actual FLAME puffs rolling from the barrel toward the hit point.
--- Procedural (neon balls that grow, drift up, and burn out through orange->ember), part-capped.
-local flameCount = 0
-local function spawnFlames(from: Vector3, to: Vector3)
-	local delta = to - from
-	local dist = delta.Magnitude
-	if dist < 1 or dist ~= dist or flameCount > 24 then
+-- FLAMETHROWER: a REAL particle flame jet (the engine's own fire textures — no spheres). One pooled
+-- invisible emitter part per client: each shot aims it down the barrel line and bursts fire + embers;
+-- emitted particles live in world space, so back-to-back shots layer into a continuous rolling cone.
+local jetPart, jetFire, jetEmber
+local function ensureJet()
+	if jetPart and jetPart.Parent then
 		return
 	end
-	local dir = delta.Unit
-	local right = dir:Cross(Vector3.yAxis)
-	right = right.Magnitude > 0.01 and right.Unit or Vector3.xAxis
-	local up = right:Cross(dir)
-	local n = math.random(2, 3)
-	for i = 1, n do
-		local t0 = (i - 0.5) / n + (math.random() - 0.5) * 0.2 -- spread the puffs along the jet
-		local spread = dist * 0.10 * t0 -- the cone widens with distance
-		local pos = from + dir * (dist * t0)
-			+ right * ((math.random() - 0.5) * 2 * spread)
-			+ up * ((math.random() - 0.5) * 2 * spread)
-		local puff = Instance.new("Part")
-		puff.Shape = Enum.PartType.Ball
-		puff.Anchored = true; puff.CanCollide = false; puff.CanQuery = false; puff.CanTouch = false
-		puff.CastShadow = false; puff.Material = Enum.Material.Neon
-		puff.Color = Color3.fromRGB(255, math.random(120, 190), 30)
-		puff.Transparency = 0.15
-		local d0 = 0.7 + math.random() * 0.5 + t0 * 0.8 -- bigger toward the end of the jet
-		puff.Size = Vector3.new(d0, d0, d0)
-		puff.CFrame = CFrame.new(pos)
-		puff.Parent = fxFolder
-		flameCount += 1
-		local life = 0.22 + math.random() * 0.14
-		TweenService:Create(puff, TweenInfo.new(life, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = Vector3.new(d0 * 2.2, d0 * 2.2, d0 * 2.2),
-			CFrame = CFrame.new(pos + dir * 2 + Vector3.new(0, 1.6, 0)), -- rolls forward and lifts
-			Color = Color3.fromRGB(140, 34, 8), -- burns down to ember red
-			Transparency = 1,
-		}):Play()
-		task.delay(life + 0.05, function()
-			flameCount -= 1
-			puff:Destroy()
-		end)
+	jetPart = Instance.new("Part")
+	jetPart.Name = "FlameJet"
+	jetPart.Anchored = true
+	jetPart.CanCollide = false
+	jetPart.CanQuery = false
+	jetPart.CanTouch = false
+	jetPart.Transparency = 1
+	jetPart.Size = Vector3.new(0.6, 0.6, 0.6)
+	jetPart.Parent = fxFolder
+
+	jetFire = Instance.new("ParticleEmitter")
+	jetFire.Texture = "rbxasset://textures/particles/fire_main.dds" -- the engine Fire look
+	jetFire.EmissionDirection = Enum.NormalId.Front -- we aim the part's -Z down the shot line
+	jetFire.Rate = 0 -- burst-only via :Emit()
+	jetFire.Speed = NumberRange.new(55, 80)
+	jetFire.Lifetime = NumberRange.new(0.28, 0.5)
+	jetFire.Drag = 2.5 -- roars out fast, licks and slows at the tip
+	jetFire.SpreadAngle = Vector2.new(7, 7)
+	jetFire.Rotation = NumberRange.new(0, 360)
+	jetFire.RotSpeed = NumberRange.new(-140, 140)
+	jetFire.LightEmission = 1
+	jetFire.LightInfluence = 0
+	jetFire.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.9),
+		NumberSequenceKeypoint.new(0.45, 3.0),
+		NumberSequenceKeypoint.new(1, 4.2),
+	})
+	jetFire.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.08),
+		NumberSequenceKeypoint.new(0.7, 0.3),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	jetFire.Color = ColorSequence.new({ -- white-hot core -> orange -> ember red as it flies
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 244, 180)),
+		ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 160, 40)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 34, 8)),
+	})
+	jetFire.Parent = jetPart
+
+	jetEmber = Instance.new("ParticleEmitter") -- stray sparks tumbling off the stream
+	jetEmber.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	jetEmber.EmissionDirection = Enum.NormalId.Front
+	jetEmber.Rate = 0
+	jetEmber.Speed = NumberRange.new(35, 70)
+	jetEmber.Lifetime = NumberRange.new(0.4, 0.8)
+	jetEmber.Drag = 1.5
+	jetEmber.SpreadAngle = Vector2.new(14, 14)
+	jetEmber.Acceleration = Vector3.new(0, 14, 0) -- embers drift upward as they die
+	jetEmber.LightEmission = 1
+	jetEmber.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(1, 0.05),
+	})
+	jetEmber.Color = ColorSequence.new(Color3.fromRGB(255, 190, 70), Color3.fromRGB(200, 60, 10))
+	jetEmber.Parent = jetPart
+end
+
+local function spawnFlames(from: Vector3, to: Vector3)
+	local delta = to - from
+	if delta.Magnitude < 1 or delta.Magnitude ~= delta.Magnitude then
+		return
 	end
+	ensureJet()
+	jetPart.CFrame = CFrame.lookAt(from + delta.Unit * 1.5, to) -- start just past the barrel
+	jetFire:Emit(9)
+	jetEmber:Emit(3)
 end
 
 local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
