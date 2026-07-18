@@ -294,10 +294,10 @@ local function build()
 	cardGui.IgnoreGuiInset = true
 	cardGui.DisplayOrder = UITheme.Layer.ShopModal
 	cardGui.Parent = gui.Parent
-	UITheme.Attach(cardGui, 404, 120 + #bundles * 56)
+	UITheme.Attach(cardGui, 404, 156 + #bundles * 56)
 	-- LOBBY CHROME (owner: panels must match the lobby exactly): fat gold header bar, dark studded
 	-- body, the juiced red X. `card` is the chrome ROOT — Visible toggles pop it open like the lobby.
-	local card, cardBody, _, cardX = LobbyLook.ChromePanel(cardGui, 360, 24 + #bundles * 56, LobbyLook.HeaderColors.shop, "GET COINS")
+	local card, cardBody, _, cardX = LobbyLook.ChromePanel(cardGui, 360, 24 + #bundles * 56 + 36, LobbyLook.HeaderColors.shop, "GET COINS")
 	cardX.Activated:Connect(function()
 		card.Visible = false
 	end)
@@ -441,12 +441,26 @@ local function build()
 	-- The dock: the LOBBY'S BUTTONS, verbatim (LobbyLook.DockButton — same 66x84 holders, 83px
 	-- spacing, dark-glass circles, same photo ids, Title-case labels on the rim), centered UNDERNEATH
 	-- the guns (the hotbar lifts to seat it — HotbarController).
+	-- CODES folded INTO the shop card (a whole dock circle was a button tax — owner-approved):
+	-- a "HAVE A CODE?" line at the card's foot flips over to the codes chrome panel.
+	local haveCode = text(cardBody, "HaveCode", UITheme.TitleFace, 15, COL_GOLD)
+	haveCode.Position = UDim2.new(0, 16, 1, -32)
+	haveCode.Size = UDim2.new(1, -32, 0, 24)
+	haveCode.TextXAlignment = Enum.TextXAlignment.Center
+	haveCode.Text = "HAVE A CODE?"
+	local haveCodeBtn = Instance.new("TextButton")
+	haveCodeBtn.BackgroundTransparency = 1
+	haveCodeBtn.Text = ""
+	haveCodeBtn.Size = UDim2.fromScale(1, 1)
+	haveCodeBtn.Parent = haveCode
+	haveCodeBtn.Activated:Connect(function()
+		card.Visible = false
+		codesPanel.Visible = true
+	end)
+
 	local DOCK = {
 		{ label = "Shop", icon = "71412141929869", onClick = function()
 			card.Visible = not card.Visible
-		end },
-		{ label = "Codes", icon = "106591567271932", onClick = function()
-			codesPanel.Visible = not codesPanel.Visible
 		end },
 		{ label = "Settings", icon = "94140673883223", onClick = function()
 			if SettingsController.Toggle then

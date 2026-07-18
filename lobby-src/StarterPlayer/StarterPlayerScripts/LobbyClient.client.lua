@@ -1173,7 +1173,7 @@ do
 		codes = "106591567271932",
 	}
 	local DOCK_EMOJI = { inventory = "🎒", weapons = "🔫", daily = "🎡", shop = "🧺", classes = "🛡️", settings = "⚙️", codes = "🔑" }
-	local ORDER = { "weapons", "daily", "shop", "classes", "settings", "codes" } -- inventory merged into LOCKER
+	local ORDER = { "weapons", "daily", "shop", "classes", "settings" } -- codes folded INTO the shop (header button) — one less dock circle
 	local LABELS = { weapons = "Locker", daily = "Daily", shop = "Shop", classes = "Classes", settings = "Settings", codes = "Codes" }
 
 	-- The faded black bar behind everything (pure gradient, no border — melts into the floor).
@@ -1417,7 +1417,36 @@ do
 end
 playBtn.Activated:Connect(function()
 	lplay("Open")
-	remotes:WaitForChild("GoPlay"):FireServer()
+	-- CHANGED (owner): the PADS are the one true start — PLAY now WALKS you to the nearest pad
+	-- instead of being a second, competing start. Stepping onto the pad triggers it like always.
+	task.spawn(function()
+		local char = localPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if not hum or not root then
+			return
+		end
+		local pad, bestD
+		for _, d in workspace:GetDescendants() do
+			if d:IsA("BasePart") and string.lower(string.sub(d.Name, 1, 11)) == "loadingzone" then
+				local dd = (d.Position - root.Position).Magnitude
+				if not bestD or dd < bestD then
+					pad, bestD = d, dd
+				end
+			end
+		end
+		if not pad then
+			remotes:WaitForChild("GoPlay"):FireServer() -- no pads in this map: the old server route
+			return
+		end
+		for _ = 1, 6 do -- re-issue MoveTo until we're standing on it (each call can time out at ~8s)
+			if (root.Position - pad.Position).Magnitude < math.max(pad.Size.X, pad.Size.Z) * 0.5 + 1 then
+				break
+			end
+			hum:MoveTo(pad.Position)
+			hum.MoveToFinished:Wait()
+		end
+	end)
 end)
 -- A pad UI (config/party) owns the bottom-center while it's up — Play steps aside (see setPanelMode).
 gui:GetAttributeChangedSignal("PadMode"):Connect(function()
@@ -3132,6 +3161,27 @@ do
 
 	S.root, S.panel, S.title, S.x = chromePanel(S.gui, BODY_W, BODY_H, SHOP_GOLD, "EXCLUSIVE SHOP")
 	S.root.Size += UDim2.fromOffset(0, 32) -- room for the shared status line under the body
+	do -- CODES lives INSIDE the shop now (the dock circle was a button tax): header button, left of the X
+		local cb = Instance.new("TextButton")
+		cb.Name = "CodesTab"
+		cb.AnchorPoint = Vector2.new(1, 0.5)
+		cb.Position = UDim2.new(1, -(9 + 46 + 10), 0.5, 0)
+		cb.Size = UDim2.fromOffset(92, 40)
+		cb.BackgroundColor3 = Color3.fromRGB(19, 21, 15)
+		cb.BorderSizePixel = 0
+		cb.FontFace = TITLE_FACE
+		cb.TextSize = 17
+		cb.TextColor3 = GOLD
+		cb.Text = "CODES"
+		cb.ZIndex = 4
+		cb.Parent = S.x.Parent -- the header bar
+		corner(cb, 6)
+		ledge(cb, TBLACK, 2.5)
+		cb.Activated:Connect(function()
+			lplay("Click")
+			S.setTab(S.tab == "codes" and "featured" or "codes") -- toggle back to featured too
+		end)
+	end
 
 	S.msg = sticker(S.root, "", 14) -- verdicts: codes / gift confirms / soon notes
 	S.msg.Position = UDim2.new(0, 22, 0, 50 + BODY_H + 8)
@@ -4425,9 +4475,6 @@ do
 	end)
 	-- The Classes dock button opens the SHOWCASE (its own block below) — here it only puts the shop away.
 	dockBtns.classes.Activated:Connect(closeShop)
-	dockBtns.codes.Activated:Connect(function()
-		openShopTab("codes")
-	end)
 	-- Opening WEAPONS/INVENTORY (buttons or the B key) puts the shop away — one panel at a time.
 	gunsBtn.Activated:Connect(closeShop)
 	UserInputService.InputBegan:Connect(function(input, processed)

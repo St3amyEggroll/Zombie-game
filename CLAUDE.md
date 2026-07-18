@@ -89,6 +89,10 @@ level** unlock the next gun and the next world. Guns are **free at their unlock 
   (Data → Security → PlayerState → Match → everything). New `*Service` files auto-start.
 - **Client pattern:** each Controller is a ModuleScript with `.Start()`, auto-discovered and started
   by `init.client.lua`.
+- **HUD corner grammar (BOTH places — the anti-confusion system):** left = money (coins pill),
+  right = PEOPLE + progress (the party column, LVL/XP card — never buttons), bottom-center = actions
+  (hotbar/loadout + the dock), top-center = status (wave strip / squad status). New UI slots into the
+  corner its meaning belongs to; the two places must keep matching (shared builders: `LobbyLook.lua`).
 
 ---
 
