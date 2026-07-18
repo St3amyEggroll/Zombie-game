@@ -1160,7 +1160,9 @@ do
 		local holder = Instance.new("Frame")
 		holder.Name = "Dock_" .. key
 		holder.AnchorPoint = Vector2.new(0, 1)
-		holder.Position = UDim2.new(0.5, -282 + (i - 1) * 83, 1, -6)
+		-- Centered for ANY button count (the old -282 was hand-tuned for seven; removing Inventory
+		-- left the six-button dock hanging off-center).
+		holder.Position = UDim2.new(0.5, -math.floor(((#ORDER - 1) * 83 + 66) / 2) + (i - 1) * 83, 1, -6)
 		holder.Size = UDim2.fromOffset(66, 84)
 		holder.BackgroundTransparency = 1
 		holder.ZIndex = 2
@@ -1432,7 +1434,7 @@ local playReel -- forward decl (the reel section below assigns it)
 do
 	local catRow = Instance.new("Frame")
 	catRow.Name = "WeaponCatRow"
-	catRow.Position = UDim2.fromOffset(16, CONTENT_Y + 40)
+	catRow.Position = UDim2.fromOffset(96, CONTENT_Y)
 	catRow.Size = UDim2.fromOffset(PANEL_W - 32, 34)
 	catRow.BackgroundTransparency = 1
 	catRow.Visible = false
@@ -2207,53 +2209,80 @@ local function showTab(id)
 	selectedInv = nil -- switching screens resets the featured pane
 	invTitle.Text = "LOCKER" -- one identity; the GUNS/CRATES tabs carry which screen you're on
 	invDetail.Visible = false; invGrid.Visible = true; invHint.Visible = true -- back to GRID mode
-	-- repaint the top tabs (selected = bright green fill)
-	local tabRow = invPanel:FindFirstChild("LockerTabs")
-	if tabRow then
-		for _, b in tabRow:GetChildren() do
-			if b:IsA("TextButton") then
+	-- repaint the side rail (selected = bright ring + full-brightness photo; others dim)
+	local rail = invPanel:FindFirstChild("LockerTabs")
+	if rail then
+		for _, h in rail:GetChildren() do
+			local b = h:IsA("Frame") and h:FindFirstChildWhichIsA("ImageButton")
+			if b then
 				local on = (b.Name == "Tab_" .. id)
 				b.BackgroundColor3 = on and SELBG or CARD
-				b.TextColor3 = on and Color3.new(1, 1, 1) or TEXTCOL
+				b.ImageTransparency = on and 0 or 0.35
+				local st = b:FindFirstChildOfClass("UIStroke")
+				if st then
+					st.Color = on and ACCENT or TBLACK
+					st.Thickness = on and 3.5 or 2.5
+				end
 			end
 		end
 	end
-	-- GUNS carries the LEVEL/CRATE/EVENT category row under the tabs; CRATES doesn't.
+	-- GUNS carries the LEVEL/CRATE/EVENT category row across the top; CRATES doesn't. Content sits
+	-- RIGHT of the image rail (68px + gutter).
 	local catRow = invPanel:FindFirstChild("WeaponCatRow")
 	if catRow then catRow.Visible = (id == "weapons") end
-	local gy = (id == "weapons") and (CONTENT_Y + 84) or (CONTENT_Y + 40)
-	invGrid.Position = UDim2.fromOffset(16, gy)
-	invGrid.Size = UDim2.fromOffset(PANEL_W - 32, PANEL_H - gy - 16 - 24)
+	local gy = (id == "weapons") and (CONTENT_Y + 44) or CONTENT_Y
+	invGrid.Position = UDim2.fromOffset(96, gy)
+	invGrid.Size = UDim2.fromOffset(PANEL_W - 112, PANEL_H - gy - 16 - 24)
 	invRecolor(HEADER_COLORS.guns) -- one LOCKER header color on both tabs
 end
 
--- ===== LOCKER TOP TABS ===== one panel, two screens: GUNS (the catalog) | CRATES (your unopened cases).
--- Built as named children so showTab can repaint without new top-level locals (200-local ceiling).
+-- ===== LOCKER SIDE TABS ===== a LEFT column of IMAGE buttons (dock-style): GUNS (the old Weapons
+-- photo) over CRATES (the old Inventory photo). Named children so showTab repaints without new
+-- top-level locals (200-local ceiling).
 do
-	local tabRow = Instance.new("Frame")
-	tabRow.Name = "LockerTabs"
-	tabRow.Position = UDim2.fromOffset(16, CONTENT_Y)
-	tabRow.Size = UDim2.fromOffset(PANEL_W - 32, 34)
-	tabRow.BackgroundTransparency = 1
-	tabRow.Parent = invPanel
+	local rail = Instance.new("Frame")
+	rail.Name = "LockerTabs"
+	rail.Position = UDim2.fromOffset(16, CONTENT_Y)
+	rail.Size = UDim2.fromOffset(68, PANEL_H - CONTENT_Y - 16)
+	rail.BackgroundTransparency = 1
+	rail.Parent = invPanel
 	local ll = Instance.new("UIListLayout")
-	ll.FillDirection = Enum.FillDirection.Horizontal
-	ll.Padding = UDim.new(0, 8)
-	ll.Parent = tabRow
-	for i, d in { { "weapons", "GUNS" }, { "cases", "CRATES" } } do
-		local b = Instance.new("TextButton")
+	ll.FillDirection = Enum.FillDirection.Vertical
+	ll.Padding = UDim.new(0, 12)
+	ll.Parent = rail
+	for i, d in { { "weapons", "GUNS", "rbxassetid://102091580612843" },
+		{ "cases", "CRATES", "rbxassetid://119161862051444" } } do
+		local holder = Instance.new("Frame")
+		holder.Name = "Hold_" .. d[1]
+		holder.LayoutOrder = i
+		holder.Size = UDim2.fromOffset(68, 86)
+		holder.BackgroundTransparency = 1
+		holder.Parent = rail
+		local b = Instance.new("ImageButton")
 		b.Name = "Tab_" .. d[1]
-		b.LayoutOrder = i
-		b.Size = UDim2.fromOffset(122, 34)
+		b.Position = UDim2.fromOffset(2, 0)
+		b.Size = UDim2.fromOffset(64, 64)
 		b.BackgroundColor3 = CARD
 		b.AutoButtonColor = true
-		b.FontFace = BODYB_FACE
-		b.TextSize = 15
-		b.TextColor3 = TEXTCOL
-		b.Text = d[2]
-		b.Parent = tabRow
-		corner(b, 6)
-		ledge(b, TBLACK, 2)
+		b.Image = d[3]
+		b.ScaleType = Enum.ScaleType.Crop
+		b.Parent = holder
+		corner(b, 10)
+		ledge(b, TBLACK, 2.5)
+		local nm = Instance.new("TextLabel")
+		nm.AnchorPoint = Vector2.new(0.5, 1)
+		nm.Position = UDim2.new(0.5, 0, 1, 0)
+		nm.Size = UDim2.fromOffset(68, 16)
+		nm.BackgroundTransparency = 1
+		nm.FontFace = BODYB_FACE
+		nm.TextSize = 12
+		nm.TextColor3 = TEXTCOL
+		nm.Text = d[2]
+		nm.Parent = holder
+		local ns = Instance.new("UIStroke")
+		ns.Color = TBLACK
+		ns.Thickness = 2
+		ns.Parent = nm
 		b.Activated:Connect(function()
 			if activeTab == d[1] then
 				return
@@ -5586,32 +5615,35 @@ do
 		return l
 	end
 
-	-- THE RAIL — the collapsed tab: dark, vertical QUESTS, red badge, green arrow. Left corners hide
-	-- offscreen so only the right edge reads as rounded (the mock's bookmark silhouette).
+	-- THE TILE — the collapsed tab is a SQUARE dock-style button now (the tall bookmark + floating
+	-- arrow read as odd): scroll icon on top, QUESTS underneath, the open/close chevron tucked inside.
 	Q.rail = Instance.new("TextButton")
 	Q.rail.Name = "QuestRail"
 	Q.rail.AnchorPoint = Vector2.new(0, 0.5)
-	Q.rail.Position = UDim2.new(0, -12, 0.5, 0)
-	Q.rail.Size = UDim2.fromOffset(50, 190)
+	Q.rail.Position = UDim2.new(0, 12, 0.5, 0)
+	Q.rail.Size = UDim2.fromOffset(66, 66)
 	Q.rail.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
 	Q.rail.BackgroundTransparency = 0.08
 	Q.rail.BorderSizePixel = 0
-	Q.rail.AutoButtonColor = false
+	Q.rail.AutoButtonColor = true
 	Q.rail.Text = ""
 	Q.rail.Parent = Q.gui
-	corner(Q.rail, 12)
+	corner(Q.rail, 10)
 	ledge(Q.rail, TBLACK, 3)
 	do
-		local vt = Q.text(Q.rail, "QUESTS", 15, Color3.fromRGB(217, 247, 184))
-		vt.AnchorPoint = Vector2.new(0.5, 0.5)
-		vt.Position = UDim2.new(0.5, 7, 0.5, 0)
-		vt.Size = UDim2.fromOffset(150, 20)
-		vt.Rotation = -90
+		local ic = Q.text(Q.rail, "📜", 22)
+		ic.AnchorPoint = Vector2.new(0.5, 0)
+		ic.Position = UDim2.new(0.5, 0, 0, 5)
+		ic.Size = UDim2.fromOffset(30, 26)
+		local vt = Q.text(Q.rail, "QUESTS", 11, Color3.fromRGB(217, 247, 184))
+		vt.AnchorPoint = Vector2.new(0.5, 1)
+		vt.Position = UDim2.new(0.5, 0, 1, -4)
+		vt.Size = UDim2.fromOffset(64, 14)
 	end
-	Q.arrow = Q.text(Q.rail, "▶", 17, ACCENT)
-	Q.arrow.AnchorPoint = Vector2.new(0.5, 0.5)
-	Q.arrow.Position = UDim2.new(1, 15, 0.5, 0)
-	Q.arrow.Size = UDim2.fromOffset(22, 22)
+	Q.arrow = Q.text(Q.rail, "▶", 11, ACCENT)
+	Q.arrow.AnchorPoint = Vector2.new(1, 0.5)
+	Q.arrow.Position = UDim2.new(1, -3, 0, 18)
+	Q.arrow.Size = UDim2.fromOffset(12, 12)
 	Q.badge = Instance.new("Frame")
 	Q.badge.AnchorPoint = Vector2.new(1, 0)
 	Q.badge.Position = UDim2.new(1, 8, 0, -8)
