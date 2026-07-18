@@ -580,10 +580,18 @@ function WeaponModelService.Start()
 	-- one the instant every character spawns.
 	local function ensureAnimator(character: Model)
 		local hum = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
-		if hum and not hum:FindFirstChildOfClass("Animator") then
-			local animator = Instance.new("Animator")
+		if not hum then
+			return
+		end
+		local animator = hum:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
 			animator.Parent = hum
 		end
+		-- NEW: mark the SERVER's Animator so clients can tell it apart from the duplicate their own
+		-- Animate script may have made. Hold poses must play on THIS replica — tracks on the client-made
+		-- one die whenever this replica arrives (the "pose turns into the walk animation" bug).
+		animator:SetAttribute("ServerAnimator", true)
 	end
 
 	-- Re-attach on equip changes and on (re)spawn.

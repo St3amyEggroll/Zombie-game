@@ -146,27 +146,42 @@ local function applyHold(character: Model)
 		applyProcPose(character) -- no uploaded pose for this gun — procedural stance (or clear if unarmed)
 		return
 	end
+	-- INSTANT stance: the procedural pose needs no Animator, so it shows the moment you spawn/equip.
+	-- The real uploaded animation takes over (clearProcPose) as soon as its track confirms playing.
+	applyProcPose(character)
 	local hum = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
 	if not hum or holdTokens[character] ~= token then
 		return
 	end
-	-- The server creates every character's Animator at spawn (WeaponModelService). On a FRESH spawn it
-	-- may not have replicated yet — creating a local stand-in here loads the track into an Animator the
-	-- engine abandons once the server's copy arrives, which is why the first gun showed no pose until
-	-- you switched weapons. WAIT for the real one; only fabricate a local one if it never shows up.
-	local animator = hum:FindFirstChildOfClass("Animator")
+	-- CHANGED: play ONLY on the SERVER's Animator (attribute-tagged by WeaponModelService). The client's
+	-- own Animate script can make a duplicate Animator first; a track loaded into that one dies whenever
+	-- the server's replica arrives — even SECONDS later on a heavy load-in — which is how the pose
+	-- silently turned back into the default walk. The tagged replica can never be superseded.
+	local function serverAnimator(): Animator?
+		for _, ch in hum:GetChildren() do
+			if ch:IsA("Animator") and ch:GetAttribute("ServerAnimator") == true then
+				return ch
+			end
+		end
+		return nil
+	end
+	local animator = serverAnimator()
 	if not animator then
 		local t0 = os.clock()
 		repeat
 			task.wait(0.1)
-			animator = hum:FindFirstChildOfClass("Animator")
-		until animator or os.clock() - t0 > 5 or holdTokens[character] ~= token
+			animator = serverAnimator()
+		until animator or os.clock() - t0 > 8 or holdTokens[character] ~= token
 		if holdTokens[character] ~= token then
 			return -- a newer equip superseded this one while we waited
 		end
 		if not animator then
-			animator = Instance.new("Animator")
-			animator.Parent = hum
+			-- Server replica never showed (shouldn't happen) — last resort: any Animator, else make one.
+			animator = hum:FindFirstChildOfClass("Animator")
+			if not animator then
+				animator = Instance.new("Animator")
+				animator.Parent = hum
+			end
 		end
 	end
 	local ok, track = pcall(function()
@@ -213,14 +228,8 @@ end
 
 local function watchCharacter(character: Model)
 	task.spawn(applyHold, character) -- apply whatever's already stamped (late joiners see current poses)
-	-- FRESH-SPAWN RE-ASSERT (the "no pose until I switch guns" bug): on a brand-new character the track
-	-- can get loaded into the Animator the local Animate script created, which the engine abandons once
-	-- the SERVER's Animator replicates a beat later — the pose plays into the void. Re-running applyHold
-	-- shortly after spawn reloads the track on whichever Animator actually survived. Idempotent: it
-	-- stops + replays the same looped pose (no visible blip), and the token guard keeps a real gun
-	-- switch in between as the winner.
-	task.delay(1.5, applyHold, character)
-	task.delay(4, applyHold, character)
+	-- (The old timed re-asserts are gone: applyHold now waits for the SERVER's tagged Animator, which
+	-- can't be superseded, and the procedural stance covers the wait — nothing left to rescue.)
 	character:GetAttributeChangedSignal("HoldAnimId"):Connect(function()
 		task.spawn(applyHold, character)
 	end)
