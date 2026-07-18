@@ -74,7 +74,7 @@ local function buildUI()
 	gui.DisplayOrder = UITheme.Layer and UITheme.Layer.Modal or 30
 	gui.Enabled = false
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
-	UITheme.Attach(gui)
+	UITheme.Attach(gui, 470, 340) -- mobile: the extraction card fills the phone screen
 
 	panel = UITheme.Panel(gui, "ExtractPanel")
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)

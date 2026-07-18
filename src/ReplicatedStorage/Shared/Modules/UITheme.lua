@@ -120,35 +120,42 @@ end
 local BASE_W, BASE_H = 1920, 1080
 UITheme.UIScaleMult = 1.5 -- GLOBAL in-game size dial: every attached ScreenGui renders this much bigger
 
-local function computeScale(): number
+local function computeScale(fitW: number?, fitH: number?): number
 	local cam = Workspace.CurrentCamera
 	local vp = cam and cam.ViewportSize or Vector2.new(BASE_W, BASE_H)
+	-- CHANGED: Studio's device emulator keeps MouseEnabled=true — a short touch viewport is a phone too.
+	local mobile = UserInputService.TouchEnabled and (not UserInputService.MouseEnabled or vp.Y < 600)
+	-- MODAL FIT (owner: "popups bigger on phones"): a gui that declares its popup footprint gets
+	-- scaled so that popup fills ~90% of a PHONE screen. Desktop ignores the footprint entirely.
+	if fitW and fitH and mobile then
+		return math.clamp(math.min(vp.X * 0.92 / fitW, vp.Y * 0.90 / fitH), 0.6, 3)
+	end
 	local s = math.clamp(math.min(vp.X / BASE_W, vp.Y / BASE_H), 0.55, 1.3)
 	-- Touch bump AFTER the clamp — applied before, the 0.55 floor swallowed it on exactly the small
 	-- phones it exists for (the audit's dead-touch-bump bug).
-	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+	if mobile then
 		s *= 1.12 -- phones: slightly larger for touch targets
 	end
 	return s * UITheme.UIScaleMult
 end
 
-function UITheme.Attach(gui: ScreenGui): UIScale
+function UITheme.Attach(gui: ScreenGui, fitW: number?, fitH: number?): UIScale
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
-	scale.Scale = computeScale()
+	scale.Scale = computeScale(fitW, fitH)
 	scale.Parent = gui
 	local cam = Workspace.CurrentCamera
 	if cam then
 		cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-			scale.Scale = computeScale()
+			scale.Scale = computeScale(fitW, fitH)
 		end)
 	end
 	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 		local newCam = Workspace.CurrentCamera
 		if newCam then
-			scale.Scale = computeScale()
+			scale.Scale = computeScale(fitW, fitH)
 			newCam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-				scale.Scale = computeScale()
+				scale.Scale = computeScale(fitW, fitH)
 			end)
 		end
 	end)

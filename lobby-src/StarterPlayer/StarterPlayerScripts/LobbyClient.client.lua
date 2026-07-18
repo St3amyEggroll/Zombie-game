@@ -104,7 +104,10 @@ LC.FIT_W, LC.FIT_H = 720, 500 -- largest modal footprint + margin — the mobile
 -- mode "hud": persistent-HUD scaling (dock/coins/LVL/quests). The modal-fit formula below sizes a
 -- 720x500 panel to FILL the screen — correct for modals, way too big for the always-on HUD on a
 -- short phone viewport (the dock/LVL-card pileup). HUD tracks viewport HEIGHT instead.
-local function lattach(screenGui, mode)
+-- fitW/fitH (optional): the gui's OWN modal footprint — on phones each popup then fills ~90% of the
+-- screen regardless of its size (a small panel no longer inherits the worst-case 720x500 fit and
+-- renders tiny). Desktop ignores the footprint entirely — same size as always.
+local function lattach(screenGui, mode, fitW, fitH)
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
 	local function compute()
@@ -125,8 +128,9 @@ local function lattach(screenGui, mode)
 			-- this scales to the viewport's real pixels, the modal occupies the same fraction of the
 			-- screen (~86% tall) on a high-DPI AND a low-res phone — consistent, and always on-screen. The
 			-- 0.86 height factor also leaves the bottom HUD (dock + coins + XP) room on narrow 16:9 phones.
-			local sc = math.min(vp.X * 0.84 / LC.FIT_W, vp.Y * 0.86 / LC.FIT_H)
-			return math.clamp(sc, 0.6, 2.5) -- floor low enough that a tiny viewport can still fit the modal
+			-- CHANGED (owner: "popups bigger on phones"): fit the gui's OWN footprint into ~92%/90%.
+			local sc = math.min(vp.X * 0.92 / (fitW or LC.FIT_W), vp.Y * 0.90 / (fitH or LC.FIT_H))
+			return math.clamp(sc, 0.6, 3) -- floor low enough that a tiny viewport can still fit the modal
 		end
 		-- DESKTOP / mouse: near 1:1 with a gentle clamp (unchanged feel).
 		return math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.7, 1.3) * LC.UI_SCALE_MULT
@@ -706,7 +710,14 @@ bestStroke.Color = TBLACK; bestStroke.Thickness = 1.5; bestStroke.Parent = bestL
 local panel = Instance.new("Frame")
 panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
 panel.Size = UDim2.fromOffset(600, 402); panel.BackgroundColor3 = PANEL -- square map photos + size row
-panel.BackgroundTransparency = 0.12; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
+panel.BackgroundTransparency = 0.12; panel.BorderSizePixel = 0; panel.Visible = false
+do -- CHANGED: the run-setup modal gets its OWN gui + modal fit (in LobbyHUD it rode the small "hud" scale)
+	local runGui = Instance.new("ScreenGui")
+	runGui.Name = "LobbyRunSetup"; runGui.ResetOnSpawn = false; runGui.IgnoreGuiInset = true; runGui.DisplayOrder = 12
+	runGui.Parent = playerGui
+	lattach(runGui, nil, 620, 430)
+	panel.Parent = runGui
+end
 corner(panel, 8)
 lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, LC.HEADER_COLORS.play, 2.5, 0.05)
 
@@ -1119,7 +1130,7 @@ end
 local invGui = Instance.new("ScreenGui")
 invGui.Name = "LobbyInventory"; invGui.ResetOnSpawn = false; invGui.IgnoreGuiInset = true; invGui.DisplayOrder = 11
 invGui.Parent = playerGui
-lattach(invGui)
+lattach(invGui, nil, 960, 610)
 
 local function hideTip() end -- (legacy no-op: hover tooltips were replaced by the detail pane)
 
@@ -2558,7 +2569,7 @@ local REEL_H = 120
 local reelGui = Instance.new("ScreenGui")
 reelGui.Name = "LobbyCaseReel"; reelGui.ResetOnSpawn = false; reelGui.IgnoreGuiInset = true; reelGui.DisplayOrder = 13
 reelGui.Parent = playerGui
-lattach(reelGui)
+lattach(reelGui, nil, 580, 330)
 
 local reel = Instance.new("Frame") -- overlay while opening
 reel.AnchorPoint = Vector2.new(0.5, 0.5); reel.Position = UDim2.fromScale(0.5, 0.5)
@@ -3098,7 +3109,7 @@ do
 	S.gui.IgnoreGuiInset = true
 	S.gui.DisplayOrder = 12 -- above the inventory (11), below the reel (13)
 	S.gui.Parent = playerGui
-	lattach(S.gui)
+	lattach(S.gui, nil, 690, 510)
 
 	S.root, S.panel, S.title, S.x = chromePanel(S.gui, BODY_W, BODY_H, SHOP_GOLD, "EXCLUSIVE SHOP")
 	S.root.Size += UDim2.fromOffset(0, 32) -- room for the shared status line under the body
@@ -4437,7 +4448,7 @@ do
 	C.gui.DisplayOrder = 30
 	C.gui.Enabled = false
 	C.gui.Parent = playerGui
-	lattach(C.gui)
+	lattach(C.gui, nil, 360, 490)
 
 	C.text = function(parent, str, size, colr)
 		local l = Instance.new("TextLabel")
@@ -5094,7 +5105,7 @@ do
 	local setGui = Instance.new("ScreenGui")
 	setGui.Name = "LobbySettings"; setGui.ResetOnSpawn = false; setGui.IgnoreGuiInset = true; setGui.DisplayOrder = 14
 	setGui.Parent = playerGui
-	lattach(setGui)
+	lattach(setGui, nil, 480, 400)
 
 	-- CHANGED: the dock's Settings button IS the toggle now (the floating corner gear is gone).
 	local gear = dockBtns.settings
@@ -5249,7 +5260,7 @@ do
 	P.gui.IgnoreGuiInset = true
 	P.gui.DisplayOrder = 13
 	P.gui.Parent = playerGui
-	lattach(P.gui)
+	lattach(P.gui, "hud")
 
 	P.text = function(parent, str, size, colr)
 		local l = Instance.new("TextLabel")

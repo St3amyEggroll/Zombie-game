@@ -180,7 +180,7 @@ local function build(playerGui)
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = UITheme.Layer.Spectate
 	gui.Parent = playerGui
-	UITheme.Attach(gui)
+	UITheme.Attach(gui, 720, 500) -- mobile: death-screen buttons at finger size
 
 	-- Bottom chrome (the approved plan): [ ◀  WATCHING: NAME  ▶ ] pill + red LEAVE RUN beside it.
 	panel = Instance.new("Frame")

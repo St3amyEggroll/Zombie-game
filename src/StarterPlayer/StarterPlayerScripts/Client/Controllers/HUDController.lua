@@ -284,6 +284,14 @@ local function build()
 	-- buy card with the same Developer Products as the lobby shop (GameConfig.CoinBundleProducts).
 	-- Being broke at the mid-run gun shop is the moment this exists for. Rows with id=0 say SOON.
 	local bundles = GameConfig.CoinBundleProducts or {}
+	-- The card rides its OWN modal-fit gui: in the HUD gui it would shrink with the phone HUD scale.
+	local cardGui = Instance.new("ScreenGui")
+	cardGui.Name = "CoinShop"
+	cardGui.ResetOnSpawn = false
+	cardGui.IgnoreGuiInset = true
+	cardGui.DisplayOrder = UITheme.Layer.ShopModal
+	cardGui.Parent = gui.Parent
+	UITheme.Attach(cardGui, 370, 110 + #bundles * 56)
 	local card = Instance.new("Frame")
 	card.Name = "CoinShopCard"
 	card.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -292,7 +300,7 @@ local function build()
 	card.BackgroundColor3 = Color3.fromRGB(16, 17, 21)
 	card.BackgroundTransparency = 0.04
 	card.Visible = false
-	card.Parent = gui
+	card.Parent = cardGui
 	local cardCorner = Instance.new("UICorner")
 	cardCorner.CornerRadius = UDim.new(0, 12)
 	cardCorner.Parent = card

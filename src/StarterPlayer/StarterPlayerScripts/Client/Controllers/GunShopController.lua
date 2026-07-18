@@ -130,7 +130,7 @@ function GunShopController.Start()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = UITheme.Layer.ShopModal
 	gui.Parent = playerGui
-	UITheme.Attach(gui)
+	UITheme.Attach(gui, 560, 430) -- mobile: the unlock showcase fills the phone screen
 
 	-- A gun that wasn't owned a moment ago = fresh unlock -> showcase it (skip the initial sync).
 	Remotes.Get("LoadoutChanged").OnClientEvent:Connect(function(ownedList)

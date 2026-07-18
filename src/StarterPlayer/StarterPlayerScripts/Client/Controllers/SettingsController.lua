@@ -53,7 +53,7 @@ function SettingsController.Start()
 	modalGui.IgnoreGuiInset = true
 	modalGui.DisplayOrder = UITheme.Layer.SettingsModal
 	modalGui.Parent = playerGui
-	UITheme.Attach(modalGui)
+	UITheme.Attach(modalGui, 360, 340) -- mobile: the settings panel fills the phone screen
 
 	-- Gear button, bottom-right corner (Std size).
 	local gear = Instance.new("TextButton")
