@@ -128,7 +128,9 @@ local function computeScale(fitW: number?, fitH: number?): number
 	-- MODAL FIT (owner: "popups bigger on phones"): a gui that declares its popup footprint gets
 	-- scaled so that popup fills ~90% of a PHONE screen. Desktop ignores the footprint entirely.
 	if fitW and fitH and mobile then
-		return math.clamp(math.min(vp.X * 0.92 / fitW, vp.Y * 0.90 / fitH), 0.6, 3)
+		-- Fit into the SAFE AREA (screen minus Roblox's top chrome mirrored bottom + side margins) so
+		-- popups never sit under the Roblox buttons or hang off the bottom.
+		return math.clamp(math.min((vp.X - 40) * 0.96 / fitW, (vp.Y - 110) / fitH), 0.5, 3)
 	end
 	local s = math.clamp(math.min(vp.X / BASE_W, vp.Y / BASE_H), 0.55, 1.3)
 	-- Touch bump AFTER the clamp — applied before, the 0.55 floor swallowed it on exactly the small

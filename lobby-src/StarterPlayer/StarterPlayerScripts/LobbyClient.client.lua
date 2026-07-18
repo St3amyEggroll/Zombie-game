@@ -128,9 +128,11 @@ local function lattach(screenGui, mode, fitW, fitH)
 			-- this scales to the viewport's real pixels, the modal occupies the same fraction of the
 			-- screen (~86% tall) on a high-DPI AND a low-res phone — consistent, and always on-screen. The
 			-- 0.86 height factor also leaves the bottom HUD (dock + coins + XP) room on narrow 16:9 phones.
-			-- CHANGED (owner: "popups bigger on phones"): fit the gui's OWN footprint into ~92%/90%.
-			local sc = math.min(vp.X * 0.92 / (fitW or LC.FIT_W), vp.Y * 0.90 / (fitH or LC.FIT_H))
-			return math.clamp(sc, 0.6, 3) -- floor low enough that a tiny viewport can still fit the modal
+			-- CHANGED: fit the gui's OWN footprint into the SAFE AREA — full screen minus Roblox's
+			-- top chrome (~55px) mirrored bottom, and side margins. 92% fill overlapped the Roblox
+			-- buttons and the close X on phones.
+			local sc = math.min((vp.X - 40) * 0.96 / (fitW or LC.FIT_W), (vp.Y - 110) / (fitH or LC.FIT_H))
+			return math.clamp(sc, 0.5, 3) -- floor low enough that a tiny viewport can still fit the modal
 		end
 		-- DESKTOP / mouse: near 1:1 with a gentle clamp (unchanged feel).
 		return math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.7, 1.3) * LC.UI_SCALE_MULT
@@ -6580,5 +6582,49 @@ end
 -- this (big) script is still loading, so the hotbar/coins/XP missed them and sat empty until some
 -- other action triggered a resend. This request closes that race for good.
 InvRequest:FireServer()
+
+-- ===== MOBILE POPUP FOCUS ===== on PHONES a popup physically covers the HUD, so while any modal is
+-- open the HUD layers (dock/PLAY/LVL/quests/squad) hide and the popup owns the screen; they come
+-- back the moment it closes. Coins stay (you shop with them). Desktop never hides anything.
+-- Centralized as a light poll — every panel has its own open/close path and hooking all of them is
+-- exactly how one gets missed.
+task.spawn(function()
+	local UIS = game:GetService("UserInputService")
+	local MODALS = { "LobbyInventory", "LobbyShop", "LobbySettings", "LobbyCaseReel", "LobbyClassShowcase", "LobbyRunSetup" }
+	local HIDE = { "LobbyHUD", "LobbyXP", "LobbyQuests", "LobbySquad" }
+	local hidden = false
+	while true do
+		task.wait(0.15)
+		local cam = workspace.CurrentCamera
+		local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+		local mobile = UIS.TouchEnabled and (not UIS.MouseEnabled or vp.Y < 600)
+		local open = false
+		if mobile then
+			for _, n in MODALS do
+				local g = playerGui:FindFirstChild(n)
+				if g and g:IsA("ScreenGui") and g.Enabled then
+					for _, c in g:GetChildren() do
+						if c:IsA("GuiObject") and c.Visible then
+							open = true
+							break
+						end
+					end
+				end
+				if open then
+					break
+				end
+			end
+		end
+		if open ~= hidden then
+			hidden = open
+			for _, n in HIDE do
+				local g = playerGui:FindFirstChild(n)
+				if g and g:IsA("ScreenGui") then
+					g.Enabled = not open
+				end
+			end
+		end
+	end
+end)
 
 print("[LobbyClient] started")
