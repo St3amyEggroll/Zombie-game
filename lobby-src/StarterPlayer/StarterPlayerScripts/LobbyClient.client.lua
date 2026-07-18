@@ -12,6 +12,11 @@ local UserInputService = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
+-- LC: low-traffic constants folded into ONE table -- the main chunk hit Luau's 200-local-register
+-- ceiling ("Out of local registers ... robuxGem"). New file-scope values go IN HERE (or on the
+-- C/S/Q/T/G/RV tables), never as fresh top-level locals.
+local LC = {}
+
 local remotes = ReplicatedStorage:WaitForChild("LobbyRemotes")
 local StatsRemote = remotes:WaitForChild("Stats")
 local ZoneEnter = remotes:WaitForChild("ZoneEnter")
@@ -34,24 +39,24 @@ local function makeFace(id, weight, fallbackEnum)
 	return Font.new(Font.fromEnum(fallbackEnum).Family, weight)
 end
 local TITLE_FACE = makeFace(FONT_IDS.Title, Enum.FontWeight.Regular, Enum.Font.FredokaOne) -- chunky cartoon face
-local BODY_FACE  = makeFace(FONT_IDS.Body, Enum.FontWeight.Medium, Enum.Font.FredokaOne)
+LC.BODY_FACE  = makeFace(FONT_IDS.Body, Enum.FontWeight.Medium, Enum.Font.FredokaOne)
 local BODYB_FACE = makeFace(FONT_IDS.Body, Enum.FontWeight.Bold, Enum.Font.FredokaOne)
 
 local PANEL   = Color3.fromRGB(21, 24, 17)
 local PANEL2  = Color3.fromRGB(29, 33, 23)
 local TRACK   = Color3.fromRGB(36, 41, 28)
-local LINE    = Color3.fromRGB(74, 82, 56)
+LC.LINE    = Color3.fromRGB(74, 82, 56)
 local TBLACK  = Color3.fromRGB(6, 7, 5)
 local ACCENT  = Color3.fromRGB(124, 219, 35)   -- toxic green
 local ORANGE  = Color3.fromRGB(255, 96, 34)    -- blood orange
-local ORANGE_DK = Color3.fromRGB(150, 44, 12)
+LC.ORANGE_DK = Color3.fromRGB(150, 44, 12)
 local TEXTCOL = Color3.fromRGB(222, 227, 209)
 local DIMTEXT = Color3.fromRGB(134, 142, 116)
 local GOLD    = Color3.fromRGB(230, 180, 76)
-local DIM = TRACK          -- (legacy name: disabled-button fill)
+LC.DIM = TRACK          -- (legacy name: disabled-button fill)
 local CARD = PANEL2        -- (legacy name: card/button fill)
 local SELBG = Color3.fromRGB(98, 182, 28) -- selected-button fill: BRIGHT toxic — the old dark shade rendered the same as unselected through the face gradient
-local STUDS_TEXTURE = "rbxassetid://6965996718"
+LC.STUDS_TEXTURE = "rbxassetid://6965996718"
 
 local function darker(c, f)
 	return Color3.new(c.R * (1 - f), c.G * (1 - f), c.B * (1 - f))
@@ -77,7 +82,7 @@ local function lstuds(frame, tile, transparency)
 	local img = Instance.new("ImageLabel")
 	img.Name = "Studs"
 	img.BackgroundTransparency = 1
-	img.Image = STUDS_TEXTURE
+	img.Image = LC.STUDS_TEXTURE
 	img.ScaleType = Enum.ScaleType.Tile
 	img.TileSize = UDim2.fromOffset(tile or 42, tile or 42)
 	img.ImageColor3 = darker(frame.BackgroundColor3, 0.45)
@@ -94,8 +99,8 @@ end
 -- (the run-setup panel, ~600x490) into a fixed fraction of the SCREEN, so the UI is the SAME relative size
 -- on every device (pixel density cancels out) with finger-sized touch targets; DESKTOP stays near 1:1.
 local UserInputService = game:GetService("UserInputService")
-local UI_SCALE_MULT = 1.2 -- desktop size dial (game place uses its own in UITheme)
-local FIT_W, FIT_H = 720, 500 -- largest modal footprint + margin — the mobile fit target
+LC.UI_SCALE_MULT = 1.2 -- desktop size dial (game place uses its own in UITheme)
+LC.FIT_W, LC.FIT_H = 720, 500 -- largest modal footprint + margin — the mobile fit target
 local function lattach(screenGui)
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
@@ -103,15 +108,15 @@ local function lattach(screenGui)
 		local cam = workspace.CurrentCamera
 		local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
 		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
-			-- MOBILE: fit FIT_W x FIT_H into ~84% width / ~86% height and take the tighter axis. Because
+			-- MOBILE: fit LC.FIT_W x LC.FIT_H into ~84% width / ~86% height and take the tighter axis. Because
 			-- this scales to the viewport's real pixels, the modal occupies the same fraction of the
 			-- screen (~86% tall) on a high-DPI AND a low-res phone — consistent, and always on-screen. The
 			-- 0.86 height factor also leaves the bottom HUD (dock + coins + XP) room on narrow 16:9 phones.
-			local sc = math.min(vp.X * 0.84 / FIT_W, vp.Y * 0.86 / FIT_H)
+			local sc = math.min(vp.X * 0.84 / LC.FIT_W, vp.Y * 0.86 / LC.FIT_H)
 			return math.clamp(sc, 0.6, 2.5) -- floor low enough that a tiny viewport can still fit the modal
 		end
 		-- DESKTOP / mouse: near 1:1 with a gentle clamp (unchanged feel).
-		return math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.7, 1.3) * UI_SCALE_MULT
+		return math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.7, 1.3) * LC.UI_SCALE_MULT
 	end
 	scale.Scale = compute()
 	scale.Parent = screenGui
@@ -314,7 +319,7 @@ local function redX(parentGui, size, tsize)
 end
 
 -- Per-screen header COLORS (mirror the game's UITheme.HeaderColors).
-local HEADER_COLORS = {
+LC.HEADER_COLORS = {
 	guns     = Color3.fromRGB(168, 32, 32),   -- RED — matches the WEAPONS nav pill
 	cases    = Color3.fromRGB(150, 66, 16),   -- dark orange
 	shop     = Color3.fromRGB(140, 100, 22),  -- gold / amber
@@ -358,11 +363,11 @@ local function cardShade(frame, strength)
 end
 
 -- REDONE (matched to the reference image): the panel chrome as ONE root assembly — a fat colored
--- HEADER BAR wider than the body (big white title with a NAVY outline on the left, the red X sitting
+-- HEADER BAR wider than the body (big white title with a LC.NAVY outline on the left, the red X sitting
 -- INSIDE the bar's right end) and the dark BODY panel tucked underneath it. Everything lives inside
 -- the root, so the header can never hang off-screen. Toggle the BODY's Visible (callers own it) and
 -- mirror it onto the root. Returns root, body, title, closeX, recolor(c).
-local NAVY = Color3.fromRGB(21, 36, 58) -- the reference title outline is navy, not black
+LC.NAVY = Color3.fromRGB(21, 36, 58) -- the reference title outline is navy, not black
 local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
 	local OVER, HDR_H, TUCK = 22, 64, 14 -- header overhang per side · header height · body tuck-under
 	local root = Instance.new("Frame")
@@ -451,7 +456,7 @@ local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
 	title.Text = titleText
 	title.Parent = bar
 	local ts = Instance.new("UIStroke")
-	ts.Color = NAVY
+	ts.Color = LC.NAVY
 	ts.Thickness = 3.5
 	ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	ts.Parent = title
@@ -464,14 +469,14 @@ local function chromePanel(parentGui, bodyW, bodyH, colr, titleText)
 end
 
 -- Subtle FOV "lean back" while a panel is open (refcounted; eases in/out).
-local UI_FOV_PUSH, UI_FOV_EASE = 6, 6
+LC.UI_FOV_PUSH, LC.UI_FOV_EASE = 6, 6
 local uiOpenCount, uiBaseFov = 0, nil
 do
 	RunService.RenderStepped:Connect(function(dt)
 		local cam = workspace.CurrentCamera
 		if not cam or uiBaseFov == nil then return end
-		local target = (uiOpenCount > 0) and (uiBaseFov + UI_FOV_PUSH) or uiBaseFov
-		local a = math.clamp(dt * UI_FOV_EASE, 0, 1)
+		local target = (uiOpenCount > 0) and (uiBaseFov + LC.UI_FOV_PUSH) or uiBaseFov
+		local a = math.clamp(dt * LC.UI_FOV_EASE, 0, 1)
 		local cur = cam.FieldOfView
 		if math.abs(cur - target) > 0.05 then
 			cam.FieldOfView = cur + (target - cur) * a
@@ -509,12 +514,12 @@ local SOUND_IDS = {
 	RevealJackpot = "", -- mythic/divine or NEW GUN [jackpot fanfare]
 	TeleportGo    = "", -- party countdown ends [teleport whoosh]
 }
-local SOUND_VOL = { -- base volume per slot (before the sliders)
+LC.SOUND_VOL = { -- base volume per slot (before the sliders)
 	Music = 0.45, Click = 0.4, ReelTick = 0.35, RevealJackpot = 0.8, LevelUp = 0.7,
 }
 
 local volMaster, volMusic, volSfx = 1, 0.6, 1
-local volTouched = false -- true once the player moves a slider (server echoes stop overriding)
+LC.volTouched = false -- true once the player moves a slider (server echoes stop overriding)
 
 local function soundAsset(raw)
 	if raw == "" then return "" end
@@ -527,7 +532,7 @@ local function lplay(name, pitch)
 	if not id or id == "" then return end
 	local s = Instance.new("Sound")
 	s.SoundId = soundAsset(id)
-	s.Volume = (SOUND_VOL[name] or 0.5) * volMaster * volSfx
+	s.Volume = (LC.SOUND_VOL[name] or 0.5) * volMaster * volSfx
 	if pitch then s.PlaybackSpeed = pitch end
 	s.Parent = SoundService
 	s.Ended:Once(function() s:Destroy() end)
@@ -538,7 +543,7 @@ end
 local lobbyMusic = nil
 local function applySoundVol()
 	if lobbyMusic then
-		lobbyMusic.Volume = (SOUND_VOL.Music or 0.45) * volMaster * volMusic
+		lobbyMusic.Volume = (LC.SOUND_VOL.Music or 0.45) * volMaster * volMusic
 	end
 end
 if SOUND_IDS.Music ~= "" then
@@ -558,11 +563,11 @@ playerGui.DescendantAdded:Connect(function(inst)
 end)
 
 -- Debounced slider save -> shared profile (settings.vol), same field the game place reads.
-local volSaveAt = 0
+LC.volSaveAt = 0
 local function queueVolSave()
-	volSaveAt = os.clock() + 0.6
+	LC.volSaveAt = os.clock() + 0.6
 	task.delay(0.65, function()
-		if os.clock() >= volSaveAt then
+		if os.clock() >= LC.volSaveAt then
 			SetSoundSettings:FireServer({ master = volMaster, music = volMusic, sfx = volSfx })
 		end
 	end)
@@ -690,12 +695,12 @@ panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5,
 panel.Size = UDim2.fromOffset(600, 402); panel.BackgroundColor3 = PANEL -- square map photos + size row
 panel.BackgroundTransparency = 0.12; panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
 corner(panel, 8)
-lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, HEADER_COLORS.play, 2.5, 0.05)
+lstuds(panel); ldepth(panel); ledge(panel, TBLACK, 3); ledge(panel, LC.HEADER_COLORS.play, 2.5, 0.05)
 
 local title = Instance.new("TextLabel")
 title.Position = UDim2.new(0, 0, 0, 0); title.Size = UDim2.new(1, 0, 0, 48); title.BackgroundTransparency = 1
 title.FontFace = TITLE_FACE; title.TextSize = 28; title.TextColor3 = TEXTCOL
-headerBar(panel, 48, HEADER_COLORS.play)
+headerBar(panel, 48, LC.HEADER_COLORS.play)
 title.Text = "CHOOSE YOUR RUN"; title.Parent = panel
 
 local function sectionLabel(text, y)
@@ -858,7 +863,7 @@ end
 local saveWarn = nil -- the profile-failed-to-load banner (built once, stays up all session)
 StatsRemote.OnClientEvent:Connect(function(s)
 	if typeof(s) ~= "table" then return end
-	if not volTouched and typeof(s.settings) == "table" and typeof(s.settings.vol) == "table" then
+	if not LC.volTouched and typeof(s.settings) == "table" and typeof(s.settings.vol) == "table" then
 		volMaster = math.clamp(tonumber(s.settings.vol.master) or volMaster, 0, 1)
 		volMusic = math.clamp(tonumber(s.settings.vol.music) or volMusic, 0, 1)
 		volSfx = math.clamp(tonumber(s.settings.vol.sfx) or volSfx, 0, 1)
@@ -974,7 +979,7 @@ local rolling = false
 local rollToken = 0          -- watchdog id: if the server never answers an open, unstick `rolling`
 local armRollTimeout         -- assigned after the reel exists (needs its upvalues)
 
-local BLACK = darker(PANEL, 0.5)
+LC.BLACK = darker(PANEL, 0.5)
 
 local function rarityColor(rarityId)
 	local r = invData and invData.catalog.rarities[rarityId]
@@ -1111,8 +1116,8 @@ local function hideTip() end -- (legacy no-op: hover tooltips were replaced by t
 -- sitting ON the circles' lower rim, white-rimmed red badges, and the glossy borderless Play above.
 -- Owner photos go in DOCK_ICONS (any square image); until then the existing photos + emoji stand in.
 -- =====================================================================================================
-local GUN_ICON = "rbxassetid://107465960874017"
-local CASES_ICON = "rbxassetid://83465359983310"
+LC.GUN_ICON = "rbxassetid://107465960874017"
+LC.CASES_ICON = "rbxassetid://83465359983310"
 local dockBtns = {} -- every dock button + badge, one table (200-local ceiling)
 do
 	local DOCK_ICONS = { -- paste your photo ids here ("rbxassetid://..." or the number). "" = emoji.
@@ -1385,7 +1390,7 @@ local PANEL_W, PANEL_H = 940, 540
 local invPanel, invTitle, invClose, invRecolor
 do
 	local root
-	root, invPanel, invTitle, invClose, invRecolor = chromePanel(invGui, PANEL_W, PANEL_H, HEADER_COLORS.guns, "LOCKER")
+	root, invPanel, invTitle, invClose, invRecolor = chromePanel(invGui, PANEL_W, PANEL_H, LC.HEADER_COLORS.guns, "LOCKER")
 	invPanel.Visible = false
 	invPanel:GetPropertyChangedSignal("Visible"):Connect(function()
 		root.Visible = invPanel.Visible
@@ -1745,10 +1750,10 @@ local function invCard(opts)
 	return f
 end
 
--- Themed action button for the detail pane. GHOSTA/GHOSTB sit a step lighter than the pane itself so
+-- Themed action button for the detail pane. LC.GHOSTA/LC.GHOSTB sit a step lighter than the pane itself so
 -- neutral buttons still read as buttons (they used to use PANEL2-on-PANEL2 and vanished).
-local GHOSTA = Color3.fromRGB(54, 60, 42)
-local GHOSTB = Color3.fromRGB(42, 47, 33)
+LC.GHOSTA = Color3.fromRGB(54, 60, 42)
+LC.GHOSTB = Color3.fromRGB(42, 47, 33)
 local function bigButton(parent, textStr, fillA, fillB, textCol)
 	local b = Instance.new("TextButton")
 	b.BackgroundColor3 = fillA; b.BorderSizePixel = 0; b.AutoButtonColor = true
@@ -1796,7 +1801,7 @@ local function renderInvDetail()
 	-- LEFT: the display well — big spinning model, rarity line, BACK, prev/next arrows.
 	local ileft = Instance.new("Frame")
 	ileft.Size = UDim2.fromOffset(LEFT_W, H)
-	ileft.BackgroundColor3 = tint:Lerp(BLACK, 0.72); ileft.BorderSizePixel = 0; ileft.Parent = invDetail
+	ileft.BackgroundColor3 = tint:Lerp(LC.BLACK, 0.72); ileft.BorderSizePixel = 0; ileft.Parent = invDetail
 	corner(ileft, 8); ledge(ileft, TBLACK, 2.5); cardShade(ileft, 0.3)
 
 	-- NEW: a weapon renders with its EQUIPPED skin — the skin's own model if the owner built one,
@@ -1838,7 +1843,7 @@ local function renderInvDetail()
 	end
 	rar.Parent = ileft
 
-	local back = bigButton(ileft, "← BACK", GHOSTA, GHOSTB, TEXTCOL)
+	local back = bigButton(ileft, "← BACK", LC.GHOSTA, LC.GHOSTB, TEXTCOL)
 	back.Position = UDim2.fromOffset(10, 10); back.Size = UDim2.fromOffset(96, 34); back.TextSize = 14
 	back.Activated:Connect(function()
 		lplay("Close")
@@ -1849,7 +1854,7 @@ local function renderInvDetail()
 	-- ◀ ▶ flip through the SAME list the grid shows (renderActive stashes it on the snapshot).
 	local entries = (invData and invData._entries) or {}
 	local function arrow(sym, xOff, dir)
-		local a = bigButton(ileft, sym, GHOSTA, GHOSTB, TEXTCOL)
+		local a = bigButton(ileft, sym, LC.GHOSTA, LC.GHOSTB, TEXTCOL)
 		a.AnchorPoint = Vector2.new(0.5, 1); a.Position = UDim2.new(0.5, xOff, 1, -12)
 		a.Size = UDim2.fromOffset(46, 34); a.TextSize = 15
 		a.Activated:Connect(function()
@@ -2075,7 +2080,7 @@ local function renderInvDetail()
 			lockLbl.BackgroundTransparency = 1; lockLbl.FontFace = BODYB_FACE; lockLbl.TextSize = 17
 			lockLbl.TextXAlignment = Enum.TextXAlignment.Left; lockLbl.TextColor3 = DIMTEXT
 			lockLbl.Text = "🔒 UNLOCKS AT LEVEL " .. reqLevel; lockLbl.Parent = invDetail
-			local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), GHOSTA, GHOSTB, TEXTCOL)
+			local note = bigButton(invDetail, ("REACH LV %d TO UNLOCK"):format(reqLevel), LC.GHOSTA, LC.GHOSTB, TEXTCOL)
 			note.AutoButtonColor = false
 			note.Position = UDim2.fromOffset(RIGHT_X, H - 62); note.Size = UDim2.fromOffset(RIGHT_W, 54)
 		end
@@ -2133,7 +2138,7 @@ local function renderInvDetail()
 				OpenCase:FireServer({ caseId = id })
 			end)
 			if count > 1 then
-				local openAll = paneButton(("OPEN ALL (%d)"):format(count), GHOSTA, GHOSTB, TEXTCOL)
+				local openAll = paneButton(("OPEN ALL (%d)"):format(count), LC.GHOSTA, LC.GHOSTB, TEXTCOL)
 				openAll.Position = UDim2.fromOffset(RIGHT_X, H - 60); openAll.Size = UDim2.fromOffset(RIGHT_W, 50)
 				openAll.Activated:Connect(function()
 					if rolling then return end
@@ -2145,7 +2150,7 @@ local function renderInvDetail()
 				end)
 			end
 		else
-			local open = paneButton("NONE LEFT", GHOSTA, GHOSTB, TEXTCOL)
+			local open = paneButton("NONE LEFT", LC.GHOSTA, LC.GHOSTB, TEXTCOL)
 			open.AutoButtonColor = false
 			open.Position = UDim2.fromOffset(RIGHT_X, H - 60); open.Size = UDim2.fromOffset(RIGHT_W, 54)
 		end
@@ -2265,7 +2270,7 @@ local function showTab(id)
 	local gy = (id == "weapons") and (CONTENT_Y + 44) or CONTENT_Y
 	invGrid.Position = UDim2.fromOffset(96, gy)
 	invGrid.Size = UDim2.fromOffset(PANEL_W - 112, PANEL_H - gy - 16 - 24)
-	invRecolor(HEADER_COLORS.guns) -- one LOCKER header color on both tabs
+	invRecolor(LC.HEADER_COLORS.guns) -- one LOCKER header color on both tabs
 end
 
 -- ===== LOCKER SIDE TABS ===== a LEFT column of IMAGE buttons (dock-style): GUNS (the old Weapons
@@ -2530,9 +2535,9 @@ end
 -- ===== CASE-OPENING REEL (CS:GO-style horizontal scroll) =====
 local TILE_W, GAP = 100, 8
 local STEP = TILE_W + GAP
-local N_TILES = 50
-local WIN_INDEX = 44
-local REEL_W = 540
+LC.N_TILES = 50
+LC.WIN_INDEX = 44
+LC.REEL_W = 540
 local REEL_H = 120
 
 -- The reel lives on its OWN top layer (not inside the inventory panel) so BUY & OPEN can spin it from
@@ -2555,11 +2560,11 @@ reelTitle.Position = UDim2.new(0, 0, 0, 40); reelTitle.Size = UDim2.new(1, 0, 0,
 reelTitle.FontFace = TITLE_FACE; reelTitle.TextSize = 18; reelTitle.TextColor3 = DIMTEXT
 reelTitle.Text = "OPENING..."; reelTitle.ZIndex = 12; reelTitle.Parent = reel
 local window = Instance.new("Frame")
-window.AnchorPoint = Vector2.new(0.5, 0.5); window.Position = UDim2.fromScale(0.5, 0.5); window.Size = UDim2.fromOffset(REEL_W, REEL_H)
+window.AnchorPoint = Vector2.new(0.5, 0.5); window.Position = UDim2.fromScale(0.5, 0.5); window.Size = UDim2.fromOffset(LC.REEL_W, REEL_H)
 window.BackgroundColor3 = darker(PANEL, 0.35); window.BorderSizePixel = 0; window.ClipsDescendants = true; window.ZIndex = 3; window.Parent = reel
 corner(window, 10)
 local strip = Instance.new("Frame")
-strip.Position = UDim2.fromOffset(0, 0); strip.Size = UDim2.fromOffset(N_TILES * STEP, REEL_H); strip.BackgroundTransparency = 1; strip.ZIndex = 4; strip.Parent = window
+strip.Position = UDim2.fromOffset(0, 0); strip.Size = UDim2.fromOffset(LC.N_TILES * STEP, REEL_H); strip.BackgroundTransparency = 1; strip.ZIndex = 4; strip.Parent = window
 -- EDGE FADES: tiles dissolve into the panel colour at both ends of the window (classic case feel).
 local RV = {} -- reel-effect state, collapsed into one local (200-local ceiling)
 RV.reelBG = darker(PANEL, 0.35)
@@ -2600,7 +2605,7 @@ do
 end
 -- RARITY GLOW behind the window centre + a starburst — hidden during the spin, bloom in on RV.reveal.
 RV.reveal = Instance.new("Frame")
-RV.reveal.AnchorPoint = Vector2.new(0.5, 0.5); RV.reveal.Position = UDim2.fromScale(0.5, 0.5); RV.reveal.Size = UDim2.fromOffset(REEL_W, REEL_H)
+RV.reveal.AnchorPoint = Vector2.new(0.5, 0.5); RV.reveal.Position = UDim2.fromScale(0.5, 0.5); RV.reveal.Size = UDim2.fromOffset(LC.REEL_W, REEL_H)
 RV.reveal.BackgroundTransparency = 1; RV.reveal.ZIndex = 4; RV.reveal.Visible = false; RV.reveal.Parent = reel
 RV.burst = Instance.new("Frame")
 RV.burst.AnchorPoint = Vector2.new(0.5, 0.5); RV.burst.Position = UDim2.fromScale(0.5, 0.5); RV.burst.Size = UDim2.fromOffset(2, 2)
@@ -2673,8 +2678,8 @@ playReel = function(caseId, wonId, res)
 	local disp = invData.catalog.cases[caseId]
 	local poolIds = disp and disp.poolIds or { wonId }
 	for _, c in strip:GetChildren() do c:Destroy() end
-	for i = 1, N_TILES do
-		local id = (i == WIN_INDEX) and wonId or poolIds[math.random(1, #poolIds)]
+	for i = 1, LC.N_TILES do
+		local id = (i == LC.WIN_INDEX) and wonId or poolIds[math.random(1, #poolIds)]
 		local holder = Instance.new("Frame") -- each reel tile is the SAME inventory card, via cardFace
 		holder.Position = UDim2.fromOffset((i - 1) * STEP, 8)
 		holder.Size = UDim2.fromOffset(TILE_W, REEL_H - 16)
@@ -2697,7 +2702,7 @@ playReel = function(caseId, wonId, res)
 	reel.Visible = true
 
 	local jitter = math.random(-10, 10) + (TILE_W * 0.5) * (math.random() - 0.5)
-	local target = math.floor(REEL_W / 2 - ((WIN_INDEX - 1) * STEP + TILE_W / 2) + jitter)
+	local target = math.floor(LC.REEL_W / 2 - ((LC.WIN_INDEX - 1) * STEP + TILE_W / 2) + jitter)
 	strip.Position = UDim2.fromOffset(0, 0)
 
 	local revealed = false
@@ -5083,7 +5088,7 @@ do
 
 	-- CHANGED: dead-center chrome panel (the same modern header-bar assembly as WEAPONS/the shop)
 	-- instead of the old bottom-right card.
-	local sRoot, sPanel, _, sClose = chromePanel(setGui, 460, 316, HEADER_COLORS.settings, "SETTINGS")
+	local sRoot, sPanel, _, sClose = chromePanel(setGui, 460, 316, LC.HEADER_COLORS.settings, "SETTINGS")
 	sPanel.Visible = false
 	sPanel:GetPropertyChangedSignal("Visible"):Connect(function()
 		sRoot.Visible = sPanel.Visible
@@ -5123,7 +5128,7 @@ do
 		local dragging = false
 		local function applyFromX(x)
 			local v = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-			volTouched = true
+			LC.volTouched = true
 			set(v)
 			applySoundVol()
 			render()
