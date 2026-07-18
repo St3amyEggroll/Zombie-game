@@ -209,15 +209,24 @@ end
 
 
 -- ===== MODEL BUILD / POOL =====
--- Shared humanoid setup (no joint-snap on death, auto-jump small ledges, an Animator for poses).
-local function configureHumanoid(hum: Humanoid)
-	hum.BreakJointsOnDeath = false
-	hum.AutoJumpEnabled = true       -- auto-hop small ledges while walking
-	hum.UseJumpPower = true
-	hum.JumpPower = 55               -- a bit higher than default so it can climb onto stuff (~8 studs)
-	if not hum:FindFirstChildOfClass("Animator") then
-		Instance.new("Animator").Parent = hum
+-- CUSTOM ENTITIES (no Roblox Humanoid): zombies are plain physics models driven by our own velocity
+-- steering, with health living in the server-side record and animations on a model-level
+-- AnimationController. The owner's templates still SHIP with a Humanoid (map contract) — this strips
+-- it at runtime and stamps a RigR6 attribute (Torso present = R6-style joints) for ragdoll/anim picks.
+local function configureRig(model: Model)
+	for _, h in model:GetChildren() do
+		if h:IsA("Humanoid") then
+			h:Destroy()
+		end
 	end
+	local ac = model:FindFirstChildOfClass("AnimationController")
+	if ac then
+		ac:Destroy() -- fresh controller = fresh Animator (pooled models must drop stale loaded tracks)
+	end
+	ac = Instance.new("AnimationController")
+	Instance.new("Animator").Parent = ac
+	ac.Parent = model
+	model:SetAttribute("RigR6", model:FindFirstChild("Torso") ~= nil)
 end
 
 local function buildPlaceholder(t): Model
@@ -257,10 +266,7 @@ local function buildPlaceholder(t): Model
 	w2.Part1 = head
 	w2.Parent = root
 
-	local hum = Instance.new("Humanoid")
-	hum.HipHeight = 0
-	hum.Parent = model
-	configureHumanoid(hum)
+	configureRig(model) -- no Humanoid: installs the AnimationController + RigR6 stamp
 
 	model.PrimaryPart = root
 	return model
@@ -386,10 +392,7 @@ local function prepModel(model: Model)
 			end
 		end
 	end
-	local hum = model:FindFirstChildOfClass("Humanoid")
-	if hum then
-		configureHumanoid(hum)
-	end
+	configureRig(model) -- strips the template's Humanoid + installs the AnimationController
 end
 
 -- Pull a tagged "ZombieTemplate" model out of the live world and store it as a spawn template.
@@ -482,31 +485,15 @@ local clearRagdoll -- forward declaration (defined in the DEATH section; used he
 
 local function release(record)
 	local model = record.model
-	if record.diedConn then
-		record.diedConn:Disconnect()
-		record.diedConn = nil
-	end
 
 	-- Undo the ragdoll: re-enable the rig's joints, remove ragdoll constraints, restore collisions.
 	if clearRagdoll then
 		clearRagdoll(model)
 	end
 
-	-- A Humanoid that reached 0 HP is permanently Dead — raising Health does NOT revive it and
-	-- MoveTo() is a no-op on it. Replace it with a fresh Humanoid for reuse, carrying over the rig's
-	-- HipHeight/RigType so user-built models keep standing correctly.
-	local oldHum = model:FindFirstChildOfClass("Humanoid")
-	local hipHeight = oldHum and oldHum.HipHeight or 0
-	local rigType = oldHum and oldHum.RigType or Enum.HumanoidRigType.R6
-	if oldHum then
-		oldHum:Destroy()
-	end
-	local hum = Instance.new("Humanoid")
-	hum.HipHeight = hipHeight
-	hum.RigType = rigType
-	hum.WalkSpeed = 0
-	hum.Parent = model
-	configureHumanoid(hum)
+	-- CUSTOM ENTITIES: no Humanoid to resurrect — just rebuild a fresh AnimationController/Animator
+	-- (loaded AnimationTracks die with the old Animator; stale ones can't be replayed on reuse).
+	configureRig(model)
 
 	-- Free the cap slot only now (the corpse occupied a real Workspace instance until this moment).
 	aliveCount = math.max(0, aliveCount - 1)
@@ -701,10 +688,12 @@ end
 
 local function setRagdoll(record): boolean
 	local model = record.model
-	local hum = model:FindFirstChildOfClass("Humanoid")
+	if record.alignOr then
+		record.alignOr.Enabled = false -- the upright constraint would fight the ragdoll
+	end
 
 	local made = false
-	if hum and hum.RigType == Enum.HumanoidRigType.R6 then
+	if model:GetAttribute("RigR6") then
 		made = setupR6Ragdoll(model)
 	end
 	if not made then
@@ -728,10 +717,6 @@ local function setRagdoll(record): boolean
 		end
 	end
 
-	if hum then
-		hum.PlatformStand = true
-		hum:ChangeState(Enum.HumanoidStateType.Physics)
-	end
 
 	-- Knock the ragdoll backward, AWAY from where the bullet came from (a strong, fixed launch). Every part
 	-- gets the same velocity so the whole body flies off together, then the loose joints make it tumble.
@@ -829,6 +814,7 @@ end
 -- the file) needs them — without the forward locals these calls silently resolve to nil globals.
 local clearFrost
 local spawnShatterVFX
+local applyDamage -- defined right after onZombieDied (shatter chains + death are mutually recursive)
 
 local function onZombieDied(record)
 	if record.dead then
@@ -836,11 +822,12 @@ local function onZombieDied(record)
 	end
 	record.dead = true
 	active[record.model] = nil
-	-- Corpses are anonymous: kill the Humanoid's built-in overhead name + health bar the moment it dies
-	-- (they lingered over ragdolls). spawnOne restores both — these models are POOLED and reused.
-	if record.hum then
-		record.hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		record.hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	-- Corpses are anonymous: hide our overhead tag the moment it dies (spawnOne re-arms it on reuse).
+	if record.tag then
+		record.tag.Enabled = false
+	end
+	if record.alignOr then
+		record.alignOr.Enabled = false
 	end
 	clearFrost(record, false) -- drop the ice shell (the shatter below plays its own sound)
 	if record.root then
@@ -856,9 +843,9 @@ local function onZombieDied(record)
 		spawnShatterVFX(pos, cfg.radius or 10)
 		SoundFXService.Emit("FrostShatter", pos, 140)
 		for _, other in active do
-			if other ~= record and not other.dead and other.root and other.hum and other.hum.Health > 0 then
+			if other ~= record and not other.dead and other.root and (other.health or 0) > 0 then
 				if (other.root.Position - pos).Magnitude <= (cfg.radius or 10) then
-					other.hum.Health = math.max(0, other.hum.Health - (cfg.damage or 45))
+					applyDamage(other, cfg.damage or 45)
 				end
 			end
 		end
@@ -883,10 +870,6 @@ local function onZombieDied(record)
 	-- Boss bookkeeping: if this was the boss, tell clients to drop the health bar + show the defeat banner.
 	if record == bossRecord then
 		bossRecord = nil
-		if record.bossHealthConn then
-			record.bossHealthConn:Disconnect()
-			record.bossHealthConn = nil
-		end
 		-- Where the boss fell — the wave's case drops burst out of the corpse (GameInventoryService).
 		ZombieService.LastBossDeathPos = record.root and record.root.Position or nil
 		ZombieService.LastBossDeathTime = os.clock()
@@ -896,10 +879,7 @@ local function onZombieDied(record)
 	-- aliveCount is freed in release() (after the corpse linger), so corpses still count against the
 	-- MaxAliveZombies cap until they're actually pooled — keeping true simultaneous bodies under the cap.
 
-	local hum = record.model:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.WalkSpeed = 0
-	end
+	record.speed = 0 -- the steer loop skips dead records; belt-and-braces
 	if record.walkTrack then
 		record.walkTrack:Stop()
 	end
@@ -945,13 +925,87 @@ local function pickType(round: number): string?
 	end)
 end
 
+-- ===== CUSTOM HEALTH (no Humanoid) =====
+-- THE single damage entry point. Health lives ONLY in the server-side record (even harder to exploit
+-- than Humanoid.Health). Updates our overhead tag, feeds the boss bar, and triggers death at zero.
+applyDamage = function(record, amount: number): boolean
+	if record.dead or (record.health or 0) <= 0 then
+		return false
+	end
+	record.health = math.max(0, record.health - amount)
+	if record.tag and record.tagBar then -- show the tag on first blood; keep the bar honest
+		record.tag.Enabled = true
+		record.tagBar.Size = UDim2.new(math.clamp(record.health / math.max(1, record.maxHealth), 0, 1), 0, 1, 0)
+	end
+	if record.isBoss then
+		Remotes.Get("BossHealth"):FireAllClients(record.health, record.maxHealth)
+	end
+	if record.health <= 0 then
+		onZombieDied(record)
+		return true
+	end
+	return false
+end
+
+-- Overhead name + health bar (replaces the Humanoid's built-in display). Lives on the Head, hidden
+-- until the first hit; pooled models keep the instance and just get re-armed.
+local function ensureTag(record)
+	local head = record.model:FindFirstChild("Head") or record.root
+	if not head then
+		return
+	end
+	local bb = head:FindFirstChild("ZTag")
+	if not bb then
+		bb = Instance.new("BillboardGui")
+		bb.Name = "ZTag"
+		bb.Size = UDim2.fromOffset(110, 34)
+		bb.StudsOffset = Vector3.new(0, 2.2, 0)
+		bb.AlwaysOnTop = false
+		bb.MaxDistance = 120
+		local nm = Instance.new("TextLabel")
+		nm.Name = "Nm"
+		nm.Size = UDim2.new(1, 0, 0, 18)
+		nm.BackgroundTransparency = 1
+		nm.Font = Enum.Font.GothamBold
+		nm.TextSize = 12
+		nm.TextColor3 = Color3.fromRGB(235, 235, 225)
+		nm.TextStrokeTransparency = 0.2
+		nm.Parent = bb
+		local track = Instance.new("Frame")
+		track.Name = "Track"
+		track.Position = UDim2.fromOffset(10, 22)
+		track.Size = UDim2.new(1, -20, 0, 6)
+		track.BackgroundColor3 = Color3.fromRGB(20, 22, 16)
+		track.BorderSizePixel = 0
+		local tc = Instance.new("UICorner")
+		tc.CornerRadius = UDim.new(1, 0)
+		tc.Parent = track
+		track.Parent = bb
+		local fill = Instance.new("Frame")
+		fill.Name = "Fill"
+		fill.Size = UDim2.fromScale(1, 1)
+		fill.BackgroundColor3 = Color3.fromRGB(196, 40, 30)
+		fill.BorderSizePixel = 0
+		local fc = Instance.new("UICorner")
+		fc.CornerRadius = UDim.new(1, 0)
+		fc.Parent = fill
+		fill.Parent = track
+		bb.Parent = head
+	end
+	bb.Nm.Text = record.type.name or record.typeId
+	bb.Track.Fill.Size = UDim2.fromScale(1, 1)
+	bb.Enabled = false -- anonymous until first blood
+	record.tag = bb
+	record.tagBar = bb.Track.Fill
+end
+
 -- ===== ZOMBIE ANIMATIONS (server-managed; played on the rig's Animator on the server, so every client
 -- sees the same thing and it can't be tampered with client-side) =====
 -- Walk defaults to Roblox's built-in walk animation for the rig type (public, loads server-side) so zombies
 -- animate out of the box; attack/death are optional and come from AnimationConfig.Zombies.
 local DEFAULT_WALK = {
-	[Enum.HumanoidRigType.R15] = "rbxassetid://507777826", -- Roblox default R15 walk
-	[Enum.HumanoidRigType.R6] = "rbxassetid://180426354",  -- Roblox default R6 walk
+	R15 = "rbxassetid://507777826", -- Roblox default R15 walk
+	R6 = "rbxassetid://180426354",  -- Roblox default R6 walk
 }
 
 local zAnimCache: { [string]: Animation } = {}
@@ -966,14 +1020,15 @@ local function zGetAnim(id: string): Animation
 end
 
 local function loadZombieTracks(record)
-	local hum = record.hum
-	local animator = hum and hum:FindFirstChildOfClass("Animator")
+	local ac = record.model:FindFirstChildOfClass("AnimationController")
+	local animator = ac and ac:FindFirstChildOfClass("Animator")
 	if not animator then
 		return
 	end
 	local cfg = AnimationConfig.Zombies[record.typeId] or AnimationConfig.Zombies.Default or {}
-	-- Walk: use the configured id, else fall back to the engine's default walk for this rig type.
-	local walk = AnimationConfig.Resolve(cfg.Walk) or DEFAULT_WALK[record.hum.RigType]
+	-- Walk: use the configured id, else fall back to the engine's default walk for this rig style.
+	local walk = AnimationConfig.Resolve(cfg.Walk)
+		or DEFAULT_WALK[record.model:GetAttribute("RigR6") and "R6" or "R15"]
 	if walk then
 		record.walkTrack = animator:LoadAnimation(zGetAnim(walk))
 		record.walkTrack.Looped = true
@@ -1435,7 +1490,6 @@ end
 -- surface over EMERGE_TIME. AI is suppressed (record.emerging) until it's out, then chasing takes over.
 local function startEmergence(record, spawnCF: CFrame)
 	local model = record.model
-	local hum = record.hum
 	local root = record.root
 	local pos = spawnCF.Position
 	-- The zombie itself always stands upright (the Humanoid balances it); only a grave follows the slope.
@@ -1452,12 +1506,8 @@ local function startEmergence(record, spawnCF: CFrame)
 	local finalCF = CFrame.new(pos.X, groundY + GRAVE_STAND_HEIGHT, pos.Z)
 
 	record.emerging = true
-	-- Anchor ONLY the root and limp the Humanoid during the rise. The rig's joints keep the limbs glued to
-	-- the root, so it rises as one piece; because we never anchor/limp-release the whole body, it doesn't
-	-- topple when it reaches the surface (anchoring every part then releasing made it fall over).
-	if hum then
-		hum.PlatformStand = true
-	end
+	-- Anchor ONLY the root during the rise. The rig's joints keep the limbs glued to the root, so it
+	-- rises as one piece (anchoring every part then releasing made it fall over).
 	root.Anchored = true
 	local base = finalCF + Vector3.new(0, -EMERGE_DEPTH, 0)
 	model:PivotTo(base)
@@ -1474,9 +1524,6 @@ local function startEmergence(record, spawnCF: CFrame)
 			root.Anchored = false
 			root.AssemblyLinearVelocity = Vector3.zero
 			root.AssemblyAngularVelocity = Vector3.zero
-			if hum then
-				hum.PlatformStand = false -- hand control back so it stands and walks
-			end
 			pcall(function()
 				root:SetNetworkOwner(nil)
 			end)
@@ -1498,20 +1545,36 @@ local function spawnOne(round: number, forcedType: string?)
 	end
 
 	local model = acquire(typeId, t)
-	local hum = model:FindFirstChildOfClass("Humanoid")
 	local root = model.PrimaryPart
-	if not hum or not root then
+	if not root then
 		return nil
 	end
 
 	-- (ELITE golden zombies REMOVED — every spawn is a plain roll of its type now.)
 	local hp = scaledHealth(round, t)
-	hum.MaxHealth = hp
-	hum.Health = hp
-	hum.WalkSpeed = scaledSpeed(round, t)
-	-- Pooled reuse: death turned the overhead name/health display OFF — turn it back on for the fresh spawn.
-	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-	hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.DisplayWhenDamaged
+	local spd = scaledSpeed(round, t)
+
+	-- CUSTOM UPRIGHT: no Humanoid balancing — an AlignOrientation keeps the rig standing + facing its
+	-- move direction (disabled on death so ragdolls tumble freely; re-armed here on pooled reuse).
+	local att = root:FindFirstChild("ZAlignAtt")
+	if not att then
+		att = Instance.new("Attachment")
+		att.Name = "ZAlignAtt"
+		att.Parent = root
+	end
+	local alignOr = root:FindFirstChild("ZAlignOr")
+	if not alignOr then
+		alignOr = Instance.new("AlignOrientation")
+		alignOr.Name = "ZAlignOr"
+		alignOr.Mode = Enum.OrientationAlignmentMode.OneAttachment
+		alignOr.Attachment0 = att
+		alignOr.MaxTorque = 1e6
+		alignOr.MaxAngularVelocity = 40
+		alignOr.Responsiveness = 60
+		alignOr.Parent = root
+	end
+	alignOr.CFrame = spawnCF.Rotation + Vector3.zero
+	alignOr.Enabled = true
 
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)
@@ -1529,10 +1592,13 @@ local function spawnOne(round: number, forcedType: string?)
 	local record = {
 		model = model,
 		root = root,
-		hum = hum,
 		typeId = typeId,
 		type = t,
-		baseSpeed = hum.WalkSpeed, -- statusSpeed() restores to this after chills/pins expire
+		health = hp,            -- CUSTOM health: lives in this record only (see applyDamage)
+		maxHealth = hp,
+		speed = spd,            -- CUSTOM WalkSpeed replacement — the steer loop drives velocity from this
+		baseSpeed = spd,        -- statusSpeed() restores to this after chills/pins expire
+		alignOr = alignOr,
 		damage = t.damage * difficultyMult * (GameConfig.ZombieDamageMult or 1),
 		target = nil,
 		targetRoot = nil,
@@ -1555,14 +1621,12 @@ local function spawnOne(round: number, forcedType: string?)
 		nextThink = now + math.random() * GameConfig.ZombieAITickRate, -- stagger
 		dead = false,
 		emerging = false,
-		diedConn = nil,
 		lastPos = root.Position,    -- for stuck detection
 		lastMoveTime = now,
 		pathFailed = false,
 	}
-	record.diedConn = hum.Died:Connect(function()
-		onZombieDied(record)
-	end)
+	-- (No Humanoid.Died — applyDamage() calls onZombieDied directly at zero health.)
+	ensureTag(record)
 
 	active[model] = record
 	aliveCount += 1
@@ -1635,9 +1699,7 @@ local function explode(record)
 		spawnExplosionVFX(pos)
 		SoundFXService.Emit("Explosion", pos, 220)
 	end
-	if record.hum then
-		record.hum.Health = 0 -- dies in its own blast
-	end
+	applyDamage(record, math.huge) -- dies in its own blast
 end
 
 -- Necromancer: raise `n` extra grunts, respecting the alive cap.
@@ -1732,10 +1794,10 @@ function ZombieService.Pin(record, secs)
 	record.pinnedUntil = os.clock() + (secs or 2)
 end
 
--- Per-frame speed from active statuses (called from steer). Cheap: two clock compares + one property set.
+-- Per-frame speed from active statuses (called from steer). Cheap: two clock compares + one field write.
 local function statusSpeed(record, now)
-	local hum, base = record.hum, record.baseSpeed
-	if not hum or not base then
+	local base = record.baseSpeed
+	if not base then
 		return
 	end
 	local target = base
@@ -1744,12 +1806,53 @@ local function statusSpeed(record, now)
 	elseif now < (record.chilledUntil or 0) then
 		target = base * (1 - (record.slowPct or 0))
 	end
-	if hum.WalkSpeed ~= target then
-		hum.WalkSpeed = target
-	end
+	record.speed = target
 	if record.frostTint and now >= (record.chilledUntil or 0) then
 		clearFrost(record, true) -- the ice breaks as the freeze wears off
 	end
+end
+
+-- ===== CUSTOM LOCOMOTION (no Humanoid) ===== velocity-driven walking + an AlignOrientation upright.
+-- setVel: horizontal velocity toward `dir` at record.speed (gravity keeps the Y component). Also turns
+-- the rig to face its travel. Passing a ~zero dir stops it (grounded zombies don't slide).
+local JUMP_VEL = 34 -- vertical launch for ledge hops (~the old JumpPower 55 feel)
+local function setVel(record, dir: Vector3)
+	local root = record.root
+	if not root then
+		return
+	end
+	local v = root.AssemblyLinearVelocity
+	local flat = Vector3.new(dir.X, 0, dir.Z)
+	if flat.Magnitude < 0.05 or (record.speed or 0) <= 0 then
+		root.AssemblyLinearVelocity = Vector3.new(0, v.Y, 0)
+		return
+	end
+	local d = flat.Unit
+	root.AssemblyLinearVelocity = Vector3.new(d.X * record.speed, v.Y, d.Z * record.speed)
+	if record.alignOr then
+		record.alignOr.CFrame = CFrame.lookAlong(Vector3.zero, d) -- face the way it's walking
+	end
+end
+
+-- grounded: short downcast from the root (jumps/leaps only fire with footing, like Humanoid states did).
+local function grounded(record): boolean
+	local root = record.root
+	if not root then
+		return false
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { record.model }
+	return Workspace:Raycast(root.Position, Vector3.new(0, -4.5, 0), params) ~= nil
+end
+
+local function jump(record)
+	if not grounded(record) then
+		return
+	end
+	local root = record.root
+	local v = root.AssemblyLinearVelocity
+	root.AssemblyLinearVelocity = Vector3.new(v.X, JUMP_VEL, v.Z)
 end
 
 -- Frozen SOLID (a full Freeze Ray chill, slowPct >= 1): no walking, no diving, no biting until it breaks.
@@ -1820,14 +1923,12 @@ local function tryLeap(record, now: number, targetRoot: BasePart, flatDist: numb
 	if flatDist < LEAP_MIN_DIST or flatDist > LEAP_MAX_DIST then
 		return
 	end
-	local hum = record.hum
 	local root = record.root
-	if not hum or not root then
+	if not root then
 		return
 	end
 	-- Must be grounded (don't re-pounce mid-air) and able to see the target (don't pounce into a wall).
-	local st = hum:GetState()
-	if st == Enum.HumanoidStateType.Freefall or st == Enum.HumanoidStateType.Jumping then
+	if not grounded(record) then
 		return
 	end
 	if sightBlocked(root.Position, targetRoot.Position) then
@@ -1847,10 +1948,6 @@ local function tryLeap(record, now: number, targetRoot: BasePart, flatDist: numb
 	-- horizontal velocity back to WalkSpeed (which made it "just jump straight up"). Put it in the Jumping
 	-- state and leave it physics-only for the flight so the ballistic arc actually carries it AT the player.
 	record.leapUntil = now + airTime + 0.15
-	pcall(function()
-		hum:ChangeState(Enum.HumanoidStateType.Jumping)
-	end)
-	hum:Move(Vector3.zero) -- clear any walk MoveDirection so it isn't fought this step
 	root.AssemblyLinearVelocity = dir * hSpeed + Vector3.new(0, LEAP_UP_SPEED, 0)
 	if record.attackTrack then
 		record.attackTrack:Play(0.05) -- reuse the attack/lunge anim as the pounce, if one is set
@@ -1949,7 +2046,7 @@ local function think(record, now: number)
 	-- force-killing one would fire "Boss Defeated" (and even a free victory on the final wave).
 	if not record.isBoss and record ~= bossRecord then
 		if (now - record.lastMoveTime) > STUCK_TIMEOUT or (now - record.spawnTime) > MAX_LIFETIME then
-			record.hum.Health = 0
+			applyDamage(record, math.huge)
 			return
 		end
 	else
@@ -1977,14 +2074,13 @@ end
 
 -- STEER (every frame): drive toward the live goal + hop obstacles. Cheap (no pathfinding here).
 local function steer(record, now: number)
-	local hum = record.hum
 	local root = record.root
-	if not hum or not root or not root.Parent then
+	if not root or not root.Parent then
 		return
 	end
 	statusSpeed(record, now) -- chills/pins apply + expire here (runs every steer frame)
 	if isFrozen(record, now) then
-		hum:Move(Vector3.zero)
+		setVel(record, Vector3.zero)
 		if record.type and record.type.canFly then
 			root.AssemblyLinearVelocity = Vector3.zero -- frozen flyers hang in place instead of drifting
 		end
@@ -1992,7 +2088,7 @@ local function steer(record, now: number)
 	end
 	local targetRoot = record.targetRoot
 	if record.mode == "idle" or not targetRoot or not targetRoot.Parent then
-		hum:Move(Vector3.zero)
+		setVel(record, Vector3.zero)
 		return
 	end
 
@@ -2005,7 +2101,6 @@ local function steer(record, now: number)
 	-- Ghost (canFly): hover above the player and dive-bomb. Physics stays on (still shootable/knockable);
 	-- we set velocity each frame to hold height, chase horizontally, and drop on a dive.
 	if record.type and record.type.canFly then
-		hum.PlatformStand = true
 		-- Flyers are always "making progress" (velocity-driven, never truly wedged) — keep the stuck
 		-- detector fed, or think()'s 8s backstop force-kills every ghost shortly after it spawns.
 		record.lastPos = root.Position
@@ -2019,7 +2114,7 @@ local function steer(record, now: number)
 			diving = true
 		end
 		local aimY = diving and pPos.Y or (pPos.Y + GHOST_HEIGHT)
-		local horiz = flatToP.Magnitude > 0.5 and (flatToP.Unit * hum.WalkSpeed) or Vector3.zero
+		local horiz = flatToP.Magnitude > 0.5 and (flatToP.Unit * record.speed) or Vector3.zero
 		local vy = math.clamp((aimY - root.Position.Y) * 6, -60, 60)
 		root.AssemblyLinearVelocity = Vector3.new(horiz.X, vy, horiz.Z)
 		-- Bite on contact (mostly lands during a dive).
@@ -2064,7 +2159,7 @@ local function steer(record, now: number)
 					record.avoidWaterUntil = now2 + 1.5
 					record.mode = "path"
 					record.lastPath = 0 -- think() recomputes a route on its next tick
-					hum:Move(Vector3.zero)
+					setVel(record, Vector3.zero)
 					return
 				end
 			end
@@ -2079,14 +2174,14 @@ local function steer(record, now: number)
 		local flat = Vector3.new(root.Position.X - goal.X, 0, root.Position.Z - goal.Z)
 		if flat.Magnitude < WAYPOINT_REACH then
 			if wp.Action == Enum.PathWaypointAction.Jump then
-				hum.Jump = true
+				jump(record)
 			end
 			record.waypointIndex += 1
 		end
 	end
 
 	if dist <= ATTACK_RANGE then
-		hum:Move(Vector3.zero) -- in contact: stop shoving the player around
+		setVel(record, Vector3.zero) -- in contact: stop shoving the player around
 		-- Damage on TOUCH: while its body is against yours, it bites once per cooldown.
 		-- (damage <= 0 = no melee at all: the Bomb Zombie only threatens with its explosion.)
 		if record.target and record.damage > 0 and (now - record.lastAttack) >= ATTACK_COOLDOWN then
@@ -2101,7 +2196,7 @@ local function steer(record, now: number)
 		local toGoal = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z)
 		if toGoal.Magnitude > 0.1 then
 			local move = toGoal.Unit
-			hum:Move(move, false)
+			setVel(record, move)
 
 			-- Jump up onto / over stuff: probe ahead. If something blocks at foot height but the path is
 			-- clear higher up, it's a ledge/step/obstacle we can hop.
@@ -2112,7 +2207,7 @@ local function steer(record, now: number)
 				local lowHit = Workspace:Raycast(root.Position - Vector3.new(0, 1.5, 0), ahead, params)
 				local highHit = Workspace:Raycast(root.Position + Vector3.new(0, 2, 0), ahead, params)
 				if lowHit and not highHit then
-					hum.Jump = true
+					jump(record)
 				end
 			end
 		end
@@ -2156,12 +2251,12 @@ local function onHeartbeat()
 		lastDebug = now
 		print(("[ZombieDebug] alive=%d remaining=%d"):format(aliveCount, remaining))
 		for _, record in active do
-			local h = record.hum
-			print(("[ZombieDebug]  type=%s walkSpeed=%.1f state=%s hasTarget=%s anchored=%s")
+			print(("[ZombieDebug]  type=%s speed=%.1f hp=%.0f mode=%s hasTarget=%s anchored=%s")
 				:format(
 					record.typeId,
-					h and h.WalkSpeed or -1,
-					h and tostring(h:GetState()) or "nil",
+					record.speed or -1,
+					record.health or -1,
+					tostring(record.mode),
 					tostring(record.target ~= nil),
 					tostring(record.root and record.root.Anchored)
 				))
@@ -2211,17 +2306,14 @@ function ZombieService.SpawnBoss(round: number, bossId: string?, playerCount: nu
 		end
 		bossRecord = record
 		record.isBoss = true
-		local hum = record.hum
 		local mult = math.max(1, math.floor(playerCount or 1))
 		if mult > 1 then
-			hum.MaxHealth = hum.MaxHealth * mult
-			hum.Health = hum.MaxHealth
+			record.maxHealth = record.maxHealth * mult
+			record.health = record.maxHealth
 		end
-		Remotes.Get("BossSpawned"):FireAllClients(record.type.name, hum.MaxHealth)
+		Remotes.Get("BossSpawned"):FireAllClients(record.type.name, record.maxHealth)
 		SoundFXService.Emit("ZRoar:" .. record.typeId, record.root and record.root.Position or nil, 250)
-		record.bossHealthConn = hum.HealthChanged:Connect(function(h)
-			Remotes.Get("BossHealth"):FireAllClients(h, hum.MaxHealth)
-		end)
+		-- (No HealthChanged connection — applyDamage() feeds the boss bar for isBoss records.)
 	end)
 end
 
@@ -2268,11 +2360,16 @@ function ZombieService.GetFolder(): Folder
 	return zombieFolder
 end
 
--- Snapshot of the live zombies (for CombatService's arc hit). Each entry: { record with .root/.hum/... }.
+-- THE public damage entry (CombatService / TrapService / events): custom health, returns killed.
+function ZombieService.ApplyDamage(record, amount: number): boolean
+	return applyDamage(record, amount)
+end
+
+-- Snapshot of the live zombies (for CombatService's arc hit). Each entry: { record with .root/.speed/... }.
 function ZombieService.GetActive()
 	local list = {}
 	for _, record in active do
-		if not record.dead and record.root and record.root.Parent and record.hum and record.hum.Health > 0 then
+		if not record.dead and record.root and record.root.Parent and (record.health or 0) > 0 then
 			table.insert(list, record)
 		end
 	end
@@ -2308,8 +2405,8 @@ end
 function ZombieService.SkipWave()
 	remaining = 0
 	for _, record in active do
-		if not record.dead and record.hum and record.hum.Health > 0 then
-			record.hum.Health = 0
+		if not record.dead and (record.health or 0) > 0 then
+			applyDamage(record, math.huge)
 		end
 	end
 end
@@ -2322,10 +2419,6 @@ function ZombieService.ClearAll()
 	announcedTypes = {} -- next run re-announces each enemy type's first appearance
 	for model, record in active do
 		record.dead = true
-		if record.diedConn then
-			record.diedConn:Disconnect()
-			record.diedConn = nil
-		end
 		release(record)
 		active[model] = nil
 	end

@@ -41,13 +41,14 @@ local MAX_ORIGIN_DIST   = 6     -- studs the claimed shot origin may be from the
 local FIRE_RATE_SLACK    = 0.85  -- fire-gate refill runs at fireRate/this (15% headroom for latency/jitter)
 local FIRE_BURST         = 2     -- token-bucket capacity: absorbs frame-bunched arrivals instead of dropping them
 
--- ===== SIGNALS (other services subscribe; fired on damage/kill of a non-player Humanoid) =====
+-- ===== SIGNALS (other services subscribe; fired on damage/kill of a zombie). CUSTOM ENTITIES: the
+-- second argument is the zombie MODEL now (zombies have no Humanoid; health lives in ZombieService). =====
 local hitEvent = Instance.new("BindableEvent")
 local killEvent = Instance.new("BindableEvent")
 local equippedEvent = Instance.new("BindableEvent")
 local firedEvent = Instance.new("BindableEvent")
-CombatService.Hit = hitEvent.Event           -- (player, humanoid, isHeadshot, weaponId, damage)
-CombatService.Kill = killEvent.Event         -- (player, humanoid, isHeadshot, weaponId)
+CombatService.Hit = hitEvent.Event           -- (player, zombieModel, isHeadshot, weaponId, damage)
+CombatService.Kill = killEvent.Event         -- (player, zombieModel, isHeadshot, weaponId)
 CombatService.Equipped = equippedEvent.Event -- (player) — loadout/equip changed
 CombatService.Fired = firedEvent.Event       -- (player, weaponId) — a valid shot went out (drives recoil)
 
@@ -129,16 +130,16 @@ local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
 	local dmg = math.max(0, cfg.damage or 0)
 	if dmg > 0 then
 		for _, rec in ZombieService.GetActive() do
-			local hum, root = rec.hum, rec.root
-			if hum and root then
+			local root = rec.root
+			if root then
 				local dist = (root.Position - center).Magnitude
 				if dist <= radius then
 					local dealt = dmg * (1 - (dist / radius) * 0.5)
-					hum.Health = math.max(0, hum.Health - dealt)
 					ZombieService.NoteHit(rec, center)
-					hitEvent:Fire(player, hum, false, weaponId, dealt)
-					if hum.Health <= 0 then
-						killEvent:Fire(player, hum, false, weaponId)
+					local killed = ZombieService.ApplyDamage(rec, dealt)
+					hitEvent:Fire(player, rec.model, false, weaponId, dealt)
+					if killed then
+						killEvent:Fire(player, rec.model, false, weaponId)
 					else
 						ZombieService.Hit(rec, center, 24)
 					end
@@ -327,18 +328,16 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 		end
 		for idx, count in pelletsOn do
 			local c = targets[idx]
-			local humanoid = c.record.hum
 			local damage = baseDamage * falloffMult(c.dist) * count
 			local isCrit = math.random() < buffOf(ps, "critchance")
 			if isCrit then
 				damage *= (1 + GameConfig.CritBaseBonus + buffOf(ps, "critdamage")) -- Crit buffs
 			end
-			humanoid.Health = math.max(0, humanoid.Health - damage)
-			local killed = humanoid.Health <= 0
 			ZombieService.NoteHit(c.record, origin) -- so a kill launches the ragdoll away from the shooter
-			hitEvent:Fire(player, humanoid, false, weaponId, damage)
+			local killed = ZombieService.ApplyDamage(c.record, damage)
+			hitEvent:Fire(player, c.record.model, false, weaponId, damage)
 			if killed then
-				killEvent:Fire(player, humanoid, false, weaponId)
+				killEvent:Fire(player, c.record.model, false, weaponId)
 			else
 				ZombieService.Hit(c.record, origin, eff.knockback) -- knockback + white flash
 				-- Ability status effects ride on live hits (a corpse can't be pinned or chilled).

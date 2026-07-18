@@ -58,13 +58,11 @@ end
 
 -- Damage a zombie; credit the activating player with the kill cash if it dies.
 local function damageZombie(player: Player, record, amount: number)
-	local hum = record.hum
-	if not hum or hum.Health <= 0 then
+	if record.dead or (record.health or 0) <= 0 then
 		return
 	end
-	hum.Health = math.max(0, hum.Health - amount)
-	if hum.Health <= 0 then
-		local model = hum.Parent
+	if ZombieService.ApplyDamage(record, amount) then
+		local model = record.model
 		local mult = (model and model:GetAttribute("PointsMult")) or 1
 		PointsService.Award(player, GameConfig.PointsPerKill * mult)
 		local ps = MatchService.GetPlayerState(player)

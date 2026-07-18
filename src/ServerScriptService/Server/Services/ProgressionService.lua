@@ -62,8 +62,8 @@ local function awardXP(player: Player, amount: number)
 end
 
 -- XP + Coins per kill (+ special bonus) — fires on every zombie kill.
-local function onKill(player: Player, humanoid: Humanoid, _isHead: boolean, _weaponId: string)
-	local model = humanoid.Parent
+local function onKill(player: Player, model: Model, _isHead: boolean, _weaponId: string)
+	-- (CUSTOM ENTITIES: CombatService passes the zombie MODEL — zombies have no Humanoid.)
 	local special = model and model:GetAttribute("IsSpecial") == true
 	local xp = ProgressionConfig.XPPerKill + (special and ProgressionConfig.XPPerSpecialKill or 0)
 	awardXP(player, xp)

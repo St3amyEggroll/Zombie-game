@@ -78,24 +78,24 @@ function PointsService.TrySpend(player: Player, cost: number): boolean
 end
 
 -- ===== AWARD HOOKS =====
--- Returns the zombie's points multiplier, or nil if this Humanoid isn't a scorable zombie (no PointsMult
--- attribute). Only models ZombieService stamps mint points — a stray non-player Humanoid can't be farmed.
-local function pointsMultOf(humanoid: Humanoid): number?
-	local model = humanoid.Parent
+-- Returns the zombie's points multiplier, or nil if this MODEL isn't a scorable zombie (no PointsMult
+-- attribute). Only models ZombieService stamps mint points — a stray model can't be farmed.
+-- (CUSTOM ENTITIES: CombatService passes the zombie MODEL now — zombies have no Humanoid.)
+local function pointsMultOf(model: Model?): number?
 	local m = model and model:GetAttribute("PointsMult")
 	return (typeof(m) == "number") and m or nil
 end
 
-local function onHit(player: Player, humanoid: Humanoid, _isHead: boolean, _weaponId: string, _damage: number)
-	local mult = pointsMultOf(humanoid)
+local function onHit(player: Player, model: Model, _isHead: boolean, _weaponId: string, _damage: number)
+	local mult = pointsMultOf(model)
 	if not mult then
 		return
 	end
 	PointsService.Award(player, GameConfig.PointsPerHit * mult)
 end
 
-local function onKill(player: Player, humanoid: Humanoid, isHead: boolean, _weaponId: string)
-	local mult = pointsMultOf(humanoid)
+local function onKill(player: Player, model: Model, isHead: boolean, _weaponId: string)
+	local mult = pointsMultOf(model)
 	if not mult then
 		return
 	end
@@ -110,7 +110,6 @@ local function onKill(player: Player, humanoid: Humanoid, isHead: boolean, _weap
 	local ps = MatchService.GetPlayerState(player)
 	if ps then
 		ps.kills += 1
-		local model = humanoid.Parent
 		if model and model:GetAttribute("IsSpecial") then
 			ps.specialKills += 1
 		end
