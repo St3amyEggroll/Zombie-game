@@ -17,11 +17,15 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
+local WeaponConfig = require(Config.WeaponConfig) -- next-unlock headline on the LVL card
 local ProgressionConfig = require(Config.ProgressionConfig)
 local BuffConfig = require(Config.BuffConfig)     -- rarity colors
 local Util = require(Modules.Util)
 local Remotes = require(Modules.Remotes)
 local UITheme = require(Modules.UITheme)
+
+local AutoShootController = require(script.Parent.AutoShootController) -- the dock's AUTOFIRE toggle
+local SettingsController = require(script.Parent.SettingsController)   -- the dock's SETTINGS button
 
 local HUDController = {}
 
@@ -47,6 +51,7 @@ local extractChip                    -- NEW: persistent "next cash-out / live pa
 local extractMult, currentRound = 1, 0 -- so the extraction loop is legible BETWEEN the choice windows
 local leaveBtn                        -- hoisted: hidden during an open extraction window (see below)
 local levelLabel, levelFill
+local lvlHeadline, lvlXPText -- the LVL card's next-unlock line + "x / y XP" bar overlay
 local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
 
@@ -94,29 +99,8 @@ local function build()
 	gui.Parent = playerGui
 	UITheme.Attach(gui)
 
-	-- ===== BOTTOM-LEFT: health panel (caption 12 / value 16 on the shared scale, no frame overlap) =====
-	local hp = panel(gui, "HealthPanel")
-	hp.Position = UDim2.new(0, 16, 1, -(64 + 16))
-	hp.Size = UDim2.fromOffset(240, 64)
-
-	local hpCaption = text(hp, "Caption", UITheme.BodyBoldFace, UITheme.Type.Caption, COL_TEXT_DIM)
-	hpCaption.Position = UDim2.fromOffset(14, 6)
-	hpCaption.Size = UDim2.fromOffset(90, 14)
-	hpCaption.TextXAlignment = Enum.TextXAlignment.Left
-	hpCaption.Text = "HEALTH"
-
-	healthLabel = text(hp, "HealthLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT)
-	healthLabel.AnchorPoint = Vector2.new(1, 0)
-	healthLabel.Position = UDim2.new(1, -14, 0, 4)
-	healthLabel.Size = UDim2.new(1, -122, 0, 18) -- starts where the caption box ends: no overlap
-	healthLabel.TextXAlignment = Enum.TextXAlignment.Right
-	healthLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	healthLabel.Text = "100 / 100"
-
-	local track
-	track, healthFill = UITheme.Bar(hp, "Track", COL_ACCENT)
-	track.Position = UDim2.fromOffset(14, 34)
-	track.Size = UDim2.new(1, -28, 0, 16)
+	-- (HEALTH PANEL REMOVED — owner call, HUD renovation. The hurt flash / low-HP vignette / heartbeat
+	-- in HealthFeedbackController carry damage state, and your own PARTY chip's ring shows your HP.)
 
 	-- ===== TOP-CENTER: ONE lane owns the whole stack ===== (enemies bar+buttons → wave → countdown →
 	-- announcements → boss bar). A UIListLayout does the spacing — no more hand-tuned magic offsets, and
@@ -136,19 +120,16 @@ local function build()
 	laneList.Padding = UDim.new(0, UITheme.Space.Row)
 	laneList.Parent = lane
 
-	-- Row 1: enemies-left bar, with the small SKIP WAVE (Robux) + LEAVE pair right beside it.
-	-- The row is symmetric around the track so the bar stays exactly screen-centered.
-	local waveRow = Instance.new("Frame")
-	waveRow.Name = "WaveRow"
-	waveRow.BackgroundTransparency = 1
-	waveRow.Size = UDim2.fromOffset(178 + 340 + 178, 26)
+	-- Row 1 (RENOVATION): ONE strip pill — [WAVE N][enemies bar][◇ cash-out chip] — replacing the old
+	-- big wave text + separate bar + separate chip stack. LEAVE/SKIP moved to absolute TOP-RIGHT.
+	local waveRow = panel(lane, "WaveStrip")
+	waveRow.Size = UDim2.fromOffset(560, 40)
 	waveRow.LayoutOrder = 10
-	waveRow.Parent = lane
 
 	enemiesTrack = Instance.new("Frame")
 	enemiesTrack.Name = "EnemiesTrack"
-	enemiesTrack.Position = UDim2.fromOffset(178, 0)
-	enemiesTrack.Size = UDim2.fromOffset(340, 26)
+	enemiesTrack.Position = UDim2.fromOffset(150, 7)
+	enemiesTrack.Size = UDim2.fromOffset(250, 26)
 	enemiesTrack.BackgroundColor3 = COL_TRACK
 	enemiesTrack.BackgroundTransparency = 0.15
 	enemiesTrack.BorderSizePixel = 0
@@ -176,12 +157,13 @@ local function build()
 	enStroke.Thickness = 1.5
 	enStroke.Parent = enemiesLabel
 
-	-- SKIP WAVE (Robux dev product) + LEAVE, small, right beside the bar. Skip prompts the purchase
-	-- (GameConfig.SkipWaveProductId — 0 = not set up yet); Leave banks the run and returns to the lobby.
-	local skipBtn = UITheme.Button(waveRow, "SKIP WAVE", "gold")
+	-- SKIP WAVE (Robux dev product) + LEAVE — TOP-RIGHT now (out of the strip, away from combat).
+	-- Skip prompts the purchase (GameConfig.SkipWaveProductId — 0 = warns); Leave banks + exits.
+	local skipBtn = UITheme.Button(gui, "SKIP WAVE", "gold")
 	skipBtn.Name = "SkipWaveButton"
-	skipBtn.Position = UDim2.fromOffset(178 + 340 + 8, 0)
-	skipBtn.Size = UDim2.fromOffset(82, 26)
+	skipBtn.AnchorPoint = Vector2.new(1, 0)
+	skipBtn.Position = UDim2.new(1, -16, 0, 14)
+	skipBtn.Size = UDim2.fromOffset(100, 34)
 	skipBtn.TextSize = UITheme.Type.Caption
 	skipBtn.TextColor3 = Color3.fromRGB(255, 255, 255) -- readable white (the variant's dark text read as black)
 	skipBtn.Activated:Connect(function()
@@ -200,27 +182,29 @@ local function build()
 					return MarketplaceService:GetProductInfo(id, Enum.InfoType.Product)
 				end)
 				if ok and info and tonumber(info.PriceInRobux) then
-					skipBtn.Size = UDim2.fromOffset(96, 26)
+					skipBtn.Size = UDim2.fromOffset(112, 34)
 					skipBtn.Text = ("SKIP  R$%d"):format(info.PriceInRobux)
 				end
 			end)
 		end
 	end
 
-	leaveBtn = UITheme.Button(waveRow, "LEAVE", "danger")
+	leaveBtn = UITheme.Button(gui, "LEAVE", "danger")
 	leaveBtn.Name = "LeaveButton"
-	leaveBtn.Position = UDim2.fromOffset(178 - 8 - 82, 0) -- LEFT of the bar (skip sits on the right)
-	leaveBtn.Size = UDim2.fromOffset(82, 26)
+	leaveBtn.AnchorPoint = Vector2.new(1, 0)
+	leaveBtn.Position = UDim2.new(1, -(16 + 100 + 8), 0, 14) -- left of SKIP in the top-right pair
+	leaveBtn.Size = UDim2.fromOffset(84, 34)
 	leaveBtn.TextSize = UITheme.Type.Caption
 	leaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	leaveBtn.Activated:Connect(function()
 		Remotes.Get("LeaveRun"):FireServer()
 	end)
 
-	-- Row 2: the wave number (Screen tier — the ambient anchor; alerts at Item tier now read as louder events).
-	roundLabel = text(lane, "RoundLabel", UITheme.TitleFace, UITheme.Type.Screen, COL_TEXT)
-	roundLabel.Size = UDim2.fromOffset(320, 32)
-	roundLabel.LayoutOrder = 20
+	-- The wave number LIVES IN THE STRIP now (left slot) — same variable, so every updater still works.
+	roundLabel = text(waveRow, "RoundLabel", UITheme.TitleFace, 20, COL_TEXT)
+	roundLabel.Position = UDim2.fromOffset(14, 0)
+	roundLabel.Size = UDim2.fromOffset(130, 40)
+	roundLabel.TextXAlignment = Enum.TextXAlignment.Left
 	roundLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	roundLabel.Text = "WAVE 0"
 	local waveStroke = Instance.new("UIStroke") -- thin dark outline so white text reads on bright skies
@@ -229,12 +213,13 @@ local function build()
 	waveStroke.Thickness = 1.5
 	waveStroke.Parent = roundLabel
 
-	-- Row 2.5: the EXTRACTION chip — makes the "cash out or double down every few waves" loop legible
-	-- BETWEEN the choice windows (players kept getting surprised by the card). Shows when the next
-	-- cash-out window is, and — once anyone has doubled down — the live payout multiplier riding on it.
-	extractChip = text(lane, "ExtractChip", UITheme.BodyBoldFace, UITheme.Type.Value, COL_GOLD)
-	extractChip.Size = UDim2.fromOffset(360, 20)
-	extractChip.LayoutOrder = 25
+	-- The EXTRACTION chip rides the strip's right slot — the "cash out or double down" rhythm stays
+	-- legible BETWEEN the choice windows (next cash-out wave + the live payout multiplier).
+	extractChip = text(waveRow, "ExtractChip", UITheme.BodyBoldFace, UITheme.Type.Value, COL_GOLD)
+	extractChip.AnchorPoint = Vector2.new(1, 0)
+	extractChip.Position = UDim2.new(1, -14, 0, 0)
+	extractChip.Size = UDim2.fromOffset(148, 40)
+	extractChip.TextXAlignment = Enum.TextXAlignment.Right
 	extractChip.Visible = false
 	extractChip.Text = ""
 
@@ -260,27 +245,25 @@ local function build()
 	anStroke.Parent = announceLabel
 	-- (Row 5 — LayoutOrder 50 — is the boss bar; BossController parents it into this lane.)
 
-	-- ===== BOTTOM-LEFT stack (from the bottom): HEALTH -> LEVEL -> COINS.
-	-- (CASH is GONE — the run currency display was dead weight; guns are bought with Coins.)
-	local lp = panel(gui, "LevelPanel")
-	lp.AnchorPoint = Vector2.new(0, 1)
-	lp.Position = UDim2.new(0, 16, 1, -(16 + 64 + 8)) -- directly above the health panel
-	lp.Size = UDim2.fromOffset(240, 44)
+	-- ===== BOTTOM-LEFT: the COINS PILL — the lobby's, verbatim (dark rounded pill, coin icon, gold
+	-- number, gold +). RENOVATION: no more stacked boxes; LVL moved to its own bottom-RIGHT card.
+	local coinsPill = panel(gui, "CoinsPill")
+	coinsPill.AnchorPoint = Vector2.new(0, 1)
+	coinsPill.Position = UDim2.new(0, 16, 1, -14)
+	coinsPill.Size = UDim2.fromOffset(252, 54)
 
-	-- CHANGED: the owner's coin IMAGE before the number (the coin emoji didn't render in the title font).
 	local coinImg = Instance.new("ImageLabel")
 	coinImg.Name = "CoinIcon"
-	coinImg.AnchorPoint = Vector2.new(0, 1)
-	coinImg.Position = UDim2.new(0, 16 + 14, 1, -(16 + 64 + 8 + 44 + 7))
-	coinImg.Size = UDim2.fromOffset(32, 32)
+	coinImg.AnchorPoint = Vector2.new(0, 0.5)
+	coinImg.Position = UDim2.new(0, 8, 0.5, 0)
+	coinImg.Size = UDim2.fromOffset(40, 40)
 	coinImg.BackgroundTransparency = 1
 	coinImg.ScaleType = Enum.ScaleType.Fit
 	coinImg.Image = "rbxassetid://84729396970772"
-	coinImg.Parent = gui
-	coinsLabel = text(gui, "LobbyMoneyLabel", UITheme.TitleFace, 30, COL_GOLD) -- BIG coins, right above the level
-	coinsLabel.AnchorPoint = Vector2.new(0, 1)
-	coinsLabel.Position = UDim2.new(0, 16 + 14 + 38, 1, -(16 + 64 + 8 + 44 + 6)) -- after the coin icon
-	coinsLabel.Size = UDim2.fromOffset(280, 34)
+	coinImg.Parent = coinsPill
+	coinsLabel = text(coinsPill, "LobbyMoneyLabel", UITheme.TitleFace, 28, COL_GOLD)
+	coinsLabel.Position = UDim2.new(0, 54, 0, 0)
+	coinsLabel.Size = UDim2.new(1, -54 - 44, 1, 0)
 	coinsLabel.TextXAlignment = Enum.TextXAlignment.Left
 	coinsLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	coinsLabel.Text = "0"
@@ -363,20 +346,30 @@ local function build()
 		end
 	end
 
-	local plusBtn = UITheme.Button(gui, "+", "gold")
+	local plusBtn = UITheme.Button(coinsPill, "+", "gold")
 	plusBtn.Name = "GetCoinsButton"
-	plusBtn.AnchorPoint = Vector2.new(0, 1)
-	plusBtn.Position = UDim2.new(0, 16 + 14 + 38 + 186, 1, -(16 + 64 + 8 + 44 + 8))
-	plusBtn.Size = UDim2.fromOffset(28, 28)
+	plusBtn.AnchorPoint = Vector2.new(1, 0.5)
+	plusBtn.Position = UDim2.new(1, -8, 0.5, 0)
+	plusBtn.Size = UDim2.fromOffset(30, 30)
 	plusBtn.TextSize = 22
 	plusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	plusBtn.Activated:Connect(function()
 		card.Visible = not card.Visible
 	end)
+	HUDController.ToggleCoinShop = function() -- the dock's SHOP circle opens the same card
+		card.Visible = not card.Visible
+	end
 
-	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, UITheme.Type.Section, COL_XP)
-	levelLabel.Position = UDim2.fromOffset(14, 4)
-	levelLabel.Size = UDim2.new(1, -28, 0, 20)
+	-- ===== BOTTOM-RIGHT: the LVL / XP card — the lobby's, verbatim (big blue LVL, next-unlock
+	-- headline, XP bar with the numbers riding on it).
+	local lp = panel(gui, "LevelCard")
+	lp.AnchorPoint = Vector2.new(1, 1)
+	lp.Position = UDim2.new(1, -16, 1, -14)
+	lp.Size = UDim2.fromOffset(310, 62)
+
+	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, 24, COL_XP)
+	levelLabel.Position = UDim2.fromOffset(14, 0)
+	levelLabel.Size = UDim2.fromOffset(92, 62)
 	levelLabel.TextXAlignment = Enum.TextXAlignment.Left
 	levelLabel.Text = "LVL 1"
 	local lvStroke = Instance.new("UIStroke")
@@ -385,14 +378,166 @@ local function build()
 	lvStroke.Thickness = 1.5
 	lvStroke.Parent = levelLabel
 
+	lvlHeadline = text(lp, "Headline", UITheme.BodyBoldFace, 12, UITheme.TOXIC_HI or COL_ACCENT)
+	lvlHeadline.Position = UDim2.fromOffset(108, 8)
+	lvlHeadline.Size = UDim2.new(1, -122, 0, 16)
+	lvlHeadline.TextXAlignment = Enum.TextXAlignment.Left
+	lvlHeadline.TextTruncate = Enum.TextTruncate.AtEnd
+	lvlHeadline.Text = ""
+
 	local lvTrack
 	lvTrack, levelFill = UITheme.Bar(lp, "XPTrack", COL_XP)
-	lvTrack.Position = UDim2.fromOffset(14, 28)
-	lvTrack.Size = UDim2.new(1, -28, 0, 8)
+	lvTrack.Position = UDim2.fromOffset(108, 30)
+	lvTrack.Size = UDim2.new(1, -122, 0, 16)
 	levelFill.Size = UDim2.fromScale(0, 1)
+	lvlXPText = text(lvTrack, "XPText", UITheme.BodyBoldFace, 11, COL_TEXT)
+	lvlXPText.Size = UDim2.fromScale(1, 1)
+	lvlXPText.ZIndex = 3
+	lvlXPText.TextXAlignment = Enum.TextXAlignment.Center
+	lvlXPText.Text = ""
+
+	-- ===== THE DOCK ===== lobby-style round buttons at the bottom, seated to the RIGHT of the hotbar
+	-- (the hotbar does NOT move — owner call, especially for phones): SHOP · CODES · SETTINGS · AUTOFIRE.
+	-- AUTOFIRE is a live toggle (green = on, T still works); the others open their panels.
+	local CIRCLE, DGAP = 56, 14
+
+	-- CODES panel (its own modal-fit gui): textbox + REDEEM, replying through the RedeemCode remote.
+	local codesGui = Instance.new("ScreenGui")
+	codesGui.Name = "GameCodes"
+	codesGui.ResetOnSpawn = false
+	codesGui.IgnoreGuiInset = true
+	codesGui.DisplayOrder = UITheme.Layer.ShopModal
+	codesGui.Parent = gui.Parent
+	UITheme.Attach(codesGui, 380, 240)
+	local codesPanel = panel(codesGui, "CodesPanel")
+	codesPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+	codesPanel.Position = UDim2.fromScale(0.5, 0.5)
+	codesPanel.Size = UDim2.fromOffset(360, 210)
+	codesPanel.Visible = false
+	local codesTitle = text(codesPanel, "Title", UITheme.TitleFace, 24, COL_GOLD)
+	codesTitle.Position = UDim2.fromOffset(18, 12)
+	codesTitle.Size = UDim2.new(1, -80, 0, 30)
+	codesTitle.TextXAlignment = Enum.TextXAlignment.Left
+	codesTitle.Text = "REDEEM CODE"
+	local codesClose = UITheme.Button(codesPanel, "X", "danger")
+	codesClose.AnchorPoint = Vector2.new(1, 0)
+	codesClose.Position = UDim2.new(1, -12, 0, 12)
+	codesClose.Size = UDim2.fromOffset(30, 30)
+	codesClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+	codesClose.Activated:Connect(function()
+		codesPanel.Visible = false
+	end)
+	local codeBox = Instance.new("TextBox")
+	codeBox.Name = "CodeBox"
+	codeBox.Position = UDim2.fromOffset(18, 58)
+	codeBox.Size = UDim2.new(1, -36, 0, 44)
+	codeBox.BackgroundColor3 = COL_TRACK
+	codeBox.BorderSizePixel = 0
+	codeBox.FontFace = UITheme.BodyBoldFace
+	codeBox.TextSize = 18
+	codeBox.TextColor3 = COL_TEXT
+	codeBox.PlaceholderText = "ENTER CODE"
+	codeBox.PlaceholderColor3 = COL_TEXT_DIM
+	codeBox.ClearTextOnFocus = false
+	codeBox.Text = ""
+	codeBox.Parent = codesPanel
+	UITheme.Corner(codeBox, 6)
+	UITheme.Edge(codeBox, UITheme.BLACK, 2)
+	local codesResult = text(codesPanel, "Result", UITheme.BodyBoldFace, 13, COL_TEXT_DIM)
+	codesResult.Position = UDim2.fromOffset(18, 108)
+	codesResult.Size = UDim2.new(1, -36, 0, 18)
+	codesResult.TextXAlignment = Enum.TextXAlignment.Left
+	codesResult.Text = "Codes drop on the socials — one use each."
+	local redeemBtn = UITheme.Button(codesPanel, "REDEEM", "gold")
+	redeemBtn.Position = UDim2.fromOffset(18, 138)
+	redeemBtn.Size = UDim2.new(1, -36, 0, 48)
+	redeemBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	redeemBtn.Activated:Connect(function()
+		local code = codeBox.Text
+		if #code > 0 then
+			codesResult.Text = "CHECKING..."
+			codesResult.TextColor3 = COL_TEXT_DIM
+			Remotes.Get("RedeemCode"):FireServer(code)
+		end
+	end)
+	Remotes.Get("RedeemCode").OnClientEvent:Connect(function(res)
+		if typeof(res) ~= "table" then
+			return
+		end
+		codesResult.Text = tostring(res.msg or "")
+		codesResult.TextColor3 = res.ok and COL_ACCENT or COL_DANGER
+		if res.ok then
+			codeBox.Text = ""
+		end
+	end)
+
+	-- The dock row itself. Anchored just right of the hotbar's edge (hotbar: 2 slots + CASES, centered).
+	local dock = Instance.new("Frame")
+	dock.Name = "Dock"
+	dock.AnchorPoint = Vector2.new(0, 1)
+	dock.Position = UDim2.new(0.5, 160, 1, -8)
+	dock.Size = UDim2.fromOffset((CIRCLE + DGAP) * 4, CIRCLE + 20)
+	dock.BackgroundTransparency = 1
+	dock.Parent = gui
+
+	local autoCircle -- forward: dockButton below builds it, Changed recolors it
+	local function dockButton(index, label, glyph, onClick)
+		local holder = Instance.new("Frame")
+		holder.Name = "Dock_" .. label
+		holder.Position = UDim2.fromOffset((index - 1) * (CIRCLE + DGAP), 0)
+		holder.Size = UDim2.fromOffset(CIRCLE, CIRCLE + 20)
+		holder.BackgroundTransparency = 1
+		holder.Parent = dock
+		local c = Instance.new("TextButton")
+		c.Name = "Circle"
+		c.Size = UDim2.fromOffset(CIRCLE, CIRCLE)
+		c.BackgroundColor3 = COL_PANEL
+		c.BorderSizePixel = 0
+		c.FontFace = UITheme.TitleFace
+		c.TextSize = 24
+		c.TextColor3 = COL_TEXT
+		c.Text = glyph
+		c.Parent = holder
+		UITheme.Corner(c, 999)
+		UITheme.Edge(c, UITheme.BLACK, 3)
+		local l = text(holder, "Label", UITheme.BodyBoldFace, 11, COL_TEXT)
+		l.AnchorPoint = Vector2.new(0.5, 1)
+		l.Position = UDim2.new(0.5, 0, 1, 0)
+		l.Size = UDim2.fromOffset(CIRCLE + 14, 14)
+		l.TextXAlignment = Enum.TextXAlignment.Center
+		l.Text = label
+		local st = Instance.new("UIStroke")
+		st.Color = Color3.fromRGB(0, 0, 0)
+		st.Transparency = 0.35
+		st.Thickness = 1.5
+		st.Parent = l
+		c.Activated:Connect(onClick)
+		return c
+	end
+
+	dockButton(1, "SHOP", "🛒", function()
+		card.Visible = not card.Visible
+	end)
+	dockButton(2, "CODES", "🎟", function()
+		codesPanel.Visible = not codesPanel.Visible
+	end)
+	dockButton(3, "SETTINGS", "⚙", function()
+		if SettingsController.Toggle then
+			SettingsController.Toggle()
+		end
+	end)
+	autoCircle = dockButton(4, "AUTOFIRE", "⌖", function()
+		AutoShootController.Toggle()
+	end)
+	local function paintAuto(on)
+		autoCircle.BackgroundColor3 = on and UITheme.TOXIC_DK or COL_PANEL
+		autoCircle.TextColor3 = on and UITheme.TOXIC_HI or COL_TEXT
+	end
+	paintAuto(AutoShootController.IsOn())
+	AutoShootController.Changed:Connect(paintAuto)
 end
 
--- Account XP -> the bottom-right level readout (shared curve with the lobby).
+-- Account XP -> the bottom-right LVL card (shared curve with the lobby).
 local function setXP(totalXP)
 	local level, into, need = ProgressionConfig.LevelForXP(tonumber(totalXP) or 0)
 	localPlayer:SetAttribute("AccountLevel", level) -- the GUNS screen reads this for its level locks
@@ -401,6 +546,21 @@ local function setXP(totalXP)
 	end
 	if levelFill then
 		levelFill.Size = UDim2.fromScale(need > 0 and math.clamp(into / need, 0, 1) or 1, 1)
+	end
+	if lvlXPText then
+		lvlXPText.Text = need > 0 and (Util.FormatNumber(into) .. " / " .. Util.FormatNumber(need) .. " XP") or "MAX LEVEL"
+	end
+	if lvlHeadline then
+		-- Headline = the NEXT gun on the level ladder (the lobby card's "ALL GUNS UNLOCKED" line).
+		local bestLvl, bestName
+		for _, w in WeaponConfig do
+			if typeof(w) == "table" and tonumber(w.unlock) and w.unlock > level then
+				if not bestLvl or w.unlock < bestLvl then
+					bestLvl, bestName = w.unlock, w.name or w.id
+				end
+			end
+		end
+		lvlHeadline.Text = bestLvl and (tostring(bestName):upper() .. " AT LV " .. bestLvl) or "ALL GUNS UNLOCKED"
 	end
 end
 
@@ -429,15 +589,12 @@ function HUDController.Announce(textStr: string, color: Color3?, dur: number?)
 end
 
 -- ===== UPDATES =====
+-- (The persistent health BAR is gone — owner call. healthPct still tracks for anything that reads it;
+-- the hurt vignette/heartbeat + your own party chip's ring are the visible health signals now.)
 local function setHealth(health, maxHealth)
 	health = math.max(0, health)
 	maxHealth = math.max(1, maxHealth)
 	healthPct = math.clamp(health / maxHealth, 0, 1)
-	healthLabel.Text = ("%d / %d"):format(math.floor(health + 0.5), math.floor(maxHealth + 0.5))
-	TweenService:Create(healthFill, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = UDim2.fromScale(healthPct, 1),
-		BackgroundColor3 = (healthPct <= LOW_HP_PCT) and COL_DANGER or COL_ACCENT,
-	}):Play()
 end
 
 -- ===== LIFECYCLE =====
@@ -486,10 +643,11 @@ local function updateExtractChip()
 		return
 	end
 	local nextWave = (math.floor(currentRound / every) + 1) * every
+	-- Short forms: the chip lives in the wave strip's right slot now (148px).
 	if extractMult > 1 then
-		extractChip.Text = ("◇ PAYOUT ×%.1f  ·  CASH OUT AT WAVE %d"):format(extractMult, nextWave)
+		extractChip.Text = ("◇ ×%.1f · CASH OUT W%d"):format(extractMult, nextWave)
 	else
-		extractChip.Text = ("◇ CASH OUT AT WAVE %d"):format(nextWave)
+		extractChip.Text = ("◇ CASH OUT AT W%d"):format(nextWave)
 	end
 	extractChip.Visible = true
 end

@@ -67,6 +67,7 @@ local TEMPLATE = {
 	stats        = { totalKills = 0, matchesPlayed = 0 },
 	cosmetics    = {},
 	settings     = { sfx = true, music = true, lowGfx = false },
+	redeemed     = {},                -- [CODE] = true — codes used (shared with the lobby's redeem bar)
 }
 
 local store = DataStoreService:GetDataStore(STORE_NAME)
@@ -140,6 +141,7 @@ local GAME_OWNED_FIELDS = {
 	"dataVersion", "xp", "level", "bestWave", "wins", "completed", "stats", "cosmetics", "settings",
 	"lobbyMoney", "cases", -- cases: wave/boss case drops earned in-run must reach the lobby
 	"ownedWeapons", -- mid-run gun purchases (GunShopService) must reach the lobby too
+	"redeemed", -- in-game code redemptions must reach the lobby (same one-place-at-a-time argument)
 }
 
 local function saveAsync(player: Player): boolean
@@ -341,6 +343,24 @@ function DataService.AddWeapon(player: Player, weaponId: string)
 		table.insert(data.ownedWeapons, weaponId)
 		markDirty(player)
 	end
+end
+
+-- ----- redeem codes (in-game CODES button; the lobby's redeem bar shares the same profile latch) -----
+-- Atomically claim a code for this player: returns false if it was already used (here OR in the lobby).
+function DataService.MarkRedeemed(player: Player, code: string): boolean
+	local data = getData(player)
+	if not data then
+		return false
+	end
+	if typeof(data.redeemed) ~= "table" then
+		data.redeemed = {}
+	end
+	if data.redeemed[code] then
+		return false
+	end
+	data.redeemed[code] = true
+	markDirty(player)
+	return true
 end
 
 -- ----- cases (granted in-run every 10th wave; opened in the LOBBY) -----

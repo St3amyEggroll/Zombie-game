@@ -73,6 +73,9 @@ local DEFINITIONS: { [string]: string } = {
 	Interact          = "RemoteEvent",     -- C->S: generic interact intent
 	Sprint            = "RemoteEvent",     -- NEW (Phase 1): C->S: (wantSprint: boolean)
 
+	-- CodeService (the in-game CODES dock button — same codes + same once-per-player rule as the lobby)
+	RedeemCode        = "RemoteEvent",     -- C->S: (code) redeem attempt; S->C: ({ok, msg}) result toast
+
 	-- GameInventoryService (in-game VIEW of the lobby inventory + potion use + wave case drops)
 	InvSnapshot       = "RemoteEvent",     -- S->C: (snapshot) equipped weapons + cases + potions; C->S: request one
 	CaseDropped       = "RemoteEvent",     -- S->C: (rarity) you collected a wave-clear case (toast)

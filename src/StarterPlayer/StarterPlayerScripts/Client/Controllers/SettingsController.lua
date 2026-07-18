@@ -250,7 +250,9 @@ function SettingsController.Start()
 		end
 	end
 
-	gear.Activated:Connect(function()
+	-- CHANGED (HUD renovation): the lobby-style DOCK owns the visible settings button now — the old
+	-- corner gear is hidden (kept as dead chrome so nothing else breaks) and the dock calls Toggle().
+	local function togglePanel()
 		panel.Visible = not panel.Visible
 		if panel.Visible then
 			UIFocus.Open()
@@ -258,7 +260,10 @@ function SettingsController.Start()
 		else
 			UIFocus.Close()
 		end
-	end)
+	end
+	SettingsController.Toggle = togglePanel
+	gear.Activated:Connect(togglePanel)
+	chromeGui.Enabled = false
 	closeBtn.Activated:Connect(function()
 		if panel.Visible then UIFocus.Close() end
 		panel.Visible = false
