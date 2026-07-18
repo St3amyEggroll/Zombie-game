@@ -34,6 +34,11 @@ AnimationConfig.Projectile = {
 		-- watch it fly, with a faint short tail.
 		crossbow = { Color = Color3.fromRGB(158, 108, 58), Length = 3.0, Width = 0.12, Speed = 240, Life = 0.06,
 			Material = "SmoothPlastic", Trail = 0.05 },
+		-- NEW ROCKET: a real solid rocket (metal body + fire exhaust + smoke trail — built specially in
+		-- CombatFeedbackController, not the generic bolt). Speed here is THE source of truth for flight
+		-- time: the SERVER delays the blast (damage + boom) by distance/Speed so the explosion happens
+		-- when the rocket visually lands. Life = how long the smoke trail lingers after impact.
+		rocket = { Color = Color3.fromRGB(210, 92, 40), Length = 1.7, Width = 0.42, Speed = 150, Life = 0.7 },
 	},
 }
 

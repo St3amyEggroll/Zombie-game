@@ -344,7 +344,21 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- AoE weapons (Rocket / Plasma): blast at the impact point (a hit target, else where the shot lands).
 	if weapon.aoe then
 		local center = (#targets > 0) and targets[1].root.Position or endpoint
-		applyAoE(player, weaponId, center, weapon.aoe)
+		-- NEW: the rocket is a VISIBLE projectile on clients (CombatFeedbackController.spawnRocket flies it
+		-- at AnimationConfig speed) — hold the detonation (splash damage + boom + sound) for the flight
+		-- time so the explosion happens when and where the rocket lands, not at the muzzle click.
+		local pCfg = AnimationConfig.Projectile.PerWeapon[weaponId]
+		local flightSpeed = (weaponId == "rocket") and pCfg and pCfg.Speed or nil
+		if flightSpeed and flightSpeed > 0 then
+			local flight = math.min((center - origin).Magnitude / flightSpeed, 2)
+			task.delay(flight, function()
+				if player.Parent then -- shooter may have left mid-flight
+					applyAoE(player, weaponId, center, weapon.aoe)
+				end
+			end)
+		else
+			applyAoE(player, weaponId, center, weapon.aoe)
+		end
 	end
 end
 

@@ -345,12 +345,112 @@ local function impactPop(pos: Vector3, weaponId: string)
 	end
 end
 
+-- NEW ROCKET: an actual rocket, not a tracer — dark metal body with an orange neon exhaust glow, a
+-- roaring fire jet out the back and a smoke trail the whole way. Flies at the config Speed (the server
+-- delays the blast to match), then the body vanishes on arrival and the smoke lingers a beat. The
+-- WorldVFX "boom" from the server is the explosion itself.
+local function spawnRocket(from: Vector3, to: Vector3)
+	local cfg = projectileCfgFor("rocket")
+	if #activeBolts >= 40 then
+		return
+	end
+	local delta = to - from
+	local dist = delta.Magnitude
+	if dist < 0.5 or dist ~= dist then
+		return
+	end
+	local dir = delta.Unit
+
+	local body = Instance.new("Part")
+	body.Name = "Rocket"
+	body.Anchored = true
+	body.CanCollide = false
+	body.CanQuery = false
+	body.CanTouch = false
+	body.CastShadow = false
+	body.Material = Enum.Material.Metal
+	body.Color = Color3.fromRGB(72, 74, 70)
+	body.Size = Vector3.new(cfg.Width, cfg.Width, math.min(cfg.Length, dist))
+	body.CFrame = CFrame.lookAt(from, from + dir)
+
+	-- Orange-hot warhead tip (front = -Z on a lookAt part).
+	local tip = Instance.new("Attachment")
+	tip.Position = Vector3.new(0, 0, -body.Size.Z * 0.5)
+	tip.Parent = body
+
+	-- Exhaust hangs off the tail and blows BACKWARD (+Z); particles live in world space, so the
+	-- flight paints a continuous fire-and-smoke ribbon behind the rocket.
+	local tail = Instance.new("Attachment")
+	tail.Position = Vector3.new(0, 0, body.Size.Z * 0.5)
+	tail.Parent = body
+
+	local exhaust = Instance.new("ParticleEmitter")
+	exhaust.Name = "RocketExhaust"
+	exhaust.Texture = "rbxasset://textures/particles/fire_main.dds"
+	exhaust.Rate = 90
+	exhaust.Speed = NumberRange.new(8, 14)
+	exhaust.Lifetime = NumberRange.new(0.12, 0.22)
+	exhaust.SpreadAngle = Vector2.new(9, 9)
+	exhaust.Rotation = NumberRange.new(0, 360)
+	exhaust.RotSpeed = NumberRange.new(-120, 120)
+	exhaust.LightEmission = 1
+	exhaust.LightInfluence = 0
+	exhaust.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.9),
+		NumberSequenceKeypoint.new(1, 0.25),
+	})
+	exhaust.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 240, 170)),
+		ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 150, 40)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(160, 40, 10)),
+	})
+	exhaust.Parent = tail
+
+	local smoke = Instance.new("ParticleEmitter")
+	smoke.Name = "RocketSmoke"
+	smoke.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	smoke.Rate = 45
+	smoke.Speed = NumberRange.new(1, 3)
+	smoke.Lifetime = NumberRange.new(0.5, cfg.Life or 0.7)
+	smoke.SpreadAngle = Vector2.new(20, 20)
+	smoke.Rotation = NumberRange.new(0, 360)
+	smoke.RotSpeed = NumberRange.new(-40, 40)
+	smoke.Acceleration = Vector3.new(0, 3, 0) -- smoke drifts up as the trail dissolves
+	smoke.LightInfluence = 1
+	smoke.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.7),
+		NumberSequenceKeypoint.new(1, 2.4),
+	})
+	smoke.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.45),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	smoke.Color = ColorSequence.new(Color3.fromRGB(120, 118, 112), Color3.fromRGB(70, 70, 68))
+	smoke.Parent = tail
+
+	local glow = Instance.new("PointLight") -- the burning motor lights the rocket up in flight
+	glow.Color = Color3.fromRGB(255, 160, 60)
+	glow.Brightness = 3
+	glow.Range = 9
+	glow.Parent = tail
+
+	body.Parent = fxFolder
+	table.insert(activeBolts, {
+		part = body, from = from, dir = dir, dist = dist,
+		speed = cfg.Speed, life = cfg.Life or 0.7, t = 0,
+		rocket = true, -- arrival = vanish + let the smoke finish; the server's "boom" is the explosion
+	})
+end
+
 local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	if weaponId == "flamethrower" then
 		return spawnFlames(from, to) -- fire is not a bullet
 	end
 	if weaponId == "freezeray" then
 		return spawnFrostJet(from, to) -- cold is not a bullet either
+	end
+	if weaponId == "rocket" then
+		return spawnRocket(from, to) -- a rocket is a VEHICLE, not a tracer
 	end
 	if not AnimationConfig.Projectile.Enabled then
 		-- Fallback to the legacy instant line if projectiles are disabled.
@@ -433,6 +533,21 @@ local function updateBolts(dt: number)
 			if traveled >= b.dist then
 				local pos = b.from + b.dir * b.dist
 				b.part.CFrame = CFrame.lookAt(pos, pos + b.dir)
+				if b.rocket then
+					-- The rocket body vanishes INTO the blast (the server's boom lands right now);
+					-- kill the motor and leave the part alive invisibly so the smoke trail finishes.
+					b.part.Transparency = 1
+					for _, d in b.part:GetDescendants() do
+						if d:IsA("ParticleEmitter") then
+							d.Rate = 0
+						elseif d:IsA("PointLight") then
+							d.Enabled = false
+						end
+					end
+					Debris:AddItem(b.part, b.life + 0.1)
+					table.remove(activeBolts, i)
+					continue
+				end
 				TweenService:Create(b.part, TweenInfo.new(b.life), { Transparency = 1 }):Play()
 				Debris:AddItem(b.part, b.life + 0.08) -- + a beat for the tail to finish fading
 				if b.burstColor then -- landing pop (the freeze ray's frost puff)
