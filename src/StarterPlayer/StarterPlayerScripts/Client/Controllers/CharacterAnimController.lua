@@ -69,17 +69,18 @@ local function getAnim(id: string): Animation
 	return a
 end
 
--- ===== PROCEDURAL HOLD FALLBACK ===== (NEW)
+-- ===== PROCEDURAL HOLD FALLBACK =====
 -- Roblox only plays animation assets UPLOADED BY THE GAME OWNER — a toolbox/catalog id loads a track
--- that silently never animates. When that happens (or a gun has no Hold id), pose the arms ourselves
--- with shoulder-joint C0 offsets. Animator tracks write Motor6D.Transform, never C0, so movement
--- animations still play on top of this pose. Style per gun: AnimationConfig.HoldStyles.
+-- that silently never animates. When that happens (or a gun has no Hold id), pose the arms ourselves.
+-- CHANGED: the pose is now a PER-FRAME arm LOCK on Motor6D.Transform (written after the animation
+-- step, same technique as the zombies) — a static C0 offset raised the arms but the walk animation
+-- still SWUNG them around the raised position ("swinging the minigun while walking").
 local PROC_POSES = {
 	pistol = { r = 88, l = 12 }, -- gun arm raised, off hand relaxed
 	rifle  = { r = 78, l = 62 }, -- both hands up on the gun
 	heavy  = { r = 42, l = 42 }, -- low two-handed waist carry
 }
-local procBase: { [Model]: any } = {} -- [character] = { rs, ls, rsC0, lsC0 } original C0s to restore
+local procActive: { [Model]: any } = {} -- [character] = { rs, ls, r6, pose } — written every frame
 
 local function findMotor(character: Model, names: { string }): Motor6D?
 	for _, n in names do
@@ -92,17 +93,16 @@ local function findMotor(character: Model, names: { string }): Motor6D?
 end
 
 local function clearProcPose(character: Model)
-	local pb = procBase[character]
-	if not pb then
-		return
+	local e = procActive[character]
+	procActive[character] = nil
+	if e then -- hand the joints back to the Animator cleanly (it rewrites Transform next frame anyway)
+		if e.rs and e.rs.Parent then
+			e.rs.Transform = CFrame.identity
+		end
+		if e.ls and e.ls.Parent then
+			e.ls.Transform = CFrame.identity
+		end
 	end
-	if pb.rs and pb.rs.Parent then
-		pb.rs.C0 = pb.rsC0
-	end
-	if pb.ls and pb.ls.Parent then
-		pb.ls.C0 = pb.lsC0
-	end
-	procBase[character] = nil
 end
 
 local function applyProcPose(character: Model)
@@ -112,24 +112,36 @@ local function applyProcPose(character: Model)
 		clearProcPose(character)
 		return
 	end
-	local pose = PROC_POSES[style] or PROC_POSES.rifle
-	local pb = procBase[character]
-	if not pb then -- capture the untouched C0s ONCE per character (restored by clearProcPose)
-		local rs = findMotor(character, { "Right Shoulder", "RightShoulder" })
-		local ls = findMotor(character, { "Left Shoulder", "LeftShoulder" })
-		if not rs and not ls then
-			return
+	local rs = findMotor(character, { "Right Shoulder", "RightShoulder" })
+	local ls = findMotor(character, { "Left Shoulder", "LeftShoulder" })
+	if not rs and not ls then
+		return
+	end
+	procActive[character] = {
+		rs = rs,
+		ls = ls,
+		r6 = character:FindFirstChild("Torso") ~= nil,
+		pose = PROC_POSES[style] or PROC_POSES.rifle,
+	}
+end
+
+-- The per-frame lock: runs AFTER the engine's animation step (RenderPriority.Character + 1), so it
+-- overwrites whatever arm swing the walk/idle tracks just wrote. Legs are untouched — walking still
+-- looks like walking, just with the arms pinned on the gun.
+local function stepProcPoses()
+	for character, e in procActive do
+		if not character.Parent then
+			procActive[character] = nil
+			continue
 		end
-		pb = { rs = rs, ls = ls, rsC0 = rs and rs.C0, lsC0 = ls and ls.C0 }
-		procBase[character] = pb
-	end
-	-- R6 shoulders: joint-space Z = the forward/back swing axis (mirrored). R15: X is the swing axis.
-	local r6 = character:FindFirstChild("Torso") ~= nil
-	if pb.rs and pb.rs.Parent then
-		pb.rs.C0 = pb.rsC0 * (r6 and CFrame.Angles(0, 0, math.rad(pose.r)) or CFrame.Angles(-math.rad(pose.r), 0, 0))
-	end
-	if pb.ls and pb.ls.Parent then
-		pb.ls.C0 = pb.lsC0 * (r6 and CFrame.Angles(0, 0, -math.rad(pose.l)) or CFrame.Angles(-math.rad(pose.l), 0, 0))
+		local p = e.pose
+		-- R6 shoulders: joint-space Z = the forward/back swing axis (mirrored). R15: X is the axis.
+		if e.rs and e.rs.Parent then
+			e.rs.Transform = e.r6 and CFrame.Angles(0, 0, math.rad(p.r)) or CFrame.Angles(-math.rad(p.r), 0, 0)
+		end
+		if e.ls and e.ls.Parent then
+			e.ls.Transform = e.r6 and CFrame.Angles(0, 0, -math.rad(p.l)) or CFrame.Angles(-math.rad(p.l), 0, 0)
+		end
 	end
 end
 
@@ -232,7 +244,7 @@ local function watchCharacter(character: Model)
 			end
 			holdTracks[character] = nil
 			holdTokens[character] = nil
-			procBase[character] = nil -- joints died with the character; nothing to restore
+			procActive[character] = nil -- joints died with the character; stop writing them
 		end
 	end)
 	-- Diagnostic: if the server never stamps ANY hold attribute, the problem is upstream of playback
@@ -271,6 +283,9 @@ end
 
 function CharacterAnimController.Start()
 	task.spawn(preloadHolds)
+	-- Procedural-stance arm lock: after the animation step each frame, so it beats the walk swing.
+	local RunService = game:GetService("RunService")
+	RunService:BindToRenderStep("HoldProcPose", Enum.RenderPriority.Character.Value + 1, stepProcPoses)
 	if localPlayer.Character then
 		task.spawn(applyOverrides, localPlayer.Character)
 	end
