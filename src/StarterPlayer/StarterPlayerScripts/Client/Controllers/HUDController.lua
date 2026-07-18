@@ -471,12 +471,14 @@ local function build()
 		end
 	end)
 
-	-- The dock row itself. Anchored just right of the hotbar's edge (hotbar: 2 slots + CASES, centered).
+	-- The dock row: UNDERNEATH the guns, bottom-center (the hotbar shifts up to seat it — HotbarController).
+	-- SAME photo ids as the lobby's dock buttons, round-cropped, so both places read identically.
+	local DOCK_ICONS = { SHOP = "71412141929869", CODES = "106591567271932", SETTINGS = "94140673883223" }
 	local dock = Instance.new("Frame")
 	dock.Name = "Dock"
-	dock.AnchorPoint = Vector2.new(0, 1)
-	dock.Position = UDim2.new(0.5, 160, 1, -8)
-	dock.Size = UDim2.fromOffset((CIRCLE + DGAP) * 4, CIRCLE + 20)
+	dock.AnchorPoint = Vector2.new(0.5, 1)
+	dock.Position = UDim2.new(0.5, 0, 1, -6)
+	dock.Size = UDim2.fromOffset((CIRCLE + DGAP) * 4 - DGAP, CIRCLE + 20)
 	dock.BackgroundTransparency = 1
 	dock.Parent = gui
 
@@ -496,10 +498,26 @@ local function build()
 		c.FontFace = UITheme.TitleFace
 		c.TextSize = 24
 		c.TextColor3 = COL_TEXT
-		c.Text = glyph
+		c.Text = ""
 		c.Parent = holder
 		UITheme.Corner(c, 999)
 		UITheme.Edge(c, UITheme.BLACK, 3)
+		local iconId = DOCK_ICONS[label]
+		if iconId then -- the lobby's photo, round-cropped inside the circle
+			local img = Instance.new("ImageLabel")
+			img.Name = "Icon"
+			img.Size = UDim2.fromScale(1, 1)
+			img.BackgroundTransparency = 1
+			img.ScaleType = Enum.ScaleType.Crop
+			img.Image = "rbxassetid://" .. iconId
+			img.ZIndex = 2
+			img.Parent = c
+			local ic = Instance.new("UICorner")
+			ic.CornerRadius = UDim.new(1, 0)
+			ic.Parent = img
+		else
+			c.Text = glyph
+		end
 		local l = text(holder, "Label", UITheme.BodyBoldFace, 11, COL_TEXT)
 		l.AnchorPoint = Vector2.new(0.5, 1)
 		l.Position = UDim2.new(0.5, 0, 1, 0)
@@ -515,18 +533,18 @@ local function build()
 		return c
 	end
 
-	dockButton(1, "SHOP", "🛒", function()
+	dockButton(1, "SHOP", "🧺", function()
 		card.Visible = not card.Visible
 	end)
-	dockButton(2, "CODES", "🎟", function()
+	dockButton(2, "CODES", "🔑", function()
 		codesPanel.Visible = not codesPanel.Visible
 	end)
-	dockButton(3, "SETTINGS", "⚙", function()
+	dockButton(3, "SETTINGS", "⚙️", function()
 		if SettingsController.Toggle then
 			SettingsController.Toggle()
 		end
 	end)
-	autoCircle = dockButton(4, "AUTOFIRE", "⌖", function()
+	autoCircle = dockButton(4, "AUTOFIRE", "🎯", function()
 		AutoShootController.Toggle()
 	end)
 	local function paintAuto(on)

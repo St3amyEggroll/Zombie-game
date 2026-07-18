@@ -6264,12 +6264,16 @@ do
 
 	local prevLevel = nil
 	local function refresh()
-		local level, into, need = levelInfo(localPlayer:GetAttribute("AccountXP") or 0)
+		local rawXP = localPlayer:GetAttribute("AccountXP")
+		local level, into, need = levelInfo(rawXP or 0)
 		localPlayer:SetAttribute("AccountLevel", level) -- the shop pane reads this to gate level-locked guns
 		if prevLevel and level > prevLevel then
-			lplay("LevelUp") -- NEW: the owner's level-up sting
+			lplay("LevelUp") -- the owner's level-up sting
 		end
-		prevLevel = level
+		-- CHANGED: only seed prevLevel off REAL data. The first refresh runs before AccountXP replicates
+		-- (level computes as 1), so when the real XP landed a beat later it read as 1 -> 37 and DINGED
+		-- the level-up sting on every single lobby join.
+		prevLevel = (rawXP ~= nil) and level or nil
 		lvl.Text = "LVL " .. level
 		if need > 0 then
 			fill.Size = UDim2.new(math.clamp(into / need, 0, 1), 0, 1, 0)

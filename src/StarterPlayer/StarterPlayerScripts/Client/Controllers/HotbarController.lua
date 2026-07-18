@@ -112,7 +112,9 @@ local function build()
 	local holder = Instance.new("Frame")
 	holder.Name = "Slots" -- SpectateController hides this (keeps the CASES button, which is a sibling)
 	holder.AnchorPoint = Vector2.new(0.5, 1)
-	holder.Position = UDim2.new(0.5, 0, 1, -14)
+	-- CHANGED (HUD renovation): the guns ride ABOVE the lobby-style dock now — lifted so the dock row
+	-- (56px circles + labels) seats underneath them, mirroring the lobby's "PLAY above the dock" stack.
+	holder.Position = UDim2.new(0.5, 0, 1, -94)
 	holder.Size = UDim2.fromOffset(totalW, SLOT + 10)
 	holder.BackgroundTransparency = 1
 	holder.Parent = gui
