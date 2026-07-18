@@ -378,10 +378,15 @@ local function prepModel(model: Model)
 		model.PrimaryPart = root
 	end
 	-- A walking rig must be unanchored; also remember each part's base color for hit/death recolors.
+	local rootPart = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Anchored = false
 			d.CollisionGroup = "ZombieRig" -- zombies-only collisions (the ocean is solid ONLY for this group)
+			-- The Humanoid used to manage this: ONLY the root collides (a non-colliding root fell through
+			-- the world once the Humanoid left), limbs never do, and nothing needs Touch events.
+			d.CanCollide = (d == rootPart)
+			d.CanTouch = false
 			if d:GetAttribute("ZBaseColor") == nil then
 				d:SetAttribute("ZBaseColor", d.Color)
 			end
@@ -760,11 +765,13 @@ end
 -- After the limp body has flopped and settled, freeze each part in its settled pose and lower the whole
 -- pile straight down — slowly — so the corpse appears to sink into the earth, then pool it.
 local corpseCount = 0 -- live flop+sink loops (capped at MAX_CORPSES; the overflow fast-pools)
+local CORPSE_PRESSURE_ALIVE = 80 -- with this many zombies alive, corpses fast-pool too (ragdolls are
+                                 -- the most expensive physics left — spend the budget on the living)
 
 local function sinkAndRelease(record)
 	local model = record.model
 	corpseCount += 1
-	if corpseCount > MAX_CORPSES then
+	if corpseCount > MAX_CORPSES or aliveCount > CORPSE_PRESSURE_ALIVE then
 		-- Over the corpse budget: a short beat so the kill still reads, then pool immediately.
 		task.wait(0.35)
 		corpseCount -= 1
@@ -1884,12 +1891,22 @@ local function hover(record)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { record.model }
-	local hit = Workspace:Raycast(root.Position, Vector3.new(0, -(record.hipY + 2), 0), params)
+	-- Cast from ABOVE the root: if the rig has already punched into the floor, a ray from root height
+	-- starts INSIDE the floor part and sails through it (that was the freeze-ray "zombie in the ground"
+	-- bug — rapid knockback resets let it penetrate, then the ray missed the surface it was under).
+	local top = root.Position + Vector3.new(0, 2.5, 0)
+	local hit = Workspace:Raycast(top, Vector3.new(0, -(record.hipY + 5), 0), params)
 	if not hit then
 		return -- airborne / over a drop: let gravity have it
 	end
 	local err = (hit.Position.Y + record.hipY) - root.Position.Y
-	if err > 0.05 then
+	if err > 1.2 then
+		-- Deep in the floor: SNAP back to stand height (what the Humanoid hip solver used to do) —
+		-- a velocity push would leave it visibly buried for several frames.
+		record.model:PivotTo(root.CFrame + Vector3.new(0, err, 0))
+		local v = root.AssemblyLinearVelocity
+		root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+	elseif err > 0.05 then
 		local v = root.AssemblyLinearVelocity
 		root.AssemblyLinearVelocity = Vector3.new(v.X, math.clamp(err * HOVER_SPRING, 2, HOVER_MAX), v.Z)
 	end

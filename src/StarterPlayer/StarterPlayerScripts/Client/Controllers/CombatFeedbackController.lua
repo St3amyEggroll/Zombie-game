@@ -134,7 +134,55 @@ end
 -- (one Heartbeat connection for all bolts — cheap even with a horde firing). No dynamic light.
 local activeBolts: { any } = {}
 
+-- FLAMETHROWER: no bolts — a cone of actual FLAME puffs rolling from the barrel toward the hit point.
+-- Procedural (neon balls that grow, drift up, and burn out through orange->ember), part-capped.
+local flameCount = 0
+local function spawnFlames(from: Vector3, to: Vector3)
+	local delta = to - from
+	local dist = delta.Magnitude
+	if dist < 1 or dist ~= dist or flameCount > 24 then
+		return
+	end
+	local dir = delta.Unit
+	local right = dir:Cross(Vector3.yAxis)
+	right = right.Magnitude > 0.01 and right.Unit or Vector3.xAxis
+	local up = right:Cross(dir)
+	local n = math.random(2, 3)
+	for i = 1, n do
+		local t0 = (i - 0.5) / n + (math.random() - 0.5) * 0.2 -- spread the puffs along the jet
+		local spread = dist * 0.10 * t0 -- the cone widens with distance
+		local pos = from + dir * (dist * t0)
+			+ right * ((math.random() - 0.5) * 2 * spread)
+			+ up * ((math.random() - 0.5) * 2 * spread)
+		local puff = Instance.new("Part")
+		puff.Shape = Enum.PartType.Ball
+		puff.Anchored = true; puff.CanCollide = false; puff.CanQuery = false; puff.CanTouch = false
+		puff.CastShadow = false; puff.Material = Enum.Material.Neon
+		puff.Color = Color3.fromRGB(255, math.random(120, 190), 30)
+		puff.Transparency = 0.15
+		local d0 = 0.7 + math.random() * 0.5 + t0 * 0.8 -- bigger toward the end of the jet
+		puff.Size = Vector3.new(d0, d0, d0)
+		puff.CFrame = CFrame.new(pos)
+		puff.Parent = fxFolder
+		flameCount += 1
+		local life = 0.22 + math.random() * 0.14
+		TweenService:Create(puff, TweenInfo.new(life, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.new(d0 * 2.2, d0 * 2.2, d0 * 2.2),
+			CFrame = CFrame.new(pos + dir * 2 + Vector3.new(0, 1.6, 0)), -- rolls forward and lifts
+			Color = Color3.fromRGB(140, 34, 8), -- burns down to ember red
+			Transparency = 1,
+		}):Play()
+		task.delay(life + 0.05, function()
+			flameCount -= 1
+			puff:Destroy()
+		end)
+	end
+end
+
 local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
+	if weaponId == "flamethrower" then
+		return spawnFlames(from, to) -- fire is not a bullet
+	end
 	if not AnimationConfig.Projectile.Enabled then
 		-- Fallback to the legacy instant line if projectiles are disabled.
 		if AnimationConfig.Tracer.Enabled then
