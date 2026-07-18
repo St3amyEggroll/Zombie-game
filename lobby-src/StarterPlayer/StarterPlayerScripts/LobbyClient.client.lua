@@ -1052,15 +1052,15 @@ do
 	local SLOT, GAP2 = 84, 10
 	local row = Instance.new("Frame")
 	row.Name = "LobbyHotbar"
-	row.AnchorPoint = Vector2.new(1, 0.5) -- CHANGED: vertical rack on the RIGHT EDGE, centered (V2-A)
-	row.Position = UDim2.new(1, -14, 0.5, 0)
-	row.Size = UDim2.fromOffset(SLOT, SLOT * 2 + GAP2)
+	row.AnchorPoint = Vector2.new(0.5, 0) -- CHANGED (owner): horizontal pair at the TOP-CENTER (the
+	row.Position = UDim2.new(0.5, 0, 0, 10) -- party column took the right edge; these swapped spots)
+	row.Size = UDim2.fromOffset(SLOT * 2 + GAP2, SLOT)
 	row.BackgroundTransparency = 1
 	row.Parent = gui
 	local slots = {}
 	for i = 1, 2 do
 		local f = Instance.new("Frame")
-		f.Position = UDim2.fromOffset(0, (i - 1) * (SLOT + GAP2))
+		f.Position = UDim2.fromOffset((i - 1) * (SLOT + GAP2), 0)
 		f.Size = UDim2.fromOffset(SLOT, SLOT)
 		f.BackgroundColor3 = PANEL
 		f.BackgroundTransparency = 0.05
@@ -5303,25 +5303,26 @@ do
 		return l
 	end
 
-	P.row = Instance.new("Frame") -- the chips row, top-center
-	P.row.AnchorPoint = Vector2.new(0.5, 0)
-	P.row.Position = UDim2.new(0.5, 0, 0, 10)
-	P.row.Size = UDim2.fromOffset(0, 66)
-	P.row.AutomaticSize = Enum.AutomaticSize.X
+	P.row = Instance.new("Frame") -- CHANGED (owner): the chips as a COLUMN on the RIGHT EDGE, centered
+	P.row.AnchorPoint = Vector2.new(1, 0.5) -- (swapped spots with the loadout rack, now top-center)
+	P.row.Position = UDim2.new(1, -14, 0.5, 0)
+	P.row.Size = UDim2.fromOffset(66, 0)
+	P.row.AutomaticSize = Enum.AutomaticSize.Y
 	P.row.BackgroundTransparency = 1
 	P.row.Parent = P.gui
 	do
 		local ll = Instance.new("UIListLayout")
-		ll.FillDirection = Enum.FillDirection.Horizontal
-		ll.VerticalAlignment = Enum.VerticalAlignment.Top
+		ll.FillDirection = Enum.FillDirection.Vertical
+		ll.HorizontalAlignment = Enum.HorizontalAlignment.Right
 		ll.SortOrder = Enum.SortOrder.LayoutOrder
 		ll.Padding = UDim.new(0, 10)
 		ll.Parent = P.row
 	end
 
 	P.msgLbl = P.text(P.gui, "", 13, Color3.fromRGB(255, 213, 122)) -- little status line under the row
-	P.msgLbl.AnchorPoint = Vector2.new(0.5, 0)
-	P.msgLbl.Position = UDim2.new(0.5, 0, 0, 78)
+	P.msgLbl.AnchorPoint = Vector2.new(1, 0.5)
+	P.msgLbl.Position = UDim2.new(1, -88, 0.5, 0) -- beside the right-edge chips column
+	P.msgLbl.TextXAlignment = Enum.TextXAlignment.Right
 	P.msgLbl.Size = UDim2.fromOffset(500, 18)
 	P.msg = function(t)
 		P.msgLbl.Text = t

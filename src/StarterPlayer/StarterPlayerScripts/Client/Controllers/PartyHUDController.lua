@@ -50,7 +50,7 @@ local function relayout()
 	end
 	table.sort(order, function(a, b)
 		if (a == localPlayer) ~= (b == localPlayer) then
-			return a == localPlayer -- you first
+			return a == localPlayer -- you first (top of the column)
 		end
 		return a.UserId < b.UserId
 	end)
@@ -59,7 +59,7 @@ local function relayout()
 		local c = chips[pl.UserId]
 		if c then
 			c.holder.Visible = i < MAX_CHIPS
-			c.holder.Position = UDim2.fromOffset(i * (CHIP + GAP), 0)
+			c.holder.LayoutOrder = i -- the column's UIListLayout stacks by this
 			i += 1
 		end
 	end
@@ -161,12 +161,22 @@ function PartyHUDController.Start()
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
 	UITheme.Attach(gui)
 
+	-- CHANGED (owner): a COLUMN on the RIGHT EDGE, vertically centered — mirrors the lobby's party
+	-- placement. AutomaticSize + the centered anchor keep the stack centered as players come and go.
 	row = Instance.new("Frame")
-	row.Name = "PartyRow"
-	row.Position = UDim2.fromOffset(16, 14)
-	row.Size = UDim2.fromOffset((CHIP + GAP) * MAX_CHIPS, CHIP + 18)
+	row.Name = "PartyColumn"
+	row.AnchorPoint = Vector2.new(1, 0.5)
+	row.Position = UDim2.new(1, -14, 0.5, 0)
+	row.Size = UDim2.fromOffset(CHIP + 24, 0)
+	row.AutomaticSize = Enum.AutomaticSize.Y
 	row.BackgroundTransparency = 1
 	row.Parent = gui
+	local list = Instance.new("UIListLayout")
+	list.FillDirection = Enum.FillDirection.Vertical
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Padding = UDim.new(0, GAP)
+	list.Parent = row
 
 	for _, pl in Players:GetPlayers() do
 		makeChip(pl)

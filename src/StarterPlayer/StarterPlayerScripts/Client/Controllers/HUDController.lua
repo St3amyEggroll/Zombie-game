@@ -121,11 +121,18 @@ local function build()
 	laneList.Padding = UDim.new(0, UITheme.Space.Row)
 	laneList.Parent = lane
 
-	-- Row 1 (RENOVATION): ONE strip pill — [WAVE N][enemies bar][◇ cash-out chip] — replacing the old
-	-- big wave text + separate bar + separate chip stack. LEAVE/SKIP moved to absolute TOP-RIGHT.
-	local waveRow = panel(lane, "WaveStrip")
+	-- Row 1 (RENOVATION): ONE strip pill — [WAVE N][enemies bar][◇ cash-out chip] — with LEAVE and
+	-- SKIP back in their ORIGINAL places flanking the bar (owner call). The strip clips its children
+	-- (studs), so the buttons live on a transparent WRAPPER row around it.
+	local waveWrap = Instance.new("Frame")
+	waveWrap.Name = "WaveWrap"
+	waveWrap.BackgroundTransparency = 1
+	waveWrap.Size = UDim2.fromOffset(808, 40)
+	waveWrap.LayoutOrder = 10
+	waveWrap.Parent = lane
+	local waveRow = panel(waveWrap, "WaveStrip")
+	waveRow.Position = UDim2.fromOffset(124, 0)
 	waveRow.Size = UDim2.fromOffset(560, 40)
-	waveRow.LayoutOrder = 10
 
 	enemiesTrack = Instance.new("Frame")
 	enemiesTrack.Name = "EnemiesTrack"
@@ -158,12 +165,12 @@ local function build()
 	enStroke.Thickness = 1.5
 	enStroke.Parent = enemiesLabel
 
-	-- SKIP WAVE (Robux dev product) + LEAVE — TOP-RIGHT now (out of the strip, away from combat).
-	-- Skip prompts the purchase (GameConfig.SkipWaveProductId — 0 = warns); Leave banks + exits.
-	local skipBtn = UITheme.Button(gui, "SKIP WAVE", "gold")
+	-- SKIP WAVE (Robux dev product) + LEAVE — back in their ORIGINAL places, flanking the bar:
+	-- LEAVE on the strip's left, SKIP on its right (owner call). Skip prompts the purchase
+	-- (GameConfig.SkipWaveProductId — 0 = warns); Leave banks + exits.
+	local skipBtn = UITheme.Button(waveWrap, "SKIP WAVE", "gold")
 	skipBtn.Name = "SkipWaveButton"
-	skipBtn.AnchorPoint = Vector2.new(1, 0)
-	skipBtn.Position = UDim2.new(1, -16, 0, 14)
+	skipBtn.Position = UDim2.fromOffset(124 + 560 + 8, 3)
 	skipBtn.Size = UDim2.fromOffset(100, 34)
 	skipBtn.TextSize = UITheme.Type.Caption
 	skipBtn.TextColor3 = Color3.fromRGB(255, 255, 255) -- readable white (the variant's dark text read as black)
@@ -190,10 +197,10 @@ local function build()
 		end
 	end
 
-	leaveBtn = UITheme.Button(gui, "LEAVE", "danger")
+	leaveBtn = UITheme.Button(waveWrap, "LEAVE", "danger")
 	leaveBtn.Name = "LeaveButton"
 	leaveBtn.AnchorPoint = Vector2.new(1, 0)
-	leaveBtn.Position = UDim2.new(1, -(16 + 100 + 8), 0, 14) -- left of SKIP in the top-right pair
+	leaveBtn.Position = UDim2.fromOffset(124 - 8, 3) -- right edge 8px left of the strip
 	leaveBtn.Size = UDim2.fromOffset(84, 34)
 	leaveBtn.TextSize = UITheme.Type.Caption
 	leaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
