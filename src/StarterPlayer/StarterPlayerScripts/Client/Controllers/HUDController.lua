@@ -26,6 +26,7 @@ local UITheme = require(Modules.UITheme)
 
 local AutoShootController = require(script.Parent.AutoShootController) -- the dock's AUTOFIRE toggle
 local SettingsController = require(script.Parent.SettingsController)   -- the dock's SETTINGS button
+local LobbyLook = require(Modules.LobbyLook) -- the LOBBY's exact builders (dock buttons, chrome panels)
 
 local HUDController = {}
 
@@ -286,42 +287,17 @@ local function build()
 	cardGui.IgnoreGuiInset = true
 	cardGui.DisplayOrder = UITheme.Layer.ShopModal
 	cardGui.Parent = gui.Parent
-	UITheme.Attach(cardGui, 370, 110 + #bundles * 56)
-	local card = Instance.new("Frame")
-	card.Name = "CoinShopCard"
-	card.AnchorPoint = Vector2.new(0.5, 0.5)
-	card.Position = UDim2.fromScale(0.5, 0.5)
-	card.Size = UDim2.fromOffset(340, 86 + #bundles * 56)
-	card.BackgroundColor3 = Color3.fromRGB(16, 17, 21)
-	card.BackgroundTransparency = 0.04
-	card.Visible = false
-	card.Parent = cardGui
-	local cardCorner = Instance.new("UICorner")
-	cardCorner.CornerRadius = UDim.new(0, 12)
-	cardCorner.Parent = card
-	local cardStroke = Instance.new("UIStroke")
-	cardStroke.Color = COL_GOLD
-	cardStroke.Transparency = 0.35
-	cardStroke.Thickness = 2
-	cardStroke.Parent = card
-	local cardTitle = text(card, "Title", UITheme.TitleFace, 24, COL_GOLD)
-	cardTitle.Position = UDim2.fromOffset(20, 14)
-	cardTitle.Size = UDim2.new(1, -80, 0, 30)
-	cardTitle.TextXAlignment = Enum.TextXAlignment.Left
-	cardTitle.Text = "GET COINS"
-	local closeBtn = UITheme.Button(card, "X", "danger")
-	closeBtn.Name = "Close"
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.Position = UDim2.new(1, -12, 0, 12)
-	closeBtn.Size = UDim2.fromOffset(30, 30)
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Activated:Connect(function()
+	UITheme.Attach(cardGui, 404, 120 + #bundles * 56)
+	-- LOBBY CHROME (owner: panels must match the lobby exactly): fat gold header bar, dark studded
+	-- body, the juiced red X. `card` is the chrome ROOT — Visible toggles pop it open like the lobby.
+	local card, cardBody, _, cardX = LobbyLook.ChromePanel(cardGui, 360, 24 + #bundles * 56, LobbyLook.HeaderColors.shop, "GET COINS")
+	cardX.Activated:Connect(function()
 		card.Visible = false
 	end)
 	for i, b in bundles do
-		local row = UITheme.Button(card, "", "gold")
+		local row = UITheme.Button(cardBody, "", "gold")
 		row.Name = "Bundle" .. i
-		row.Position = UDim2.fromOffset(16, 56 + (i - 1) * 56)
+		row.Position = UDim2.fromOffset(16, 16 + (i - 1) * 56)
 		row.Size = UDim2.new(1, -32, 0, 46)
 		row.TextSize = 17
 		row.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -399,37 +375,21 @@ local function build()
 	-- ===== THE DOCK ===== lobby-style round buttons at the bottom, seated to the RIGHT of the hotbar
 	-- (the hotbar does NOT move — owner call, especially for phones): SHOP · CODES · SETTINGS · AUTOFIRE.
 	-- AUTOFIRE is a live toggle (green = on, T still works); the others open their panels.
-	local CIRCLE, DGAP = 56, 14
-
-	-- CODES panel (its own modal-fit gui): textbox + REDEEM, replying through the RedeemCode remote.
+	-- CODES panel — the lobby's chrome, same accent as its shop pages; replies via the RedeemCode remote.
 	local codesGui = Instance.new("ScreenGui")
 	codesGui.Name = "GameCodes"
 	codesGui.ResetOnSpawn = false
 	codesGui.IgnoreGuiInset = true
 	codesGui.DisplayOrder = UITheme.Layer.ShopModal
 	codesGui.Parent = gui.Parent
-	UITheme.Attach(codesGui, 380, 240)
-	local codesPanel = panel(codesGui, "CodesPanel")
-	codesPanel.AnchorPoint = Vector2.new(0.5, 0.5)
-	codesPanel.Position = UDim2.fromScale(0.5, 0.5)
-	codesPanel.Size = UDim2.fromOffset(360, 210)
-	codesPanel.Visible = false
-	local codesTitle = text(codesPanel, "Title", UITheme.TitleFace, 24, COL_GOLD)
-	codesTitle.Position = UDim2.fromOffset(18, 12)
-	codesTitle.Size = UDim2.new(1, -80, 0, 30)
-	codesTitle.TextXAlignment = Enum.TextXAlignment.Left
-	codesTitle.Text = "REDEEM CODE"
-	local codesClose = UITheme.Button(codesPanel, "X", "danger")
-	codesClose.AnchorPoint = Vector2.new(1, 0)
-	codesClose.Position = UDim2.new(1, -12, 0, 12)
-	codesClose.Size = UDim2.fromOffset(30, 30)
-	codesClose.TextColor3 = Color3.fromRGB(255, 255, 255)
-	codesClose.Activated:Connect(function()
+	UITheme.Attach(codesGui, 404, 240)
+	local codesPanel, codesBody, _, codesX = LobbyLook.ChromePanel(codesGui, 360, 178, LobbyLook.HeaderColors.shop, "CODES")
+	codesX.Activated:Connect(function()
 		codesPanel.Visible = false
 	end)
 	local codeBox = Instance.new("TextBox")
 	codeBox.Name = "CodeBox"
-	codeBox.Position = UDim2.fromOffset(18, 58)
+	codeBox.Position = UDim2.fromOffset(18, 16)
 	codeBox.Size = UDim2.new(1, -36, 0, 44)
 	codeBox.BackgroundColor3 = COL_TRACK
 	codeBox.BorderSizePixel = 0
@@ -440,16 +400,16 @@ local function build()
 	codeBox.PlaceholderColor3 = COL_TEXT_DIM
 	codeBox.ClearTextOnFocus = false
 	codeBox.Text = ""
-	codeBox.Parent = codesPanel
+	codeBox.Parent = codesBody
 	UITheme.Corner(codeBox, 6)
 	UITheme.Edge(codeBox, UITheme.BLACK, 2)
-	local codesResult = text(codesPanel, "Result", UITheme.BodyBoldFace, 13, COL_TEXT_DIM)
-	codesResult.Position = UDim2.fromOffset(18, 108)
+	local codesResult = text(codesBody, "Result", UITheme.BodyBoldFace, 13, COL_TEXT_DIM)
+	codesResult.Position = UDim2.fromOffset(18, 66)
 	codesResult.Size = UDim2.new(1, -36, 0, 18)
 	codesResult.TextXAlignment = Enum.TextXAlignment.Left
 	codesResult.Text = "Codes drop on the socials — one use each."
-	local redeemBtn = UITheme.Button(codesPanel, "REDEEM", "gold")
-	redeemBtn.Position = UDim2.fromOffset(18, 138)
+	local redeemBtn = UITheme.Button(codesBody, "REDEEM", "gold")
+	redeemBtn.Position = UDim2.fromOffset(18, 96)
 	redeemBtn.Size = UDim2.new(1, -36, 0, 48)
 	redeemBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	redeemBtn.Activated:Connect(function()
@@ -471,85 +431,42 @@ local function build()
 		end
 	end)
 
-	-- The dock row: UNDERNEATH the guns, bottom-center (the hotbar shifts up to seat it — HotbarController).
-	-- SAME photo ids as the lobby's dock buttons, round-cropped, so both places read identically.
-	local DOCK_ICONS = { SHOP = "71412141929869", CODES = "106591567271932", SETTINGS = "94140673883223" }
-	local dock = Instance.new("Frame")
-	dock.Name = "Dock"
-	dock.AnchorPoint = Vector2.new(0.5, 1)
-	dock.Position = UDim2.new(0.5, 0, 1, -6)
-	dock.Size = UDim2.fromOffset((CIRCLE + DGAP) * 4 - DGAP, CIRCLE + 20)
-	dock.BackgroundTransparency = 1
-	dock.Parent = gui
-
-	local autoCircle -- forward: dockButton below builds it, Changed recolors it
-	local function dockButton(index, label, glyph, onClick)
-		local holder = Instance.new("Frame")
-		holder.Name = "Dock_" .. label
-		holder.Position = UDim2.fromOffset((index - 1) * (CIRCLE + DGAP), 0)
-		holder.Size = UDim2.fromOffset(CIRCLE, CIRCLE + 20)
-		holder.BackgroundTransparency = 1
-		holder.Parent = dock
-		local c = Instance.new("TextButton")
-		c.Name = "Circle"
-		c.Size = UDim2.fromOffset(CIRCLE, CIRCLE)
-		c.BackgroundColor3 = COL_PANEL
-		c.BorderSizePixel = 0
-		c.FontFace = UITheme.TitleFace
-		c.TextSize = 24
-		c.TextColor3 = COL_TEXT
-		c.Text = ""
-		c.Parent = holder
-		UITheme.Corner(c, 999)
-		UITheme.Edge(c, UITheme.BLACK, 3)
-		local iconId = DOCK_ICONS[label]
-		if iconId then -- the lobby's photo, round-cropped inside the circle
-			local img = Instance.new("ImageLabel")
-			img.Name = "Icon"
-			img.Size = UDim2.fromScale(1, 1)
-			img.BackgroundTransparency = 1
-			img.ScaleType = Enum.ScaleType.Crop
-			img.Image = "rbxassetid://" .. iconId
-			img.ZIndex = 2
-			img.Parent = c
-			local ic = Instance.new("UICorner")
-			ic.CornerRadius = UDim.new(1, 0)
-			ic.Parent = img
-		else
-			c.Text = glyph
+	-- The dock: the LOBBY'S BUTTONS, verbatim (LobbyLook.DockButton — same 66x84 holders, 83px
+	-- spacing, dark-glass circles, same photo ids, Title-case labels on the rim), centered UNDERNEATH
+	-- the guns (the hotbar lifts to seat it — HotbarController).
+	local DOCK = {
+		{ label = "Shop", icon = "71412141929869", onClick = function()
+			card.Visible = not card.Visible
+		end },
+		{ label = "Codes", icon = "106591567271932", onClick = function()
+			codesPanel.Visible = not codesPanel.Visible
+		end },
+		{ label = "Settings", icon = "94140673883223", onClick = function()
+			if SettingsController.Toggle then
+				SettingsController.Toggle()
+			end
+		end },
+		{ label = "Autofire", icon = "", emoji = "🎯", onClick = function()
+			AutoShootController.Toggle()
+		end },
+	}
+	local autoRing
+	for i, def in DOCK do
+		local holder, circ = LobbyLook.DockButton(gui, def.label, def.icon, def.emoji)
+		holder.Position = UDim2.new(0.5, -math.floor(((#DOCK - 1) * 83 + 66) / 2) + (i - 1) * 83, 1, -6)
+		circ.Activated:Connect(def.onClick)
+		if def.label == "Autofire" then -- the toggle state rides a toxic ring on the glass circle
+			autoRing = Instance.new("UIStroke")
+			autoRing.Color = UITheme.TOXIC
+			autoRing.Thickness = 3
+			autoRing.Transparency = 1
+			autoRing.Parent = circ
 		end
-		local l = text(holder, "Label", UITheme.BodyBoldFace, 11, COL_TEXT)
-		l.AnchorPoint = Vector2.new(0.5, 1)
-		l.Position = UDim2.new(0.5, 0, 1, 0)
-		l.Size = UDim2.fromOffset(CIRCLE + 14, 14)
-		l.TextXAlignment = Enum.TextXAlignment.Center
-		l.Text = label
-		local st = Instance.new("UIStroke")
-		st.Color = Color3.fromRGB(0, 0, 0)
-		st.Transparency = 0.35
-		st.Thickness = 1.5
-		st.Parent = l
-		c.Activated:Connect(onClick)
-		return c
 	end
-
-	dockButton(1, "SHOP", "🧺", function()
-		card.Visible = not card.Visible
-	end)
-	dockButton(2, "CODES", "🔑", function()
-		codesPanel.Visible = not codesPanel.Visible
-	end)
-	dockButton(3, "SETTINGS", "⚙️", function()
-		if SettingsController.Toggle then
-			SettingsController.Toggle()
-		end
-	end)
-	autoCircle = dockButton(4, "AUTOFIRE", "🎯", function()
-		AutoShootController.Toggle()
-	end)
 	local function paintAuto(on)
-		autoCircle.BackgroundColor3 = on and UITheme.TOXIC_DK or COL_PANEL
-		autoCircle.TextColor3 = on and UITheme.TOXIC_HI or COL_TEXT
+		if autoRing then
+			autoRing.Transparency = on and 0.05 or 1
+		end
 	end
 	paintAuto(AutoShootController.IsOn())
 	AutoShootController.Changed:Connect(paintAuto)

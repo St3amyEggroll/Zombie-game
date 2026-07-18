@@ -14,6 +14,7 @@ local Remotes = require(Shared.Modules.Remotes)
 
 local SoundController = require(script.Parent.SoundController)
 local UIFocus = require(Shared.Modules.UIFocus)
+local LobbyLook = require(Shared.Modules.LobbyLook) -- the lobby's chrome panel (owner: identical panels)
 
 local SettingsController = {}
 
@@ -71,15 +72,12 @@ function SettingsController.Start()
 	UITheme.Edge(gear)
 	UITheme.Studs(gear)
 
-	-- Panel.
-	local panel = UITheme.Panel(modalGui, "SettingsPanel", { accent = UITheme.HeaderColors.settings })
-	panel.AnchorPoint = Vector2.new(1, 1)
-	panel.Position = UDim2.new(1, -12, 1, -(12 + UITheme.Ctl.Std + 8))
-	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
-	panel.Visible = false
-	UITheme.Header(panel, "SETTINGS", nil, UITheme.TOXIC, UITheme.HeaderColors.settings)
-
-	local closeBtn = UITheme.Close(panel)
+	-- Panel — LOBBY CHROME (owner: same panels as the lobby): fat colored header bar + dark studded
+	-- body + the juiced red X, centered on screen with the pop-open. Children keep `panel` as their
+	-- parent (it's the chrome BODY now); visibility rides the chrome ROOT.
+	local root, body, _, chromeX = LobbyLook.ChromePanel(modalGui, PANEL_W, PANEL_H - 48, UITheme.HeaderColors.settings, "SETTINGS")
+	local panel = body
+	local closeBtn = chromeX
 
 	-- One slider row: label + % readout + a draggable track.
 	local function sliderRow(y, labelText, getValue, setValue)
@@ -211,21 +209,21 @@ function SettingsController.Start()
 	end
 
 	local renders = {}
-	table.insert(renders, sliderRow(64, "MASTER", function()
+	table.insert(renders, sliderRow(16, "MASTER", function()
 		local m = SoundController.GetVolumes()
 		return m
 	end, function(v)
 		local _, mu, s = SoundController.GetVolumes()
 		SoundController.SetVolumes(v, mu, s)
 	end))
-	table.insert(renders, sliderRow(126, "MUSIC", function()
+	table.insert(renders, sliderRow(78, "MUSIC", function()
 		local _, mu = SoundController.GetVolumes()
 		return mu
 	end, function(v)
 		local m, _, s = SoundController.GetVolumes()
 		SoundController.SetVolumes(m, v, s)
 	end))
-	table.insert(renders, sliderRow(188, "SFX", function()
+	table.insert(renders, sliderRow(140, "SFX", function()
 		local _, _, s = SoundController.GetVolumes()
 		return s
 	end, function(v)
@@ -235,7 +233,7 @@ function SettingsController.Start()
 
 	-- CAMERA SHAKE on/off (client-side gate via a player attribute; persisted through SetShake).
 	local shakeOn = localPlayer:GetAttribute("ShakeOff") ~= true
-	local shakePaint = toggleRow(250, "CAMERA SHAKE", function()
+	local shakePaint = toggleRow(202, "CAMERA SHAKE", function()
 		return shakeOn
 	end, function(v)
 		shakeOn = v
@@ -253,8 +251,8 @@ function SettingsController.Start()
 	-- CHANGED (HUD renovation): the lobby-style DOCK owns the visible settings button now — the old
 	-- corner gear is hidden (kept as dead chrome so nothing else breaks) and the dock calls Toggle().
 	local function togglePanel()
-		panel.Visible = not panel.Visible
-		if panel.Visible then
+		root.Visible = not root.Visible
+		if root.Visible then
 			UIFocus.Open()
 			renderAll()
 		else
@@ -265,8 +263,8 @@ function SettingsController.Start()
 	gear.Activated:Connect(togglePanel)
 	chromeGui.Enabled = false
 	closeBtn.Activated:Connect(function()
-		if panel.Visible then UIFocus.Close() end
-		panel.Visible = false
+		if root.Visible then UIFocus.Close() end
+		root.Visible = false
 	end)
 
 	-- Load the saved camera-shake preference (default ON) + volumes; then refresh the toggle/sliders.
