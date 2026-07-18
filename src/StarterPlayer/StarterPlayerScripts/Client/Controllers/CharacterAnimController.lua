@@ -150,8 +150,8 @@ local function applyHold(character: Model)
 	holdTokens[character] = token
 	local prev = holdTracks[character]
 	if prev then
+		holdTracks[character] = nil -- release FIRST so the self-heal Stopped handler can't replay it
 		prev:Stop(0) -- instant swap (no cross-fade) so switching guns changes the pose immediately
-		holdTracks[character] = nil
 	end
 	local id = character:GetAttribute("HoldAnimId")
 	if typeof(id) ~= "string" or id == "" then
@@ -196,33 +196,51 @@ local function applyHold(character: Model)
 	track:Play(0) -- instant (asset is preloaded at Start, so the pose appears immediately)
 	holdTracks[character] = track
 
-	-- Properties set before the asset loads get RESET to the animation's baked values when it finishes
-	-- loading — Looped AND Priority. A hold pose baked at Core priority then loses the arms to the walk
-	-- animation as soon as you move (the "turns into the walking animation" bug; after a gun switch the
-	-- asset was already cached, so the pre-Play values stuck and it looked fixed). Re-assert BOTH once
-	-- the asset has actually loaded (Length > 0).
-	-- Length staying 0 past the wait = the asset NEVER loaded (almost always: the animation isn't owned
-	-- by the game owner, which Roblox silently refuses to play) — procedural stance instead.
+	-- SELF-HEALING TRACK: the engine resets Looped/Priority to the asset's BAKED values when the clip
+	-- finishes loading — and that reset can land AFTER a one-time re-assert, un-looping the pose so it
+	-- plays once and silently stops at the clip's end (~3s in). Two defenses that can't lose the race:
+	--   1) if the ACTIVE hold track ever stops — any reason, any time — re-loop and replay it instantly;
+	--   2) keep re-asserting Priority/Looped every beat for the first several seconds (cheap property
+	--      writes, no restart, no visible blip).
+	-- Length never leaving 0 = the asset NEVER loaded (almost always: the animation isn't owned by the
+	-- game owner, which Roblox silently refuses to play) — keep the procedural stance instead.
+	track.Stopped:Connect(function()
+		if holdTracks[character] == track then
+			track.Priority = Enum.AnimationPriority.Action
+			track.Looped = true
+			track:Play(0)
+		end
+	end)
 	task.spawn(function()
 		local t0 = os.clock()
-		while track.Length == 0 and os.clock() - t0 < 3 and holdTracks[character] == track do
-			task.wait()
+		local confirmed = false
+		while holdTracks[character] == track and os.clock() - t0 < 6 do
+			if track.Length > 0 then
+				if track.Priority ~= Enum.AnimationPriority.Action then
+					track.Priority = Enum.AnimationPriority.Action
+				end
+				if not track.Looped then
+					track.Looped = true
+				end
+				if not track.IsPlaying then
+					track:Play(0)
+				end
+				if not confirmed then
+					confirmed = true
+					clearProcPose(character) -- the real uploaded animation owns the pose now
+				end
+			end
+			task.wait(0.2)
 		end
 		if holdTracks[character] ~= track then
 			return -- a newer equip superseded this one
 		end
-		if track.Length > 0 then
-			track.Priority = Enum.AnimationPriority.Action -- the load reset this to the baked value
-			track.Looped = true
-			if not track.IsPlaying then
-				track:Play(0)
-			end
-			clearProcPose(character) -- the real uploaded animation owns the pose now
-		else
-			if not warnedIds[id] then -- once per asset, not per re-assert
+		if not confirmed then
+			if not warnedIds[id] then -- once per asset
 				warnedIds[id] = true
 				warn(("[CharacterAnimController] hold animation %s never loaded — is it uploaded by the GAME OWNER? Using the procedural stance."):format(id))
 			end
+			holdTracks[character] = nil -- release BEFORE stopping so the self-heal doesn't replay it
 			track:Stop(0)
 			applyProcPose(character)
 		end
