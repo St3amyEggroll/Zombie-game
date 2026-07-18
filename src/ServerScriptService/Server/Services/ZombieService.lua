@@ -1008,12 +1008,10 @@ end
 
 -- ===== ZOMBIE ANIMATIONS (server-managed; played on the rig's Animator on the server, so every client
 -- sees the same thing and it can't be tampered with client-side) =====
--- Walk defaults to Roblox's built-in walk animation for the rig type (public, loads server-side) so zombies
--- animate out of the box; attack/death are optional and come from AnimationConfig.Zombies.
-local DEFAULT_WALK = {
-	R15 = "rbxassetid://507777826", -- Roblox default R15 walk
-	R6 = "rbxassetid://180426354",  -- Roblox default R6 walk
-}
+-- Walk: ONLY a configured AnimationConfig id plays a track. With no id, the client-side PROCEDURAL
+-- animator (ZombieAnimController) drives the limbs instead — the model is stamped ZTrackAnim=false so
+-- the client knows this rig is its to animate. (The old Roblox-catalog default walk is gone: a looping
+-- track would fight the procedural Motor6D transforms.)
 
 local zAnimCache: { [string]: Animation } = {}
 local function zGetAnim(id: string): Animation
@@ -1033,9 +1031,8 @@ local function loadZombieTracks(record)
 		return
 	end
 	local cfg = AnimationConfig.Zombies[record.typeId] or AnimationConfig.Zombies.Default or {}
-	-- Walk: use the configured id, else fall back to the engine's default walk for this rig style.
 	local walk = AnimationConfig.Resolve(cfg.Walk)
-		or DEFAULT_WALK[record.model:GetAttribute("RigR6") and "R6" or "R15"]
+	record.model:SetAttribute("ZTrackAnim", walk ~= nil) -- true = a real track owns the limbs
 	if walk then
 		record.walkTrack = animator:LoadAnimation(zGetAnim(walk))
 		record.walkTrack.Looped = true
