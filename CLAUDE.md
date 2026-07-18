@@ -1,13 +1,19 @@
 # ZOMBIEROT — Build Doc & Source of Truth
 
-A 3D co-op wave-survival zombie shooter (**Zombie Rush** style): **kill rushing zombies → earn cash →
-buy & upgrade weapons from a shop menu → survive escalating, endless waves → respawn and keep going,
-push for a higher wave than last time.** Third-person, drop-in co-op.
+A 3D co-op zombie **extraction** shooter: **survive escalating endless waves → your Coins bank live as you
+kill → every few waves CHOOSE to cash out safe (bank the payoff, leave a winner) or double down (bigger
+multiplier, the horde keeps coming) → die as a team and the run ends → back in the lobby, spend Coins on
+skins/cases and level up to unlock new guns and harder worlds.** Third-person, drop-in co-op.
 
 > Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **ZombieRot** (formerly "Zombie Lobby").
-> **Pivoted from a Call-of-Duty-Zombies loop to a simpler Zombie Rush loop** — no doors, wall-buys,
-> Pack-a-Punch, perks, or Mystery Box; a **menu shop** (buy + upgrade weapons for cash) instead, and
-> respawn-on-death endless waves rather than a team-wipe game over. Build incrementally, testable in Studio.
+> **Pivoted twice:** first from a Call-of-Duty-Zombies loop to a simpler Zombie Rush loop (removed doors,
+> wall-buys, Pack-a-Punch, perks, Mystery Box), then to the current **EXTRACTION** model — cash out / double
+> down every few waves, a team wipe ends the run, and **guns unlock by ACCOUNT LEVEL (free at level), Coins
+> buy cosmetics** (no coin gun-shop, no gun upgrading). Build incrementally, testable in Studio.
+>
+> ⚠️ **DOC-VS-CODE:** older sections below still describe the Zombie-Rush fantasy (respawn/no-game-over,
+> a coin gun-shop, gun upgrading). The **shipped code is extraction + level-unlock** — trust §0/§1 here and
+> the code over any stale mention further down. Fixing the rest of the doc is ongoing.
 
 ---
 
@@ -17,11 +23,13 @@ push for a higher wave than last time.** Third-person, drop-in co-op.
 
 | Decision | Choice |
 |---|---|
-| Game style | **Zombie Rush** — wave survival; cash from kills; **menu shop** to buy + upgrade weapons; endless waves; **respawn on death** (no team-wipe game over). Replaced the CoD-Zombies loop (removed doors, wall-buys, Pack-a-Punch, perks, Mystery Box). |
+| Game style | **Extraction wave-survival.** Endless waves; **Coins bank LIVE** as you kill (2/kill, 50/wave). Every `Extraction.Every` (5) waves the break is a CHOICE window: **CASH OUT** (bank a bonus = pot × (mult−1), count a WIN, leave) or **DOUBLE DOWN** (multiplier climbs +0.5, horde continues). **Death → spectate; a TEAM WIPE ends the run** (teleport to lobby; base Coins kept, bonus forfeit) — a paid **Robux revive** can buy back in during the wipe-grace window. NOT respawn/no-game-over (that was the earlier Zombie-Rush pivot). |
+| Guns & economy | **Guns unlock by ACCOUNT LEVEL — free at their level, never bought.** Coins buy **cosmetics only** (cases → skins) and Robux coin-bundles top them up. The `WeaponConfig.price` fields + `BuyGun` charge path are **dead** (you always own a gun before you're eligible to buy it). No coin gun-shop, no gun upgrading. |
+| Worlds = difficulty | **Worlds ARE the difficulty knob** (`GameConfig.Maps` mult/speedMult × `WaveMult`). Worlds unlock by **account level** (`WorldUnlockLevel`). The old Easy…Nightmare/Endless difficulty ladder is GONE. |
 | Game name | **ZombieRot** (project name in `default.project.json`) |
-| Data persistence | **SKIPPED for now.** `DataService` is an in-memory stub with the final API — swap in ProfileStore later by editing one file. No data survives a server restart yet. |
-| Progression XP | **Kill-weighted** (most XP from kills; round reached is a small bonus). See `ProgressionConfig`. |
-| Wonder weapon | **Ray Gun** added — box-only jackpot pull (`WeaponConfig.raygun`, in `MysteryBoxConfig.Pool` at low weight). |
+| Data persistence | **LIVE** — profiles persist via DataStore in both places (game + lobby share the save). Coins/XP/best-wave/wins/owned/loadout/cases/skins all save. |
+| Progression XP | **Kill-weighted** (most XP from kills; round reached is a small bonus). See `ProgressionConfig`. Level gates gun + world unlocks. |
+| Wonder weapon | **Ray Gun** — a top-tier level-unlock (`WeaponConfig.raygun`). (MysteryBox is retired.) |
 | Map | **The owner builds it** in Studio. Code never references map parts by name — only by **CollectionService tag** (see §10). |
 | 3D models | **The owner builds them** (zombies, guns, machines, the box). |
 | UI | **The owner styles all UI; Claude writes all the code.** Controllers own the logic and look up the owner's named UI elements (named-instance contract). Each UI-driving controller will document the exact element names it expects, and tolerate missing elements gracefully. |
@@ -37,22 +45,30 @@ push for a higher wave than last time.** Third-person, drop-in co-op.
 - [ ] **Meta-progression + leaderboard** (account XP/levels, weapon unlocks, global best-wave board)
 - [ ] **Polish & security pass** (anti-exploit audit, perf at full hordes, onboarding, settings, sound)
 
-> **Removed in the Zombie Rush pivot:** doors, wall-buys, Pack-a-Punch, perk machines, the Mystery Box,
-> and down/revive (replaced by respawn). The `PerkConfig`/`MysteryBoxConfig` modules still exist but are
-> unused; `ShopConfig` is the new economy config.
+> **Removed across the pivots:** doors, wall-buys, Pack-a-Punch, perk machines, the Mystery Box (CoD-Zombies);
+> and the Zombie-Rush coin gun-shop + gun upgrading + respawn/no-game-over. `PerkConfig`/`MysteryBoxConfig`
+> exist but are unused. **Known dead code (invisible to players, left in place — do NOT rip out casually):**
+> `WeaponConfig.price` + the `BuyGun` charge path (guns are level-unlocks), and the gun-level/copies fields
+> in the profile (no earn/spend path). The in-wave `Points` currency (`PointsService`) has no HUD readout and
+> only feeds `TrapService`; treat it as legacy score, not a player-facing wallet.
 
 ---
 
 ## 1. The loop (the whole game)
 
-**kill → cash → buy/upgrade → survive harder → push a higher wave than last time.**
+**survive waves → Coins bank live → every 5 waves cash out or double down → wipe ends the run → spend Coins
+on cosmetics + level up for new guns/worlds → go again, push higher.**
 
-Start with a pistol and some cash. Zombies rush you in escalating **waves**; kill them for cash
-(10/hit, 60/kill, 100/headshot-kill — tune in `GameConfig`). Open the **shop menu** (press **B**) anytime
-to buy better guns (SMG → Ray Gun) and **upgrade** your current gun's damage for cash. Waves get bigger
-and tougher endlessly. Die and you **respawn** after a few seconds, keeping your cash and weapons — no
-game over, just see how far you get. Special/boss zombies (Runner/Brute/Mutant/Abomination) appear at
-higher waves to force you to move. (Account XP/levels + a best-wave leaderboard come in a later phase.)
+You spawn into a **world** (which is also the difficulty) with your level-unlocked loadout. Zombies rush you
+in escalating endless **waves**; each kill banks **Coins** to your profile *immediately* (2/kill, 50/wave —
+tune in `GameConfig`), so nothing you earn is ever lost. Every **`Extraction.Every` (5) waves** the wave
+break becomes an **EXTRACTION window**: **CASH OUT** to bank a bonus (pot × the current multiplier, minus the
+already-banked base) and leave as a WIN, or **DOUBLE DOWN** — the multiplier climbs +0.5 and the horde keeps
+coming. The HUD shows the next cash-out wave and the live multiplier so the choice never surprises you. A
+**team wipe ends the run** (you keep the banked base, forfeit the bonus; a Robux revive can buy back in during
+the grace window). Special/boss zombies force you to move — dangerous types read by a **colored threat outline**
+before they reach you. Between runs, in the **lobby**, spend Coins on **skins/cases** and let your **account
+level** unlock the next gun and the next world. Guns are **free at their unlock level** — Coins never buy them.
 
 ---
 
