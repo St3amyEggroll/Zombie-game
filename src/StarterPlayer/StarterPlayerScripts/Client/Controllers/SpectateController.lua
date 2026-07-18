@@ -312,6 +312,14 @@ local function build(playerGui)
 		rb.Activated:Connect(function()
 			MarketplaceService:PromptProductPurchase(localPlayer, tonumber(GameConfig.ReviveProductId))
 		end)
+		task.spawn(function() -- NEW: live Robux price on the button
+			local ok, info = pcall(function()
+				return MarketplaceService:GetProductInfo(tonumber(GameConfig.ReviveProductId), Enum.InfoType.Product)
+			end)
+			if ok and info and tonumber(info.PriceInRobux) then
+				rb.Text = ("REVIVE — R$%d"):format(info.PriceInRobux)
+			end
+		end)
 	end
 	wipeLabel = Instance.new("TextLabel")
 	wipeLabel.Name = "WipeCountdown"

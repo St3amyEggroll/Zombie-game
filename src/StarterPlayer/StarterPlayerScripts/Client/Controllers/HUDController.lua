@@ -189,6 +189,20 @@ local function build()
 			warn("[HUD] SKIP WAVE: set GameConfig.SkipWaveProductId to your Developer Product id")
 		end
 	end)
+	do -- NEW: show the live Robux price on the button once the product id is set
+		local id = tonumber(GameConfig.SkipWaveProductId) or 0
+		if id > 0 then
+			task.spawn(function()
+				local ok, info = pcall(function()
+					return MarketplaceService:GetProductInfo(id, Enum.InfoType.Product)
+				end)
+				if ok and info and tonumber(info.PriceInRobux) then
+					skipBtn.Size = UDim2.fromOffset(96, 26)
+					skipBtn.Text = ("SKIP  R$%d"):format(info.PriceInRobux)
+				end
+			end)
+		end
+	end
 
 	local leaveBtn = UITheme.Button(waveRow, "LEAVE", "danger")
 	leaveBtn.Name = "LeaveButton"
@@ -265,6 +279,80 @@ local function build()
 	coinStroke.Parent = coinsLabel
 	coinPopScale = Instance.new("UIScale") -- pickup pop when a loot coin lands
 	coinPopScale.Parent = coinsLabel
+
+	-- ===== GET COINS (in-run coin bundles) ===== a small gold "+" beside the coin readout opens a
+	-- buy card with the same Developer Products as the lobby shop (GameConfig.CoinBundleProducts).
+	-- Being broke at the mid-run gun shop is the moment this exists for. Rows with id=0 say SOON.
+	local bundles = GameConfig.CoinBundleProducts or {}
+	local card = Instance.new("Frame")
+	card.Name = "CoinShopCard"
+	card.AnchorPoint = Vector2.new(0.5, 0.5)
+	card.Position = UDim2.fromScale(0.5, 0.5)
+	card.Size = UDim2.fromOffset(340, 86 + #bundles * 56)
+	card.BackgroundColor3 = Color3.fromRGB(16, 17, 21)
+	card.BackgroundTransparency = 0.04
+	card.Visible = false
+	card.Parent = gui
+	local cardCorner = Instance.new("UICorner")
+	cardCorner.CornerRadius = UDim.new(0, 12)
+	cardCorner.Parent = card
+	local cardStroke = Instance.new("UIStroke")
+	cardStroke.Color = COL_GOLD
+	cardStroke.Transparency = 0.35
+	cardStroke.Thickness = 2
+	cardStroke.Parent = card
+	local cardTitle = text(card, "Title", UITheme.TitleFace, 24, COL_GOLD)
+	cardTitle.Position = UDim2.fromOffset(20, 14)
+	cardTitle.Size = UDim2.new(1, -80, 0, 30)
+	cardTitle.TextXAlignment = Enum.TextXAlignment.Left
+	cardTitle.Text = "GET COINS"
+	local closeBtn = UITheme.Button(card, "X", "danger")
+	closeBtn.Name = "Close"
+	closeBtn.AnchorPoint = Vector2.new(1, 0)
+	closeBtn.Position = UDim2.new(1, -12, 0, 12)
+	closeBtn.Size = UDim2.fromOffset(30, 30)
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.Activated:Connect(function()
+		card.Visible = false
+	end)
+	for i, b in bundles do
+		local row = UITheme.Button(card, "", "gold")
+		row.Name = "Bundle" .. i
+		row.Position = UDim2.fromOffset(16, 56 + (i - 1) * 56)
+		row.Size = UDim2.new(1, -32, 0, 46)
+		row.TextSize = 17
+		row.TextColor3 = Color3.fromRGB(255, 255, 255)
+		local base = Util.FormatNumber(b.coins) .. " COINS" .. (b.bonus and ("  " .. b.bonus) or "")
+		local bid = tonumber(b.id) or 0
+		if bid > 0 then
+			row.Text = base
+			task.spawn(function()
+				local ok, info = pcall(function()
+					return MarketplaceService:GetProductInfo(bid, Enum.InfoType.Product)
+				end)
+				if ok and info and tonumber(info.PriceInRobux) then
+					row.Text = base .. ("  —  R$%d"):format(info.PriceInRobux)
+				end
+			end)
+			row.Activated:Connect(function()
+				MarketplaceService:PromptProductPurchase(localPlayer, bid)
+			end)
+		else
+			row.Text = base .. "  —  SOON"
+			row.AutoButtonColor = false
+		end
+	end
+
+	local plusBtn = UITheme.Button(gui, "+", "gold")
+	plusBtn.Name = "GetCoinsButton"
+	plusBtn.AnchorPoint = Vector2.new(0, 1)
+	plusBtn.Position = UDim2.new(0, 16 + 14 + 38 + 186, 1, -(16 + 64 + 8 + 44 + 8))
+	plusBtn.Size = UDim2.fromOffset(28, 28)
+	plusBtn.TextSize = 22
+	plusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	plusBtn.Activated:Connect(function()
+		card.Visible = not card.Visible
+	end)
 
 	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, UITheme.Type.Section, COL_XP)
 	levelLabel.Position = UDim2.fromOffset(14, 4)

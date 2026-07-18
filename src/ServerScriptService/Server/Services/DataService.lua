@@ -307,6 +307,18 @@ function DataService.AddMoney(player: Player, amount: number)
 	end
 end
 
+-- NEW: Robux-purchased coins — RAW grant, no gamepass multiplier (the 2x Coins pass doubles EARNED
+-- coins; doubling coins bought with Robux would misprice every bundle). Returns the new total.
+function DataService.GrantPurchasedCoins(player: Player, amount: number): number
+	local data = getData(player)
+	if not data then
+		return 0
+	end
+	data.lobbyMoney = math.max(0, data.lobbyMoney + math.max(0, math.floor(amount)))
+	markDirty(player)
+	return data.lobbyMoney
+end
+
 function DataService.TrySpendMoney(player: Player, amount: number): boolean
 	local data = getData(player)
 	if not data or amount < 0 or data.lobbyMoney < amount then

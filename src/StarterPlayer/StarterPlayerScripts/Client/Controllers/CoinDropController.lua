@@ -40,6 +40,12 @@ local MAGNET_RAMP  = 26    -- magnet acceleration (higher = snappier pull)
 local ARRIVE_DIST  = 3.0   -- studs from your torso that counts as collected
 local COIN_LIFE    = 4.5   -- absolute failsafe: a coin always finishes by this age (e.g. you died)
 local SPIN_SPEED   = 480   -- degrees/sec of sprite spin while flying to you
+-- NEW: collect SOUNDS (owner's assets) — random pick per pickup, pitch climbs on quick streaks.
+local COIN_SOUNDS  = { "rbxassetid://8646410774", "rbxassetid://134583420216867" }
+local SOUND_VOLUME = 0.5
+local SOUND_MIN_GAP = 0.045 -- throttle: a horde of arrivals can't stack 10 plays in one frame
+local COMBO_PITCH  = 0.025  -- extra playback speed per consecutive quick pickup (the coin cascade)
+local COMBO_WINDOW = 0.6    -- seconds between pickups that still count as a streak
 
 local localPlayer = Players.LocalPlayer
 
@@ -47,6 +53,30 @@ local coinFolder: Folder? = nil
 local pool: { any } = {}   -- free sprites
 local active: { any } = {} -- live coins, oldest first
 local made = 0
+
+-- ===== COLLECT SOUND (pooled, throttled, combo pitch) =====
+local SoundService = game:GetService("SoundService")
+local soundPool: { Sound } = {}
+local soundIdx = 1
+local lastSoundAt = 0
+local combo = 0
+
+local function playCollect()
+	if #soundPool == 0 then
+		return
+	end
+	local now = os.clock()
+	combo = (now - lastSoundAt < COMBO_WINDOW) and math.min(combo + 1, 10) or 0
+	if now - lastSoundAt < SOUND_MIN_GAP then
+		return -- still counts toward the combo, just doesn't stack another play this frame
+	end
+	lastSoundAt = now
+	local s = soundPool[soundIdx]
+	soundIdx = (soundIdx % #soundPool) + 1
+	s.SoundId = COIN_SOUNDS[math.random(#COIN_SOUNDS)]
+	s.PlaybackSpeed = 0.96 + math.random() * 0.06 + combo * COMBO_PITCH
+	s:Play()
+end
 
 local function makeCoin()
 	local part = Instance.new("Part")
@@ -87,6 +117,7 @@ local function finishCoin(index: number)
 	local frac = 1 / (#active + 1)
 	c.gui.Enabled = false
 	table.insert(pool, c)
+	playCollect()
 	HUDController.CoinArrived(frac)
 end
 
@@ -209,6 +240,25 @@ function CoinDropController.Start()
 	coinFolder = Instance.new("Folder")
 	coinFolder.Name = "CoinFX_Local" -- client-created: never replicates, each player only has their own
 	coinFolder.Parent = Workspace
+
+	-- Collect-sound pool: 4 rotating Sounds through the game's SFX group (respects the volume sliders).
+	local sfxGroup = SoundService:FindFirstChild("ZLSFX")
+	for _ = 1, 4 do
+		local s = Instance.new("Sound")
+		s.Name = "CoinCollect"
+		s.SoundId = COIN_SOUNDS[1]
+		s.Volume = SOUND_VOLUME
+		if sfxGroup then
+			s.SoundGroup = sfxGroup
+		end
+		s.Parent = SoundService
+		table.insert(soundPool, s)
+	end
+	task.spawn(function() -- preload so the first pickup isn't silent
+		pcall(function()
+			game:GetService("ContentProvider"):PreloadAsync(soundPool)
+		end)
+	end)
 
 	Remotes.Get("HitConfirmed").OnClientEvent:Connect(onHitConfirmed)
 	RunService.Heartbeat:Connect(onHeartbeat)

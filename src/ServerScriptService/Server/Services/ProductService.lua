@@ -15,8 +15,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
 
+local Remotes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Modules"):WaitForChild("Remotes"))
+
 local MatchService = require(script.Parent.MatchService)
 local ZombieService = require(script.Parent.ZombieService)
+local DataService = require(script.Parent.DataService)
 
 local ProductService = {}
 
@@ -53,6 +56,20 @@ function ProductService.Start()
 			end
 			return ok and Enum.ProductPurchaseDecision.PurchaseGranted
 				or Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+		-- NEW: COIN BUNDLES (bought in-game via the HUD "+" card; same products as the lobby shop).
+		-- RAW grant — never doubled by the 2x Coins pass — then the counter updates live.
+		for _, b in GameConfig.CoinBundleProducts or {} do
+			local bid = tonumber(b.id) or 0
+			if bid > 0 and receipt.ProductId == bid then
+				local ok, total = pcall(DataService.GrantPurchasedCoins, player, b.coins)
+				if ok then
+					Remotes.Get("LobbyMoneyChanged"):FireClient(player, total)
+					print(("[ProductService] %s bought a coin bundle (+%d)"):format(player.Name, b.coins))
+				end
+				return ok and Enum.ProductPurchaseDecision.PurchaseGranted
+					or Enum.ProductPurchaseDecision.NotProcessedYet
+			end
 		end
 		return Enum.ProductPurchaseDecision.NotProcessedYet -- unknown product: leave it pending
 	end

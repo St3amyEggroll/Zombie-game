@@ -23,6 +23,18 @@ GameConfig.SkipWaveProductId = 0
 GameConfig.ReviveProductId    = 0
 GameConfig.ReviveGraceSeconds = 12
 
+-- NEW: COIN BUNDLES sellable IN-GAME too — the gold "+" beside the HUD coin counter opens a buy card
+-- (broke mid-run at the gun shop = the moment that matters). These are the SAME four Developer
+-- Products as the lobby's PASSES & COINS tab: create them ONCE in Creator Hub, then paste each id
+-- BOTH here and in the lobby's SHOP.CoinBundles. Purchased coins are granted RAW (the 2x Coins
+-- gamepass never doubles Robux-bought coins). id = 0 → that row shows COMING SOON.
+GameConfig.CoinBundleProducts = {
+	{ id = 0, coins = 1000 },
+	{ id = 0, coins = 5000,  bonus = "+5%" },
+	{ id = 0, coins = 15000, bonus = "+15%" },
+	{ id = 0, coins = 50000, bonus = "+30%" },
+}
+
 -- ===== GAMEPASSES ===== (owner-created in Creator Hub → Passes). Benefits are server-side:
 -- 2x Coins doubles every Coin grant in a run, 2x XP doubles account XP, VIP = overhead tag + a free
 -- rare crate daily (the lobby handles the crate). Keep ids in sync with the lobby's GAMEPASSES table.
