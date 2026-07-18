@@ -45,9 +45,9 @@ function AimController.GetTarget(): BasePart?
 	end
 	-- Stickiness: a zombie briefly leaving the tight cone shouldn't stutter the fire rate — keep firing at
 	-- the last target for a short grace while it's still alive.
+	-- CHANGED: zombies are custom rigs with NO Humanoid — aliveness is the server-set ZDead attribute.
 	if lastTarget and lastTarget.Parent and (os.clock() - lastTargetTime) < STICKY then
-		local hum = lastTarget.Parent:FindFirstChildOfClass("Humanoid")
-		if hum and hum.Health > 0 then
+		if lastTarget.Parent:GetAttribute("ZDead") ~= true then
 			return lastTarget
 		end
 	end
@@ -84,9 +84,9 @@ local function findTargetRoot(fromPos: Vector3, dir: Vector3): BasePart?
 
 	local cands = {}
 	for _, model in folder:GetChildren() do
-		local humanoid = model:FindFirstChildOfClass("Humanoid")
-		local root = model:FindFirstChild("HumanoidRootPart")
-		if humanoid and root and humanoid.Health > 0 then
+		-- CHANGED: custom zombies have no Humanoid — alive = ZDead attribute not set true by the server.
+		local root = model:FindFirstChild("HumanoidRootPart") or (model:IsA("Model") and model.PrimaryPart)
+		if root and model:GetAttribute("ZDead") ~= true then
 			local to = root.Position - fromPos
 			local dist = to.Magnitude
 			if dist > 0.01 and dist <= reach then

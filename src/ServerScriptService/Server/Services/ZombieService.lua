@@ -828,6 +828,7 @@ local function onZombieDied(record)
 		return
 	end
 	record.dead = true
+	record.model:SetAttribute("ZDead", true) -- NEW: clients (auto-aim) stop targeting the corpse instantly
 	active[record.model] = nil
 	-- Corpses are anonymous: hide our overhead tag the moment it dies (spawnOne re-arms it on reuse).
 	if record.tag then
@@ -1592,6 +1593,8 @@ local function spawnOne(round: number, forcedType: string?)
 	-- Stamp the type's point value on the model so PointsService can award without a cross-service lookup.
 	model:SetAttribute("PointsMult", t.pointsMult)
 	model:SetAttribute("IsSpecial", t.isSpecial)
+	-- NEW: aliveness flag for clients (no Humanoid to read anymore) — AimController skips ZDead corpses.
+	model:SetAttribute("ZDead", false)
 
 	model:PivotTo(spawnCF)
 	model.Parent = zombieFolder
