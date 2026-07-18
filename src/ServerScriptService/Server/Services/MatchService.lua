@@ -336,6 +336,10 @@ local function extractPlayer(player: Player, ps)
 	local summary = bankRun(player, ps)
 	summary.win = true
 	summary.money = (summary.money or 0) + bonus
+	local extractRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if extractRoot then
+		Remotes.Get("WorldVFX"):FireAllClients("coins", { pos = extractRoot.Position }) -- the payoff sparkle
+	end
 	print(("[MatchService] %s CASHED OUT at wave %d (x%.1f, +%d bonus)"):format(player.Name, state.round, state.extractMult, bonus))
 	if LIVE then
 		task.spawn(teleportToLobby, player, summary)

@@ -210,9 +210,147 @@ local function spawnFlames(from: Vector3, to: Vector3)
 	jetEmber:Emit(3)
 end
 
+-- FREEZE RAY: the flamethrower's icy twin — a cold mist cone that sinks instead of rising, glittering
+-- frost crystals in the stream, and a frost pop at whatever it touches.
+local frostPart, frostMist, frostSpark
+local function ensureFrost()
+	if frostPart and frostPart.Parent then
+		return
+	end
+	frostPart = Instance.new("Part")
+	frostPart.Name = "FrostJet"
+	frostPart.Anchored = true
+	frostPart.CanCollide = false
+	frostPart.CanQuery = false
+	frostPart.CanTouch = false
+	frostPart.Transparency = 1
+	frostPart.Size = Vector3.new(0.6, 0.6, 0.6)
+	frostPart.Parent = fxFolder
+	frostMist = Instance.new("ParticleEmitter")
+	frostMist.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	frostMist.EmissionDirection = Enum.NormalId.Front
+	frostMist.Rate = 0
+	frostMist.Speed = NumberRange.new(60, 85)
+	frostMist.Lifetime = NumberRange.new(0.3, 0.5)
+	frostMist.Drag = 3
+	frostMist.SpreadAngle = Vector2.new(6, 6)
+	frostMist.Acceleration = Vector3.new(0, -12, 0) -- cold sinks
+	frostMist.LightEmission = 0.35
+	frostMist.LightInfluence = 0
+	frostMist.Rotation = NumberRange.new(0, 360)
+	frostMist.RotSpeed = NumberRange.new(-60, 60)
+	frostMist.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.8),
+		NumberSequenceKeypoint.new(0.5, 2.4),
+		NumberSequenceKeypoint.new(1, 3.4),
+	})
+	frostMist.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.25),
+		NumberSequenceKeypoint.new(0.75, 0.5),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	frostMist.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(235, 250, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 215, 245)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 160, 210)),
+	})
+	frostMist.Parent = frostPart
+	frostSpark = Instance.new("ParticleEmitter")
+	frostSpark.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	frostSpark.EmissionDirection = Enum.NormalId.Front
+	frostSpark.Rate = 0
+	frostSpark.Speed = NumberRange.new(50, 80)
+	frostSpark.Lifetime = NumberRange.new(0.3, 0.55)
+	frostSpark.Drag = 2.5
+	frostSpark.SpreadAngle = Vector2.new(9, 9)
+	frostSpark.LightEmission = 1
+	frostSpark.LightInfluence = 0
+	frostSpark.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.4),
+		NumberSequenceKeypoint.new(1, 0.08),
+	})
+	frostSpark.Color = ColorSequence.new(Color3.fromRGB(220, 245, 255), Color3.fromRGB(130, 200, 240))
+	frostSpark.Parent = frostPart
+end
+
+local function spawnFrostJet(from: Vector3, to: Vector3)
+	local delta = to - from
+	if delta.Magnitude < 1 or delta.Magnitude ~= delta.Magnitude then
+		return
+	end
+	ensureFrost()
+	frostPart.CFrame = CFrame.lookAt(from + delta.Unit * 1.5, to)
+	frostMist:Emit(7)
+	frostSpark:Emit(4)
+end
+
+-- WEAPON IMPACT POPS (plasma splash / ray-gun pop / crossbow splinters): one pooled sparkle emitter,
+-- recolored per weapon, burst at the bolt's landing point. Plasma adds an expanding ion ring.
+local popPart, popEmit
+local function impactPop(pos: Vector3, weaponId: string)
+	if not popPart or not popPart.Parent then
+		popPart = Instance.new("Part")
+		popPart.Name = "ImpactPop"
+		popPart.Anchored = true
+		popPart.CanCollide = false
+		popPart.CanQuery = false
+		popPart.CanTouch = false
+		popPart.Transparency = 1
+		popPart.Size = Vector3.new(0.6, 0.6, 0.6)
+		popPart.Parent = fxFolder
+		popEmit = Instance.new("ParticleEmitter")
+		popEmit.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		popEmit.Rate = 0
+		popEmit.Speed = NumberRange.new(14, 30)
+		popEmit.Lifetime = NumberRange.new(0.25, 0.5)
+		popEmit.SpreadAngle = Vector2.new(180, 180)
+		popEmit.Drag = 2
+		popEmit.LightEmission = 1
+		popEmit.LightInfluence = 0
+		popEmit.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.5),
+			NumberSequenceKeypoint.new(1, 0.08),
+		})
+		popEmit.Parent = popPart
+	end
+	popPart.CFrame = CFrame.new(pos)
+	if weaponId == "plasma" then
+		popEmit.Color = ColorSequence.new(Color3.fromRGB(140, 235, 255), Color3.fromRGB(40, 150, 220))
+		popEmit.Acceleration = Vector3.new(0, 0, 0)
+		popEmit:Emit(12)
+		local ring = Instance.new("Part") -- the ionized shock ring
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.CastShadow = false
+		ring.Material = Enum.Material.Neon
+		ring.Color = Color3.fromRGB(90, 200, 255)
+		ring.Transparency = 0.3
+		ring.Size = Vector3.new(0.2, 1, 1)
+		ring.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Parent = fxFolder
+		TweenService:Create(ring, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Size = Vector3.new(0.1, 9, 9), Transparency = 1 }):Play()
+		Debris:AddItem(ring, 0.35)
+	elseif weaponId == "raygun" then
+		popEmit.Color = ColorSequence.new(Color3.fromRGB(170, 255, 120), Color3.fromRGB(60, 200, 60))
+		popEmit.Acceleration = Vector3.new(0, 8, 0) -- the sickly energy floats
+		popEmit:Emit(14)
+	elseif weaponId == "crossbow" then
+		popEmit.Color = ColorSequence.new(Color3.fromRGB(150, 118, 70), Color3.fromRGB(92, 70, 42))
+		popEmit.Acceleration = Vector3.new(0, -70, 0) -- splinters fall
+		popEmit:Emit(9)
+	end
+end
+
 local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	if weaponId == "flamethrower" then
 		return spawnFlames(from, to) -- fire is not a bullet
+	end
+	if weaponId == "freezeray" then
+		return spawnFrostJet(from, to) -- cold is not a bullet either
 	end
 	if not AnimationConfig.Projectile.Enabled then
 		-- Fallback to the legacy instant line if projectiles are disabled.
@@ -277,7 +415,8 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	table.insert(activeBolts, {
 		part = bolt, from = from, dir = dir, dist = dist,
 		speed = cfg.Speed, life = cfg.Life or 0.05, t = 0,
-		burstColor = cfg.BurstColor, -- optional colored pop where the bolt lands (freeze ray frost)
+		weaponId = weaponId, -- ability guns pop their own colors on arrival (impactPop)
+		burstColor = cfg.BurstColor, -- optional colored pop where the bolt lands
 	})
 end
 
@@ -312,6 +451,9 @@ local function updateBolts(dt: number)
 					puff.Parent = fxFolder
 					TweenService:Create(puff, TweenInfo.new(0.22), { Transparency = 1, Size = Vector3.new(2.2, 2.2, 2.2) }):Play()
 					Debris:AddItem(puff, 0.25)
+				end
+				if b.weaponId == "plasma" or b.weaponId == "raygun" or b.weaponId == "crossbow" then
+					impactPop(pos, b.weaponId) -- ability-gun landing signature
 				end
 				table.remove(activeBolts, i)
 			else

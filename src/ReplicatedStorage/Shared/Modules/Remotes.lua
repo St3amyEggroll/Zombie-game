@@ -39,6 +39,8 @@ local DEFINITIONS: { [string]: string } = {
 	ExtractChoice     = "RemoteEvent",     -- C->S: CASH OUT during an open window (server re-validates the phase)
 	ExtractMult       = "RemoteEvent",     -- S->C all: (mult) — the stayers doubled down; HUD shows the new multiplier
 	RunEvent          = "RemoteEvent",     -- S->C all: (kind, payload) — event announce + client-side FX (fog, ...)
+	WorldVFX          = "RemoteEvent",     -- S->C all: (kind, {pos, ...}) — server announces, clients render particles
+	                                       -- (Emit() doesn't replicate, so all world VFX are client-side bursts)
 
 	-- CombatService (THE exploit surface — server validates everything)
 	FireWeapon        = "RemoteEvent",     -- C->S: intent (weaponId, origin, direction)

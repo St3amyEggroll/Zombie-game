@@ -113,6 +113,7 @@ local function runSupplyDrop(myGen, round)
 	if myGen ~= gen or not crate.Parent then
 		return
 	end
+	Remotes.Get("WorldVFX"):FireAllClients("dust", { pos = crate.Position - Vector3.new(0, 1.5, 0) }) -- landing thump
 	crate.CanQuery = true
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Open"
@@ -134,6 +135,7 @@ local function runSupplyDrop(myGen, round)
 			end)
 		end)
 		PlayerStateService.Heal(player, 1000) -- the opener tops off
+		Remotes.Get("WorldVFX"):FireAllClients("coins", { pos = crate.Position }) -- gold fountain
 		announce(("SUPPLIES! +%d COINS FOR THE TEAM"):format(coins), "green")
 		crate:Destroy()
 	end)
@@ -231,21 +233,15 @@ local function runMeteors(myGen, round)
 				Material = Enum.Material.Rock,
 				CFrame = CFrame.new(ground + Vector3.new(math.random(-8, 8), 130, math.random(-8, 8))),
 			})
-			local fire = Instance.new("Fire")
-			fire.Heat = 12
-			fire.Size = 8
-			fire.Parent = rock
+			Remotes.Get("WorldVFX"):FireAllClients("trail", { part = rock }) -- clients ride a fire/smoke trail on it
 			TweenService:Create(rock, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 				{ CFrame = CFrame.new(ground) }):Play()
 			task.wait(0.36)
 			if myGen ~= gen or not rock.Parent then
 				return
 			end
-			local boom = Instance.new("Explosion")
-			boom.Position = ground
-			boom.BlastPressure = 0 -- visual only; WE deal the damage (server-authoritative, players only)
-			boom.DestroyJointRadiusPercent = 0
-			boom.Parent = Workspace
+			-- Layered client-side detonation (WorldVFXController) — no stock Explosion ball.
+			Remotes.Get("WorldVFX"):FireAllClients("boom", { pos = ground, r = radius })
 			MatchService.ForEachPlayer(function(player)
 				local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 				if root and (root.Position - ground).Magnitude <= radius then

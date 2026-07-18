@@ -99,28 +99,9 @@ end
 -- ===== EXPLOSIONS / SPLASH (weapon.aoe: Rocket, Plasma) =====
 -- A quick server-side blast sphere (replicates to everyone) + the Explosion sound.
 local function spawnBlastVFX(center: Vector3, radius: number)
-	local ball = Instance.new("Part")
-	ball.Shape = Enum.PartType.Ball
-	ball.Anchored = true
-	ball.CanCollide = false
-	ball.CanQuery = false
-	ball.CastShadow = false
-	ball.Material = Enum.Material.Neon
-	ball.Color = Color3.fromRGB(255, 155, 45)
-	ball.Size = Vector3.new(2, 2, 2)
-	ball.CFrame = CFrame.new(center)
-	ball.Parent = Workspace
-	task.spawn(function()
-		local t = 0
-		while t < 0.3 and ball.Parent do
-			t += task.wait()
-			local a = t / 0.3
-			local s = 3 + radius * 1.8 * a
-			ball.Size = Vector3.new(s, s, s)
-			ball.Transparency = a
-		end
-		ball:Destroy()
-	end)
+	-- Clients render the layered detonation (fire burst + smoke + sparks + shockwave ring) — see
+	-- WorldVFXController. The server only announces it.
+	Remotes.Get("WorldVFX"):FireAllClients("boom", { pos = center, r = radius })
 end
 
 -- Damage every live zombie within cfg.radius of `center` (full at the center → 50% at the edge). Kills

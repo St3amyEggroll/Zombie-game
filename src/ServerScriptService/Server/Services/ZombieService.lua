@@ -833,6 +833,13 @@ local function onZombieDied(record)
 	if record.tag then
 		record.tag.Enabled = false
 	end
+	-- Death GORE: clients render a goo burst at the body (bosses get the big send-off).
+	if record.root then
+		Remotes.Get("WorldVFX"):FireAllClients(record.isBoss and "bossgore" or "gore", {
+			pos = record.root.Position,
+			big = record.type and record.type.isSpecial == true or nil,
+		})
+	end
 	if record.alignOr then
 		record.alignOr.Enabled = false
 	end
@@ -1501,11 +1508,13 @@ local function startEmergence(record, spawnCF: CFrame)
 	if mapEmerge == "water" then
 		groundY, groundNormal = pos.Y, Vector3.yAxis -- the ZombieSpawn point is placed AT the water surface
 		placeSplash(pos.X, groundY, pos.Z)
+		Remotes.Get("WorldVFX"):FireAllClients("splash", { pos = Vector3.new(pos.X, groundY, pos.Z) })
 		-- (Footing comes from the ocean itself: ocean parts are solid for the ZombieRig collision
 		-- group only, so the zombie stands on the water surface and wades ashore.)
 	else
 		groundY, groundNormal = findGround(pos.X, pos.Z, pos.Y)
 		placeGrave(pos.X, groundY, pos.Z, groundNormal, GRAVE_TIER[record.typeId])
+		Remotes.Get("WorldVFX"):FireAllClients("dig", { pos = Vector3.new(pos.X, groundY, pos.Z) })
 	end
 	local finalCF = CFrame.new(pos.X, groundY + GRAVE_STAND_HEIGHT, pos.Z)
 
@@ -1672,23 +1681,8 @@ end
 -- ===== SPECIAL BEHAVIORS (BombZombie / Ghost / Necromancer) =====
 -- Expanding neon blast sphere (server-made, so everyone sees it).
 local function spawnExplosionVFX(pos: Vector3)
-	local p = Instance.new("Part")
-	p.Shape = Enum.PartType.Ball
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	p.CastShadow = false
-	p.Material = Enum.Material.Neon
-	p.Color = Color3.fromRGB(255, 140, 45)
-	p.Size = Vector3.new(2, 2, 2)
-	p.CFrame = CFrame.new(pos)
-	p.Parent = zombieFolder
-	TweenService:Create(p, TweenInfo.new(0.4), {
-		Size = Vector3.new(BOMB_RADIUS * 2, BOMB_RADIUS * 2, BOMB_RADIUS * 2),
-		Transparency = 1,
-	}):Play()
-	Debris:AddItem(p, 0.45)
+	-- Layered client-side detonation (WorldVFXController) — the server only announces it.
+	Remotes.Get("WorldVFX"):FireAllClients("boom", { pos = pos, r = BOMB_RADIUS })
 end
 
 -- BombZombie detonation: damage players in radius (falls off to 0 at the edge), flash, and die.
@@ -1919,20 +1913,8 @@ end
 
 -- Frost nova visual for a shattered corpse. (Assigns the forward-declared local above onZombieDied.)
 function spawnShatterVFX(pos, radius)
-	local burst = Instance.new("Part")
-	burst.Shape = Enum.PartType.Ball
-	burst.Anchored = true
-	burst.CanCollide = false
-	burst.CanQuery = false
-	burst.CastShadow = false
-	burst.Material = Enum.Material.Neon
-	burst.Color = ICE_TINT
-	burst.Transparency = 0.25
-	burst.Size = Vector3.new(2, 2, 2)
-	burst.CFrame = CFrame.new(pos)
-	burst.Parent = Workspace
-	TweenService:Create(burst, TweenInfo.new(0.35), { Transparency = 1, Size = Vector3.new(radius * 2, radius * 2, radius * 2) }):Play()
-	Debris:AddItem(burst, 0.4)
+	-- Ice-shard burst + cold mist, rendered client-side (WorldVFXController "shatter").
+	Remotes.Get("WorldVFX"):FireAllClients("shatter", { pos = pos, r = radius })
 end
 
 -- ===== AI =====
