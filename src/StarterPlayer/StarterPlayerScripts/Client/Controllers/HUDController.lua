@@ -43,6 +43,8 @@ local playerGui = localPlayer:WaitForChild("PlayerGui")
 local healthFill, healthLabel, roundLabel, coinsLabel, breakLabel, announceLabel
 local coinPopScale -- UIScale on the coins label (pickup pop)
 local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
+local extractChip                    -- NEW: persistent "next cash-out / live payout multiplier" line
+local extractMult, currentRound = 1, 0 -- so the extraction loop is legible BETWEEN the choice windows
 local levelLabel, levelFill
 local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
@@ -225,6 +227,15 @@ local function build()
 	waveStroke.Transparency = 0.4
 	waveStroke.Thickness = 1.5
 	waveStroke.Parent = roundLabel
+
+	-- Row 2.5: the EXTRACTION chip — makes the "cash out or double down every few waves" loop legible
+	-- BETWEEN the choice windows (players kept getting surprised by the card). Shows when the next
+	-- cash-out window is, and — once anyone has doubled down — the live payout multiplier riding on it.
+	extractChip = text(lane, "ExtractChip", UITheme.BodyBoldFace, UITheme.Type.Value, COL_GOLD)
+	extractChip.Size = UDim2.fromOffset(360, 20)
+	extractChip.LayoutOrder = 25
+	extractChip.Visible = false
+	extractChip.Text = ""
 
 	-- Row 3: NEXT WAVE countdown (collapses out of the lane whenever it's empty).
 	breakLabel = text(lane, "BreakLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT_DIM)
@@ -463,12 +474,36 @@ function HUDController.CoinArrived(frac: number)
 	end
 end
 
+-- ===== EXTRACTION CHIP ===== next cash-out wave + live payout multiplier (drives loop comprehension).
+local function updateExtractChip()
+	if not extractChip then
+		return
+	end
+	local every = (GameConfig.Extraction and GameConfig.Extraction.Every) or 0
+	if every <= 0 or currentRound < 1 then
+		extractChip.Visible = false
+		return
+	end
+	local nextWave = (math.floor(currentRound / every) + 1) * every
+	if extractMult > 1 then
+		extractChip.Text = ("◇ PAYOUT ×%.1f  ·  CASH OUT AT WAVE %d"):format(extractMult, nextWave)
+	else
+		extractChip.Text = ("◇ CASH OUT AT WAVE %d"):format(nextWave)
+	end
+	extractChip.Visible = true
+end
+
 function HUDController.Start()
 	build()
 
 	Remotes.Get("HealthChanged").OnClientEvent:Connect(setHealth)
 	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
 		breakEndsAt = 0
+		currentRound = tonumber(round) or 0
+		if currentRound <= 1 then
+			extractMult = 1 -- a fresh run resets the payout multiplier (server does the same)
+		end
+		updateExtractChip()
 		if tonumber(round) == 1 then
 			-- The round-start audio leads by 1s; the text lands on its beat.
 			task.delay(1, function()
@@ -479,11 +514,19 @@ function HUDController.Start()
 		end
 	end)
 
+	-- Live payout multiplier: the stayers doubled down, so the pot rides higher now.
+	Remotes.Get("ExtractMult").OnClientEvent:Connect(function(mult)
+		extractMult = tonumber(mult) or 1
+		updateExtractChip()
+	end)
+
 	-- Pre-run countdown (waiting for the party to load in): shown in the wave slot until the run starts.
 	Remotes.Get("StartCountdown").OnClientEvent:Connect(function(secs)
 		secs = tonumber(secs) or 0
 		if secs > 0 then
 			roundLabel.Text = ("STARTING IN %d"):format(secs)
+			currentRound = 0 -- pre-run: hide the extraction chip until wave 1 lands
+			updateExtractChip()
 		end
 	end)
 
