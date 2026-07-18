@@ -130,19 +130,20 @@ AnimationConfig.Weapons = {
 	revolver    = { Hold = "129486576651262" }, -- one-handed pistol hold
 	shotgun     = { Hold = "107945513601643" }, -- Shotgun hold
 	ak47        = { Hold = "105591827404665" }, -- AK holding/shooting stance
-	crossbow    = { Hold = "" },
-	freezeray   = { Hold = "129486576651262" }, -- one-handed pistol hold
-	minigun     = { Hold = "72374830835058" }, -- Minigun hold
-	raygun      = { Hold = "129486576651262" }, -- one-handed pistol hold
-	-- Newer guns
-	m4          = { Hold = "" },
+	minigun     = { Hold = "72374830835058" },  -- Minigun hold
 	tommygun    = { Hold = "101140286383332" }, -- Tommy Gun hold
-	sniper      = { Hold = "" },
-	flamethrower = { Hold = "" },
-	rocket      = { Hold = "" },
-	plasma      = { Hold = "" },
-	honeybadger = { Hold = "" },
-	p90         = { Hold = "" },
+	freezeray   = { Hold = "129486576651262" }, -- one-handed pistol hold
+	raygun      = { Hold = "129486576651262" }, -- one-handed pistol hold
+	-- CHANGED: every gun below reuses the closest EXISTING pose so no gun ships pose-less (arms-down).
+	-- Paste a bespoke id over any of these whenever one gets uploaded.
+	crossbow    = { Hold = "107945513601643" }, -- shotgun stance (two-hand front grip)
+	m4          = { Hold = "105591827404665" }, -- AK rifle stance
+	sniper      = { Hold = "105591827404665" }, -- AK rifle stance
+	honeybadger = { Hold = "105591827404665" }, -- AK rifle stance
+	plasma      = { Hold = "105591827404665" }, -- AK rifle stance
+	p90         = { Hold = "101140286383332" }, -- Tommy Gun stance (compact SMG)
+	flamethrower = { Hold = "72374830835058" }, -- Minigun stance (heavy waist carry)
+	rocket      = { Hold = "72374830835058" },  -- Minigun stance (heavy waist carry)
 }
 
 -- Played on each ZOMBIE rig, SERVER-SIDE. Walk loops while chasing (defaults to the engine's walk
