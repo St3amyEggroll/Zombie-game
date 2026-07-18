@@ -588,9 +588,8 @@ function WeaponModelService.Start()
 			animator = Instance.new("Animator")
 			animator.Parent = hum
 		end
-		-- NEW: mark the SERVER's Animator so clients can tell it apart from the duplicate their own
-		-- Animate script may have made. Hold poses must play on THIS replica — tracks on the client-made
-		-- one die whenever this replica arrives (the "pose turns into the walk animation" bug).
+		-- Marked so it's identifiable in the client hierarchy (diagnostics; clients animate through the
+		-- humanoid's FIRST Animator, which may be their own Animate script's).
 		animator:SetAttribute("ServerAnimator", true)
 	end
 

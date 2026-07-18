@@ -153,35 +153,22 @@ local function applyHold(character: Model)
 	if not hum or holdTokens[character] ~= token then
 		return
 	end
-	-- CHANGED: play ONLY on the SERVER's Animator (attribute-tagged by WeaponModelService). The client's
-	-- own Animate script can make a duplicate Animator first; a track loaded into that one dies whenever
-	-- the server's replica arrives — even SECONDS later on a heavy load-in — which is how the pose
-	-- silently turned back into the default walk. The tagged replica can never be superseded.
-	local function serverAnimator(): Animator?
-		for _, ch in hum:GetChildren() do
-			if ch:IsA("Animator") and ch:GetAttribute("ServerAnimator") == true then
-				return ch
-			end
-		end
-		return nil
-	end
-	local animator = serverAnimator()
+	-- CHANGED BACK: play on the humanoid's ACTIVE Animator (the first one — the engine animates through
+	-- it on this client; the server's replica is inert here, tracks on it play invisibly). The old
+	-- "pose dies / turns into walking" bug was never the Animator: it's the PRIORITY reset below.
+	local animator = hum:FindFirstChildOfClass("Animator")
 	if not animator then
 		local t0 = os.clock()
 		repeat
 			task.wait(0.1)
-			animator = serverAnimator()
-		until animator or os.clock() - t0 > 8 or holdTokens[character] ~= token
+			animator = hum:FindFirstChildOfClass("Animator")
+		until animator or os.clock() - t0 > 5 or holdTokens[character] ~= token
 		if holdTokens[character] ~= token then
 			return -- a newer equip superseded this one while we waited
 		end
 		if not animator then
-			-- Server replica never showed (shouldn't happen) — last resort: any Animator, else make one.
-			animator = hum:FindFirstChildOfClass("Animator")
-			if not animator then
-				animator = Instance.new("Animator")
-				animator.Parent = hum
-			end
+			animator = Instance.new("Animator")
+			animator.Parent = hum
 		end
 	end
 	local ok, track = pcall(function()
@@ -197,10 +184,13 @@ local function applyHold(character: Model)
 	track:Play(0) -- instant (asset is preloaded at Start, so the pose appears immediately)
 	holdTracks[character] = track
 
-	-- Setting Looped before the asset loads can be reset to the animation's baked value (play-once), so
-	-- re-assert it once the asset has actually loaded (Length > 0) — keeps the pose held indefinitely.
-	-- CHANGED: Length staying 0 past the wait = the asset NEVER loaded (almost always: the animation
-	-- isn't owned by the game owner, which Roblox silently refuses to play) — procedural stance instead.
+	-- Properties set before the asset loads get RESET to the animation's baked values when it finishes
+	-- loading — Looped AND Priority. A hold pose baked at Core priority then loses the arms to the walk
+	-- animation as soon as you move (the "turns into the walking animation" bug; after a gun switch the
+	-- asset was already cached, so the pre-Play values stuck and it looked fixed). Re-assert BOTH once
+	-- the asset has actually loaded (Length > 0).
+	-- Length staying 0 past the wait = the asset NEVER loaded (almost always: the animation isn't owned
+	-- by the game owner, which Roblox silently refuses to play) — procedural stance instead.
 	task.spawn(function()
 		local t0 = os.clock()
 		while track.Length == 0 and os.clock() - t0 < 3 and holdTracks[character] == track do
@@ -210,11 +200,12 @@ local function applyHold(character: Model)
 			return -- a newer equip superseded this one
 		end
 		if track.Length > 0 then
-			clearProcPose(character) -- the real uploaded animation owns the pose
+			track.Priority = Enum.AnimationPriority.Action -- the load reset this to the baked value
 			track.Looped = true
 			if not track.IsPlaying then
 				track:Play(0)
 			end
+			clearProcPose(character) -- the real uploaded animation owns the pose now
 		else
 			if not warnedIds[id] then -- once per asset, not per re-assert
 				warnedIds[id] = true
