@@ -108,6 +108,9 @@ local function playHold(player: Player, weaponId: string)
 	end
 	local cfg = AnimationConfig.Weapons[weaponId]
 	local id = cfg and AnimationConfig.Resolve(cfg.Hold)
+	-- NEW: stamp the weapon FIRST so the client's HoldAnimId handler reads the current style if it
+	-- needs the procedural fallback (uploaded animation missing/unloadable).
+	character:SetAttribute("HoldWeaponId", weaponId)
 	character:SetAttribute("HoldAnimId", id) -- nil clears the pose
 end
 

@@ -146,6 +146,18 @@ AnimationConfig.Weapons = {
 	rocket      = { Hold = "72374830835058" },  -- Minigun stance (heavy waist carry)
 }
 
+-- NEW: PROCEDURAL HOLD STYLE per gun — the guaranteed fallback. Roblox only plays animation assets
+-- UPLOADED BY THE GAME OWNER; a toolbox/catalog id silently does nothing. When a Hold id above can't
+-- load, the client poses the arms itself with shoulder-joint offsets using one of three styles:
+--   "pistol" = gun arm raised, off hand relaxed   "rifle" = both hands up on the gun
+--   "heavy"  = low two-handed waist carry (minigun/flamethrower/rocket)
+AnimationConfig.HoldStyles = {
+	pistol = "pistol", revolver = "pistol", freezeray = "pistol", raygun = "pistol",
+	shotgun = "rifle", ak47 = "rifle", crossbow = "rifle", m4 = "rifle", sniper = "rifle",
+	honeybadger = "rifle", plasma = "rifle", p90 = "rifle", tommygun = "rifle",
+	minigun = "heavy", flamethrower = "heavy", rocket = "heavy",
+}
+
 -- Played on each ZOMBIE rig, SERVER-SIDE. Walk loops while chasing (defaults to the engine's walk
 -- animation for the rig if left blank, so zombies animate out of the box); Attack on a hit; Death on death.
 -- A type-specific entry (e.g. ["walker"]) overrides Default.

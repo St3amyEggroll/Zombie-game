@@ -68,6 +68,70 @@ local function getAnim(id: string): Animation
 	return a
 end
 
+-- ===== PROCEDURAL HOLD FALLBACK ===== (NEW)
+-- Roblox only plays animation assets UPLOADED BY THE GAME OWNER — a toolbox/catalog id loads a track
+-- that silently never animates. When that happens (or a gun has no Hold id), pose the arms ourselves
+-- with shoulder-joint C0 offsets. Animator tracks write Motor6D.Transform, never C0, so movement
+-- animations still play on top of this pose. Style per gun: AnimationConfig.HoldStyles.
+local PROC_POSES = {
+	pistol = { r = 88, l = 12 }, -- gun arm raised, off hand relaxed
+	rifle  = { r = 78, l = 62 }, -- both hands up on the gun
+	heavy  = { r = 42, l = 42 }, -- low two-handed waist carry
+}
+local procBase: { [Model]: any } = {} -- [character] = { rs, ls, rsC0, lsC0 } original C0s to restore
+
+local function findMotor(character: Model, names: { string }): Motor6D?
+	for _, n in names do
+		local j = character:FindFirstChild(n, true)
+		if j and j:IsA("Motor6D") then
+			return j
+		end
+	end
+	return nil
+end
+
+local function clearProcPose(character: Model)
+	local pb = procBase[character]
+	if not pb then
+		return
+	end
+	if pb.rs and pb.rs.Parent then
+		pb.rs.C0 = pb.rsC0
+	end
+	if pb.ls and pb.ls.Parent then
+		pb.ls.C0 = pb.lsC0
+	end
+	procBase[character] = nil
+end
+
+local function applyProcPose(character: Model)
+	local weaponId = character:GetAttribute("HoldWeaponId")
+	local style = (typeof(weaponId) == "string") and AnimationConfig.HoldStyles[weaponId] or nil
+	if not style then
+		clearProcPose(character)
+		return
+	end
+	local pose = PROC_POSES[style] or PROC_POSES.rifle
+	local pb = procBase[character]
+	if not pb then -- capture the untouched C0s ONCE per character (restored by clearProcPose)
+		local rs = findMotor(character, { "Right Shoulder", "RightShoulder" })
+		local ls = findMotor(character, { "Left Shoulder", "LeftShoulder" })
+		if not rs and not ls then
+			return
+		end
+		pb = { rs = rs, ls = ls, rsC0 = rs and rs.C0, lsC0 = ls and ls.C0 }
+		procBase[character] = pb
+	end
+	-- R6 shoulders: joint-space Z = the forward/back swing axis (mirrored). R15: X is the swing axis.
+	local r6 = character:FindFirstChild("Torso") ~= nil
+	if pb.rs and pb.rs.Parent then
+		pb.rs.C0 = pb.rsC0 * (r6 and CFrame.Angles(0, 0, math.rad(pose.r)) or CFrame.Angles(-math.rad(pose.r), 0, 0))
+	end
+	if pb.ls and pb.ls.Parent then
+		pb.ls.C0 = pb.lsC0 * (r6 and CFrame.Angles(0, 0, -math.rad(pose.l)) or CFrame.Angles(-math.rad(pose.l), 0, 0))
+	end
+end
+
 local function applyHold(character: Model)
 	local token = (holdTokens[character] or 0) + 1
 	holdTokens[character] = token
@@ -78,6 +142,7 @@ local function applyHold(character: Model)
 	end
 	local id = character:GetAttribute("HoldAnimId")
 	if typeof(id) ~= "string" or id == "" then
+		applyProcPose(character) -- no uploaded pose for this gun — procedural stance (or clear if unarmed)
 		return
 	end
 	local hum = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
@@ -108,6 +173,7 @@ local function applyHold(character: Model)
 	end)
 	if not ok or not track then
 		warn("[CharacterAnimController] hold animation failed to load: " .. tostring(id))
+		applyProcPose(character) -- NEW: still show a stance
 		return
 	end
 	track.Priority = Enum.AnimationPriority.Action
@@ -117,16 +183,26 @@ local function applyHold(character: Model)
 
 	-- Setting Looped before the asset loads can be reset to the animation's baked value (play-once), so
 	-- re-assert it once the asset has actually loaded (Length > 0) — keeps the pose held indefinitely.
+	-- CHANGED: Length staying 0 past the wait = the asset NEVER loaded (almost always: the animation
+	-- isn't owned by the game owner, which Roblox silently refuses to play) — procedural stance instead.
 	task.spawn(function()
 		local t0 = os.clock()
 		while track.Length == 0 and os.clock() - t0 < 3 and holdTracks[character] == track do
 			task.wait()
 		end
-		if holdTracks[character] == track then
+		if holdTracks[character] ~= track then
+			return -- a newer equip superseded this one
+		end
+		if track.Length > 0 then
+			clearProcPose(character) -- the real uploaded animation owns the pose
 			track.Looped = true
 			if not track.IsPlaying then
 				track:Play(0)
 			end
+		else
+			warn(("[CharacterAnimController] hold animation %s never loaded — is it uploaded by the GAME OWNER? Using the procedural stance."):format(id))
+			track:Stop(0)
+			applyProcPose(character)
 		end
 	end)
 end
@@ -144,6 +220,14 @@ local function watchCharacter(character: Model)
 			end
 			holdTracks[character] = nil
 			holdTokens[character] = nil
+			procBase[character] = nil -- joints died with the character; nothing to restore
+		end
+	end)
+	-- Diagnostic: if the server never stamps ANY hold attribute, the problem is upstream of playback
+	-- (attach/equip never ran) — say so instead of failing silently.
+	task.delay(6, function()
+		if character.Parent and character:GetAttribute("HoldAnimId") == nil and character:GetAttribute("HoldWeaponId") == nil then
+			warn(("[CharacterAnimController] %s has no hold attributes after 6s — the server never ran attach/playHold"):format(character.Name))
 		end
 	end)
 end
