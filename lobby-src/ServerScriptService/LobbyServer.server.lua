@@ -2189,10 +2189,13 @@ local function ensureZoneTitle(zone)
 	end
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "ZoneTitle"
-	bb.Size = UDim2.fromOffset(380, 90)
+	-- CHANGED: WORLD-scaled (studs, not pixels) so distant pads' signs shrink with perspective —
+	-- fixed-pixel signs all rendered full-size on top of each other from across the lobby (the
+	-- "STEP ON TO PLAYSTEP ON TO PLAY" pileup on phones). Nearer cutoff for the same reason.
+	bb.Size = UDim2.new(10, 0, 2.4, 0)
 	bb.StudsOffsetWorldSpace = Vector3.new(0, 7, 0)
 	bb.AlwaysOnTop = true
-	bb.MaxDistance = 140
+	bb.MaxDistance = 90
 	bb.Parent = zone
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
@@ -2201,7 +2204,7 @@ local function ensureZoneTitle(zone)
 	title.Size = UDim2.fromScale(1, 0.62)
 	title.BackgroundTransparency = 1
 	title.FontFace = BB_TITLE
-	title.TextSize = 36
+	title.TextScaled = true -- studs-based billboard: text follows the sign's world size
 	title.TextColor3 = BB_GOLD
 	title.Text = tostring(zone:GetAttribute("Label") or "0/4")
 	title.Parent = bb
@@ -2216,7 +2219,7 @@ local function ensureZoneTitle(zone)
 	sub.Size = UDim2.fromScale(1, 0.3)
 	sub.BackgroundTransparency = 1
 	sub.FontFace = BB_BODY
-	sub.TextSize = 18
+	sub.TextScaled = true
 	sub.TextColor3 = BB_TEXT
 	sub.Text = tostring(zone:GetAttribute("Sub") or "STEP ON TO PLAY")
 	sub.Parent = bb

@@ -101,13 +101,26 @@ end
 local UserInputService = game:GetService("UserInputService")
 LC.UI_SCALE_MULT = 1.2 -- desktop size dial (game place uses its own in UITheme)
 LC.FIT_W, LC.FIT_H = 720, 500 -- largest modal footprint + margin — the mobile fit target
-local function lattach(screenGui)
+-- mode "hud": persistent-HUD scaling (dock/coins/LVL/quests). The modal-fit formula below sizes a
+-- 720x500 panel to FILL the screen — correct for modals, way too big for the always-on HUD on a
+-- short phone viewport (the dock/LVL-card pileup). HUD tracks viewport HEIGHT instead.
+local function lattach(screenGui, mode)
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
 	local function compute()
 		local cam = workspace.CurrentCamera
 		local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
-		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+		-- CHANGED: Studio's device emulator keeps MouseEnabled=true, so it always fell into the
+		-- desktop branch — a short TOUCH viewport now also counts as mobile.
+		local isMobile = (UserInputService.TouchEnabled and not UserInputService.MouseEnabled)
+			or (UserInputService.TouchEnabled and vp.Y < 600)
+		if mode == "hud" then
+			if isMobile then
+				return math.clamp(vp.Y / 780, 0.5, 2.2) -- height-proportional, never modal-huge
+			end
+			return math.clamp(math.min(vp.X / 1920, vp.Y / 1080), 0.7, 1.3) * LC.UI_SCALE_MULT
+		end
+		if isMobile then
 			-- MOBILE: fit LC.FIT_W x LC.FIT_H into ~84% width / ~86% height and take the tighter axis. Because
 			-- this scales to the viewport's real pixels, the modal occupies the same fraction of the
 			-- screen (~86% tall) on a high-DPI AND a low-res phone — consistent, and always on-screen. The
@@ -646,7 +659,7 @@ end
 local gui = Instance.new("ScreenGui")
 gui.Name = "LobbyHUD"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 10
 gui.Parent = playerGui
-lattach(gui)
+lattach(gui, "hud")
 
 -- Coins: a dark rounded pill BOTTOM-LEFT, coin icon + gold number. Auto-sizes to the number.
 -- CHANGED: lives in its OWN ScreenGui above every ambient layer — it kept getting washed out by
@@ -656,7 +669,7 @@ local coinsGui = Instance.new("ScreenGui")
 coinsGui.Name = "LobbyCoins"; coinsGui.ResetOnSpawn = false; coinsGui.IgnoreGuiInset = true
 coinsGui.DisplayOrder = 25 -- above HUD(10)/dock(11)/panels(12), below toasts(40)/warnings(90)
 coinsGui.Parent = playerGui
-lattach(coinsGui)
+lattach(coinsGui, "hud")
 local coinsRow = Instance.new("Frame")
 coinsRow.AnchorPoint = Vector2.new(0, 1); coinsRow.Position = UDim2.new(0, 16, 1, -12)
 coinsRow.Size = UDim2.fromOffset(0, 54); coinsRow.AutomaticSize = Enum.AutomaticSize.X
@@ -5637,7 +5650,7 @@ do
 	Q.gui.IgnoreGuiInset = true
 	Q.gui.DisplayOrder = 12
 	Q.gui.Parent = playerGui
-	lattach(Q.gui)
+	lattach(Q.gui, "hud")
 
 	Q.text = function(parent, str, size, colr) -- sticker text (the shop's helper is scoped to its block)
 		local l = Instance.new("TextLabel")
@@ -6162,7 +6175,7 @@ do
 	local xpGui = Instance.new("ScreenGui")
 	xpGui.Name = "LobbyXP"; xpGui.ResetOnSpawn = false; xpGui.IgnoreGuiInset = true; xpGui.DisplayOrder = 12
 	xpGui.Parent = playerGui
-	lattach(xpGui)
+	lattach(xpGui, "hud")
 
 	-- CHANGED: bottom-RIGHT (mid-left was in the way; daily quests take that spot next).
 	local bar = Instance.new("Frame")
