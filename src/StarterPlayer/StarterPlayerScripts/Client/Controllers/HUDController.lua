@@ -41,6 +41,8 @@ local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local healthFill, healthLabel, roundLabel, coinsLabel, breakLabel, announceLabel
+local coinPopScale -- UIScale on the coins label (pickup pop)
+local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
 local levelLabel, levelFill
 local enemiesTrack, enemiesFill, enemiesLabel
 local healthPct = 1
@@ -261,6 +263,8 @@ local function build()
 	coinStroke.Transparency = 0.35
 	coinStroke.Thickness = 1.5
 	coinStroke.Parent = coinsLabel
+	coinPopScale = Instance.new("UIScale") -- pickup pop when a loot coin lands
+	coinPopScale.Parent = coinsLabel
 
 	levelLabel = text(lp, "LevelLabel", UITheme.TitleFace, UITheme.Type.Section, COL_XP)
 	levelLabel.Position = UDim2.fromOffset(14, 4)
@@ -329,6 +333,40 @@ local function setHealth(health, maxHealth)
 end
 
 -- ===== LIFECYCLE =====
+-- ===== LOOT-COIN COUNTER TICK ===== (called by CoinDropController)
+-- The real payout is instant + server-authoritative; only the DISPLAY waits for the flying coins.
+-- CoinBurstStarted opens a short hold window (server totals stop snapping in); each CoinArrived
+-- closes 1/remaining of the gap so the last coin always lands the counter exactly on the target.
+function HUDController.CoinBurstStarted()
+	coinHoldUntil = os.clock() + 2.5
+	task.delay(2.6, function() -- failsafe: never leave the counter behind if coins get cut short
+		if os.clock() >= coinHoldUntil and coinShown ~= coinTarget then
+			coinShown = coinTarget
+			if coinsLabel then
+				coinsLabel.Text = Util.FormatNumber(coinTarget)
+			end
+		end
+	end)
+end
+
+function HUDController.CoinArrived(frac: number)
+	coinHoldUntil = math.max(coinHoldUntil, os.clock() + 1.2)
+	if frac >= 1 then
+		coinShown = coinTarget
+	else
+		coinShown += (coinTarget - coinShown) * frac
+	end
+	if not coinsLabel then
+		return
+	end
+	coinsLabel.Text = Util.FormatNumber(math.floor(coinShown + 0.5))
+	if coinPopScale then -- little pickup pop
+		coinPopScale.Scale = 1.16
+		TweenService:Create(coinPopScale, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Scale = 1 }):Play()
+	end
+end
+
 function HUDController.Start()
 	build()
 
@@ -408,7 +446,9 @@ function HUDController.Start()
 
 	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
 		if typeof(data) == "table" and data.lobbyMoney then
-			coinsLabel.Text = Util.FormatNumber(data.lobbyMoney)
+			coinTarget = data.lobbyMoney
+			coinShown = coinTarget
+			coinsLabel.Text = Util.FormatNumber(coinTarget)
 		end
 		if typeof(data) == "table" and data.xp ~= nil then
 			setXP(data.xp)
@@ -417,8 +457,14 @@ function HUDController.Start()
 	Remotes.Get("ProgressChanged").OnClientEvent:Connect(function(xp)
 		setXP(xp)
 	end)
+	-- CHANGED: the server total is the TARGET; while loot coins are in flight (CoinDropController) the
+	-- displayed number holds back and ticks up per arriving coin instead of snapping.
 	Remotes.Get("LobbyMoneyChanged").OnClientEvent:Connect(function(total)
-		coinsLabel.Text = Util.FormatNumber(total)
+		coinTarget = total
+		if os.clock() >= coinHoldUntil then
+			coinShown = total
+			coinsLabel.Text = Util.FormatNumber(total)
+		end
 	end)
 
 	-- Seed initial values.

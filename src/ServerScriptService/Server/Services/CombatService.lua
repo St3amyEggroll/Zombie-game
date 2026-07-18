@@ -121,6 +121,10 @@ local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
 					hitEvent:Fire(player, rec.model, false, weaponId, dealt)
 					if killed then
 						killEvent:Fire(player, rec.model, false, weaponId)
+						-- NEW: splash kills (rocket/plasma) confirm to the shooter too, so they get the
+						-- kill juice + loot-coin burst that direct hits already had.
+						Remotes.Get("HitConfirmed"):FireClient(player, root.Position, false, true, true,
+							math.floor(dealt + 0.5), false, rec.model:GetAttribute("IsSpecial") == true)
 					else
 						ZombieService.Hit(rec, center, 24)
 					end
@@ -332,7 +336,9 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			-- Scatter the VISUAL impact around the torso (damage above is unchanged); one point drives both the
 			-- tracer endpoint and the damage-number pop so they stay together.
 			local hitPos = visualHitPos(c.root, weaponId)
-			Remotes.Get("HitConfirmed"):FireClient(player, hitPos, false, true, killed, math.floor(damage + 0.5), isCrit)
+			-- NEW 7th arg: special/rare kill → the client's loot-coin burst goes bigger.
+			Remotes.Get("HitConfirmed"):FireClient(player, hitPos, false, true, killed, math.floor(damage + 0.5), isCrit,
+				killed and (c.record.model:GetAttribute("IsSpecial") == true) or false)
 			-- A tracer per zombie hit, carrying how many pellets landed there (the client fans that many bolts).
 			Remotes.Get("ShotFired"):FireAllClients(player.UserId, origin, hitPos, weaponId, count)
 		end
