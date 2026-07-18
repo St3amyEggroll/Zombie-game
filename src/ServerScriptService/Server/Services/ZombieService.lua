@@ -1583,6 +1583,19 @@ local function spawnOne(round: number, forcedType: string?)
 	model:PivotTo(spawnCF)
 	model.Parent = zombieFolder
 
+	-- Stand height: how far the root's centre sits above the rig's FEET (bounding-box bottom). The hover
+	-- spring holds the root here so legs touch the ground instead of the torso resting on it.
+	local hipY = 2.6
+	do
+		local ok, bbCF, bbSize = pcall(function()
+			local cf, size = model:GetBoundingBox()
+			return cf, size
+		end)
+		if ok and bbCF and bbSize then
+			hipY = math.max(1, root.Position.Y - (bbCF.Position.Y - bbSize.Y / 2))
+		end
+	end
+
 	-- Keep the server authoritative over zombie physics (perf + anti-exploit).
 	pcall(function()
 		root:SetNetworkOwner(nil)
@@ -1596,6 +1609,7 @@ local function spawnOne(round: number, forcedType: string?)
 		type = t,
 		health = hp,            -- CUSTOM health: lives in this record only (see applyDamage)
 		maxHealth = hp,
+		hipY = hipY,            -- root height above the feet — the hover spring holds it here
 		speed = spd,            -- CUSTOM WalkSpeed replacement — the steer loop drives velocity from this
 		baseSpeed = spd,        -- statusSpeed() restores to this after chills/pins expire
 		alignOr = alignOr,
@@ -1855,6 +1869,32 @@ local function jump(record)
 	root.AssemblyLinearVelocity = Vector3.new(v.X, JUMP_VEL, v.Z)
 end
 
+-- HOVER SPRING: the Humanoid used to levitate the root at hip height — without it the rig sinks until
+-- the root part rests on the floor (torso on the ground, legs inside it). Each steer frame, if the root
+-- sits BELOW its measured stand height (record.hipY, taken from the rig's bounding box at spawn), push
+-- it up with a proportional vertical velocity. Push-up only — never pulls down — so jumps, leaps, and
+-- falling off ledges keep their natural arcs (root above target = gravity handles it).
+local HOVER_SPRING = 10  -- upward studs/sec per stud of sink
+local HOVER_MAX = 50     -- vertical correction cap
+local function hover(record)
+	local root = record.root
+	if not root or root.Anchored then
+		return
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { record.model }
+	local hit = Workspace:Raycast(root.Position, Vector3.new(0, -(record.hipY + 2), 0), params)
+	if not hit then
+		return -- airborne / over a drop: let gravity have it
+	end
+	local err = (hit.Position.Y + record.hipY) - root.Position.Y
+	if err > 0.05 then
+		local v = root.AssemblyLinearVelocity
+		root.AssemblyLinearVelocity = Vector3.new(v.X, math.clamp(err * HOVER_SPRING, 2, HOVER_MAX), v.Z)
+	end
+end
+
 -- Frozen SOLID (a full Freeze Ray chill, slowPct >= 1): no walking, no diving, no biting until it breaks.
 local function isFrozen(record, now: number): boolean
 	return now < (record.chilledUntil or 0) and (record.slowPct or 0) >= 0.999
@@ -2077,6 +2117,11 @@ local function steer(record, now: number)
 	local root = record.root
 	if not root or not root.Parent then
 		return
+	end
+	-- Keep the rig standing at hip height (flyers hold their own Y; a mid-leap arc must stay ballistic;
+	-- emergence still owns the root while anchored).
+	if not record.emerging and now >= (record.leapUntil or 0) and not (record.type and record.type.canFly) then
+		hover(record)
 	end
 	statusSpeed(record, now) -- chills/pins apply + expire here (runs every steer frame)
 	if isFrozen(record, now) then
