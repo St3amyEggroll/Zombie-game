@@ -39,7 +39,6 @@ local EventService = {}
 -- ===== TUNABLES ===== (the numbers live in GameConfig.Events — these are internal feel knobs)
 local METEOR_TELEGRAPH = 1.3  -- warning-disc seconds before a meteor/bolt lands
 local ACID_TELEGRAPH = 0.9    -- warning-disc seconds before an acid splash
-local RARITY_ORDER = { "common", "uncommon", "rare", "epic", "legendary", "mythic", "divine" }
 
 local gen = 0        -- bumping this cancels every running event task
 local folder         -- workspace container for event props (cleared by StopAll)
@@ -629,83 +628,64 @@ local function endGodMode()
 	PlayerStateService.SetInvulnerable(false)
 end
 
--- outcome id -> { rarity, begin(myGen, round), stop(), countMultKey }. Add a wheel outcome = one row
--- here + a LOOK row in EventWheelController + tunables in GameConfig.Events.
+-- outcome id -> { begin(myGen, round), stop(), countMultKey }. Odds live in GameConfig.Events.Weights
+-- (per event, no rarity tiers — owner call). Add a wheel outcome = one row here + a weight there +
+-- a LOOK row in EventWheelController.
 local OUTCOMES = {
-	calm       = { rarity = "common" },
-	fog        = { rarity = "common",    begin = beginFog,        stop = endFog },
-	rain       = { rarity = "common",    begin = beginRain,       stop = endRain },
-	meteors    = { rarity = "uncommon",  begin = beginMeteors },
-	bombsquad  = { rarity = "uncommon",  begin = beginBombSquad,  stop = endBombSquad },
-	earthquake = { rarity = "uncommon",  begin = beginEarthquake },
-	bloodmoon  = { rarity = "rare",      begin = beginBloodMoon,  stop = endBloodMoon },
-	lightning  = { rarity = "rare",      begin = beginLightning },
-	acidrain   = { rarity = "rare",      begin = beginAcidRain,   stop = endAcidRain },
-	hounds     = { rarity = "rare",      begin = beginHounds,     stop = endHounds },
-	purge      = { rarity = "epic",      begin = beginPurge,      stop = endPurge,   countMultKey = "PurgeCountMult" },
-	bodyguards = { rarity = "epic",      begin = beginBodyguards, countMultKey = "GuardCountMult" },
-	goldrush   = { rarity = "legendary", begin = beginGoldRush,   stop = endGoldRush },
-	apocalypse = { rarity = "mythic",    begin = beginApocalypse, stop = endApocalypse },
-	godmode    = { rarity = "divine",    begin = beginGodMode,    stop = endGodMode },
+	calm       = {},
+	fog        = { begin = beginFog,        stop = endFog },
+	rain       = { begin = beginRain,       stop = endRain },
+	meteors    = { begin = beginMeteors },
+	bombsquad  = { begin = beginBombSquad,  stop = endBombSquad },
+	earthquake = { begin = beginEarthquake },
+	bloodmoon  = { begin = beginBloodMoon,  stop = endBloodMoon },
+	lightning  = { begin = beginLightning },
+	acidrain   = { begin = beginAcidRain,   stop = endAcidRain },
+	hounds     = { begin = beginHounds,     stop = endHounds },
+	purge      = { begin = beginPurge,      stop = endPurge,   countMultKey = "PurgeCountMult" },
+	bodyguards = { begin = beginBodyguards, countMultKey = "GuardCountMult" },
+	goldrush   = { begin = beginGoldRush,   stop = endGoldRush },
+	apocalypse = { begin = beginApocalypse, stop = endApocalypse },
+	godmode    = { begin = beginGodMode,    stop = endGodMode },
 }
-local BY_RARITY = {} -- rarity -> sorted { outcomeId }
-for id, def in OUTCOMES do
-	BY_RARITY[def.rarity] = BY_RARITY[def.rarity] or {}
-	table.insert(BY_RARITY[def.rarity], id)
-end
-for _, list in BY_RARITY do
-	table.sort(list)
-end
 
 -- ===== PUBLIC =====
 
--- Roll the wheel for `wave` (rarity tier first — common thins per wave — then a uniform event of that
--- tier) and broadcast the visible roll with live per-EVENT odds. Returns the outcome id.
+-- Roll the wheel for `wave`: ONE weighted roll straight over the per-event table (calm thins per
+-- wave, nudging everything else up), broadcast the visible roll with live per-event odds (one
+-- decimal — GOD MODE really reads 0.5%). Returns the outcome id.
 function EventService.SpinForWave(wave: number): string
 	local c = cfg()
-	local rw = c.RarityWeights or {}
+	local weights = c.Weights or {}
 	local w = {}
 	local total = 0
-	for _, r in RARITY_ORDER do
-		local list = BY_RARITY[r]
-		if list and #list > 0 then
-			local weight = math.max(0, tonumber(rw[r]) or 0)
-			if r == "common" then
-				weight = math.max(tonumber(c.CommonMin) or 10,
-					weight - (tonumber(c.CommonDecayPerWave) or 1.2) * (wave - 1))
-			end
-			if weight > 0 then
-				w[r] = weight
-				total += weight
-			end
+	for id in OUTCOMES do
+		local weight = math.max(0, tonumber(weights[id]) or 0)
+		if id == "calm" then
+			weight = math.max(tonumber(c.CalmMin) or 8,
+				weight - (tonumber(c.CalmDecayPerWave) or 0.5) * (wave - 1))
+		end
+		if weight > 0 then
+			w[id] = weight
+			total += weight
 		end
 	end
-	local chosenRarity = "common"
+	local chosen = "calm"
 	if total > 0 then
 		local roll = math.random() * total
 		local acc = 0
-		for _, r in RARITY_ORDER do
-			if w[r] then
-				acc += w[r]
-				if roll <= acc then
-					chosenRarity = r
-					break
-				end
+		for id, weight in w do
+			acc += weight
+			if roll <= acc then
+				chosen = id
+				break
 			end
 		end
 	end
-	local list = BY_RARITY[chosenRarity] or BY_RARITY.common
-	local chosen = list[math.random(1, #list)]
-	-- Per-EVENT odds (%): the tier's slice split evenly across the tier's events — shown on every
-	-- flash of the roller so a rare landing FEELS rare.
 	local odds = {}
 	if total > 0 then
-		for r, weight in w do
-			local tierList = BY_RARITY[r]
-			local per = (weight / total) * 100 / #tierList
-			for _, id in tierList do
-				odds[id] = math.max(1, math.floor(per + 0.5))
-			end
+		for id, weight in w do
+			odds[id] = math.floor((weight / total) * 1000 + 0.5) / 10 -- one decimal, honest small odds
 		end
 	end
 	Remotes.Get("EventSpin"):FireAllClients({
@@ -714,7 +694,7 @@ function EventService.SpinForWave(wave: number): string
 		seconds = tonumber(c.SpinSeconds) or 3,
 		odds = odds,
 	})
-	print(("[EventService] wave %d roller: %s (%s)"):format(wave, chosen, chosenRarity))
+	print(("[EventService] wave %d roller: %s"):format(wave, chosen))
 	return chosen
 end
 

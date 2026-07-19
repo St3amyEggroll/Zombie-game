@@ -111,14 +111,31 @@ GameConfig.WorldUnlockLevel = { forest = 0, islands = 8 }
 GameConfig.Extraction = { Every = 0, WindowSeconds = 20, MultPerStage = 0.5 }
 
 -- ===== THE EVENT ROLLER ===== (EventService) — EVERY wave break the roller flashes and locks next
--- wave's modifier. Events last the WHOLE wave they land on and have RARITIES like crates: the roll
--- picks a rarity tier first (weights below), then a uniform event of that tier. COMMON's weight
--- shrinks as waves climb, so deep runs skew rare/epic/wild. (0 weight disables a whole tier.)
+-- wave's modifier. Events last the WHOLE wave they land on. Odds are PER EVENT (owner call — no
+-- rarity tiers): each event's weight IS its slice, tuned as a descending ladder from everyday CALM
+-- down to the 0.5% GOD MODE. Weights sum to ~100 so each number reads as its own percent on wave 1;
+-- CALM thins per wave, which nudges everything else up as runs go deep. (0 disables an event.)
 GameConfig.Events = {
 	SpinSeconds = 3,          -- how long the client roller flashes before the reveal (< RoundBreakSeconds)
-	RarityWeights = { common = 45, uncommon = 25, rare = 15, epic = 8, legendary = 4, mythic = 2, divine = 1 },
-	CommonDecayPerWave = 1.2, -- common's weight shrinks by this per wave...
-	CommonMin = 10,           -- ...but never below this (a plain wave stays possible)
+	Weights = {
+		calm       = 18,
+		fog        = 13,
+		rain       = 12,
+		meteors    = 10,
+		bombsquad  = 9,
+		earthquake = 8,
+		bloodmoon  = 7,
+		lightning  = 6,
+		acidrain   = 5,
+		hounds     = 4,
+		purge      = 3,
+		bodyguards = 2,
+		goldrush   = 1.5,
+		apocalypse = 1,
+		godmode    = 0.5,
+	},
+	CalmDecayPerWave = 0.5,   -- calm's weight shrinks by this per wave...
+	CalmMin = 8,              -- ...but never below this (a plain wave stays possible)
 
 	-- BLOOD MOON (rare): the sky bleeds; the whole wave is faster zombies + DOUBLE Coins per kill.
 	BloodMoonSpeedMult = 1.35, -- ×zombie speed for the wave
