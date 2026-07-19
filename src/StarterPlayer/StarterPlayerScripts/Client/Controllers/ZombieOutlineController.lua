@@ -24,26 +24,31 @@ local GRUNT_COLOR = Color3.fromRGB(0, 0, 0) -- the default cartoon outline
 
 -- typeId -> { color, priority }. Higher priority ALWAYS claims an outline before lower ones, so a
 -- dangerous enemy is never a hidden grunt in a horde. Anything unlisted = a plain black grunt (prio 0).
+-- CHANGED (owner call): EVERY normal zombie wears the same BLACK cartoon outline — speedies, tanks,
+-- lead, ghosts, all of them. Color is reserved for the SPECIAL threats: bosses, the bomb zombie
+-- (it explodes on you — must read from across the map), and event zombies (the Bloodhound pack).
+-- Priorities stay: dangerous types still always WIN an outline slot, they just wear black.
 local THREAT = {
 	-- MUST-IDENTIFY: explodes on you. Brightest red, top priority (also named from spawn, server-side).
-	bombzombie  = { color = Color3.fromRGB(255, 60, 30),  prio = 4 },
+	bombzombie  = { color = Color3.fromRGB(255, 60, 30), prio = 4 },
 	-- BOSSES: deep red, always outlined.
-	boss        = { color = Color3.fromRGB(255, 24, 24),  prio = 5 },
-	lumberjack  = { color = Color3.fromRGB(255, 24, 24),  prio = 5 },
-	necromancer = { color = Color3.fromRGB(255, 24, 24),  prio = 5 },
-	-- HEAVIES (tanks / lead): purple — soak damage, block lanes.
-	tank        = { color = Color3.fromRGB(190, 70, 230), prio = 3 },
-	speedytank  = { color = Color3.fromRGB(190, 70, 230), prio = 3 },
-	leapertank  = { color = Color3.fromRGB(190, 70, 230), prio = 3 },
-	leadtank    = { color = Color3.fromRGB(190, 70, 230), prio = 3 },
-	brinebrute  = { color = Color3.fromRGB(190, 70, 230), prio = 3 },
-	lead        = { color = Color3.fromRGB(150, 160, 185), prio = 2 },
-	-- FAST / FLYERS: yellow — close distance quickly, flank.
-	speedy      = { color = Color3.fromRGB(255, 214, 60), prio = 2 },
-	lurker      = { color = Color3.fromRGB(255, 214, 60), prio = 2 },
-	leaper      = { color = Color3.fromRGB(255, 214, 60), prio = 2 },
-	angler      = { color = Color3.fromRGB(255, 214, 60), prio = 2 },
-	ghost       = { color = Color3.fromRGB(150, 220, 255), prio = 2 },
+	boss        = { color = Color3.fromRGB(255, 24, 24), prio = 5 },
+	lumberjack  = { color = Color3.fromRGB(255, 24, 24), prio = 5 },
+	necromancer = { color = Color3.fromRGB(255, 24, 24), prio = 5 },
+	-- EVENT ZOMBIES: the Bloodhound pack (roller event) reads in its event's color.
+	hound       = { color = Color3.fromRGB(200, 120, 60), prio = 3 },
+	-- Dangerous-but-normal types: BLACK like everyone else, but they still claim outline slots first.
+	tank        = { color = GRUNT_COLOR, prio = 3 },
+	speedytank  = { color = GRUNT_COLOR, prio = 3 },
+	leapertank  = { color = GRUNT_COLOR, prio = 3 },
+	leadtank    = { color = GRUNT_COLOR, prio = 3 },
+	brinebrute  = { color = GRUNT_COLOR, prio = 3 },
+	lead        = { color = GRUNT_COLOR, prio = 2 },
+	speedy      = { color = GRUNT_COLOR, prio = 2 },
+	lurker      = { color = GRUNT_COLOR, prio = 2 },
+	leaper      = { color = GRUNT_COLOR, prio = 2 },
+	angler      = { color = GRUNT_COLOR, prio = 2 },
+	ghost       = { color = GRUNT_COLOR, prio = 2 },
 }
 
 local localPlayer = Players.LocalPlayer
