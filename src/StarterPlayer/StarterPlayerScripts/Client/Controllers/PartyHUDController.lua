@@ -159,7 +159,7 @@ function PartyHUDController.Start()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = UITheme.Layer.HUD
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
-	UITheme.Attach(gui)
+	UITheme.Attach(gui, nil, nil, "hud") -- phones: match the HUD scale
 
 	-- CHANGED (owner): a COLUMN on the RIGHT EDGE, vertically centered — mirrors the lobby's party
 	-- placement. AutomaticSize + the centered anchor keep the stack centered as players come and go.

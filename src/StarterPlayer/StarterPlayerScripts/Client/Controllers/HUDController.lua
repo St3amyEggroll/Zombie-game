@@ -98,7 +98,7 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = UITheme.Layer.HUD
 	gui.Parent = playerGui
-	UITheme.Attach(gui)
+	UITheme.Attach(gui, nil, nil, "hud") -- phones: viewport-proportional, never the desktop 1.5x dial
 
 	-- (HEALTH PANEL REMOVED — owner call, HUD renovation. The hurt flash / low-HP vignette / heartbeat
 	-- in HealthFeedbackController carry damage state, and your own PARTY chip's ring shows your HP.)
@@ -109,7 +109,10 @@ local function build()
 	local lane = Instance.new("Frame")
 	lane.Name = "TopLane"
 	lane.AnchorPoint = Vector2.new(0.5, 0)
-	lane.Position = UDim2.new(0.5, 0, 0, 14)
+	-- Touch devices: start BELOW Roblox's top chrome (menu/chat buttons) — at 14 the strip's left end
+	-- (LEAVE + the WAVE label) sat underneath them on phones. 110 is LOGICAL px: the phone hud scale
+	-- (~0.42-0.65) renders it as ~46-72 real px, just clearing the chrome.
+	lane.Position = UDim2.new(0.5, 0, 0, game:GetService("UserInputService").TouchEnabled and 110 or 14)
 	lane.Size = UDim2.fromOffset(700, 0)
 	lane.AutomaticSize = Enum.AutomaticSize.Y
 	lane.BackgroundTransparency = 1

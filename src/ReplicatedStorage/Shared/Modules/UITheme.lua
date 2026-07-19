@@ -120,11 +120,18 @@ end
 local BASE_W, BASE_H = 1920, 1080
 UITheme.UIScaleMult = 1.5 -- GLOBAL in-game size dial: every attached ScreenGui renders this much bigger
 
-local function computeScale(fitW: number?, fitH: number?): number
+local function computeScale(fitW: number?, fitH: number?, mode: string?): number
 	local cam = Workspace.CurrentCamera
 	local vp = cam and cam.ViewportSize or Vector2.new(BASE_W, BASE_H)
 	-- CHANGED: Studio's device emulator keeps MouseEnabled=true — a short touch viewport is a phone too.
 	local mobile = UserInputService.TouchEnabled and (not UserInputService.MouseEnabled or vp.Y < 600)
+	-- HUD MODE (phones): the persistent HUD (top strip / hotbar+dock / corners / party) scales to the
+	-- viewport instead of riding the desktop formula's 0.55 floor + touch bump, which rendered it
+	-- near-desktop-size on a short phone — the 808px wave strip overflowed BOTH screen edges and the
+	-- bottom row (coins + dock + LVL card) piled up. Width-aware so wide strips always clear the edges.
+	if mode == "hud" and mobile then
+		return math.clamp(math.min(vp.Y / 780, vp.X / 1250), 0.42, 2.2)
+	end
 	-- MODAL FIT (owner: "popups bigger on phones"): a gui that declares its popup footprint gets
 	-- scaled so that popup fills ~90% of a PHONE screen. Desktop ignores the footprint entirely.
 	if fitW and fitH and mobile then
@@ -141,23 +148,23 @@ local function computeScale(fitW: number?, fitH: number?): number
 	return s * UITheme.UIScaleMult
 end
 
-function UITheme.Attach(gui: ScreenGui, fitW: number?, fitH: number?): UIScale
+function UITheme.Attach(gui: ScreenGui, fitW: number?, fitH: number?, mode: string?): UIScale
 	local scale = Instance.new("UIScale")
 	scale.Name = "ResponsiveScale"
-	scale.Scale = computeScale(fitW, fitH)
+	scale.Scale = computeScale(fitW, fitH, mode)
 	scale.Parent = gui
 	local cam = Workspace.CurrentCamera
 	if cam then
 		cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-			scale.Scale = computeScale(fitW, fitH)
+			scale.Scale = computeScale(fitW, fitH, mode)
 		end)
 	end
 	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 		local newCam = Workspace.CurrentCamera
 		if newCam then
-			scale.Scale = computeScale(fitW, fitH)
+			scale.Scale = computeScale(fitW, fitH, mode)
 			newCam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-				scale.Scale = computeScale(fitW, fitH)
+				scale.Scale = computeScale(fitW, fitH, mode)
 			end)
 		end
 	end)

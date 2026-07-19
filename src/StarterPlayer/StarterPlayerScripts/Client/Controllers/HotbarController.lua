@@ -105,7 +105,7 @@ local function build()
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = UITheme.Layer.Hotbar
 	gui.Parent = playerGui
-	UITheme.Attach(gui)
+	UITheme.Attach(gui, nil, nil, "hud") -- phones: match the HUD scale (guns ride above the dock)
 
 	-- Row anchor (manual X offsets — the held slot animates upward, a list layout would fight it).
 	local totalW = SLOT * 2 + GAP -- CHANGED: 2 gun slots; CASES moved to the left-center menu pair
