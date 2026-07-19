@@ -114,7 +114,6 @@ SoundConfig.Sounds = {
 
 	-- ===== PICKUPS / PROGRESSION (2D) =====
 	CaseDrop       = S("", 0.65, 0, 1, 1),         -- case collected [reward chest]
-	GunBought      = S("", 0.7, 0, 1, 1),          -- mid-run gun purchase [cha-ching / unlock]
 
 	-- ===== TRAPS =====
 	TrapTrigger    = S("", 0.7, 120, 0.97, 1.03),  -- [electric zap / fire whoosh]

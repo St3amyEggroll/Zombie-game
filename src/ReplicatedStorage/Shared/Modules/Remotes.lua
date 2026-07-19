@@ -51,9 +51,8 @@ local DEFINITIONS: { [string]: string } = {
 	EquipWeapon       = "RemoteEvent",     -- C->S: (weaponId) request equip
 	LoadoutChanged    = "RemoteEvent",     -- S->C: (ownedWeapons, equippedWeaponId)
 
-	-- BuffService (in-run level-up buff draft)
-	-- (Run-XP buff draft REMOVED — potions are the only in-run power-up now.)
-	BuyGun            = "RemoteEvent",     -- C->S: ({weaponId}) buy a gun MID-RUN with Coins (same prices as the lobby)
+	-- (BuyGun REMOVED — there is NO shop in the game place. Guns come from the lobby: level unlocks
+	-- + crates. The only in-game purchase surface is the coins pill's "+" → GET COINS card.)
 
 	-- PointsService
 	PointsChanged     = "RemoteEvent",     -- S->C: (points)

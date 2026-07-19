@@ -111,7 +111,7 @@ local function showGunUnlock(id)
 		end)
 	end
 
-	SoundController.Play("GunBought")
+	SoundController.Play("GunEquip") -- (GunBought slot removed with the shop — unlocks ride the equip sound)
 	task.delay(4.5, function()
 		if spinConn then
 			spinConn:Disconnect()
