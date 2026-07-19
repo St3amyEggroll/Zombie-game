@@ -28,15 +28,39 @@ local GAP_FRAC = 0.35      -- slice of each step spent BLANK (the blink-out betw
 local HOLD_SECONDS = 2.6   -- how long the locked result stays up
 local LOCK_PUNCH = 1.22    -- the locked word's pop scale
 
--- What each outcome reads as (server sends only the id). Add a wheel outcome = add a row.
-local LOOK = {
-	calm      = { name = "CALM WAVE",       color = Color3.fromRGB(124, 219, 35) },
-	bloodmoon = { name = "BLOOD MOON",      color = Color3.fromRGB(255, 70, 50) },
-	fog       = { name = "FOG",             color = Color3.fromRGB(180, 186, 168) },
-	meteors   = { name = "METEOR SHOWER",   color = Color3.fromRGB(255, 140, 40) },
-	lightning = { name = "LIGHTNING STORM", color = Color3.fromRGB(120, 200, 255) },
+-- What each outcome reads as (server sends only the id). Events have RARITIES like crates — the
+-- rarity name+color rides the odds line so a MYTHIC landing feels like a crate pull. Keep rarities
+-- in sync with EventService.OUTCOMES BY HAND. Add a wheel outcome = add a row.
+local RARITY = {
+	common    = { name = "COMMON",    color = Color3.fromRGB(185, 185, 185) },
+	uncommon  = { name = "UNCOMMON",  color = Color3.fromRGB(95, 205, 95) },
+	rare      = { name = "RARE",      color = Color3.fromRGB(80, 145, 255) },
+	epic      = { name = "EPIC",      color = Color3.fromRGB(175, 95, 235) },
+	legendary = { name = "LEGENDARY", color = Color3.fromRGB(255, 170, 60) },
+	mythic    = { name = "MYTHIC",    color = Color3.fromRGB(255, 80, 120) },
+	divine    = { name = "DIVINE",    color = Color3.fromRGB(120, 255, 235) },
 }
-local IDS = { "calm", "bloodmoon", "fog", "meteors", "lightning" }
+local LOOK = {
+	calm       = { name = "CALM WAVE",       color = Color3.fromRGB(124, 219, 35),  rarity = "common" },
+	fog        = { name = "FOG",             color = Color3.fromRGB(180, 186, 168), rarity = "common" },
+	meteors    = { name = "METEOR SHOWER",   color = Color3.fromRGB(255, 140, 40),  rarity = "uncommon" },
+	bombsquad  = { name = "BOMB SQUAD",      color = Color3.fromRGB(255, 96, 34),   rarity = "uncommon" },
+	earthquake = { name = "EARTHQUAKE",      color = Color3.fromRGB(168, 140, 110), rarity = "uncommon" },
+	bloodmoon  = { name = "BLOOD MOON",      color = Color3.fromRGB(255, 70, 50),   rarity = "rare" },
+	lightning  = { name = "LIGHTNING STORM", color = Color3.fromRGB(120, 200, 255), rarity = "rare" },
+	acidrain   = { name = "ACID RAIN",       color = Color3.fromRGB(120, 230, 60),  rarity = "rare" },
+	hounds     = { name = "BLOODHOUNDS",     color = Color3.fromRGB(200, 120, 60),  rarity = "rare" },
+	purge      = { name = "THE PURGE",       color = Color3.fromRGB(220, 60, 60),   rarity = "epic" },
+	bodyguards = { name = "BODYGUARDS",      color = Color3.fromRGB(240, 196, 82),  rarity = "epic" },
+	goldrush   = { name = "GOLD RUSH",       color = Color3.fromRGB(255, 215, 70),  rarity = "legendary" },
+	apocalypse = { name = "APOCALYPSE",      color = Color3.fromRGB(255, 60, 90),   rarity = "mythic" },
+	godmode    = { name = "GOD MODE",        color = Color3.fromRGB(120, 255, 235), rarity = "divine" },
+}
+local IDS = {}
+for id in LOOK do
+	table.insert(IDS, id)
+end
+table.sort(IDS)
 
 local localPlayer = Players.LocalPlayer
 
@@ -110,16 +134,17 @@ local function build()
 	oStroke.Parent = oddsLabel
 end
 
--- Show one flashed word (+ its live %). The word arrives slightly dimmed mid-roll; the LOCK pass
--- paints it full-strength and punches the scale.
+-- Show one flashed word (+ its rarity and live %). The word arrives slightly dimmed mid-roll; the
+-- LOCK pass paints it full-strength, tints the rarity line, and punches the scale.
 local function showWord(id: string, odds, locked: boolean)
 	local look = LOOK[id] or LOOK.calm
+	local rar = RARITY[look.rarity] or RARITY.common
 	wordLabel.Text = look.name
 	wordLabel.TextColor3 = look.color
 	wordLabel.TextTransparency = locked and 0 or 0.12
 	local pct = typeof(odds) == "table" and tonumber(odds[id]) or nil
-	oddsLabel.Text = pct and ("%d%% CHANCE"):format(pct) or ""
-	oddsLabel.TextColor3 = locked and look.color or LobbyLook.DIMTEXT
+	oddsLabel.Text = pct and ("%s · %d%% CHANCE"):format(rar.name, pct) or rar.name
+	oddsLabel.TextColor3 = locked and rar.color or LobbyLook.DIMTEXT
 	if locked then
 		wordScale.Scale = 1
 		TweenService:Create(wordScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),

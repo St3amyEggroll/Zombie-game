@@ -141,6 +141,32 @@ local function setBloodMoon(on: boolean)
 	end
 end
 
+-- ===== EARTHQUAKE ===== a short camera rumble (Humanoid.CameraOffset jitter — cheap, self-restoring).
+local quakeToken = 0
+local function rumble(secs: number)
+	quakeToken += 1
+	local myTok = quakeToken
+	local player = game:GetService("Players").LocalPlayer
+	task.spawn(function()
+		local t0 = os.clock()
+		while os.clock() - t0 < secs and myTok == quakeToken do
+			local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if hum then
+				local fade = 1 - (os.clock() - t0) / secs -- rumble dies down over the tremor
+				hum.CameraOffset = Vector3.new(
+					(math.random() - 0.5) * 1.1 * fade,
+					(math.random() - 0.5) * 0.9 * fade,
+					0)
+			end
+			task.wait(0.03)
+		end
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum and myTok == quakeToken then
+			hum.CameraOffset = Vector3.zero
+		end
+	end)
+end
+
 function RunEventController.Start()
 	Remotes.Get("RunEvent").OnClientEvent:Connect(function(kind, payload)
 		payload = typeof(payload) == "table" and payload or {}
@@ -152,6 +178,8 @@ function RunEventController.Start()
 			clearFog()
 		elseif kind == "bloodmoon" then
 			setBloodMoon(payload.on == true)
+		elseif kind == "quake" then
+			rumble(math.clamp(tonumber(payload.secs) or 0.9, 0.2, 3))
 		end
 	end)
 

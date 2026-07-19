@@ -118,27 +118,56 @@ GameConfig.WorldUnlockLevel = { forest = 0, islands = 8 }
 -- wave-based + the EVENT WHEEL below. Extraction's table is kept so stale reads don't explode.)
 GameConfig.Extraction = { Every = 0, WindowSeconds = 20, MultPerStage = 0.5 }
 
--- ===== THE EVENT WHEEL ===== (EventService) — EVERY wave break the wheel visibly SPINS and lands on
--- next wave's modifier. Events last the WHOLE wave they land on. CALM (a normal wave) is on the wheel
--- too — its weight shrinks as waves climb, so deep runs get wilder. (0 weight disables an outcome.)
+-- ===== THE EVENT ROLLER ===== (EventService) — EVERY wave break the roller flashes and locks next
+-- wave's modifier. Events last the WHOLE wave they land on and have RARITIES like crates: the roll
+-- picks a rarity tier first (weights below), then a uniform event of that tier. COMMON's weight
+-- shrinks as waves climb, so deep runs skew rare/epic/wild. (0 weight disables a whole tier.)
 GameConfig.Events = {
-	SpinSeconds = 3,          -- how long the client wheel animates before the reveal (< RoundBreakSeconds)
-	Weights = { calm = 0, bloodmoon = 3, fog = 3, meteors = 3, lightning = 3 }, -- base weights (calm's is computed below)
-	CalmBase = 10,            -- calm's weight on wave 1...
-	CalmDecayPerWave = 0.5,   -- ...shrinking by this per wave...
-	CalmMin = 2,              -- ...but never below this (a breather is always possible)
-	-- BLOOD MOON: the sky bleeds; the whole wave is faster zombies + DOUBLE Coins per kill.
+	SpinSeconds = 3,          -- how long the client roller flashes before the reveal (< RoundBreakSeconds)
+	RarityWeights = { common = 45, uncommon = 25, rare = 15, epic = 8, legendary = 4, mythic = 2, divine = 1 },
+	CommonDecayPerWave = 1.2, -- common's weight shrinks by this per wave...
+	CommonMin = 10,           -- ...but never below this (a plain wave stays possible)
+
+	-- BLOOD MOON (rare): the sky bleeds; the whole wave is faster zombies + DOUBLE Coins per kill.
 	BloodMoonSpeedMult = 1.35, -- ×zombie speed for the wave
 	BloodMoonCoinMult  = 2,    -- ×Coins per kill for the wave
-	-- METEOR SHOWER: red target circles rain the whole wave.
-	MeteorEvery  = 2.2,        -- seconds between strikes
-	MeteorDamage = 25,         -- to players inside a blast
-	MeteorRadius = 9,          -- studs
-	-- LIGHTNING STORM: the INVERSE of meteors — bolts kill ZOMBIES in the blue circles all wave
-	-- (kite the horde into them). Players are never hurt; bosses only take a chunk, never the kill.
+	-- METEOR SHOWER (uncommon): telegraphed strikes all wave. OVERHAULED: real tumbling rocks (the
+	-- owner's models in ReplicatedStorage > Assets > Meteors), never landing right on a player, and
+	-- they crush ZOMBIES too (dead-center = death; edge = half max HP; bosses only chip).
+	MeteorEvery      = 2.2,   -- seconds between strikes
+	MeteorDamage     = 25,    -- to players inside the blast
+	MeteorRadius     = 9,     -- studs
+	MeteorMinDist    = 16,    -- strikes land in a ring this far from the anchor player...
+	MeteorMaxDist    = 36,    -- ...out to this far (never on top of them — owner report)
+	MeteorBossFrac   = 0.05,  -- bosses caught in a blast lose this fraction of MAX HP
+	-- LIGHTNING STORM (rare): the INVERSE of meteors — bolts kill ZOMBIES in the blue circles all
+	-- wave (kite the horde into them). Players are never hurt; bosses only take a chunk.
 	LightningEvery     = 2.0,  -- seconds between bolts
 	LightningRadius    = 10,   -- studs
 	LightningBossFrac  = 0.05, -- bosses caught in a bolt lose this fraction of MAX HP (no instant kill)
+	-- BOMB SQUAD (uncommon): the wave is salted with bomb zombies whose blasts CHAIN into other zombies.
+	BombShare = 0.4,           -- fraction of spawns forced to bomb zombies
+	-- EARTHQUAKE (uncommon): periodic tremors — screen shake + every non-boss zombie staggers.
+	QuakeEvery = 8,            -- seconds between tremors
+	QuakeStun  = 1.4,          -- zombie stagger seconds per tremor
+	-- ACID RAIN (rare): green splashes leave sizzling puddles that burn PLAYERS standing in them.
+	AcidEvery      = 1.7,      -- seconds between splashes
+	AcidPuddleSecs = 8,        -- how long each puddle sizzles
+	AcidDPS        = 8,        -- damage per second standing in one
+	AcidRadius     = 6,        -- studs
+	-- BLOODHOUNDS (rare): a hunting pack — a big share of spawns are sprinting dog zombies.
+	HoundShare = 0.35,
+	-- THE PURGE (epic): a SEA of regular zombies — nothing special, just far too many.
+	PurgeCountMult = 3,        -- ×wave count (capped by MaxZombiesPerWave/MaxAliveZombies as usual)
+	-- BODYGUARDS (epic): two brutes guard a coin pile; kill BOTH and the whole team gets paid.
+	GuardCoins     = 400,      -- Coins for EVERY in-run player when both guards die
+	GuardCountMult = 0.6,      -- the regular wave thins out so the duel is the focus
+	-- GOLD RUSH (legendary): the greed print.
+	GoldRushCoinMult = 5,      -- ×Coins per kill
+	GoldRushHPMult   = 1.75,   -- ×zombie HP for the wave
+	-- APOCALYPSE (mythic): meteors + acid rain + earthquakes all at once — paid like a jackpot.
+	ApocCoinMult = 3,
+	-- GOD MODE (divine): players take ZERO damage all wave. The 1% miracle; coins stay normal.
 }
 
 -- ===== MAPS / WORLDS ===== how each world plays (this IS the difficulty table now — one row per world).

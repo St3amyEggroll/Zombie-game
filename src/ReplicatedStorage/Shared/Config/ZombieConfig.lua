@@ -42,6 +42,10 @@ local ZombieConfig: { [string]: any } = {
 	bombzombie = { id="bombzombie", name="Bomb Zombie", healthMult=1.2,  speedMult=1.0,  damage=0,  pointsMult=2.2, isSpecial=false, minRound=21, spawnWeight=16,  tint=Color3.fromRGB(200,80,50),  isBomb=true },
 	-- Hovers above and dive-bombs; as fast as a Speedy.
 	ghost      = { id="ghost",      name="Ghost",       healthMult=0.7,  speedMult=2.1,  damage=16, pointsMult=2.0, isSpecial=false, minRound=26, spawnWeight=20,  tint=Color3.fromRGB(190,210,235), canFly=true },
+	-- BLOODHOUNDS (event wheel ONLY — spawnWeight 0 means never a random spawn): zombie DOGS. Sprinting,
+	-- lunging, dead in a couple of shots. Owner: build a dog Model, tag it ZombieTemplate, name it
+	-- "hound" (or "Bloodhound") and it's used automatically; until then the default template stands in.
+	hound      = { id="hound",      name="Bloodhound",  healthMult=0.45, speedMult=2.4,  damage=14, pointsMult=1.6, isSpecial=false, minRound=1,  spawnWeight=0,   tint=Color3.fromRGB(140,80,40),   canLeap=true },
 
 	-- ===== TANK VARIANTS ===== tank-ified versions of smaller enemies.
 	speedytank = { id="speedytank", name="Speedy Tank", healthMult=3.5, speedMult=1.5,  damage=30, pointsMult=3.0, isSpecial=true, minRound=17, spawnWeight=10, tint=Color3.fromRGB(160,140,40) },

@@ -202,11 +202,18 @@ end
 
 -- ===== PUBLIC API =====
 
+-- GOD MODE (event wheel): while true, EVERY damage source no-ops — this function is the single
+-- validated way players lose health, so one gate covers bites, bombs, meteors and acid alike.
+local invulnerable = false
+function PlayerStateService.SetInvulnerable(on: boolean)
+	invulnerable = on == true
+end
+
 -- Apply `amount` damage to a player from a validated source (zombies use this).
 -- `sourcePos` (optional) is where the hit came from — sent to the client so it can draw a directional
 -- hurt indicator pointing at the attacker.
 function PlayerStateService.Damage(player: Player, amount: number, source: string?, sourcePos: Vector3?)
-	if amount <= 0 then
+	if amount <= 0 or invulnerable then
 		return
 	end
 	local character = player.Character

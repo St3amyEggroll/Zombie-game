@@ -123,6 +123,8 @@ local remaining = 0                   -- zombies still owed this round
 local currentRound = 0
 local roundToken = 0                  -- bumped to cancel in-flight spawn loops / rounds
 local globalSpeedMult = 1             -- BLOOD MOON (event wheel): whole-horde speed × for the wave
+local eventMix = nil                  -- EVENT WHEEL: spawn-table bias { {id, share} } (BombSquad/Purge/Hounds)
+local bombChain = false               -- BOMB SQUAD: bomb blasts also damage other zombies
 local bossRecord: any = nil           -- the one live boss, if any (drives the boss health bar)
 
 -- Fired with (deathPosition?) the moment a boss dies — GameInventoryService drops the wave's cases off it.
@@ -199,8 +201,10 @@ function ZombieService.SetMap(mapId: string?)
 	mapUseSpawnPoints = (cfg and cfg.useSpawnPoints) == true
 end
 
+local eventHPMult = 1 -- EVENT WHEEL (Gold Rush &co): × zombie HP for the wave, set via SetHPMult
+
 local function scaledHealth(round: number, t): number
-	return math.floor(GameConfig.ZombieBaseHealth * (GameConfig.ZombieHealthGrowth ^ (round - 1)) * t.healthMult * difficultyMult)
+	return math.floor(GameConfig.ZombieBaseHealth * (GameConfig.ZombieHealthGrowth ^ (round - 1)) * t.healthMult * difficultyMult * eventHPMult)
 end
 
 local function scaledSpeed(round: number, t): number
@@ -1557,6 +1561,19 @@ local function spawnOne(round: number, forcedType: string?)
 	if not spawnCF then
 		return nil
 	end
+	-- EVENT MIX (the wheel): an active wave modifier can bias the spawn table — e.g. BOMB SQUAD makes
+	-- ~40% of spawns bomb zombies, THE PURGE forces 100% regulars, BLOODHOUNDS salts in the dogs.
+	if not forcedType and eventMix then
+		local r = math.random()
+		local acc = 0
+		for _, m in eventMix do
+			acc += m.share
+			if r < acc then
+				forcedType = m.id
+				break
+			end
+		end
+	end
 	local typeId = forcedType or pickType(round) or "default"
 	local t = ZOMBIE_TYPES[typeId]
 	if not t then
@@ -1717,6 +1734,19 @@ local function explode(record)
 					local dmg = BOMB_DAMAGE * (1 - d / BOMB_RADIUS) * (GameConfig.ZombieDamageMult or 1)
 					if dmg > 0 then
 						PlayerStateService.Damage(pl, dmg, "explosion", pos)
+					end
+				end
+			end
+		end
+		-- BOMB SQUAD (event wheel): the blast chains into OTHER zombies too — killing a bomber inside
+		-- the horde sets off fireworks (a chained bomber's own death re-enters here and keeps going).
+		if bombChain then
+			for _, rec in active do
+				local r2 = rec.root
+				if rec ~= record and not rec.dead and r2 then
+					local d2 = (r2.Position - pos).Magnitude
+					if d2 <= BOMB_RADIUS then
+						applyDamage(rec, BOMB_DAMAGE * (1 - d2 / BOMB_RADIUS))
 					end
 				end
 			end
@@ -2344,10 +2374,48 @@ function ZombieService.BeginRound(round: number, count: number)
 	end)
 end
 
--- ===== BLOOD MOON (event wheel) ===== a whole-wave global speed multiplier, applied per-frame in
--- statusSpeed so every LIVE zombie speeds up the moment it lands and reverts the moment it lifts.
+-- ===== EVENT WHEEL HOOKS ===== whole-wave modifiers EventService switches on/off around each wave.
+
+-- BLOOD MOON: a global speed multiplier, applied per-frame in statusSpeed so every LIVE zombie
+-- speeds up the moment it lands and reverts the moment it lifts.
 function ZombieService.SetSpeedMult(mult: number)
 	globalSpeedMult = math.max(0.1, mult or 1)
+end
+
+-- GOLD RUSH &co: × HP for NEW spawns this wave (live zombies keep their rolled health).
+function ZombieService.SetHPMult(mult: number)
+	eventHPMult = math.max(0.1, mult or 1)
+end
+
+-- BOMB SQUAD / THE PURGE / BLOODHOUNDS: bias the spawn table — { [typeId] = share 0..1 }; whatever
+-- share is left over rolls the normal weighted table. nil clears.
+function ZombieService.SetEventMix(mix)
+	if typeof(mix) == "table" then
+		local out = {}
+		for id, share in mix do
+			if ZOMBIE_TYPES[id] and tonumber(share) then
+				table.insert(out, { id = id, share = share })
+			end
+		end
+		eventMix = (#out > 0) and out or nil
+	else
+		eventMix = nil
+	end
+end
+
+-- BOMB SQUAD: bomb-zombie blasts also chain into OTHER zombies for the wave (fireworks).
+function ZombieService.SetBombChain(on: boolean)
+	bombChain = on == true
+end
+
+-- EARTHQUAKE: stagger every live non-boss zombie for `secs` (rides the pin/status system).
+function ZombieService.StaggerAll(secs: number)
+	local untilT = os.clock() + math.max(0.1, secs or 1)
+	for _, record in active do
+		if not record.isBoss then
+			record.pinnedUntil = math.max(record.pinnedUntil or 0, untilT)
+		end
+	end
 end
 
 -- Spawn exactly ONE boss for this wave: broadcasts an entrance, then streams its health to the boss bar
@@ -2479,7 +2547,10 @@ function ZombieService.ClearAll()
 	roundToken += 1
 	remaining = 0
 	bossRecord = nil
-	globalSpeedMult = 1 -- a run-ending wipe mid-Blood-Moon must not leak into the next run
+	globalSpeedMult = 1 -- a run ending mid-event must not leak modifiers into the next run
+	eventMix = nil
+	eventHPMult = 1
+	bombChain = false
 	announcedTypes = {} -- next run re-announces each enemy type's first appearance
 	for model, record in active do
 		record.dead = true

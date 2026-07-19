@@ -467,15 +467,16 @@ runMatch = function()
 	local pendingEvent = EventService.SpinForWave(state.round)
 	task.wait(GameConfig.Events.SpinSeconds)
 	while anyInMatch() do
-		local count = computeCount(state.round, inMatchCount())
+		-- The roller's outcome runs for the WHOLE wave — started FIRST because some events resize or
+		-- re-mix the wave (Purge triples the count, Bodyguards thins it, Bomb Squad biases the spawns).
+		EventService.BeginWaveEvent(pendingEvent, state.round)
+
+		local count = math.max(1, math.floor(computeCount(state.round, inMatchCount()) * EventService.GetCountMult()))
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
 		local waveTotal = count               -- this wave's owed count (denominator for the count bar)
 		local lastRemaining = -1
 		Remotes.Get("WaveProgress"):FireAllClients(count, waveTotal)
-
-		-- The wheel's outcome runs for the WHOLE wave (EndWaveEvent shuts it off after the clear).
-		EventService.BeginWaveEvent(pendingEvent, state.round)
 
 		-- A boss every BossEvery-th wave, cycling the roster forever. Boss HP scales × players.
 		if GameConfig.BossEvery > 0 and state.round % GameConfig.BossEvery == 0 then
