@@ -28,7 +28,7 @@ local EventWheelController = {}
 local FIRST_STEP = 0.10    -- seconds the FIRST flash lasts...
 local STEP_GROWTH = 1.32   -- ...each flash lasting this much longer (the die losing steam)
 local GAP_FRAC = 0.35      -- slice of each step spent BLANK (the blink-out between words)
-local BAND_Y = 0.24        -- band top, fraction of the screen
+local BAND_Y = 0.16        -- band top, fraction of the screen (owner: moved up, just under the wave strip)
 local BAND_H = 132         -- band height (px, hud-scaled)
 local DIM = 0.52           -- how dark the dimmer gets (0 = none, 1 = black)
 local EDGE_GLOW = 0.55     -- edge glow transparency at full flood (lower = louder)
