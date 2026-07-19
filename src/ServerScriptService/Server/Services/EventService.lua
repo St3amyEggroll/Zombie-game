@@ -118,15 +118,29 @@ local function damagePlayersNear(pos: Vector3, radius: number, dmg: number, sour
 	end)
 end
 
--- ===== METEOR MODELS ===== the owner's rocks: ReplicatedStorage > Assets > Meteors (any Models/Parts).
+-- ===== METEOR MODELS ===== the owner's rocks (meteor1/meteor2): ReplicatedStorage > Assets >
+-- Meteors. Lookup is CASE-INSENSITIVE (Roblox's FindFirstChild isn't; folder capitalization must
+-- never silently break this), falls back to hunting for anything named "meteor*" anywhere under
+-- ReplicatedStorage, and re-scans until it finds something (never caches an empty miss).
 local meteorTemplates = nil
+local function ciChild(parent: Instance?, name: string): Instance?
+	if not parent then
+		return nil
+	end
+	local lname = name:lower()
+	for _, c in parent:GetChildren() do
+		if c.Name:lower() == lname then
+			return c
+		end
+	end
+	return nil
+end
 local function getMeteorTemplates()
-	if meteorTemplates then
+	if meteorTemplates and #meteorTemplates > 0 then
 		return meteorTemplates
 	end
 	meteorTemplates = {}
-	local assets = ReplicatedStorage:FindFirstChild("Assets")
-	local mFolder = assets and assets:FindFirstChild("Meteors")
+	local mFolder = ciChild(ciChild(ReplicatedStorage, "Assets"), "Meteors")
 	if mFolder then
 		for _, child in mFolder:GetChildren() do
 			if child:IsA("Model") or child:IsA("BasePart") then
@@ -134,8 +148,17 @@ local function getMeteorTemplates()
 			end
 		end
 	end
+	if #meteorTemplates == 0 then -- last resort: any MODEL named meteor* anywhere under ReplicatedStorage
+		for _, d in ReplicatedStorage:GetDescendants() do
+			if d:IsA("Model") and d.Name:lower():match("^meteor") then
+				table.insert(meteorTemplates, d)
+			end
+		end
+	end
 	if #meteorTemplates == 0 then
-		warn("[EventService] no models in ReplicatedStorage.Assets.Meteors — meteors use a fallback rock")
+		warn("[EventService] no meteor models found (ReplicatedStorage > Assets > Meteors) — using a fallback rock")
+	else
+		print(("[EventService] %d meteor model(s) loaded"):format(#meteorTemplates))
 	end
 	return meteorTemplates
 end
@@ -457,9 +480,31 @@ local function acidLoop(myGen)
 	end)
 end
 
+-- TOXIC BITES: while acid rain (or the apocalypse) is up, any zombie hit also POISONS you — a short
+-- damage-over-time after the bite. Wired once in Start() off PlayerStateService.Damaged.
+local toxicBites = false
+local poisoned = {} -- player -> true while a DoT is already ticking (no stacking)
+
 local function beginAcidRain(myGen, round)
-	announce("ACID RAIN — STAY OUT OF THE PUDDLES!", "green")
+	announce("ACID RAIN — TOXIC ZOMBIES, STAY OUT OF THE PUDDLES!", "green")
+	toxicBites = true
+	Remotes.Get("RunEvent"):FireAllClients("acidrain", { on = true }) -- the green downpour (client FX)
 	acidLoop(myGen)
+end
+
+local function endAcidRain()
+	toxicBites = false
+	Remotes.Get("RunEvent"):FireAllClients("acidrain", { on = false })
+end
+
+-- ===== RAIN (common) ===== pure weather: a grey downpour, nothing else. Mood.
+local function beginRain(myGen, round)
+	announce("RAIN...", "grey")
+	Remotes.Get("RunEvent"):FireAllClients("rain", { on = true })
+end
+
+local function endRain()
+	Remotes.Get("RunEvent"):FireAllClients("rain", { on = false })
 end
 
 -- ===== BLOODHOUNDS (rare) ===== a hunting pack: a big share of spawns are sprinting dog zombies.
@@ -561,6 +606,8 @@ end
 local function beginApocalypse(myGen, round)
 	announce("APOCALYPSE — EVERYTHING, ALL AT ONCE!", "red")
 	coinMult = tonumber(cfg().ApocCoinMult) or 3
+	toxicBites = true
+	Remotes.Get("RunEvent"):FireAllClients("acidrain", { on = true }) -- the green downpour rides along
 	meteorLoop(myGen, round)
 	acidLoop(myGen)
 	quakeLoop(myGen)
@@ -568,6 +615,8 @@ end
 
 local function endApocalypse()
 	coinMult = 1
+	toxicBites = false
+	Remotes.Get("RunEvent"):FireAllClients("acidrain", { on = false })
 end
 
 -- ===== GOD MODE (divine) ===== players take ZERO damage all wave. The 1% miracle.
@@ -585,12 +634,13 @@ end
 local OUTCOMES = {
 	calm       = { rarity = "common" },
 	fog        = { rarity = "common",    begin = beginFog,        stop = endFog },
+	rain       = { rarity = "common",    begin = beginRain,       stop = endRain },
 	meteors    = { rarity = "uncommon",  begin = beginMeteors },
 	bombsquad  = { rarity = "uncommon",  begin = beginBombSquad,  stop = endBombSquad },
 	earthquake = { rarity = "uncommon",  begin = beginEarthquake },
 	bloodmoon  = { rarity = "rare",      begin = beginBloodMoon,  stop = endBloodMoon },
 	lightning  = { rarity = "rare",      begin = beginLightning },
-	acidrain   = { rarity = "rare",      begin = beginAcidRain },
+	acidrain   = { rarity = "rare",      begin = beginAcidRain,   stop = endAcidRain },
 	hounds     = { rarity = "rare",      begin = beginHounds,     stop = endHounds },
 	purge      = { rarity = "epic",      begin = beginPurge,      stop = endPurge,   countMultKey = "PurgeCountMult" },
 	bodyguards = { rarity = "epic",      begin = beginBodyguards, countMultKey = "GuardCountMult" },
@@ -724,6 +774,27 @@ function EventService.Start()
 	MatchService = require(script.Parent.MatchService)
 	ZombieService = require(script.Parent.ZombieService)
 	PlayerStateService = require(script.Parent.PlayerStateService)
+
+	-- TOXIC BITES (acid rain / apocalypse): a zombie hit also poisons — 3 extra ticks over ~2.4s.
+	-- Listens to the Damaged signal so every zombie attack path is covered without touching them.
+	PlayerStateService.Damaged:Connect(function(player, _amount, source)
+		if not toxicBites or source ~= "zombie" or poisoned[player] then
+			return
+		end
+		poisoned[player] = true
+		task.spawn(function()
+			local tickDmg = (tonumber(cfg().AcidDPS) or 8) * 0.5
+			for _ = 1, 3 do
+				task.wait(0.8)
+				if not toxicBites or not player.Parent then
+					break
+				end
+				PlayerStateService.Damage(player, tickDmg, "poison")
+			end
+			poisoned[player] = nil
+		end)
+	end)
+
 	print("[EventService] started (the rarity roller is armed)")
 end
 

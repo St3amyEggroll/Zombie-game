@@ -9,6 +9,8 @@
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Modules.Remotes)
@@ -141,6 +143,52 @@ local function setBloodMoon(on: boolean)
 	end
 end
 
+-- ===== RAIN ===== the shared downpour rig: an invisible emitter sheet riding ~55 studs above the
+-- camera, streaking particles straight down (VelocityParallel = rain streaks, not dots). RAIN uses a
+-- grey-blue wash; ACID RAIN reuses the same rig dyed toxic green. One emitter, one follow connection.
+local rainPart, rainEmitter, rainConn
+
+local function setRain(on: boolean, acid: boolean)
+	if on then
+		if not rainPart then
+			rainPart = Instance.new("Part")
+			rainPart.Name = "RainSheet"
+			rainPart.Anchored = true
+			rainPart.CanCollide = false
+			rainPart.CanQuery = false
+			rainPart.CanTouch = false
+			rainPart.Transparency = 1
+			rainPart.Size = Vector3.new(140, 1, 140)
+			rainPart.Parent = Workspace
+
+			rainEmitter = Instance.new("ParticleEmitter")
+			rainEmitter.Rate = 320
+			rainEmitter.Speed = NumberRange.new(70, 95)
+			rainEmitter.Lifetime = NumberRange.new(1.1, 1.5)
+			rainEmitter.EmissionDirection = Enum.NormalId.Bottom
+			rainEmitter.Orientation = Enum.ParticleOrientation.VelocityParallel -- streaks, not dots
+			rainEmitter.Size = NumberSequence.new(0.35)
+			rainEmitter.Transparency = NumberSequence.new(0.35)
+			rainEmitter.Acceleration = Vector3.new(0, -70, 0)
+			rainEmitter.LightEmission = 0.2
+			rainEmitter.Parent = rainPart
+
+			rainConn = RunService.Heartbeat:Connect(function()
+				local cam = Workspace.CurrentCamera
+				if cam and rainPart then
+					rainPart.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(0, 55, 0))
+				end
+			end)
+		end
+		rainEmitter.Color = ColorSequence.new(acid
+			and Color3.fromRGB(120, 230, 60)   -- ACID: toxic green
+			or Color3.fromRGB(165, 195, 225))  -- RAIN: grey-blue water
+		rainEmitter.Enabled = true
+	elseif rainEmitter then
+		rainEmitter.Enabled = false -- in-flight drops die out on their own; the rig idles for next time
+	end
+end
+
 -- ===== EARTHQUAKE ===== a short camera rumble (Humanoid.CameraOffset jitter — cheap, self-restoring).
 local quakeToken = 0
 local function rumble(secs: number)
@@ -180,6 +228,10 @@ function RunEventController.Start()
 			setBloodMoon(payload.on == true)
 		elseif kind == "quake" then
 			rumble(math.clamp(tonumber(payload.secs) or 0.9, 0.2, 3))
+		elseif kind == "rain" then
+			setRain(payload.on == true, false)
+		elseif kind == "acidrain" then
+			setRain(payload.on == true, true)
 		end
 	end)
 

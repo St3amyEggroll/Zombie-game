@@ -43,6 +43,7 @@ local RARITY = {
 local LOOK = {
 	calm       = { name = "CALM WAVE",       color = Color3.fromRGB(124, 219, 35),  rarity = "common" },
 	fog        = { name = "FOG",             color = Color3.fromRGB(180, 186, 168), rarity = "common" },
+	rain       = { name = "RAIN",            color = Color3.fromRGB(165, 195, 225), rarity = "common" },
 	meteors    = { name = "METEOR SHOWER",   color = Color3.fromRGB(255, 140, 40),  rarity = "uncommon" },
 	bombsquad  = { name = "BOMB SQUAD",      color = Color3.fromRGB(255, 96, 34),   rarity = "uncommon" },
 	earthquake = { name = "EARTHQUAKE",      color = Color3.fromRGB(168, 140, 110), rarity = "uncommon" },
@@ -103,7 +104,11 @@ local function build()
 
 	wordLabel = Instance.new("TextLabel") -- THE slot: one event name at a time
 	wordLabel.BackgroundTransparency = 1
-	wordLabel.Position = UDim2.fromOffset(0, 20)
+	-- CENTER-anchored (owner report: "the event text is still not centered"): the lock pop's UIScale
+	-- grows the label about its ANCHOR — top-left anchoring shoved the scaled text ~40px right, so the
+	-- locked word sat off-center. Anchored at its middle, the pop blooms evenly in place.
+	wordLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	wordLabel.Position = UDim2.new(0.5, 0, 0, 40)
 	wordLabel.Size = UDim2.new(1, 0, 0, 40)
 	wordLabel.FontFace = LobbyLook.TITLE_FACE
 	wordLabel.TextSize = 34
