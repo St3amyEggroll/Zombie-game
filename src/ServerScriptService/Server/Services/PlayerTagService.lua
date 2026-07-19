@@ -15,12 +15,13 @@ local DataService = require(script.Parent.DataService)
 local PlayerTagService = {}
 
 -- ===== TUNABLES =====
-local TAG_OFFSET   = Vector3.new(0, 2.1, 0) -- studs above the head (sits above the default name)
+local TAG_OFFSET   = Vector3.new(0, 2.5, 0) -- studs above the head (sits above the default name)
 local TAG_MAX_DIST = 90                     -- studs the tag stays readable from
 -- STUDS-based size: the tag lives IN the world, so it scales with the character — bigger as you zoom
 -- in, smaller as you zoom out (a pixel-based tag stayed constant, which read backwards).
 local TAG_W_STUDS  = 6
-local TAG_H_STUDS  = 1.5
+local TAG_H_STUDS  = 2.1                    -- three rows now: TITLE (VIP) / WINS / LVL
+local TITLE_COLOR  = Color3.fromRGB(230, 180, 76) -- the top TITLE line (VIP for now; titles system next)
 local WINS_COLOR   = Color3.fromRGB(230, 180, 76) -- gold
 local LVL_COLOR    = Color3.fromRGB(255, 255, 255)
 local BLACK        = Color3.new(0, 0, 0)
@@ -59,9 +60,14 @@ local function ensureTag(character)
 		bb.MaxDistance = TAG_MAX_DIST
 		bb.AlwaysOnTop = false
 		bb.Parent = head
-		stickerText(bb, "Wins", 0, 0.55, WINS_COLOR)
-		local lvl = stickerText(bb, "Level", 0.55, 0.45, LVL_COLOR)
-		lvl.RichText = true -- the gold VIP suffix rides this line
+		-- CHANGED (owner): VIP rides its OWN line ON TOP of the wins (was a suffix on the LVL line).
+		-- This top line is the TITLE slot — the switchable-titles system lands here next.
+		stickerText(bb, "Title", 0, 0.34, TITLE_COLOR)
+		stickerText(bb, "Wins", 0.34, 0.33, WINS_COLOR)
+		stickerText(bb, "Level", 0.67, 0.33, LVL_COLOR)
+	elseif not bb:FindFirstChild("Title") then
+		bb:Destroy() -- an old two-line tag from before the restructure: rebuild it fresh
+		return ensureTag(character)
 	end
 	return bb
 end
@@ -83,9 +89,9 @@ function PlayerTagService.Refresh(player: Player)
 	local character = player.Character
 	local bb = character and ensureTag(character)
 	if bb then
+		bb.Title.Text = player:GetAttribute("VIPPass") and "VIP" or ""
 		bb.Wins.Text = ("%d WINS"):format(wins)
 		bb.Level.Text = ("LVL %d"):format(level)
-			.. (player:GetAttribute("VIPPass") and '  <font color="#E6B44C">VIP</font>' or "")
 	end
 end
 
