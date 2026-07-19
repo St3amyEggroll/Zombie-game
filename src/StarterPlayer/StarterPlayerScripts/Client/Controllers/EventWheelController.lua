@@ -220,6 +220,8 @@ local function build()
 	end
 
 	oddsLabel = Instance.new("TextLabel") -- the live % line riding under every flashed word
+	oddsLabel.BackgroundTransparency = 1 -- FIXED (owner report): the default opaque background rendered
+	-- as a solid full-width grey strip that ignored the band's edge fade — this label is text only
 	oddsLabel.AnchorPoint = Vector2.new(0.5, 1)
 	oddsLabel.Position = UDim2.new(0.5, 0, 1, -12)
 	oddsLabel.Size = UDim2.new(1, 0, 0, 18)
