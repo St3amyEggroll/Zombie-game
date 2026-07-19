@@ -117,47 +117,68 @@ local function damagePlayersNear(pos: Vector3, radius: number, dmg: number, sour
 	end)
 end
 
--- ===== METEOR MODELS ===== the owner's rocks (meteor1/meteor2): ReplicatedStorage > Assets >
--- Meteors. Lookup is CASE-INSENSITIVE (Roblox's FindFirstChild isn't; folder capitalization must
--- never silently break this), falls back to hunting for anything named "meteor*" anywhere under
--- ReplicatedStorage, and re-scans until it finds something (never caches an empty miss).
+-- ===== METEOR MODELS ===== the owner's rocks (meteor1/meteor2). The hunt is WIDE (owner report:
+-- "still the balls" — the first two lookups missed wherever the folder actually lives):
+--   pass 1 — a container named "Meteors" (case-insensitive, Folder OR Model) ANYWHERE under
+--            ReplicatedStorage, ServerStorage or Workspace: its children are the templates.
+--   pass 2 — anything named meteor* in those three places (Models or Parts, skipping pieces that
+--            sit INSIDE another meteor, and skipping our own RunEvents folder's live clones).
+-- Never caches an empty miss; prints exactly what it found (full paths) so the Output settles it.
+local ServerStorage = game:GetService("ServerStorage")
 local meteorTemplates = nil
-local function ciChild(parent: Instance?, name: string): Instance?
-	if not parent then
-		return nil
-	end
-	local lname = name:lower()
-	for _, c in parent:GetChildren() do
-		if c.Name:lower() == lname then
-			return c
-		end
-	end
-	return nil
-end
 local function getMeteorTemplates()
 	if meteorTemplates and #meteorTemplates > 0 then
 		return meteorTemplates
 	end
 	meteorTemplates = {}
-	local mFolder = ciChild(ciChild(ReplicatedStorage, "Assets"), "Meteors")
-	if mFolder then
-		for _, child in mFolder:GetChildren() do
-			if child:IsA("Model") or child:IsA("BasePart") then
-				table.insert(meteorTemplates, child)
+	local evFolder = folder -- our live event props: never treat a falling clone as a template
+	local containers = { ReplicatedStorage, ServerStorage, Workspace }
+	for _, root in containers do
+		for _, d in root:GetDescendants() do
+			if (d:IsA("Folder") or d:IsA("Model")) and d.Name:lower() == "meteors" and d ~= evFolder then
+				for _, child in d:GetChildren() do
+					if child:IsA("Model") or child:IsA("BasePart") then
+						table.insert(meteorTemplates, child)
+					end
+				end
 			end
 		end
+		if #meteorTemplates > 0 then
+			break
+		end
 	end
-	if #meteorTemplates == 0 then -- last resort: any MODEL named meteor* anywhere under ReplicatedStorage
-		for _, d in ReplicatedStorage:GetDescendants() do
-			if d:IsA("Model") and d.Name:lower():match("^meteor") then
-				table.insert(meteorTemplates, d)
+	if #meteorTemplates == 0 then -- pass 2: name-based hunt
+		for _, root in containers do
+			for _, d in root:GetDescendants() do
+				if (d:IsA("Model") or d:IsA("BasePart")) and d.Name:lower():match("^meteor") then
+					local skip = false
+					local a = d.Parent
+					while a and a ~= root do
+						if a == evFolder or ((a:IsA("Model") or a:IsA("BasePart")) and a.Name:lower():match("^meteor")) then
+							skip = true -- a piece of a meteor (or one of our live clones), not a template
+							break
+						end
+						a = a.Parent
+					end
+					if not skip then
+						table.insert(meteorTemplates, d)
+					end
+				end
+			end
+			if #meteorTemplates > 0 then
+				break
 			end
 		end
 	end
 	if #meteorTemplates == 0 then
-		warn("[EventService] no meteor models found (ReplicatedStorage > Assets > Meteors) — using a fallback rock")
+		warn("[EventService] NO meteor models found — looked for a 'Meteors' folder (then anything named "
+			.. "meteor*) in ReplicatedStorage, ServerStorage and Workspace. Using the fallback rock.")
 	else
-		print(("[EventService] %d meteor model(s) loaded"):format(#meteorTemplates))
+		local names = {}
+		for _, t in meteorTemplates do
+			table.insert(names, t:GetFullName())
+		end
+		print(("[EventService] %d meteor model(s): %s"):format(#meteorTemplates, table.concat(names, "  |  ")))
 	end
 	return meteorTemplates
 end
@@ -754,6 +775,10 @@ function EventService.Start()
 	MatchService = require(script.Parent.MatchService)
 	ZombieService = require(script.Parent.ZombieService)
 	PlayerStateService = require(script.Parent.PlayerStateService)
+
+	-- Scan for the meteor models AT BOOT (not lazily at the first strike) so the Output line that says
+	-- what was found — or the warning that says where it looked — is sitting right there on startup.
+	task.spawn(getMeteorTemplates)
 
 	-- TOXIC BITES (acid rain / apocalypse): a zombie hit also poisons — 3 extra ticks over ~2.4s.
 	-- Listens to the Damaged signal so every zombie attack path is covered without touching them.
