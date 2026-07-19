@@ -26,7 +26,6 @@ local UITheme = require(Modules.UITheme)
 
 local AutoShootController = require(script.Parent.AutoShootController) -- the dock's AUTOFIRE toggle
 local SettingsController = require(script.Parent.SettingsController)   -- the dock's SETTINGS button
-local LockerController = require(script.Parent.LockerController)       -- the dock's LOCKER (mid-run gun swaps)
 local LobbyLook = require(Modules.LobbyLook) -- the LOBBY's exact builders (dock buttons, chrome panels)
 
 local HUDController = {}
@@ -451,11 +450,6 @@ local function build()
 	end)
 
 	local DOCK = {
-		{ label = "Locker", icon = "", emoji = "🔫", onClick = function()
-			if LockerController.Toggle then
-				LockerController.Toggle()
-			end
-		end },
 		{ label = "Shop", icon = "71412141929869", onClick = function()
 			card.Visible = not card.Visible
 		end },

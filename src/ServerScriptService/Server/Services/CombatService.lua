@@ -419,46 +419,6 @@ function CombatService.SetEquipped(player: Player, weaponId: string): boolean
 	return applyEquip(player, weaponId)
 end
 
--- ===== IN-RUN LOCKER (owner call — replaced the Power Draft as mid-run agency) =====
--- Put any gun you've UNLOCKED into a loadout slot mid-run. "Unlocked" = on your PROFILE's owned list
--- (account-level auto-grants + pack purchases put it there) or your account level has reached the
--- gun's unlock level — the same rule as the lobby. Server-validated; the client just asks.
-local function onSwapLoadout(player: Player, slot: any, weaponId: any)
-	if not SecurityService.Allow(player, "Interact") then
-		return
-	end
-	if typeof(weaponId) ~= "string" then
-		return
-	end
-	slot = tonumber(slot)
-	if slot ~= 1 and slot ~= 2 then
-		return
-	end
-	local weapon = WeaponConfig[weaponId]
-	if not weapon then
-		return
-	end
-	local ps = MatchService.GetPlayerState(player)
-	if not ps or ps.isDead then
-		return
-	end
-	local data = DataService.Get(player)
-	local owned = data and typeof(data.ownedWeapons) == "table" and Util.Contains(data.ownedWeapons, weaponId)
-	local levelOK = data and (tonumber(data.level) or 1) >= (weapon.unlock or 0)
-	if not (owned or levelOK or GameConfig.DebugUnlockAllWeapons) then
-		return -- not unlocked: the locker showed it greyed; a forged remote lands here
-	end
-	if Util.Contains(ps.ownedWeapons, weaponId) then
-		applyEquip(player, weaponId) -- already in the loadout: just switch to it
-		return
-	end
-	ps.ownedWeapons[slot] = weaponId
-	if not Util.Contains(ps.ownedWeapons, ps.equippedWeapon) then
-		ps.equippedWeapon = weaponId -- the gun in hand was swapped away → hold the new one
-	end
-	fireLoadout(player, ps) -- syncs the hotbar AND re-welds the in-hand model
-end
-
 -- ===== INITIAL SYNC =====
 -- Send the client its current loadout (and reset fire timing) when a character spawns.
 local function onCharacterAdded(player: Player)
@@ -494,7 +454,6 @@ function CombatService.Start()
 
 	Remotes.Get("FireWeapon").OnServerEvent:Connect(onFire)
 	Remotes.Get("EquipWeapon").OnServerEvent:Connect(onEquip)
-	Remotes.Get("SwapLoadout").OnServerEvent:Connect(onSwapLoadout)
 
 	-- Client fires LoadoutChanged (no args) to REQUEST a re-send — the spawn-time push can beat the
 	-- client's controllers loading (they'd show only slot 1 until the next equip otherwise).

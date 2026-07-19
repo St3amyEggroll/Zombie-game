@@ -50,8 +50,6 @@ local DEFINITIONS: { [string]: string } = {
 	ShotFired         = "RemoteEvent",     -- S->C broadcast: (shooterUserId, origin, endpoint, weaponId) for tracers
 	EquipWeapon       = "RemoteEvent",     -- C->S: (weaponId) request equip
 	LoadoutChanged    = "RemoteEvent",     -- S->C: (ownedWeapons, equippedWeaponId)
-	SwapLoadout       = "RemoteEvent",     -- C->S: (slot 1|2, weaponId) — the IN-RUN LOCKER: put any
-	                                       -- account-level-unlocked gun into a loadout slot mid-run
 
 	-- BuffService (in-run level-up buff draft)
 	-- (Run-XP buff draft REMOVED — potions are the only in-run power-up now.)
