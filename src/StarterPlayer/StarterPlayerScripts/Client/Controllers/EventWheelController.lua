@@ -79,14 +79,15 @@ local rays = {}  -- pre-built burst spokes behind the word
 local spinToken = 0
 
 -- A full-width frame whose UIGradient fades both ends to nothing (the band + hairline treatment).
+-- SHORT fade zones (owner call): solid across almost the whole width, dropping off in the last ~7%.
 local function fadeEnds(frame: Frame, hard: number?)
 	local g = Instance.new("UIGradient")
 	local solid = hard or 0.06
 	g.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(0.16, solid),
+		NumberSequenceKeypoint.new(0.07, solid),
 		NumberSequenceKeypoint.new(0.5, solid),
-		NumberSequenceKeypoint.new(0.84, solid),
+		NumberSequenceKeypoint.new(0.93, solid),
 		NumberSequenceKeypoint.new(1, 1),
 	})
 	g.Parent = frame
@@ -224,9 +225,9 @@ local function build()
 	-- as a solid full-width grey strip that ignored the band's edge fade — this label is text only
 	oddsLabel.AnchorPoint = Vector2.new(0.5, 1)
 	oddsLabel.Position = UDim2.new(0.5, 0, 1, -12)
-	oddsLabel.Size = UDim2.new(1, 0, 0, 18)
+	oddsLabel.Size = UDim2.new(1, 0, 0, 22)
 	oddsLabel.FontFace = LobbyLook.BODYB_FACE
-	oddsLabel.TextSize = 15
+	oddsLabel.TextSize = 19 -- owner: slightly bigger
 	oddsLabel.TextColor3 = LobbyLook.DIMTEXT
 	oddsLabel.Text = ""
 	oddsLabel.ZIndex = 6
