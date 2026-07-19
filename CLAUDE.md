@@ -1,21 +1,23 @@
 # ZOMBIEROT — Build Doc & Source of Truth
 
-A 3D co-op zombie **continuous-horde roguelite**: **the horde never stops → the THREAT level climbs every
-30 seconds → every minute pick 1 of 3 stacking POWERS (mid-swarm — the game doesn't pause) → your Coins
-bank live as you kill → die as a team and the run ends → back in the lobby, spend Coins on skins/cases and
-level up to unlock new guns and harder worlds.** Third-person, drop-in co-op.
+A 3D co-op zombie **wave shooter with a WHEEL OF FATE**: **kill the wave → the EVENT WHEEL visibly spins
+next wave's modifier (Blood Moon / Fog / Meteor Shower / Calm) → the whole wave plays under it → open your
+LOCKER mid-run to swap to any gun your level has unlocked → your Coins bank live as you kill → die as a
+team and the run ends → back in the lobby, spend Coins on skins/cases and level up to unlock new guns and
+harder worlds.** Third-person, drop-in co-op.
 
 > Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **ZombieRot** (formerly "Zombie Lobby").
-> **Pivoted three times:** Call-of-Duty-Zombies loop → simpler Zombie Rush (removed doors, wall-buys,
-> Pack-a-Punch, perks, Mystery Box) → EXTRACTION (cash out / double down) → the current **CONTINUOUS
-> HORDE + POWER DRAFT** model: no waves, no breaks, no extraction windows — zombies spawn forever toward
-> a living-count target, intensity ticks up on a clock, and a recurring 1-of-3 power pick is the run's
-> choice moment. **Guns unlock by ACCOUNT LEVEL (free at level), Coins buy cosmetics** (no coin gun-shop,
-> no gun upgrading). Build incrementally, testable in Studio.
+> **Pivoted four times:** Call-of-Duty-Zombies loop → simpler Zombie Rush (removed doors, wall-buys,
+> Pack-a-Punch, perks, Mystery Box) → EXTRACTION (cash out / double down) → CONTINUOUS HORDE + POWER
+> DRAFT (no waves, stacking power picks) → the current **WAVES + EVENT WHEEL** model: wave-based again,
+> progressively harder forever, and EVERY wave break the wheel spins a whole-wave modifier. The Power
+> Draft is GONE; the **in-run LOCKER** (swap to any level-unlocked gun mid-run) is the run's agency now.
+> **Guns unlock by ACCOUNT LEVEL (free at level), Coins buy cosmetics** (no coin gun-shop, no gun
+> upgrading). Build incrementally, testable in Studio.
 >
-> ⚠️ **DOC-VS-CODE:** older sections below still describe the Zombie-Rush or extraction fantasies
-> (respawn/no-game-over, coin gun-shop, waves/cash-out windows). The **shipped code is continuous horde +
-> power draft + level-unlock** — trust §0/§1 here and the code over any stale mention further down.
+> ⚠️ **DOC-VS-CODE:** older sections below still describe earlier pivots (respawn/no-game-over, coin
+> gun-shop, cash-out windows, the continuous horde). The **shipped code is waves + event wheel + locker +
+> level-unlock** — trust §0/§1 here and the code over any stale mention further down.
 
 ---
 
@@ -25,7 +27,7 @@ level up to unlock new guns and harder worlds.** Third-person, drop-in co-op.
 
 | Decision | Choice |
 |---|---|
-| Game style | **Continuous horde + Power Draft (roguelite).** NO waves, NO breaks: `ZombieService.BeginContinuous` keeps the horde filled toward a living-count target that grows with the **THREAT level** (`state.round`, renamed in spirit only — same field), which ticks +1 every `GameConfig.Continuous.IntensitySeconds` (30). Each tick still fires the old wave-cleared hooks (per-level Coins, case drops, flawless streak, boss every `BossEvery`-th level). Every `GameConfig.Draft.Every` (60s, first at 25s) each alive player picks **1 of 3 stacking POWERS** (`PowerDraftService` → `ps.buffs`; no pick in `PickSeconds` = auto-pick; game never pauses). **Coins bank LIVE** as you kill (2/kill, 50/level). **Death → spectate; a TEAM WIPE ends the run** — a paid **Robux revive** can buy back in during the wipe-grace window; the old SKIP WAVE product is now **NUKE** (kills everything alive). Extraction (cash-out/double-down) is GONE — remotes + `MatchService` handler left dormant, `Extraction.Every = 0`. |
+| Game style | **Waves + the EVENT WHEEL.** Endless waves, progressively harder forever (`computeCount`/HP/speed growth per round). **Every wave break (8s) the wheel VISIBLY SPINS** (`EventService.SpinForWave` → `EventSpin` remote → `EventWheelController` slot-machine banner) and lands on NEXT wave's modifier, which runs for the **WHOLE wave**: **CALM** (normal — weight shrinks as waves climb), **BLOOD MOON** (×1.35 zombie speed, ×2 Coins/kill, bleeding sky), **FOG** (sits all wave), **METEOR SHOWER** (strikes all wave). Supply Drop + Nest were CUT. Wave clear still pays per-wave Coins, flawless streak, case drops; boss every `BossEvery`-th wave. **The IN-RUN LOCKER replaced the Power Draft**: a dock button opens the gun catalog; any **account-level-unlocked** gun can be swapped into your held slot mid-run (`SwapLoadout` remote, `CombatService` validates). **Coins bank LIVE** (2/kill, 50/wave). **Death → spectate; a TEAM WIPE ends the run** — a paid **Robux revive** can buy back in during the wipe-grace window; **SKIP WAVE** (Robux) clears the current wave. Extraction stays dead (remotes dormant, `Extraction.Every = 0`). |
 | Guns & economy | **Guns unlock by ACCOUNT LEVEL — free at their level, never bought.** Coins buy **cosmetics only** (cases → skins) and Robux coin-bundles top them up. The `WeaponConfig.price` fields + `BuyGun` charge path are **dead** (you always own a gun before you're eligible to buy it). No coin gun-shop, no gun upgrading. |
 | Worlds = difficulty | **Worlds ARE the difficulty knob** (`GameConfig.Maps` mult/speedMult × `WaveMult`). Worlds unlock by **account level** (`WorldUnlockLevel`). The old Easy…Nightmare/Endless difficulty ladder is GONE. |
 | Game name | **ZombieRot** (project name in `default.project.json`) |
@@ -58,21 +60,23 @@ level up to unlock new guns and harder worlds.** Third-person, drop-in co-op.
 
 ## 1. The loop (the whole game)
 
-**the horde never stops → THREAT climbs every 30s → pick a stacking POWER every minute → Coins bank live →
-wipe ends the run → spend Coins on cosmetics + level up for new guns/worlds → go again, survive longer.**
+**kill the wave → the wheel spins next wave's fate → survive whatever it lands on → Coins bank live →
+wipe ends the run → spend Coins on cosmetics + level up for new guns/worlds → go again, push deeper.**
 
-You spawn into a **world** (which is also the difficulty) with your level-unlocked loadout. Zombies spawn
-**continuously** — no waves, no breaks — toward a living-count target that grows with the **THREAT level**,
-which ticks up every 30 seconds forever (`GameConfig.Continuous`). Each kill banks **Coins** to your profile
-*immediately* (2/kill, 50/level — tune in `GameConfig`), so nothing you earn is ever lost. Every **60
-seconds** (first pick 25s in) the **POWER DRAFT** lands: 3 cards, pick 1, powers **stack for the whole run**
-(+damage, +fire rate, bigger blasts, move speed, max HP, crits, coin magnet, frost rounds — `PowerDraftService`).
-The horde keeps coming while you choose; dither past the timer and the first card picks itself. The HUD's
-strip shows the THREAT level and the countdown to the next power. A **team wipe ends the run** (a Robux
-revive can buy back in during the grace window; a Robux **NUKE** can vaporize a horde that's about to eat
-you). Special/boss zombies force you to move — dangerous types read by a **colored threat outline** before
-they reach you. Between runs, in the **lobby**, spend Coins on **skins/cases** and let your **account
-level** unlock the next gun and the next world. Guns are **free at their unlock level** — Coins never buy them.
+You spawn into a **world** (which is also the difficulty) with your level-unlocked loadout. Zombies come
+in **waves** that grow forever (count, health and speed all scale per wave). Each kill banks **Coins** to
+your profile *immediately* (2/kill, 50/wave — tune in `GameConfig`), so nothing you earn is ever lost.
+Clear the wave and the **8-second break** hits: the **EVENT WHEEL** spins on screen — icons whip past,
+slow down, and land on next wave's modifier. **CALM** is a normal wave (rarer the deeper you go);
+**BLOOD MOON** turns the sky red, speeds the horde up, and pays **double Coins** all wave; **FOG** blinds
+the map all wave; **METEOR SHOWER** rains telegraphed strikes all wave. Mid-run, the **LOCKER** dock
+button opens the full gun catalog — tap any gun your **account level** has unlocked and it swaps into
+your hands on the spot (locked guns show their unlock level, so it doubles as the "what am I leveling
+for?" screen). A **team wipe ends the run** (a Robux revive can buy back in during the grace window; a
+Robux **SKIP WAVE** clears a wave that's about to eat you). Special/boss zombies force you to move —
+dangerous types read by a **colored threat outline** before they reach you. Between runs, in the
+**lobby**, spend Coins on **skins/cases** and let your **account level** unlock the next gun and the next
+world. Guns are **free at their unlock level** — Coins never buy them.
 
 ---
 

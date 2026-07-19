@@ -68,7 +68,9 @@ local function onKill(player: Player, model: Model, _isHead: boolean, _weaponId:
 	local xp = ProgressionConfig.XPPerKill + (special and ProgressionConfig.XPPerSpecialKill or 0)
 	awardXP(player, xp)
 	DataService.IncrementStat(player, "totalKills", 1)
-	awardCoins(player, GameConfig.LobbyMoneyPerKill)
+	-- BLOOD MOON (event wheel): kills pay double Coins for the whole wave (EventService.CoinMult).
+	local mult = require(script.Parent.EventService).CoinMult()
+	awardCoins(player, math.floor(GameConfig.LobbyMoneyPerKill * mult + 0.5))
 end
 
 function ProgressionService.Start()

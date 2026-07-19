@@ -8,7 +8,7 @@ local GameConfig = {}
 GameConfig.BaseZombiesPerRound = 6
 GameConfig.PlayerCountScale    = 0.5   -- +50% zombies per extra player
 GameConfig.RoundZombieGrowth   = 1.20  -- zombie COUNT ×= this per round
-GameConfig.RoundBreakSeconds   = 5     -- prep time between rounds (clients show a NEXT WAVE countdown)
+GameConfig.RoundBreakSeconds   = 8     -- prep time between rounds (the EVENT WHEEL spins + NEXT WAVE countdown)
 
 -- ===== ROBUX (Developer Products) =====
 -- SKIP WAVE (the small gold button beside the enemies bar). Create a Developer Product in
@@ -114,40 +114,24 @@ GameConfig.AllWorldsOpen = true -- OPEN EVERY MAP for now (must mirror the lobby
 -- Worlds unlock by ACCOUNT LEVEL now (no more "beat Nightmare" gates). Tune per world; 0 = always open.
 GameConfig.WorldUnlockLevel = { forest = 0, islands = 8 }
 
--- ===== CONTINUOUS HORDE + POWER DRAFT (THE run loop — replaced extraction, owner call) =====
--- No waves, no breaks: zombies spawn FOREVER toward a living-count target that climbs with an
--- INTENSITY level (state.round — same field as the old wave number, so scaling/XP/leaderboards/events
--- all still work). Every Draft.Every seconds each player picks 1 of 3 stacking POWERS (the roguelite
--- loop). A team wipe ends the run; Coins bank live; LEAVE just leaves.
-GameConfig.Continuous = {
-	IntensitySeconds = 30, -- seconds per intensity level (drives scaling/bosses/events/coin ticks)
-	BaseAlive        = 6,  -- living-zombie target at intensity 1 (solo)
-	AlivePerLevel    = 1.4, -- target += this per intensity level
-	SpawnInterval    = 0.35, -- seconds between fill spawns
-	SpawnIntervalRush = 0.12, -- ...when the deficit is big (post-nuke / post-event refill)
-	RushDeficit      = 8,
-}
-GameConfig.Draft = {
-	FirstAfter  = 25, -- seconds into the run before the FIRST power draft
-	Every       = 60, -- seconds between drafts after that
-	PickSeconds = 12, -- choice window; no pick = the first card auto-picks
-}
-
--- (EXTRACTION IS DEAD — cash out/double down removed for the draft loop. Table kept so stale reads
--- don't explode; nothing fires its windows anymore.)
+-- (EXTRACTION and the CONTINUOUS-HORDE/POWER-DRAFT experiments are both DEAD — the shipped loop is
+-- wave-based + the EVENT WHEEL below. Extraction's table is kept so stale reads don't explode.)
 GameConfig.Extraction = { Every = 0, WindowSeconds = 20, MultPerStage = 0.5 }
 
--- ===== RANDOM IN-RUN EVENTS ===== (EventService) — each wave can fire ONE surprise event.
+-- ===== THE EVENT WHEEL ===== (EventService) — EVERY wave break the wheel visibly SPINS and lands on
+-- next wave's modifier. Events last the WHOLE wave they land on. CALM (a normal wave) is on the wheel
+-- too — its weight shrinks as waves climb, so deep runs get wilder. (0 weight disables an outcome.)
 GameConfig.Events = {
-	ChancePerWave = 0.35, -- roll at each wave start
-	FirstWave = 3,        -- no events before this wave (let players settle in)
-	CooldownWaves = 2,    -- min waves between events
-	Weights = { supplydrop = 3, fog = 3, nest = 3, meteors = 3 }, -- relative pick weights (0 disables one)
-	SupplyDropCoins = 150,     -- Coins for EVERY in-run player when the crate is opened
-	NestSeconds = 18,          -- how long the nest spits crawlers (destroyed by wave-clear like any zombie)
-	NestSpawnEvery = 3,        -- seconds between nest spawn bursts
-	FogSeconds = 25,           -- how long the fog sits
-	MeteorSeconds = 14,        -- how long the shower lasts
+	SpinSeconds = 3,          -- how long the client wheel animates before the reveal (< RoundBreakSeconds)
+	Weights = { calm = 0, bloodmoon = 3, fog = 3, meteors = 3 }, -- base weights (calm's is computed below)
+	CalmBase = 10,            -- calm's weight on wave 1...
+	CalmDecayPerWave = 0.5,   -- ...shrinking by this per wave...
+	CalmMin = 2,              -- ...but never below this (a breather is always possible)
+	-- BLOOD MOON: the sky bleeds; the whole wave is faster zombies + DOUBLE Coins per kill.
+	BloodMoonSpeedMult = 1.35, -- ×zombie speed for the wave
+	BloodMoonCoinMult  = 2,    -- ×Coins per kill for the wave
+	-- METEOR SHOWER: red target circles rain the whole wave.
+	MeteorEvery  = 2.2,        -- seconds between strikes
 	MeteorDamage = 25,         -- to players inside a blast
 	MeteorRadius = 9,          -- studs
 }

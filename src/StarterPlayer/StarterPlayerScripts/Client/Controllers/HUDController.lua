@@ -26,6 +26,7 @@ local UITheme = require(Modules.UITheme)
 
 local AutoShootController = require(script.Parent.AutoShootController) -- the dock's AUTOFIRE toggle
 local SettingsController = require(script.Parent.SettingsController)   -- the dock's SETTINGS button
+local LockerController = require(script.Parent.LockerController)       -- the dock's LOCKER (mid-run gun swaps)
 local LobbyLook = require(Modules.LobbyLook) -- the LOBBY's exact builders (dock buttons, chrome panels)
 
 local HUDController = {}
@@ -45,14 +46,14 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local healthFill, healthLabel, roundLabel, coinsLabel, announceLabel
+local healthFill, healthLabel, roundLabel, coinsLabel, breakLabel, announceLabel
 local coinPopScale -- UIScale on the coins label (pickup pop)
 local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
 local leaveBtn -- LEAVE banks your run and exits (always available — coins bank live, nothing to forfeit)
 local levelLabel, levelFill
 local lvlHeadline, lvlXPText -- the LVL card's next-unlock line + "x / y XP" bar overlay
-local enemiesTrack, enemiesFill, enemiesLabel -- CHANGED: now the NEXT POWER countdown bar (continuous pivot)
-local draftAt, draftTotal = 0, 0 -- os.clock() of the next power draft + the full interval (drives the bar)
+local enemiesTrack, enemiesFill, enemiesLabel -- the enemies-left count bar (waves are BACK)
+local breakEndsAt = 0 -- os.clock() the wave break ends (drives the NEXT WAVE countdown)
 local healthPct = 1
 
 local RARITY_COLOR = {}
@@ -122,9 +123,8 @@ local function build()
 	laneList.Padding = UDim.new(0, UITheme.Space.Row)
 	laneList.Parent = lane
 
-	-- Row 1 (CONTINUOUS PIVOT): ONE strip pill — [THREAT N][next-power countdown bar] — with LEAVE and
-	-- NUKE flanking it in the buttons' original places. The strip clips its children (studs), so the
-	-- buttons live on a transparent WRAPPER row around it.
+	-- Row 1: ONE strip pill — [WAVE N][enemies-left bar] — with LEAVE and SKIP WAVE flanking it. The
+	-- strip clips its children (studs), so the buttons live on a transparent WRAPPER row around it.
 	local waveWrap = Instance.new("Frame")
 	waveWrap.Name = "WaveWrap"
 	waveWrap.BackgroundTransparency = 1
@@ -135,10 +135,10 @@ local function build()
 	waveRow.Position = UDim2.fromOffset(124, 0)
 	waveRow.Size = UDim2.fromOffset(560, 40)
 
-	-- CHANGED: the strip's bar is the NEXT POWER countdown now (the extraction chip is gone, so the
-	-- bar takes the whole right side). It drains toward the next Power Draft, fed by DraftClock.
+	-- The enemies-left count bar (drains as the wave dies; the extraction chip era is over, so it
+	-- takes the strip's whole right side).
 	enemiesTrack = Instance.new("Frame")
-	enemiesTrack.Name = "PowerClockTrack"
+	enemiesTrack.Name = "EnemiesTrack"
 	enemiesTrack.Position = UDim2.fromOffset(150, 7)
 	enemiesTrack.Size = UDim2.fromOffset(396, 26)
 	enemiesTrack.BackgroundColor3 = COL_TRACK
@@ -152,7 +152,7 @@ local function build()
 	enemiesFill = Instance.new("Frame")
 	enemiesFill.Name = "Fill"
 	enemiesFill.Size = UDim2.fromScale(1, 1)
-	enemiesFill.BackgroundColor3 = Color3.fromRGB(170, 90, 255) -- POWER purple (the draft's color)
+	enemiesFill.BackgroundColor3 = COL_DANGER
 	enemiesFill.BorderSizePixel = 0
 	enemiesFill.Parent = enemiesTrack
 	UITheme.Corner(enemiesFill, 5)
@@ -168,12 +168,10 @@ local function build()
 	enStroke.Thickness = 1.5
 	enStroke.Parent = enemiesLabel
 
-	-- NUKE (Robux dev product — was SKIP WAVE; there are no waves to skip in the continuous horde, so
-	-- the same product now vaporizes EVERYTHING currently alive) + LEAVE, flanking the bar: LEAVE on
-	-- the strip's left, NUKE on its right. Nuke prompts the purchase (GameConfig.SkipWaveProductId —
-	-- 0 = warns); Leave banks + exits.
-	local skipBtn = UITheme.Button(waveWrap, "NUKE", "gold")
-	skipBtn.Name = "NukeButton"
+	-- SKIP WAVE (Robux dev product) + LEAVE, flanking the bar: LEAVE on the strip's left, SKIP on its
+	-- right. Skip prompts the purchase (GameConfig.SkipWaveProductId — 0 = warns); Leave banks + exits.
+	local skipBtn = UITheme.Button(waveWrap, "SKIP WAVE", "gold")
+	skipBtn.Name = "SkipWaveButton"
 	skipBtn.Position = UDim2.fromOffset(124 + 560 + 8, 3)
 	skipBtn.Size = UDim2.fromOffset(100, 34)
 	skipBtn.TextSize = UITheme.Type.Caption
@@ -183,7 +181,7 @@ local function build()
 		if id > 0 then
 			MarketplaceService:PromptProductPurchase(localPlayer, id)
 		else
-			warn("[HUD] NUKE: set GameConfig.SkipWaveProductId to your Developer Product id")
+			warn("[HUD] SKIP WAVE: set GameConfig.SkipWaveProductId to your Developer Product id")
 		end
 	end)
 	do -- show the live Robux price on the button once the product id is set
@@ -195,7 +193,7 @@ local function build()
 				end)
 				if ok and info and tonumber(info.PriceInRobux) then
 					skipBtn.Size = UDim2.fromOffset(112, 34)
-					skipBtn.Text = ("NUKE  R$%d"):format(info.PriceInRobux)
+					skipBtn.Text = ("SKIP  R$%d"):format(info.PriceInRobux)
 				end
 			end)
 		end
@@ -212,19 +210,25 @@ local function build()
 		Remotes.Get("LeaveRun"):FireServer()
 	end)
 
-	-- The THREAT level (was the wave number) lives in the strip's left slot — same variable, so every
-	-- updater still works. It's the intensity clock: +1 every Continuous.IntensitySeconds, forever.
+	-- The wave number lives in the strip's left slot.
 	roundLabel = text(waveRow, "RoundLabel", UITheme.TitleFace, 20, COL_TEXT)
 	roundLabel.Position = UDim2.fromOffset(14, 0)
 	roundLabel.Size = UDim2.fromOffset(130, 40)
 	roundLabel.TextXAlignment = Enum.TextXAlignment.Left
 	roundLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	roundLabel.Text = "THREAT 0"
+	roundLabel.Text = "WAVE 0"
 	local waveStroke = Instance.new("UIStroke") -- thin dark outline so white text reads on bright skies
 	waveStroke.Color = Color3.fromRGB(0, 0, 0)
 	waveStroke.Transparency = 0.4
 	waveStroke.Thickness = 1.5
 	waveStroke.Parent = roundLabel
+
+	-- Row 3: NEXT WAVE countdown (collapses out of the lane whenever it's empty).
+	breakLabel = text(lane, "BreakLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT_DIM)
+	breakLabel.Size = UDim2.fromOffset(300, 20)
+	breakLabel.LayoutOrder = 30
+	breakLabel.Visible = false
+	breakLabel.Text = ""
 
 	-- Row 4: the ANNOUNCEMENT slot — one label, fed by a queue (INCOMING!, FLAWLESS, crate drops...).
 	-- Simultaneous events take turns instead of printing on top of each other.
@@ -447,6 +451,11 @@ local function build()
 	end)
 
 	local DOCK = {
+		{ label = "Locker", icon = "", emoji = "🔫", onClick = function()
+			if LockerController.Toggle then
+				LockerController.Toggle()
+			end
+		end },
 		{ label = "Shop", icon = "71412141929869", onClick = function()
 			card.Visible = not card.Visible
 		end },
@@ -580,20 +589,19 @@ function HUDController.Start()
 	build()
 
 	Remotes.Get("HealthChanged").OnClientEvent:Connect(setHealth)
-	-- The intensity clock: THREAT +1 every Continuous.IntensitySeconds (the server still calls the
-	-- field "round", so scaling / XP / the best-threat leaderboard all ride the same number).
 	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
+		breakEndsAt = 0
 		if tonumber(round) == 1 then
 			-- The round-start audio leads by 1s; the text lands on its beat.
 			task.delay(1, function()
-				roundLabel.Text = "THREAT " .. tostring(round)
+				roundLabel.Text = "WAVE " .. tostring(round)
 			end)
 		else
-			roundLabel.Text = "THREAT " .. tostring(round)
+			roundLabel.Text = "WAVE " .. tostring(round)
 		end
 	end)
 
-	-- Pre-run countdown (waiting for the party to load in): shown in the threat slot until the run starts.
+	-- Pre-run countdown (waiting for the party to load in): shown in the wave slot until the run starts.
 	Remotes.Get("StartCountdown").OnClientEvent:Connect(function(secs)
 		secs = tonumber(secs) or 0
 		if secs > 0 then
@@ -601,27 +609,43 @@ function HUDController.Start()
 		end
 	end)
 
-	-- NEXT POWER countdown: DraftClock says how long until the next Power Draft; the bar drains
-	-- toward it and flips to CHOOSE YOUR POWER! while the pick cards are up.
-	Remotes.Get("DraftClock").OnClientEvent:Connect(function(secs)
-		secs = tonumber(secs) or 0
-		if secs > 0 then
-			draftTotal = secs
-			draftAt = os.clock() + secs
+	-- Between waves: run the NEXT WAVE countdown under the wave number (the event wheel spins alongside).
+	Remotes.Get("MatchStateChanged").OnClientEvent:Connect(function(phase)
+		if phase == "RoundBreak" then
+			breakEndsAt = os.clock() + GameConfig.RoundBreakSeconds
+		else
+			breakEndsAt = 0
+		end
+		if enemiesTrack and phase ~= "Playing" then
+			-- Between waves the bar STAYS (the run isn't over) and reads LOADING while the next wave preps.
 			enemiesTrack.Visible = true
+			enemiesLabel.Text = "LOADING..."
+			enemiesFill.Size = UDim2.fromScale(1, 1)
 		end
 	end)
-	RunService.RenderStepped:Connect(function()
-		if not enemiesTrack.Visible or draftAt <= 0 then
+
+	-- Enemies left to kill this wave — the count bar beside the wave number.
+	Remotes.Get("WaveProgress").OnClientEvent:Connect(function(remaining, total)
+		remaining = tonumber(remaining) or 0
+		total = tonumber(total) or 0
+		if total <= 0 or remaining <= 0 then
+			enemiesLabel.Text = "LOADING..." -- wave cleared: hold the bar, full fill, until the next wave
+			enemiesFill.Size = UDim2.fromScale(1, 1)
 			return
 		end
-		local left = draftAt - os.clock()
-		if left > 0 then
-			enemiesLabel.Text = ("NEXT POWER  %d:%02d"):format(math.floor(left / 60), math.floor(left % 60))
-			enemiesFill.Size = UDim2.fromScale(math.clamp(left / math.max(draftTotal, 1), 0, 1), 1)
-		else
-			enemiesLabel.Text = "CHOOSE YOUR POWER!"
-			enemiesFill.Size = UDim2.fromScale(1, 1)
+		enemiesTrack.Visible = true
+		enemiesLabel.Text = ("%d %s LEFT"):format(remaining, remaining == 1 and "ENEMY" or "ENEMIES")
+		TweenService:Create(enemiesFill, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.fromScale(math.clamp(remaining / total, 0, 1), 1),
+		}):Play()
+	end)
+	RunService.RenderStepped:Connect(function()
+		if breakEndsAt > 0 and os.clock() < breakEndsAt then
+			breakLabel.Text = ("NEXT WAVE IN %d"):format(math.ceil(breakEndsAt - os.clock()))
+			breakLabel.Visible = true
+		elseif breakLabel.Visible then
+			breakLabel.Text = ""
+			breakLabel.Visible = false -- collapses its lane slot
 		end
 	end)
 

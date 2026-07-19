@@ -65,10 +65,7 @@ end
 -- The equipped weapon's fire rate at its PERSISTENT level (mirrors the server's math; levels only
 -- change damage today, but reading through GunLevelConfig keeps the cadence correct if that changes).
 local function effFireRate(weapon): number
-	-- NEW: TRIGGER DISCIPLINE (Power Draft) — the server mirrors this exact multiplier into its
-	-- fire-rate gate, so paced-up shots stay inside the anti-cheat bucket.
-	local powerMult = 1 + (localPlayer:GetAttribute("PowerFireRate") or 0)
-	return GunLevelConfig.EffectiveStats(weapon, gunLevels[weapon.id] or 1).fireRate * powerMult
+	return GunLevelConfig.EffectiveStats(weapon, gunLevels[weapon.id] or 1).fireRate
 end
 
 -- Seconds between shots. Constant 1/fireRate; spin-up weapons ramp from SPIN_START_FRAC over

@@ -107,9 +107,7 @@ end
 -- Damage every live zombie within cfg.radius of `center` (full at the center → 50% at the edge). Kills
 -- credit the shooter (fires killEvent) so AoE pays cash/XP exactly like a direct hit.
 local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
-	-- NEW: BIGGER BOOMS (Power Draft) widens every blast this player causes.
-	local aoePs = MatchService.GetPlayerState(player)
-	local radius = math.max(1, cfg.radius or 12) * (1 + buffOf(aoePs or {}, "splash"))
+	local radius = math.max(1, cfg.radius or 12)
 	local dmg = math.max(0, cfg.damage or 0)
 	if dmg > 0 then
 		for _, rec in ZombieService.GetActive() do
@@ -187,9 +185,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- holds FIRE_BURST, so the AVERAGE rate is still hard-capped but frame-bunched shots aren't eaten.
 	-- One bucket per player (not per weapon): switching weapons can't reset your cadence.
 	local now = os.clock()
-	-- NEW: TRIGGER DISCIPLINE (Power Draft) speeds the whole gate up — the client paces its own
-	-- shots by the same attribute, so buffed fire never trips the anti-cheat bucket.
-	local refill = eff.fireRate / FIRE_RATE_SLACK * (1 + buffOf(ps, "attackspeed"))
+	local refill = eff.fireRate / FIRE_RATE_SLACK
 	local b = c.fire
 	if not b then
 		b = { tokens = 1, last = now }
@@ -333,10 +329,6 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 				-- Ability status effects ride on live hits (a corpse can't be pinned or chilled).
 				if weapon.chill then
 					ZombieService.Chill(c.record, weapon.chill, weapon.shatter)
-				elseif buffOf(ps, "frost") > 0 and math.random() < buffOf(ps, "frost") then
-					-- NEW: FROST ROUNDS (Power Draft) — any gun can proc a partial chill (never the
-					-- freeze-solid the Freeze Ray keeps to itself).
-					ZombieService.Chill(c.record, { slowPct = 0.6, secs = 2 })
 				end
 				if weapon.pin then
 					ZombieService.Pin(c.record, weapon.pin.secs)
@@ -427,6 +419,46 @@ function CombatService.SetEquipped(player: Player, weaponId: string): boolean
 	return applyEquip(player, weaponId)
 end
 
+-- ===== IN-RUN LOCKER (owner call — replaced the Power Draft as mid-run agency) =====
+-- Put any gun you've UNLOCKED into a loadout slot mid-run. "Unlocked" = on your PROFILE's owned list
+-- (account-level auto-grants + pack purchases put it there) or your account level has reached the
+-- gun's unlock level — the same rule as the lobby. Server-validated; the client just asks.
+local function onSwapLoadout(player: Player, slot: any, weaponId: any)
+	if not SecurityService.Allow(player, "Interact") then
+		return
+	end
+	if typeof(weaponId) ~= "string" then
+		return
+	end
+	slot = tonumber(slot)
+	if slot ~= 1 and slot ~= 2 then
+		return
+	end
+	local weapon = WeaponConfig[weaponId]
+	if not weapon then
+		return
+	end
+	local ps = MatchService.GetPlayerState(player)
+	if not ps or ps.isDead then
+		return
+	end
+	local data = DataService.Get(player)
+	local owned = data and typeof(data.ownedWeapons) == "table" and Util.Contains(data.ownedWeapons, weaponId)
+	local levelOK = data and (tonumber(data.level) or 1) >= (weapon.unlock or 0)
+	if not (owned or levelOK or GameConfig.DebugUnlockAllWeapons) then
+		return -- not unlocked: the locker showed it greyed; a forged remote lands here
+	end
+	if Util.Contains(ps.ownedWeapons, weaponId) then
+		applyEquip(player, weaponId) -- already in the loadout: just switch to it
+		return
+	end
+	ps.ownedWeapons[slot] = weaponId
+	if not Util.Contains(ps.ownedWeapons, ps.equippedWeapon) then
+		ps.equippedWeapon = weaponId -- the gun in hand was swapped away → hold the new one
+	end
+	fireLoadout(player, ps) -- syncs the hotbar AND re-welds the in-hand model
+end
+
 -- ===== INITIAL SYNC =====
 -- Send the client its current loadout (and reset fire timing) when a character spawns.
 local function onCharacterAdded(player: Player)
@@ -462,6 +494,7 @@ function CombatService.Start()
 
 	Remotes.Get("FireWeapon").OnServerEvent:Connect(onFire)
 	Remotes.Get("EquipWeapon").OnServerEvent:Connect(onEquip)
+	Remotes.Get("SwapLoadout").OnServerEvent:Connect(onSwapLoadout)
 
 	-- Client fires LoadoutChanged (no args) to REQUEST a re-send — the spawn-time push can beat the
 	-- client's controllers loading (they'd show only slot 1 until the next equip otherwise).

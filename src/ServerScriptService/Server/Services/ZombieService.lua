@@ -122,6 +122,7 @@ local aliveCount = 0
 local remaining = 0                   -- zombies still owed this round
 local currentRound = 0
 local roundToken = 0                  -- bumped to cancel in-flight spawn loops / rounds
+local globalSpeedMult = 1             -- BLOOD MOON (event wheel): whole-horde speed × for the wave
 local bossRecord: any = nil           -- the one live boss, if any (drives the boss health bar)
 
 -- Fired with (deathPosition?) the moment a boss dies — GameInventoryService drops the wave's cases off it.
@@ -1824,11 +1825,11 @@ local function statusSpeed(record, now)
 	if not base then
 		return
 	end
-	local target = base
+	local target = base * globalSpeedMult -- BLOOD MOON: the whole horde runs hot for the wave
 	if now < (record.pinnedUntil or 0) then
 		target = 0
 	elseif now < (record.chilledUntil or 0) then
-		target = base * (1 - (record.slowPct or 0))
+		target = base * globalSpeedMult * (1 - (record.slowPct or 0))
 	end
 	record.speed = target
 	if record.frostTint and now >= (record.chilledUntil or 0) then
@@ -2343,50 +2344,10 @@ function ZombieService.BeginRound(round: number, count: number)
 	end)
 end
 
--- ===== CONTINUOUS MODE (the pivot: no waves) ===== keep the world filled toward a LIVING-zombie
--- target that climbs with the intensity level. Spawning never stops; kills open room for the next.
-local contPlayers = 1
-local function livingCount(): number
-	local n = 0
-	for _ in active do
-		n += 1
-	end
-	return n
-end
-
-local function continuousTarget(): number
-	local c = GameConfig.Continuous
-	local base = c.BaseAlive + c.AlivePerLevel * math.max(0, currentRound - 1)
-	local scaled = base * (1 + (contPlayers - 1) * (GameConfig.PlayerCountScale or 0.7))
-	return math.min(GameConfig.MaxAliveZombies, math.floor(scaled))
-end
-
--- Start (or restart) the endless filler. Intensity/roster changes ride SetIntensity — the loop reads
--- currentRound live, so it never needs restarting mid-run.
-function ZombieService.BeginContinuous(round: number, playerCount: number?)
-	currentRound = round
-	contPlayers = math.max(1, playerCount or 1)
-	remaining = 0 -- wave bookkeeping retired; nothing is "owed"
-	roundToken += 1
-	local myToken = roundToken
-	task.spawn(function()
-		local c = GameConfig.Continuous
-		while myToken == roundToken do
-			local deficit = continuousTarget() - livingCount()
-			if deficit > 0 and aliveCount < GameConfig.MaxAliveZombies then
-				spawnOne(currentRound)
-			end
-			task.wait(deficit >= c.RushDeficit and c.SpawnIntervalRush or c.SpawnInterval)
-		end
-	end)
-end
-
--- Intensity tick: harder stats + roster for NEW spawns and a bigger living target. Cheap — no restart.
-function ZombieService.SetIntensity(round: number, playerCount: number?)
-	currentRound = round
-	if playerCount then
-		contPlayers = math.max(1, playerCount)
-	end
+-- ===== BLOOD MOON (event wheel) ===== a whole-wave global speed multiplier, applied per-frame in
+-- statusSpeed so every LIVE zombie speeds up the moment it lands and reverts the moment it lifts.
+function ZombieService.SetSpeedMult(mult: number)
+	globalSpeedMult = math.max(0.1, mult or 1)
 end
 
 -- Spawn exactly ONE boss for this wave: broadcasts an entrance, then streams its health to the boss bar
@@ -2518,6 +2479,7 @@ function ZombieService.ClearAll()
 	roundToken += 1
 	remaining = 0
 	bossRecord = nil
+	globalSpeedMult = 1 -- a run-ending wipe mid-Blood-Moon must not leak into the next run
 	announcedTypes = {} -- next run re-announces each enemy type's first appearance
 	for model, record in active do
 		record.dead = true

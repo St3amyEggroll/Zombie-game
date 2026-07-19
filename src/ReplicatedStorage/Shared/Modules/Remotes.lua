@@ -34,10 +34,8 @@ local DEFINITIONS: { [string]: string } = {
 	StartCountdown    = "RemoteEvent",     -- S->C: (seconds) — pre-run countdown while the party loads in (0 = clear)
 	WaveProgress      = "RemoteEvent",     -- S->C: (remaining, total) — zombies left to kill this wave (drives the count bar)
 
-	-- POWER DRAFT (the roguelite loop that replaced extraction) + random in-run events
-	DraftClock        = "RemoteEvent",     -- S->C all: (seconds) — time until the next power draft (HUD countdown)
-	DraftOffer        = "RemoteEvent",     -- S->C: ({powers = {{id,name,desc,stacks},...}, seconds}) pick 1 of 3
-	DraftPick         = "RemoteEvent",     -- C->S: (powerId) — must be one of YOUR offered three
+	-- THE EVENT WHEEL (EventService) — every wave break the wheel spins next wave's modifier
+	EventSpin         = "RemoteEvent",     -- S->C all: ({wave, outcome, seconds}) — animate the spin, land on outcome
 	-- (Extraction remotes kept registered so old clients don't error mid-update; nothing fires them.)
 	ExtractWindow     = "RemoteEvent",     -- (dead)
 	ExtractChoice     = "RemoteEvent",     -- (dead)
@@ -52,6 +50,8 @@ local DEFINITIONS: { [string]: string } = {
 	ShotFired         = "RemoteEvent",     -- S->C broadcast: (shooterUserId, origin, endpoint, weaponId) for tracers
 	EquipWeapon       = "RemoteEvent",     -- C->S: (weaponId) request equip
 	LoadoutChanged    = "RemoteEvent",     -- S->C: (ownedWeapons, equippedWeaponId)
+	SwapLoadout       = "RemoteEvent",     -- C->S: (slot 1|2, weaponId) — the IN-RUN LOCKER: put any
+	                                       -- account-level-unlocked gun into a loadout slot mid-run
 
 	-- BuffService (in-run level-up buff draft)
 	-- (Run-XP buff draft REMOVED — potions are the only in-run power-up now.)
