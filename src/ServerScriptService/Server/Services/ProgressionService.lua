@@ -76,15 +76,11 @@ end
 function ProgressionService.Start()
 	CombatService.Kill:Connect(onKill)
 
-	-- Per-wave Coins pay out on WAVE CLEAR, multiplied by the team's FLAWLESS streak (MatchService keeps
-	-- the streak: +FlawlessBonusPerWave per consecutive nobody-downed wave, capped at FlawlessMaxMult).
-	-- Paying on clear (not wave start) also means the FINAL wave of a difficulty pays out.
+	-- Per-wave Coins pay out on WAVE CLEAR (flat — the flawless-streak multiplier was removed, owner
+	-- call). Paying on clear (not wave start) also means the FINAL wave pays out.
 	MatchService.WaveCleared:Connect(function(_round)
-		local streak = MatchService.State.flawlessStreak or 0
-		local mult = math.min(1 + streak * GameConfig.FlawlessBonusPerWave, GameConfig.FlawlessMaxMult)
-		local coins = math.floor(GameConfig.LobbyMoneyPerWave * mult + 0.5)
 		MatchService.ForEachPlayer(function(player)
-			awardCoins(player, coins)
+			awardCoins(player, GameConfig.LobbyMoneyPerWave)
 		end)
 	end)
 

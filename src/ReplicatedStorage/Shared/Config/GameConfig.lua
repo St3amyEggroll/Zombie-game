@@ -79,15 +79,7 @@ GameConfig.HealthRegenDelay = 5        -- seconds undamaged before regen
 GameConfig.HealthRegenRate  = 25       -- HP/sec once regenerating
 GameConfig.LowHealthPct     = 0.4      -- at/below this fraction of max HP the red vignette + heartbeat kick in
 
--- ===== FLAWLESS WAVES ===== (co-op care pays: clear a wave with NOBODY downed and the whole team's
--- per-wave Coin payout climbs; any down resets the streak)
-GameConfig.FlawlessBonusPerWave = 0.25 -- +25% wave Coins per consecutive flawless wave
-GameConfig.FlawlessMaxMult      = 2.0  -- the flawless multiplier caps here
-
--- ===== KILL STREAK ===== (chain kills WITHOUT taking damage for escalating cash)
-GameConfig.KillStreakBonusPerKill = 0.08  -- +8% cash per kill in the current streak
-GameConfig.KillStreakMaxMult      = 2.0   -- streak cash multiplier caps here
-GameConfig.KillStreakShowAt       = 3     -- streak length before the on-screen flair appears
+-- (FLAWLESS WAVES + KILL STREAK both REMOVED — owner call: per-wave Coins pay flat, kills pay flat.)
 
 -- ===== MOVEMENT =====
 GameConfig.PlayerWalkSpeed   = 16      -- base humanoid WalkSpeed (Stamin-Up multiplies this)

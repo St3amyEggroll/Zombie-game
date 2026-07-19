@@ -650,14 +650,6 @@ function HUDController.Start()
 	Remotes.Get("EnemyIncoming").OnClientEvent:Connect(function(typeName)
 		HUDController.Announce(("INCOMING!  New enemy: %s"):format(tostring(typeName)), COL_DANGER, 4)
 	end)
-	Remotes.Get("FlawlessWave").OnClientEvent:Connect(function(streak, mult)
-		streak = tonumber(streak) or 1
-		mult = tonumber(mult) or 1
-		local msg = (streak > 1)
-			and ("FLAWLESS WAVE ×%d  —  Coins ×%.2f"):format(streak, mult)
-			or "FLAWLESS WAVE!"
-		HUDController.Announce(msg, COL_GOLD, 3.5)
-	end)
 
 	Remotes.Get("DataReady").OnClientEvent:Connect(function(data)
 		if typeof(data) == "table" and data.lobbyMoney then

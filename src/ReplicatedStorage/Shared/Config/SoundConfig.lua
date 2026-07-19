@@ -105,7 +105,6 @@ SoundConfig.Sounds = {
 	WaveStart          = S("137884319678560", 0.6, 0, 1, 1),      -- round start (wave 1) [horde horn / air raid sting]
 	WaveBell           = S("114277108838919", 0.6, 0, 1, 1),      -- bell at the start of EVERY wave
 	WaveCleared        = S("", 0.6, 0, 1, 1),      -- wave done [success sting]
-	FlawlessJingle     = S("", 0.7, 0, 1, 1),      -- flawless wave bonus [triumphant jingle]
 	NewEnemySting      = S("", 0.65, 0, 1, 1),     -- first-ever enemy type [danger sting]
 	BossDefeatedFanfare = S("", 0.75, 0, 1, 1),    -- [victory fanfare]
 	CountdownTick      = S("", 0.5, 0, 1, 1),      -- pre-run countdown [clock tick]
@@ -116,7 +115,6 @@ SoundConfig.Sounds = {
 	-- ===== PICKUPS / PROGRESSION (2D) =====
 	CaseDrop       = S("", 0.65, 0, 1, 1),         -- case collected [reward chest]
 	GunBought      = S("", 0.7, 0, 1, 1),          -- mid-run gun purchase [cha-ching / unlock]
-	StreakStinger  = S("", 0.55, 0, 1, 1),         -- killstreak (pitch rises with streak) [combo hit]
 
 	-- ===== TRAPS =====
 	TrapTrigger    = S("", 0.7, 120, 0.97, 1.03),  -- [electric zap / fire whoosh]

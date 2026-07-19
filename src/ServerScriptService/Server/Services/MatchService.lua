@@ -55,8 +55,6 @@ local state = {
 	extractMult = 1,       -- the CASH OUT payout multiplier; +MultPerStage per declined extraction window
 	zombiesRemaining = 0,
 	zombiesAlive = 0,
-	waveDowned = false,    -- did ANYONE go down during the current wave (breaks the flawless streak)
-	flawlessStreak = 0,    -- consecutive waves cleared with nobody downed (drives the Coin multiplier)
 	players = {},          -- [userId] = PlayerMatchState
 	startedAt = 0,
 }
@@ -179,11 +177,6 @@ local function computeCount(round: number, playerCount: number): number
 	return math.clamp(math.floor(c), 1, GameConfig.MaxZombiesPerWave or math.huge)
 end
 
--- PlayerStateService calls this the moment anyone goes down — it breaks the wave's flawless streak.
-function MatchService.MarkWaveDowned()
-	state.waveDowned = true
-end
-
 -- Forward declarations (mutual references between the run helpers below).
 local bankRun, spawnCharacter, runMatch, startMatchIfNeeded, startRunFor
 
@@ -290,7 +283,6 @@ spawnCharacter = function(player: Player)
 				return -- already left the run (e.g. disconnected / teleporting)
 			end
 			p.isDead = true -- stays inMatch so they count toward the wipe check + ride the run to the lobby
-			MatchService.MarkWaveDowned() -- a death breaks the team's flawless-wave streak
 			Remotes.Get("DownedChanged"):FireAllClients(player.UserId, true, 0) -- → client SpectateController
 			MatchService.CheckTeamWipe() -- last one standing just died? end the run for everyone
 		end)
@@ -425,8 +417,6 @@ runMatch = function()
 	})
 	ZombieService.SetMap(state.map or GameConfig.DefaultMap) -- roster + how zombies emerge (grave vs water)
 
-	state.waveDowned = false
-	state.flawlessStreak = 0
 	state.extractMult = 1
 
 	-- TEST: jump straight to GameConfig.DebugStartWave (0 = normal start at wave 1).
@@ -502,18 +492,6 @@ runMatch = function()
 		if not anyInMatch() then
 			break
 		end
-
-		-- Flawless accounting: nobody downed all wave -> the streak (and the team's wave Coin payout
-		-- multiplier in ProgressionService) climbs; any down resets it. Updated BEFORE WaveCleared fires
-		-- so the payout uses this wave's streak.
-		if state.waveDowned then
-			state.flawlessStreak = 0
-		else
-			state.flawlessStreak += 1
-			local mult = math.min(1 + state.flawlessStreak * GameConfig.FlawlessBonusPerWave, GameConfig.FlawlessMaxMult)
-			Remotes.Get("FlawlessWave"):FireAllClients(state.flawlessStreak, mult)
-		end
-		state.waveDowned = false
 
 		waveClearedEvent:Fire(state.round) -- GameInventoryService drops wave-clear cases off this
 

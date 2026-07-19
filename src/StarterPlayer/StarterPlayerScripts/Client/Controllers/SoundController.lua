@@ -446,12 +446,6 @@ function SoundController.Start()
 	Remotes.Get("EnemyIncoming").OnClientEvent:Connect(function()
 		SoundController.Play("NewEnemySting")
 	end)
-	Remotes.Get("FlawlessWave").OnClientEvent:Connect(function()
-		SoundController.Play("FlawlessJingle")
-	end)
-	Remotes.Get("KillStreak").OnClientEvent:Connect(function(streak)
-		SoundController.Play("StreakStinger", 1 + math.min(tonumber(streak) or 0, 12) * 0.03)
-	end)
 
 	-- Pre-run countdown ticks.
 	Remotes.Get("StartCountdown").OnClientEvent:Connect(function(seconds)
