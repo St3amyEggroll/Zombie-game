@@ -461,9 +461,8 @@ local function build()
 				SettingsController.Toggle()
 			end
 		end },
-		{ label = "Shop", icon = "71412141929869", x = 219, onClick = function()
-			card.Visible = not card.Visible
-		end },
+		-- (SHOP circle DELETED — owner call. The coin shop still lives on the coins pill's gold "+",
+		-- and the codes panel still flips over from that card's "HAVE A CODE?" line.)
 	}
 	local autoRing
 	for _, def in DOCK do
