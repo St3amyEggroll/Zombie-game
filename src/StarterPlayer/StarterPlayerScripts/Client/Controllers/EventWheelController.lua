@@ -28,20 +28,20 @@ local EventWheelController = {}
 local FIRST_STEP = 0.10    -- seconds the FIRST flash lasts...
 local STEP_GROWTH = 1.32   -- ...each flash lasting this much longer (the die losing steam)
 local GAP_FRAC = 0.35      -- slice of each step spent BLANK (the blink-out between words)
-local BAND_Y = 0.16        -- band top, fraction of the screen (owner: moved up, just under the wave strip)
+local BAND_Y = 0.11        -- band top, fraction of the screen (owner: tucked right under the wave strip)
 local BAND_H = 132         -- band height (px, hud-scaled)
 local DIM = 0.52           -- how dark the dimmer gets (0 = none, 1 = black)
-local EDGE_GLOW = 0.55     -- edge glow transparency at full flood (lower = louder)
--- Spectacle scales with the ODDS — the rarer the landing, the harder it hits.
+-- Spectacle scales with the ODDS — the rarer the landing, the harder it hits. `edge` = the screen-edge
+-- glow's transparency (1 = none at all): everyday rolls DON'T wash the screen; only rare ones do.
 local function dramaFor(pct: number)
 	if pct <= 1.5 then
-		return { punch = 1.38, hold = 3.4, rays = 14 } -- the 1%ers: full fireworks
+		return { punch = 1.38, hold = 3.4, rays = 14, edge = 0.6 } -- the 1%ers: full fireworks
 	elseif pct <= 4 then
-		return { punch = 1.26, hold = 2.9, rays = 12 }
+		return { punch = 1.26, hold = 2.9, rays = 12, edge = 0.72 }
 	elseif pct <= 8 then
-		return { punch = 1.18, hold = 2.5, rays = 10 }
+		return { punch = 1.18, hold = 2.5, rays = 10, edge = 0.82 }
 	end
-	return { punch = 1.12, hold = 2.2, rays = 8 }
+	return { punch = 1.12, hold = 2.2, rays = 8, edge = 1 } -- common rolls: no screen wash at all
 end
 
 -- What each outcome reads as (server sends only the id + odds). Add a wheel outcome = add a row.
@@ -133,42 +133,38 @@ local function build()
 		g.Parent = e
 		table.insert(edges, e)
 	end
-	edge("EdgeTop",    Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0), UDim2.fromScale(1, 0.16), 90)
-	edge("EdgeBottom", Vector2.new(0.5, 1), UDim2.fromScale(0.5, 1), UDim2.fromScale(1, 0.16), -90)
-	edge("EdgeLeft",   Vector2.new(0, 0.5), UDim2.fromScale(0, 0.5), UDim2.fromScale(0.1, 1), 0)
-	edge("EdgeRight",  Vector2.new(1, 0.5), UDim2.fromScale(1, 0.5), UDim2.fromScale(0.1, 1), 180)
+	-- Slim extents (owner screenshot: the first pass washed the WHOLE screen green) — these hug the frame.
+	edge("EdgeTop",    Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0), UDim2.fromScale(1, 0.08), 90)
+	edge("EdgeBottom", Vector2.new(0.5, 1), UDim2.fromScale(0.5, 1), UDim2.fromScale(1, 0.08), -90)
+	edge("EdgeLeft",   Vector2.new(0, 0.5), UDim2.fromScale(0, 0.5), UDim2.fromScale(0.05, 1), 0)
+	edge("EdgeRight",  Vector2.new(1, 0.5), UDim2.fromScale(1, 0.5), UDim2.fromScale(0.05, 1), 180)
 
 	-- 2) THE BAND: snaps open across the upper third; everything lives inside it.
 	band = Instance.new("Frame")
 	band.Name = "Band"
-	band.AnchorPoint = Vector2.new(0.5, 0.5)
-	band.Position = UDim2.new(0.5, 0, BAND_Y, BAND_H / 2)
+	band.AnchorPoint = Vector2.new(0.5, 0)
+	band.Position = UDim2.new(0.5, 0, BAND_Y, 0)
 	band.Size = UDim2.new(1, 0, 0, BAND_H)
 	band.BackgroundColor3 = BAND_DARK
-	band.BackgroundTransparency = 0.06
+	band.BackgroundTransparency = 1 -- fades in (no UIScale shutter — the scale pass left squish artifacts)
 	band.BorderSizePixel = 0
+	band.Visible = false
 	band.ZIndex = 3
 	band.Parent = gui
 	fadeEnds(band)
-	local bandScale = Instance.new("UIScale")
-	bandScale.Name = "OpenScale"
-	bandScale.Parent = band
 
-	local function hair(name, yScale)
-		local h = Instance.new("Frame")
-		h.Name = name
-		h.AnchorPoint = Vector2.new(0.5, 0.5)
-		h.Position = UDim2.new(0.5, 0, yScale, 0)
-		h.Size = UDim2.new(0.86, 0, 0, 2)
-		h.BackgroundColor3 = HAIR_IDLE
-		h.BorderSizePixel = 0
-		h.ZIndex = 4
-		h.Parent = band
-		fadeEnds(h, 0.25)
-		return h
-	end
-	hairTop = hair("HairTop", 0)
-	hairBot = hair("HairBot", 1)
+	-- ONE hairline, riding the band's top (the bottom one crowded the odds line — owner screenshot).
+	hairTop = Instance.new("Frame")
+	hairTop.Name = "HairTop"
+	hairTop.AnchorPoint = Vector2.new(0.5, 0.5)
+	hairTop.Position = UDim2.new(0.5, 0, 0, 0)
+	hairTop.Size = UDim2.new(0.86, 0, 0, 2)
+	hairTop.BackgroundColor3 = HAIR_IDLE
+	hairTop.BackgroundTransparency = 1
+	hairTop.BorderSizePixel = 0
+	hairTop.ZIndex = 4
+	hairTop.Parent = band
+	fadeEnds(hairTop, 0.25)
 
 	titleLabel = Instance.new("TextLabel")
 	titleLabel.BackgroundTransparency = 1
@@ -263,31 +259,32 @@ end
 local TW = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local function setStage(on: boolean)
-	-- The dim + the band's shutter-open. Off = everything tucks away together.
+	-- The dim + the band FADE in/out together. (The first pass "shutter-opened" the band with a
+	-- UIScale — it squished the text and left artifacts on screen, owner screenshot — fades are clean.)
 	TweenService:Create(dimmer, TW, { BackgroundTransparency = on and DIM or 1 }):Play()
-	local sc = band:FindFirstChild("OpenScale")
 	if on then
 		band.Visible = true
-		if sc then
-			sc.Scale = 0.6
-			TweenService:Create(sc, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-				{ Scale = 1 }):Play()
-		end
+		band.BackgroundColor3 = BAND_DARK
+		hairTop.BackgroundColor3 = HAIR_IDLE
+		TweenService:Create(band, TW, { BackgroundTransparency = 0.06 }):Play()
+		TweenService:Create(hairTop, TW, { BackgroundTransparency = 0.35 }):Play()
+		titleLabel.TextTransparency = 0
 	else
-		if sc then
-			TweenService:Create(sc, TW, { Scale = 0.6 }):Play()
+		TweenService:Create(band, TW, { BackgroundTransparency = 1 }):Play()
+		TweenService:Create(hairTop, TW, { BackgroundTransparency = 1 }):Play()
+		for _, l in { titleLabel, wordLabel, oddsLabel } do
+			TweenService:Create(l, TW, { TextTransparency = 1 }):Play()
 		end
-		task.delay(0.28, function()
-			band.Visible = false
-		end)
-	end
-	if not on then -- edges only glow during the lock; always clear them on the way out
-		for _, e in edges do
+		for _, e in edges do -- edges only glow during the lock; always clear them on the way out
 			TweenService:Create(e, TW, { BackgroundTransparency = 1 }):Play()
 		end
-		TweenService:Create(band, TW, { BackgroundColor3 = BAND_DARK }):Play()
-		hairTop.BackgroundColor3 = HAIR_IDLE
-		hairBot.BackgroundColor3 = HAIR_IDLE
+		task.delay(0.32, function()
+			band.Visible = false
+			wordLabel.Text = ""
+			oddsLabel.Text = ""
+			wordLabel.TextTransparency = 0
+			oddsLabel.TextTransparency = 0
+		end)
 	end
 end
 
@@ -303,15 +300,16 @@ local function lockIn(outcome: string, odds)
 	oddsLabel.Text = fmtPct(pct)
 	oddsLabel.TextColor3 = look.color
 
-	-- Band + hairlines flood the event color (kept dark enough for the white-less word to pop).
+	-- Band + hairline flood the event color (kept dark enough for the word to pop).
 	TweenService:Create(band, TW, { BackgroundColor3 = BAND_DARK:Lerp(look.color, 0.22) }):Play()
-	for _, h in { hairTop, hairBot } do
-		TweenService:Create(h, TW, { BackgroundColor3 = look.color }):Play()
-	end
-	-- Screen edges glow the color for the whole hold.
-	for _, e in edges do
-		e.BackgroundColor3 = look.color
-		TweenService:Create(e, TW, { BackgroundTransparency = EDGE_GLOW }):Play()
+	TweenService:Create(hairTop, TW, { BackgroundColor3 = look.color }):Play()
+	-- Screen edges glow the color for the hold — but ONLY as loud as the odds deserve (drama.edge = 1
+	-- means an everyday roll doesn't wash the screen at all).
+	if drama.edge < 1 then
+		for _, e in edges do
+			e.BackgroundColor3 = look.color
+			TweenService:Create(e, TW, { BackgroundTransparency = drama.edge }):Play()
+		end
 	end
 	-- The punch (scaled by how rare the landing is).
 	wordScale.Scale = 0.72

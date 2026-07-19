@@ -114,7 +114,8 @@ local function build()
 	holder.AnchorPoint = Vector2.new(0.5, 1)
 	-- CHANGED (HUD renovation): the guns ride ABOVE the lobby-style dock now — lifted so the dock row
 	-- (56px circles + labels) seats underneath them, mirroring the lobby's "PLAY above the dock" stack.
-	holder.Position = UDim2.new(0.5, 0, 1, -94)
+	holder.Position = UDim2.new(0.5, 0, 1, -10) -- CHANGED (owner): the hotbar sits at the BOTTOM now,
+	-- flanked by the Autofire / Settings circles (HUDController places them beside these slots)
 	holder.Size = UDim2.fromOffset(totalW, SLOT + 10)
 	holder.BackgroundTransparency = 1
 	holder.Parent = gui

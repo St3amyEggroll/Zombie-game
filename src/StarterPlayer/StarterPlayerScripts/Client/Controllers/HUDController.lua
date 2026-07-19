@@ -450,22 +450,25 @@ local function build()
 	end)
 
 	local DOCK = {
-		{ label = "Shop", icon = "71412141929869", onClick = function()
-			card.Visible = not card.Visible
+		-- CHANGED (owner): the buttons FLANK the bottom hotbar now — Autofire on its left, Settings on
+		-- its right, Shop beyond Settings. x = the button's CENTER offset from screen center; the
+		-- hotbar (HotbarController) is 178px wide at bottom-center, so ±136 clears it with a gap.
+		{ label = "Autofire", icon = "", emoji = "🎯", x = -136, onClick = function()
+			AutoShootController.Toggle()
 		end },
-		{ label = "Settings", icon = "94140673883223", onClick = function()
+		{ label = "Settings", icon = "94140673883223", x = 136, onClick = function()
 			if SettingsController.Toggle then
 				SettingsController.Toggle()
 			end
 		end },
-		{ label = "Autofire", icon = "", emoji = "🎯", onClick = function()
-			AutoShootController.Toggle()
+		{ label = "Shop", icon = "71412141929869", x = 219, onClick = function()
+			card.Visible = not card.Visible
 		end },
 	}
 	local autoRing
-	for i, def in DOCK do
+	for _, def in DOCK do
 		local holder, circ = LobbyLook.DockButton(gui, def.label, def.icon, def.emoji)
-		holder.Position = UDim2.new(0.5, -math.floor(((#DOCK - 1) * 83 + 66) / 2) + (i - 1) * 83, 1, -6)
+		holder.Position = UDim2.new(0.5, def.x - 33, 1, -6) -- -33 = half the 66px holder (center on x)
 		circ.Activated:Connect(def.onClick)
 		if def.label == "Autofire" then -- the toggle state rides a toxic ring on the glass circle
 			autoRing = Instance.new("UIStroke")
