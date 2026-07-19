@@ -218,10 +218,19 @@ function EventService.SpinForWave(wave: number): string
 			end
 		end
 	end
+	-- Live odds (%) per outcome — the client roller shows these on every flash so a rare landing
+	-- FEELS rare. Recomputed each wave (calm's slice shrinks as waves climb).
+	local odds = {}
+	if total > 0 then
+		for id, weight in w do
+			odds[id] = math.max(1, math.floor(weight / total * 100 + 0.5))
+		end
+	end
 	Remotes.Get("EventSpin"):FireAllClients({
 		wave = wave,
 		outcome = chosen,
 		seconds = tonumber(c.SpinSeconds) or 3,
+		odds = odds,
 	})
 	print(("[EventService] wave %d wheel: %s"):format(wave, chosen))
 	return chosen

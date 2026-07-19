@@ -1,8 +1,10 @@
 --!nonstrict
--- EventWheelController.lua — THE VISIBLE EVENT WHEEL. Every wave break the server rolls next wave's
--- modifier and broadcasts EventSpin {wave, outcome, seconds}; we run a slot-machine reel top-center:
--- icons whip past a window, decelerate, and LAND on the outcome — then the name card flashes and the
--- banner tucks away before the wave starts. Pure theater: the server already decided the outcome.
+-- EventWheelController.lua — THE EVENT ROLLER (owner call: WORDS, not icons — no scrolling wheel).
+-- Every wave break the server rolls next wave's modifier and broadcasts EventSpin {wave, outcome,
+-- seconds, odds}. We run a text ROLL in one top-center slot: event names FLASH one after another —
+-- blink out, blink in — fast at first, losing steam like a thrown die, until the real outcome LOCKS
+-- big and colored. Every flash carries that event's live % chance, so a rare landing FEELS rare.
+-- Pure theater: the server already decided the outcome.
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -17,30 +19,30 @@ local LobbyLook = require(Shared.Modules.LobbyLook)
 local EventWheelController = {}
 
 -- ===== TUNABLES =====
-local CELL = 64            -- icon cell size (px)
-local GAP = 8              -- gap between cells
-local WINDOW_W = 232       -- the visible reel window (shows ~3 cells; the CENTER one wins)
-local REEL_CELLS = 16      -- how many cells the reel scrolls past before landing
-local HOLD_SECONDS = 2.2   -- how long the landed result stays up
-local LINGER_NAME = 1.6    -- the outcome name card's flash time
+local BANNER_W = 300
+local FIRST_STEP = 0.10    -- seconds the FIRST flash lasts...
+local STEP_GROWTH = 1.32   -- ...each flash lasting this much longer than the last (the die losing steam)
+local GAP_FRAC = 0.35      -- slice of each step spent BLANK (the blink-out between words)
+local HOLD_SECONDS = 2.6   -- how long the locked result stays up
+local LOCK_PUNCH = 1.22    -- the locked word's pop scale
 
--- What each wheel outcome looks like on the reel (server sends only the id).
+-- What each outcome reads as (server sends only the id). Add a wheel outcome = add a row.
 local LOOK = {
-	calm      = { icon = "☀️", name = "CALM WAVE",     color = Color3.fromRGB(124, 219, 35) },
-	bloodmoon = { icon = "🌕", name = "BLOOD MOON",    color = Color3.fromRGB(255, 70, 50) },
-	fog       = { icon = "🌫️", name = "FOG",           color = Color3.fromRGB(180, 186, 168) },
-	meteors   = { icon = "☄️", name = "METEOR SHOWER", color = Color3.fromRGB(255, 140, 40) },
+	calm      = { name = "CALM WAVE",     color = Color3.fromRGB(124, 219, 35) },
+	bloodmoon = { name = "BLOOD MOON",    color = Color3.fromRGB(255, 70, 50) },
+	fog       = { name = "FOG",           color = Color3.fromRGB(180, 186, 168) },
+	meteors   = { name = "METEOR SHOWER", color = Color3.fromRGB(255, 140, 40) },
 }
 local IDS = { "calm", "bloodmoon", "fog", "meteors" }
 
 local localPlayer = Players.LocalPlayer
 
-local gui, banner, window, reel, nameCard, nameLabel, titleLabel
+local gui, banner, titleLabel, wordLabel, oddsLabel, wordScale
 local spinToken = 0
 
 local function build()
 	gui = Instance.new("ScreenGui")
-	gui.Name = "EventWheel"
+	gui.Name = "EventRoller"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = (UITheme.Layer and UITheme.Layer.HUD or 4) + 1
@@ -53,7 +55,7 @@ local function build()
 	banner.AnchorPoint = Vector2.new(0.5, 0)
 	-- Below the wave strip; on touch the whole top lane sits lower (see HUDController's lane note).
 	banner.Position = UDim2.new(0.5, 0, 0, UserInputService.TouchEnabled and 168 or 64)
-	banner.Size = UDim2.fromOffset(WINDOW_W + 24, 108)
+	banner.Size = UDim2.fromOffset(BANNER_W, 92)
 	banner.BackgroundTransparency = 1
 	banner.Parent = gui
 
@@ -72,139 +74,104 @@ local function build()
 	tStroke.Thickness = 1.2
 	tStroke.Parent = titleLabel
 
-	window = Instance.new("Frame") -- the reel window (clips the scrolling icons)
-	window.Name = "Window"
-	window.AnchorPoint = Vector2.new(0.5, 0)
-	window.Position = UDim2.new(0.5, 0, 0, 22)
-	window.Size = UDim2.fromOffset(WINDOW_W, CELL + 12)
-	window.BackgroundColor3 = LobbyLook.PANEL
-	window.BackgroundTransparency = 0.08
-	window.BorderSizePixel = 0
-	window.ClipsDescendants = true
-	window.Parent = banner
-	LobbyLook.corner(window, 14)
-	LobbyLook.ledge(window, LobbyLook.TBLACK, 3)
-	LobbyLook.lstuds(window, 46, 0.94)
+	wordLabel = Instance.new("TextLabel") -- THE slot: one event name at a time
+	wordLabel.BackgroundTransparency = 1
+	wordLabel.Position = UDim2.fromOffset(0, 20)
+	wordLabel.Size = UDim2.new(1, 0, 0, 40)
+	wordLabel.FontFace = LobbyLook.TITLE_FACE
+	wordLabel.TextSize = 34
+	wordLabel.TextColor3 = LobbyLook.TEXTCOL
+	wordLabel.Text = ""
+	wordLabel.Parent = banner
+	local wStroke = Instance.new("UIStroke")
+	wStroke.Color = Color3.fromRGB(0, 0, 0)
+	wStroke.Transparency = 0.2
+	wStroke.Thickness = 2.4
+	wStroke.Parent = wordLabel
+	wordScale = Instance.new("UIScale")
+	wordScale.Parent = wordLabel
 
-	-- Center marker: the win slot (two little notches above/below the middle).
-	for _, side in { 0, 1 } do
-		local notch = Instance.new("Frame")
-		notch.AnchorPoint = Vector2.new(0.5, side)
-		notch.Position = UDim2.new(0.5, 0, side, 0)
-		notch.Size = UDim2.fromOffset(3, 8)
-		notch.BackgroundColor3 = LobbyLook.GOLD
-		notch.BorderSizePixel = 0
-		notch.ZIndex = 5
-		notch.Parent = window
-	end
-
-	reel = Instance.new("Frame") -- the scrolling strip of icon cells
-	reel.Name = "Reel"
-	reel.BackgroundTransparency = 1
-	reel.Size = UDim2.fromOffset(10, CELL)
-	reel.Position = UDim2.fromOffset(0, 6)
-	reel.Parent = window
-
-	nameCard = Instance.new("Frame") -- the landed outcome's name flash under the window
-	nameCard.Name = "NameCard"
-	nameCard.AnchorPoint = Vector2.new(0.5, 0)
-	nameCard.Position = UDim2.new(0.5, 0, 0, CELL + 40)
-	nameCard.Size = UDim2.fromOffset(WINDOW_W, 26)
-	nameCard.BackgroundTransparency = 1
-	nameCard.Parent = banner
-
-	nameLabel = Instance.new("TextLabel")
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Size = UDim2.fromScale(1, 1)
-	nameLabel.FontFace = LobbyLook.TITLE_FACE
-	nameLabel.TextSize = 22
-	nameLabel.TextColor3 = LobbyLook.TEXTCOL
-	nameLabel.Text = ""
-	nameLabel.Parent = nameCard
-	local nStroke = Instance.new("UIStroke")
-	nStroke.Color = Color3.fromRGB(0, 0, 0)
-	nStroke.Transparency = 0.25
-	nStroke.Thickness = 2
-	nStroke.Parent = nameLabel
+	oddsLabel = Instance.new("TextLabel") -- the % line riding under every flashed word
+	oddsLabel.BackgroundTransparency = 1
+	oddsLabel.Position = UDim2.fromOffset(0, 62)
+	oddsLabel.Size = UDim2.new(1, 0, 0, 20)
+	oddsLabel.FontFace = LobbyLook.BODYB_FACE
+	oddsLabel.TextSize = 15
+	oddsLabel.TextColor3 = LobbyLook.DIMTEXT
+	oddsLabel.Text = ""
+	oddsLabel.Parent = banner
+	local oStroke = Instance.new("UIStroke")
+	oStroke.Color = Color3.fromRGB(0, 0, 0)
+	oStroke.Transparency = 0.35
+	oStroke.Thickness = 1.5
+	oStroke.Parent = oddsLabel
 end
 
-local function makeCell(id: string, index: number): Frame
+-- Show one flashed word (+ its live %). The word arrives slightly dimmed mid-roll; the LOCK pass
+-- paints it full-strength and punches the scale.
+local function showWord(id: string, odds, locked: boolean)
 	local look = LOOK[id] or LOOK.calm
-	local cell = Instance.new("Frame")
-	cell.Name = "Cell" .. index
-	cell.Position = UDim2.fromOffset((index - 1) * (CELL + GAP), 0)
-	cell.Size = UDim2.fromOffset(CELL, CELL)
-	cell.BackgroundColor3 = LobbyLook.PANEL2
-	cell.BorderSizePixel = 0
-	cell.Parent = reel
-	LobbyLook.corner(cell, 12)
-	LobbyLook.ledge(cell, look.color, 2, 0.35)
-	local icon = Instance.new("TextLabel")
-	icon.BackgroundTransparency = 1
-	icon.Size = UDim2.fromScale(1, 1)
-	icon.Text = look.icon
-	icon.TextSize = 34
-	icon.Font = Enum.Font.SourceSansBold
-	icon.Parent = cell
-	return cell
+	wordLabel.Text = look.name
+	wordLabel.TextColor3 = look.color
+	wordLabel.TextTransparency = locked and 0 or 0.12
+	local pct = typeof(odds) == "table" and tonumber(odds[id]) or nil
+	oddsLabel.Text = pct and ("%d%% CHANCE"):format(pct) or ""
+	oddsLabel.TextColor3 = locked and look.color or LobbyLook.DIMTEXT
+	if locked then
+		wordScale.Scale = 1
+		TweenService:Create(wordScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Scale = LOCK_PUNCH }):Play()
+	end
 end
 
-local function runSpin(info)
+local function runRoll(info)
 	local outcome = typeof(info) == "table" and tostring(info.outcome) or "calm"
 	if not LOOK[outcome] then
 		outcome = "calm"
 	end
 	local secs = math.max(1, tonumber(info.seconds) or 3)
+	local odds = typeof(info) == "table" and info.odds or nil
 
 	spinToken += 1
 	local myTok = spinToken
-	reel:ClearAllChildren()
-	nameLabel.Text = ""
-	nameLabel.TextTransparency = 0
-
-	-- Build the reel: random filler cells, with the OUTCOME as the final (landing) cell.
-	local order = {}
-	for i = 1, REEL_CELLS - 1 do
-		order[i] = IDS[math.random(1, #IDS)]
-	end
-	order[REEL_CELLS] = outcome
-	local landed = {}
-	for i, id in order do
-		landed[i] = makeCell(id, i)
-	end
-
-	-- Land the final cell dead-center: reel x so cell N's center sits at WINDOW_W/2.
-	local pitch = CELL + GAP
-	local finalX = WINDOW_W / 2 - ((REEL_CELLS - 1) * pitch + CELL / 2)
-	reel.Position = UDim2.fromOffset(0, 6)
+	wordScale.Scale = 1
 	gui.Enabled = true
 
-	-- The spin: fast, then a long Quint decel onto the target — reads exactly like a slot reel.
-	local spin = TweenService:Create(reel, TweenInfo.new(secs, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Position = UDim2.fromOffset(finalX, 6),
-	})
-	spin:Play()
-	spin.Completed:Once(function()
+	task.spawn(function()
+		-- Build the step ladder: flashes speed-decay until they've spent the spin window. The LAST
+		-- step is the real outcome; every earlier flash shows a DIFFERENT name than the one before it
+		-- (a roll never stutters on one word).
+		local steps = {}
+		local t, dur = 0, FIRST_STEP
+		while t + dur < secs - 0.35 do -- leave a beat so the lock lands inside the window
+			table.insert(steps, dur)
+			t += dur
+			dur *= STEP_GROWTH
+		end
+		local prev = nil
+		for _, stepDur in steps do
+			if myTok ~= spinToken then
+				return
+			end
+			local id = IDS[math.random(1, #IDS)]
+			if id == prev then -- never flash the same word twice in a row
+				id = IDS[(table.find(IDS, id) % #IDS) + 1]
+			end
+			prev = id
+			showWord(id, odds, false)
+			task.wait(stepDur * (1 - GAP_FRAC))
+			if myTok ~= spinToken then
+				return
+			end
+			wordLabel.Text = "" -- the blink-out (the word "goes away and comes back")
+			oddsLabel.Text = ""
+			task.wait(stepDur * GAP_FRAC)
+		end
 		if myTok ~= spinToken then
 			return
 		end
-		-- The reveal: pulse the winning cell + flash the name in the outcome's color.
-		local look = LOOK[outcome]
-		local winCell = landed[REEL_CELLS]
-		if winCell then
-			local pop = Instance.new("UIScale")
-			pop.Scale = 1
-			pop.Parent = winCell
-			TweenService:Create(pop, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-				{ Scale = 1.18 }):Play()
-		end
-		nameLabel.Text = look.name
-		nameLabel.TextColor3 = look.color
-		task.delay(LINGER_NAME, function()
-			if myTok == spinToken then
-				TweenService:Create(nameLabel, TweenInfo.new(0.4), { TextTransparency = 0.25 }):Play()
-			end
-		end)
+		-- THE LOCK: the real outcome, full color, punched scale, % underneath.
+		showWord(outcome, odds, true)
 		task.delay(HOLD_SECONDS, function()
 			if myTok == spinToken then
 				gui.Enabled = false
@@ -215,8 +182,8 @@ end
 
 function EventWheelController.Start()
 	build()
-	Remotes.Get("EventSpin").OnClientEvent:Connect(runSpin)
-	print("[EventWheelController] started (the wheel is watching)")
+	Remotes.Get("EventSpin").OnClientEvent:Connect(runRoll)
+	print("[EventWheelController] started (the roller is watching)")
 end
 
 return EventWheelController

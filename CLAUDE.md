@@ -1,23 +1,23 @@
 # ZOMBIEROT — Build Doc & Source of Truth
 
-A 3D co-op zombie **wave shooter with a WHEEL OF FATE**: **kill the wave → the EVENT WHEEL visibly spins
-next wave's modifier (Blood Moon / Fog / Meteor Shower / Calm) → the whole wave plays under it → open your
-LOCKER mid-run to swap to any gun your level has unlocked → your Coins bank live as you kill → die as a
-team and the run ends → back in the lobby, spend Coins on skins/cases and level up to unlock new guns and
-harder worlds.** Third-person, drop-in co-op.
+A 3D co-op zombie **wave shooter with a WHEEL OF FATE**: **kill the wave → the EVENT ROLLER flashes
+through next wave's possible fates and locks one in with its % odds (Blood Moon / Fog / Meteor Shower /
+Calm) → the whole wave plays under it → your Coins bank live as you kill → die as a team and the run
+ends → back in the lobby, spend Coins on GUN CRATES and level up to unlock new guns free and harder
+worlds.** Third-person, drop-in co-op.
 
 > Built from an autonomous Claude Code spec (working title "HOLDOUT"). Renamed to **ZombieRot** (formerly "Zombie Lobby").
 > **Pivoted four times:** Call-of-Duty-Zombies loop → simpler Zombie Rush (removed doors, wall-buys,
 > Pack-a-Punch, perks, Mystery Box) → EXTRACTION (cash out / double down) → CONTINUOUS HORDE + POWER
-> DRAFT (no waves, stacking power picks) → the current **WAVES + EVENT WHEEL** model: wave-based again,
-> progressively harder forever, and EVERY wave break the wheel spins a whole-wave modifier. The Power
-> Draft is GONE; the **in-run LOCKER** (swap to any level-unlocked gun mid-run) is the run's agency now.
-> **Guns unlock by ACCOUNT LEVEL (free at level), Coins buy cosmetics** (no coin gun-shop, no gun
-> upgrading). Build incrementally, testable in Studio.
+> DRAFT (no waves, stacking power picks) → the current **WAVES + EVENT ROLLER** model: wave-based again,
+> progressively harder forever, and EVERY wave break the roller lands a whole-wave modifier. The Power
+> Draft is GONE (and the short-lived in-run Locker was built + deleted the same day — owner call).
+> **SKINS ARE DELETED. Crates pay GUNS now** (dupes → coins) — guns ALSO still unlock free at account
+> level, so a crate is how you pull one EARLY. Build incrementally, testable in Studio.
 >
 > ⚠️ **DOC-VS-CODE:** older sections below still describe earlier pivots (respawn/no-game-over, coin
-> gun-shop, cash-out windows, the continuous horde). The **shipped code is waves + event wheel + locker +
-> level-unlock** — trust §0/§1 here and the code over any stale mention further down.
+> gun-shop, cash-out windows, the continuous horde, skins). The **shipped code is waves + event roller +
+> gun crates + level-unlock** — trust §0/§1 here and the code over any stale mention further down.
 
 ---
 
@@ -27,8 +27,8 @@ harder worlds.** Third-person, drop-in co-op.
 
 | Decision | Choice |
 |---|---|
-| Game style | **Waves + the EVENT WHEEL.** Endless waves, progressively harder forever (`computeCount`/HP/speed growth per round). **Every wave break (8s) the wheel VISIBLY SPINS** (`EventService.SpinForWave` → `EventSpin` remote → `EventWheelController` slot-machine banner) and lands on NEXT wave's modifier, which runs for the **WHOLE wave**: **CALM** (normal — weight shrinks as waves climb), **BLOOD MOON** (×1.35 zombie speed, ×2 Coins/kill, bleeding sky), **FOG** (sits all wave), **METEOR SHOWER** (strikes all wave). Supply Drop + Nest were CUT. Wave clear still pays per-wave Coins, flawless streak, case drops; boss every `BossEvery`-th wave. **The IN-RUN LOCKER replaced the Power Draft**: a dock button opens the gun catalog; any **account-level-unlocked** gun can be swapped into your held slot mid-run (`SwapLoadout` remote, `CombatService` validates). **Coins bank LIVE** (2/kill, 50/wave). **Death → spectate; a TEAM WIPE ends the run** — a paid **Robux revive** can buy back in during the wipe-grace window; **SKIP WAVE** (Robux) clears the current wave. Extraction stays dead (remotes dormant, `Extraction.Every = 0`). |
-| Guns & economy | **Guns unlock by ACCOUNT LEVEL — free at their level, never bought.** Coins buy **cosmetics only** (cases → skins) and Robux coin-bundles top them up. The `WeaponConfig.price` fields + `BuyGun` charge path are **dead** (you always own a gun before you're eligible to buy it). No coin gun-shop, no gun upgrading. |
+| Game style | **Waves + the EVENT ROLLER.** Endless waves, progressively harder forever (`computeCount`/HP/speed growth per round). **Every wave break (8s) the roller runs** (`EventService.SpinForWave` → `EventSpin` remote with live `odds` → `EventWheelController`): a single top-center text slot **FLASHES event names one after another — each with its % chance — slowing like a thrown die until the real outcome LOCKS** (words only, no icons, no wheel). The landed modifier runs the **WHOLE wave**: **CALM** (normal — weight shrinks as waves climb), **BLOOD MOON** (×1.35 zombie speed, ×2 Coins/kill, bleeding sky), **FOG** (sits all wave), **METEOR SHOWER** (strikes all wave). Supply Drop + Nest were CUT. Wave clear pays per-wave Coins, flawless streak, case drops; boss every `BossEvery`-th wave. **Coins bank LIVE** (2/kill, 50/wave). **Death → spectate; a TEAM WIPE ends the run** — a paid **Robux revive** can buy back in during the wipe-grace window; **SKIP WAVE** (Robux) clears the current wave. Extraction stays dead (remotes dormant, `Extraction.Every = 0`); the in-run Locker was deleted. |
+| Guns & economy | **SKINS DELETED — crates pay GUNS.** Guns still unlock **free at account level** (the lobby's XP-ONLY UNLOCKS auto-grant on load); **Coins buy GUN CRATES** which roll a gun by rarity (`CASES.gunWeights` → `GUNS_BY_RARITY`) — an unowned pull is yours EARLY, a **duplicate converts to Coins** (`GUN_DUP_COINS`); pity forces a legendary within `PityEvery` opens. The lobby's `gunLevels/gunCopies` copies system stays dormant. Old profiles' `skins` blobs are scrubbed on save; the game place renders base gun models only. |
 | Worlds = difficulty | **Worlds ARE the difficulty knob** (`GameConfig.Maps` mult/speedMult × `WaveMult`). Worlds unlock by **account level** (`WorldUnlockLevel`). The old Easy…Nightmare/Endless difficulty ladder is GONE. |
 | Game name | **ZombieRot** (project name in `default.project.json`) |
 | Data persistence | **LIVE** — profiles persist via DataStore in both places (game + lobby share the save). Coins/XP/best-wave/wins/owned/loadout/cases/skins all save. |
@@ -66,17 +66,16 @@ wipe ends the run → spend Coins on cosmetics + level up for new guns/worlds �
 You spawn into a **world** (which is also the difficulty) with your level-unlocked loadout. Zombies come
 in **waves** that grow forever (count, health and speed all scale per wave). Each kill banks **Coins** to
 your profile *immediately* (2/kill, 50/wave — tune in `GameConfig`), so nothing you earn is ever lost.
-Clear the wave and the **8-second break** hits: the **EVENT WHEEL** spins on screen — icons whip past,
-slow down, and land on next wave's modifier. **CALM** is a normal wave (rarer the deeper you go);
-**BLOOD MOON** turns the sky red, speeds the horde up, and pays **double Coins** all wave; **FOG** blinds
-the map all wave; **METEOR SHOWER** rains telegraphed strikes all wave. Mid-run, the **LOCKER** dock
-button opens the full gun catalog — tap any gun your **account level** has unlocked and it swaps into
-your hands on the spot (locked guns show their unlock level, so it doubles as the "what am I leveling
-for?" screen). A **team wipe ends the run** (a Robux revive can buy back in during the grace window; a
-Robux **SKIP WAVE** clears a wave that's about to eat you). Special/boss zombies force you to move —
-dangerous types read by a **colored threat outline** before they reach you. Between runs, in the
-**lobby**, spend Coins on **skins/cases** and let your **account level** unlock the next gun and the next
-world. Guns are **free at their unlock level** — Coins never buy them.
+Clear the wave and the **8-second break** hits: the **EVENT ROLLER** runs top-center — event names flash
+one after another, each stamped with its **live % chance**, slowing like a thrown die until next wave's
+fate **locks in**. **CALM** is a normal wave (rarer the deeper you go); **BLOOD MOON** turns the sky red,
+speeds the horde up, and pays **double Coins** all wave; **FOG** blinds the map all wave; **METEOR
+SHOWER** rains telegraphed strikes all wave. A **team wipe ends the run** (a Robux revive can buy back in
+during the grace window; a Robux **SKIP WAVE** clears a wave that's about to eat you). Special/boss
+zombies force you to move — dangerous types read by a **colored threat outline** before they reach you.
+Between runs, in the **lobby**, spend Coins on **GUN CRATES** — a crate rolls a gun by rarity: an unowned
+pull is **yours early**, a duplicate pays Coins back — while your **account level** keeps unlocking guns
+free and gating the next world.
 
 ---
 

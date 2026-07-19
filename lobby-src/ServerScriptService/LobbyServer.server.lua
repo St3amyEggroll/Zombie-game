@@ -114,7 +114,8 @@ local RARITY = {
 }
 
 -- Stats mirror the game's WeaponConfig (kept in sync by hand) for the hover tooltips.
--- CHANGED: guns are BOUGHT with Coins (price below; pistol is the free starter). Crates pay SKINS.
+-- CHANGED (owner call — skins DELETED): crates pay GUNS now. Guns ALSO auto-unlock free at account
+-- level (readProfile's XP-ONLY UNLOCKS) — a crate is the way to pull one EARLY. Dupes pay coins.
 local WEAPONS = {
 	pistol    = { name = "M1911",        tier = 1, rarity = "common",    damage = 30,  fireRate = 5,   range = 200, price = 0, slot = "secondary" },
 	revolver  = { name = "Revolver",     tier = 2, rarity = "uncommon",  damage = 70,  fireRate = 1.8, range = 220, price = 1500, slot = "secondary",
@@ -197,59 +198,29 @@ local function slotFor(weaponId)
 	return (WEAPONS[weaponId] and WEAPONS[weaponId].slot == "secondary") and 2 or 1
 end
 
--- ===== SKINS ===== (what crates pay out — synced with the game's SkinConfig; models are optional:
--- name a Model "<gunId>_<skinId>" in Assets and it's used everywhere, else the base gun stands in)
-local SKIN_NAMES = {
-	-- CHANGED: the original four get TINTS too, so every skin renders as a real recolored gun
-	-- (shop cards, swatches, carry, in-hand) with no dedicated model needed. A model still wins if built.
-	worn  = { name = "Worn",  rarity = "common",    tint = Color3.fromRGB(122, 112, 96) },
-	toxic = { name = "Toxic", rarity = "rare",      tint = Color3.fromRGB(88, 196, 60) },
-	gold  = { name = "Gold",  rarity = "legendary", tint = Color3.fromRGB(222, 178, 58) },
-	void  = { name = "Void",  rarity = "divine",    tint = Color3.fromRGB(88, 48, 132) },
-	-- NEW: TINTED skins — no model needed: the base gun is cloned and recolored with `tint` everywhere
-	-- (carry, UI, in-game hand). `image` is the owner's art, shown on swatches + reel tiles.
-	-- KEEP rarities in sync with the game place's SkinConfig.SkinNames BY HAND.
-	red   = { name = "Red",   rarity = "rare",      tint = Color3.fromRGB(198, 30, 30),   image = "rbxassetid://70603022597075" },
-	pink  = { name = "Pink",  rarity = "legendary", tint = Color3.fromRGB(255, 105, 190), image = "rbxassetid://97862388516710" },
-	black = { name = "Black", rarity = "divine",    tint = Color3.fromRGB(28, 28, 32),    image = "rbxassetid://106670146411294" },
-}
-local SKINS = {}        -- [fullId "revolver_gold"] = { id, gun, skin, name, rarity }
-local SKINS_BY_RARITY = {} -- rarity -> sorted { fullId }
-for gunId, w in WEAPONS do
-	for skinId, s in SKIN_NAMES do
-		local fullId = gunId .. "_" .. skinId
-		SKINS[fullId] = { id = fullId, gun = gunId, skin = skinId, name = s.name .. " " .. w.name, rarity = s.rarity, tint = s.tint, image = s.image }
-		SKINS_BY_RARITY[s.rarity] = SKINS_BY_RARITY[s.rarity] or {}
-		table.insert(SKINS_BY_RARITY[s.rarity], fullId)
-	end
-end
-for _, list in SKINS_BY_RARITY do
-	table.sort(list)
-end
-local SKIN_DUP_COINS = { common = 25, uncommon = 60, rare = 150, epic = 400, legendary = 1000, mythic = 2500, divine = 6000 }
+-- (SKINS DELETED — owner call. Crates pay GUNS; old profiles' skins data is ignored and dropped
+-- from the save on next persist. The game place's skin rendering was stripped in the same pass.)
 
--- 7 rarity-tiered cases (wave rewards + starter grants + the shop).
--- PHOTOS: add image = "rbxassetid://..." to any CASES entry (and to WEAPONS/POTIONS entries) and the
+-- 7 rarity-tiered GUN crates (wave rewards + starter grants + the shop).
+-- PHOTOS: add image = "rbxassetid://..." to any CASES entry (and to WEAPONS entries) and the
 -- inventory/shop UI shows the picture on cards + detail panes automatically.
--- CHANGED: crates pay SKINS ONLY (guns removed from the pools by owner request — guns come from the
--- XP ladder + BuyGun). A pull rolls a skin RARITY from these weights, then a uniform skin of that
--- rarity. Duplicates convert to coins.
+-- A pull rolls a GUN RARITY from gunWeights, then a uniform gun of that rarity: unowned = THE GUN IS
+-- YOURS (early — level would have granted it free eventually); owned = coins (GUN_DUP_COINS).
+-- (common is left out of the pools: the pistol is everyone's free starter — it'd always be a dupe.)
 local CASES = {
-	common    = { skinWeights = { common = 70, rare = 24, legendary = 5,  divine = 1 } },
-	uncommon  = { skinWeights = { common = 60, rare = 30, legendary = 8,  divine = 2 } },
-	rare      = { skinWeights = { common = 45, rare = 38, legendary = 13, divine = 4 } },
-	epic      = { skinWeights = { common = 30, rare = 42, legendary = 20, divine = 8 } },
-	legendary = { skinWeights = { common = 18, rare = 40, legendary = 28, divine = 14 } },
-	mythic    = { skinWeights = { common = 10, rare = 32, legendary = 36, divine = 22 } },
-	divine    = { skinWeights = { common = 5,  rare = 22, legendary = 38, divine = 35 } },
+	common    = { gunWeights = { uncommon = 55, rare = 30, epic = 12, legendary = 3 } },
+	uncommon  = { gunWeights = { uncommon = 45, rare = 34, epic = 16, legendary = 5 } },
+	rare      = { gunWeights = { uncommon = 32, rare = 38, epic = 22, legendary = 8 } },
+	epic      = { gunWeights = { uncommon = 20, rare = 38, epic = 30, legendary = 12 } },
+	legendary = { gunWeights = { uncommon = 10, rare = 32, epic = 38, legendary = 20 } },
+	mythic    = { gunWeights = { uncommon = 5,  rare = 25, epic = 42, legendary = 28 } },
+	divine    = { gunWeights = { uncommon = 2,  rare = 16, epic = 44, legendary = 38 } },
 }
 for rarity, c in CASES do
-	c.name = RARITY[rarity].name .. " Skin Crate"
+	c.name = RARITY[rarity].name .. " Gun Crate"
 end
--- CHANGED (owner request): the featured EXCLUSIVE PACK pays GUNS now, not skins. Its own virtual
--- case id ("gunpack") keeps the regular rarity crates skins-only. A pull rolls a gun RARITY from
--- gunWeights, then grants a gun you DON'T own yet (prefers the rolled rarity); when you own them
--- all, the pull pays big dupe coins instead.
+-- The featured EXCLUSIVE PACK (Robux): same gun-crate roll, but it PREFERS a gun you DON'T own yet
+-- (a paid pack must never feel like a dupe); own them all and it pays big dupe coins instead.
 CASES.gunpack = {
 	name = "Exclusive Gun Pack",
 	gunWeights = { uncommon = 30, rare = 34, epic = 24, legendary = 12 },
@@ -361,7 +332,7 @@ local SHOP = {
 	StarterProductId = 0,
 	StarterCases = { rare = 3 },
 	StarterCoins = 2000,
-	-- PITY: a LEGENDARY+ skin is guaranteed within this many crate opens (counts every crate).
+	-- PITY: a LEGENDARY gun is guaranteed within this many crate opens (counts every crate).
 	PityEvery = 10,
 }
 
@@ -379,7 +350,7 @@ local WHEEL = {
 		{ kind = "case", case = "rare", weight = 14, label = "RARE CRATE" },
 		{ kind = "coins", amount = 800, weight = 12, label = "800 COINS" },
 		{ kind = "case", case = "epic", weight = 10, label = "EPIC CRATE" },
-		{ kind = "skin", weight = 8, label = "RANDOM SKIN" },
+		{ kind = "coins", amount = 1500, weight = 8, label = "1500 COINS" }, -- (was the RANDOM SKIN slice)
 		{ kind = "case", case = "divine", weight = 3, label = "DIVINE CRATE", jackpot = true },
 	},
 }
@@ -477,80 +448,63 @@ local function currentShop()
 	return shopCache
 end
 
--- Display catalog the client renders from.
+-- Display catalog the client renders from. Every crate's reel pool is the GUN list now.
 local CATALOG = {
 	rarities = RARITY,
 	rarityOrder = RARITY_ORDER,
 	weapons = WEAPONS,
-	skins = SKINS,
 	cases = (function()
 		local t = {}
-		local allSkinIds = {}
-		for id in SKINS do
-			table.insert(allSkinIds, id)
+		local gunIds = {}
+		for id in WEAPONS do
+			table.insert(gunIds, id)
 		end
-		table.sort(allSkinIds)
-		for rarity, c in CASES do
-			if c.skinWeights then
-				local total = 0
-				for _, weight in c.skinWeights do
-					total += weight
-				end
-				local odds = {}
-				-- Item-level "WHAT'S INSIDE" list the featured pane renders — skin-rarity rows only
-				-- (CHANGED: guns removed from crates).
-				local loot = {}
-				for _, sr in RARITY_ORDER do
-					if c.skinWeights[sr] then
-						table.insert(odds, { rarity = sr, pct = (c.skinWeights[sr] / total) * 100 })
-						table.insert(loot, { kind = "skins", rarity = sr, pct = (c.skinWeights[sr] / total) * 100 })
-					end
-				end
-				t[rarity] = { name = c.name, rarity = rarity, poolIds = table.clone(allSkinIds), odds = odds, loot = loot, image = c.image }
-			end
-		end
-		-- The GUN pack's display entry: gun-rarity loot rows + every gun as the reel pool.
-		do
-			local gunIds = {}
-			for id in WEAPONS do
-				table.insert(gunIds, id)
-			end
-			table.sort(gunIds)
-			local gw = CASES.gunpack.gunWeights
+		table.sort(gunIds)
+		for caseId, c in CASES do
+			local gw = c.gunWeights
 			local total = 0
 			for _, weight in gw do
 				total += weight
 			end
-			local odds, loot = {}, {}
+			local odds, loot = {}, {} -- "WHAT'S INSIDE": gun-rarity rows with live percentages
 			for _, rid in RARITY_ORDER do
 				if gw[rid] then
 					table.insert(odds, { rarity = rid, pct = (gw[rid] / total) * 100 })
 					table.insert(loot, { kind = "guns", rarity = rid, pct = (gw[rid] / total) * 100 })
 				end
 			end
-			t.gunpack = { name = CASES.gunpack.name, rarity = "legendary", poolIds = gunIds, odds = odds, loot = loot }
+			t[caseId] = {
+				name = c.name,
+				rarity = (caseId == "gunpack") and "legendary" or caseId,
+				poolIds = table.clone(gunIds),
+				odds = odds,
+				loot = loot,
+				image = c.image,
+			}
 		end
 		return t
 	end)(),
 }
 
+-- Roll a crate: gun RARITY from the crate's weights, then a uniform gun of that rarity.
 local function rollCase(caseId)
 	local case = CASES[caseId]
-	-- SKINS ONLY (guns no longer drop from crates): roll a rarity, then a uniform skin of that rarity.
 	local total = 0
-	for _, weight in case.skinWeights do
+	for _, weight in case.gunWeights do
 		total += weight
 	end
 	local r = rng:NextNumber(0, total)
 	local acc, chosen = 0, nil
-	for rarity, weight in case.skinWeights do
-		acc += weight
-		if r <= acc then
-			chosen = rarity
-			break
+	for _, rid in RARITY_ORDER do
+		if case.gunWeights[rid] then
+			acc += case.gunWeights[rid]
+			if r <= acc then
+				chosen = rid
+				break
+			end
 		end
 	end
-	local list = SKINS_BY_RARITY[chosen or "common"] or SKINS_BY_RARITY.common
+	local list = GUNS_BY_RARITY[chosen or "rare"] or GUNS_BY_RARITY.rare
 	return list[rng:NextInteger(1, #list)]
 end
 
@@ -588,9 +542,8 @@ local PackGranted   = mk("PackGranted")   -- S->C: {guns={{id,unlocked}}, coins,
 local WheelSpin     = mk("WheelSpin")     -- C->S: (no args) claim the FREE daily spin
                                           -- S->C: {seg, reward, streak} result | {failed, msg}
 local ShopTicker    = mk("ShopTicker")    -- S->C broadcast: {name, item, rarity} someone pulled legendary+
--- Guns & skins
+-- Guns
 local BuyGun    = mk("BuyGun")    -- C->S: {weaponId} buy a gun outright with Coins
-local EquipSkin = mk("EquipSkin") -- C->S: {weaponId, skinId?} equip a skin (nil/false = back to base look)
 -- Sound
 local SetSoundSettings = mk("SetSoundSettings") -- C->S: ({master, music, sfx} 0..1) persist volume sliders
 local SetShake      = mk("SetShake")      -- C->S: (bool) persist the camera-shake on/off preference (shared with the game place)
@@ -729,29 +682,6 @@ local function sanitizeSettings(v)
 	return out
 end
 
--- Skins: owned set + one equipped skin per gun (both validated against the SKINS catalog).
-local function sanitizeSkins(v)
-	local out = { owned = {}, equipped = {} }
-	if typeof(v) == "table" then
-		if typeof(v.owned) == "table" then
-			for id, on in v.owned do
-				if SKINS[id] and on then
-					out.owned[id] = true
-				end
-			end
-		end
-		if typeof(v.equipped) == "table" then
-			for gunId, skinId in v.equipped do
-				local fullId = tostring(gunId) .. "_" .. tostring(skinId)
-				if WEAPONS[gunId] and out.owned[fullId] then
-					out.equipped[gunId] = skinId
-				end
-			end
-		end
-	end
-	return out
-end
-
 local function readProfile(player)
 	-- Retry with backoff: a transient DataStore error must NOT make a veteran look brand-new (persisting
 	-- that fallback would wipe their profile).
@@ -794,7 +724,6 @@ local function readProfile(player)
 		gunLevels = sanitizeGunLevels(data.gunLevels, owned),
 		gunCopies = sanitizeGunCopies(data.gunCopies),
 		shop = sanitizeShop(data.shop),
-		skins = sanitizeSkins(data.skins),
 		settings = sanitizeSettings(data.settings),
 		class = CLASS_IDS[tostring(data.class)] and tostring(data.class) or "", -- equipped class (showcase)
 		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
@@ -882,7 +811,7 @@ local function persist(player)
 				old.gunCopies = prof.gunCopies
 				old.lobbyMoney = prof.lobbyMoney
 				old.shop = prof.shop
-				old.skins = prof.skins
+				old.skins = nil -- SKINS DELETED: scrub the dead blob from the save
 				old.settings = prof.settings
 				old.redeemed = prof.redeemed
 				old.receipts = prof.receipts
@@ -923,7 +852,6 @@ local function invSnapshot(prof)
 		potions = prof.potions,
 		gunLevels = prof.gunLevels,
 		gunCopies = prof.gunCopies,
-		skins = prof.skins,
 		coins = prof.lobbyMoney,
 	}
 end
@@ -1144,10 +1072,6 @@ local function scanCarryTemplates()
 		nameMap[sanitizeName(id)] = id
 		nameMap[sanitizeName(w.name)] = id
 	end
-	for fullId, s in SKINS do
-		nameMap[sanitizeName(fullId)] = fullId -- "revolvergold" -> revolver_gold
-		nameMap[sanitizeName(s.name)] = fullId -- "Gold Revolver" too
-	end
 	local function consider(inst)
 		if inst:IsA("Model") then
 			local id = nameMap[sanitizeName(inst.Name)]
@@ -1208,17 +1132,7 @@ local function orientCarry(model, torso, weaponId, slot)
 end
 
 local function attachCarry(char, torso, weaponId, slot, name, prof)
-	-- Equipped skin's model first, base gun as fallback (tinted when the skin is a tint skin).
-	local template, tint
-	local skinId = prof and prof.skins and prof.skins.equipped and prof.skins.equipped[weaponId]
-	if skinId then
-		template = carryTemplates[weaponId .. "_" .. skinId]
-		if not template then
-			local sn = SKIN_NAMES[skinId]
-			tint = sn and sn.tint or nil -- no dedicated model: recolor the base gun clone
-		end
-	end
-	template = template or carryTemplates[weaponId]
+	local template = carryTemplates[weaponId]
 	if not template then
 		return
 	end
@@ -1241,9 +1155,6 @@ local function attachCarry(char, torso, weaponId, slot, name, prof)
 			d.CanTouch = false
 			d.Massless = true
 			d.Anchored = false
-			if tint then
-				d.Color = tint:Lerp(d.Color, 0.15) -- tint skin: mostly flat color, a hint of shading
-			end
 			if d ~= handle then
 				local wc = Instance.new("WeldConstraint")
 				wc.Part0 = handle
@@ -1326,7 +1237,7 @@ end
 
 -- ===== RATE LIMITING (token buckets — the lobby's SecurityService-lite) =====
 -- Every C->S remote passes through allow() so a spamming client burns its bucket, not the DataStore.
-local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Settings = 3, Buy = 3, Skin = 4 } -- refill/second (burst = 2s worth)
+local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Settings = 3, Buy = 3 } -- refill/second (burst = 2s worth)
 local buckets = {} -- userId -> { [action] = { tokens, last } }
 
 local function allow(player, action)
@@ -1394,30 +1305,56 @@ EquipSlot.OnServerEvent:Connect(function(player, req)
 	refreshCarry(player)
 end)
 
--- Consume one case (caller has already verified the player HAS one) and roll a SKIN. First-ever pull
--- unlocks the skin; a duplicate converts straight to Coins by skin rarity. Shared with BUY & OPEN.
+-- Grant a rolled gun: first pull OWNS it (early — level would have granted it free eventually) and
+-- auto-fills an empty loadout slot; a duplicate converts straight to Coins by gun rarity.
+local function grantRolledGun(player, prof, caseId, wonGun)
+	if not table.find(prof.ownedWeapons, wonGun) then
+		table.insert(prof.ownedWeapons, wonGun)
+		prof.gunLevels[wonGun] = prof.gunLevels[wonGun] or 1
+		local sl = slotFor(wonGun)
+		if not prof.loadout[sl] then
+			prof.loadout[sl] = wonGun
+			refreshCarry(player)
+		end
+		local wr = WEAPONS[wonGun].rarity
+		if wr == "epic" or wr == "legendary" then
+			-- the live pull TICKER: brag about big pulls to the whole server
+			ShopTicker:FireAllClients({ name = player.DisplayName or player.Name, item = WEAPONS[wonGun].name, rarity = wr })
+		end
+		return { caseId = caseId, wonId = wonGun, coins = 0, unlocked = true }
+	end
+	local c = GUN_DUP_COINS[WEAPONS[wonGun].rarity] or 500
+	prof.lobbyMoney += c
+	return { caseId = caseId, wonId = wonGun, coins = c, unlocked = false, maxed = true }
+end
+
+-- Consume one case (caller has already verified the player HAS one) and roll a GUN. Shared with
+-- BUY & OPEN. PITY: at PityEvery-1 opens without a legendary, the open is FORCED to legendary.
 local function doOpenCase(player, prof, caseId)
 	prof.cases[caseId] = (prof.cases[caseId] or 0) - 1
 	if prof.cases[caseId] <= 0 then
 		prof.cases[caseId] = nil
 	end
-	-- THE GUN PACK (the featured Robux pack): rolls a GUN — always one you don't own when possible
-	-- (prefers the rolled rarity), auto-equips into an empty slot; own them all and it pays big dupe
-	-- coins. Skips the skin pity counter entirely.
+	-- THE GUN PACK (the featured Robux pack): PREFERS a gun you don't own (a paid pack must never
+	-- feel like a dupe) — prefers the rolled rarity, falls back to any unowned gun, then dupe coins.
+	-- Skips the pity counter entirely.
 	if caseId == "gunpack" then
-		local gw = CASES.gunpack.gunWeights
-		local total = 0
-		for _, weight in gw do
-			total += weight
-		end
-		local r = rng:NextNumber(0, total)
-		local acc, chosen = 0, "rare"
-		for _, rid in RARITY_ORDER do
-			if gw[rid] then
-				acc += gw[rid]
-				if r <= acc then
-					chosen = rid
-					break
+		local chosen = "rare"
+		do
+			local gw = CASES.gunpack.gunWeights
+			local total = 0
+			for _, weight in gw do
+				total += weight
+			end
+			local r = rng:NextNumber(0, total)
+			local acc = 0
+			for _, rid in RARITY_ORDER do
+				if gw[rid] then
+					acc += gw[rid]
+					if r <= acc then
+						chosen = rid
+						break
+					end
 				end
 			end
 		end
@@ -1440,58 +1377,29 @@ local function doOpenCase(player, prof, caseId)
 				end
 			end
 		end
+		local wonGun
 		if #pool > 0 then
-			local wonGun = pool[rng:NextInteger(1, #pool)]
-			table.insert(prof.ownedWeapons, wonGun)
-			prof.gunLevels[wonGun] = prof.gunLevels[wonGun] or 1
-			local sl = slotFor(wonGun)
-			if not prof.loadout[sl] then
-				prof.loadout[sl] = wonGun
-				refreshCarry(player)
-			end
-			local wr = WEAPONS[wonGun].rarity
-			if wr == "epic" or wr == "legendary" then
-				ShopTicker:FireAllClients({ name = player.DisplayName or player.Name, item = WEAPONS[wonGun].name, rarity = wr })
-			end
-			return { caseId = caseId, wonId = wonGun, coins = 0, unlocked = true }
+			wonGun = pool[rng:NextInteger(1, #pool)]
+		else
+			local list = GUNS_BY_RARITY[chosen] or GUNS_BY_RARITY.rare
+			wonGun = list[rng:NextInteger(1, #list)]
 		end
-		local list = GUNS_BY_RARITY[chosen] or GUNS_BY_RARITY.rare
-		local wonGun = list[rng:NextInteger(1, #list)]
-		local c = GUN_DUP_COINS[WEAPONS[wonGun].rarity] or 500
-		prof.lobbyMoney += c
-		return { caseId = caseId, wonId = wonGun, coins = c, unlocked = false, maxed = true }
+		return grantRolledGun(player, prof, caseId, wonGun)
 	end
-	-- SKINS ONLY (guns removed from crates): the pull is always a skin; duplicates convert to coins.
-	-- PITY: at PityEvery-1 opens without a legendary+, this open is FORCED to legendary/divine
-	-- (weighted by this crate's own top-tier weights).
-	local wonId
+	-- Regular crates: pity-forced legendary, else the crate's weighted roll.
+	local wonGun
 	if (prof.pity or 0) >= SHOP.PityEvery - 1 then
-		local case = CASES[caseId]
-		local lw = case.skinWeights.legendary or 1
-		local dw = case.skinWeights.divine or 0
-		local rarity = (rng:NextNumber(0, lw + dw) <= lw) and "legendary" or "divine"
-		local list = SKINS_BY_RARITY[rarity] or SKINS_BY_RARITY.legendary
-		wonId = list[rng:NextInteger(1, #list)]
+		local list = GUNS_BY_RARITY.legendary
+		wonGun = list[rng:NextInteger(1, #list)]
 	else
-		wonId = rollCase(caseId)
+		wonGun = rollCase(caseId)
 	end
-	local skin = SKINS[wonId]
-	if skin.rarity == "legendary" or skin.rarity == "divine" then
+	if WEAPONS[wonGun].rarity == "legendary" then
 		prof.pity = 0
-		-- the live pull TICKER: brag about legendary+ pulls to the whole server
-		ShopTicker:FireAllClients({ name = player.DisplayName or player.Name, item = skin.name, rarity = skin.rarity })
 	else
 		prof.pity = (prof.pity or 0) + 1
 	end
-	local unlocked = not prof.skins.owned[wonId]
-	local coins = 0
-	if unlocked then
-		prof.skins.owned[wonId] = true
-	else
-		coins = SKIN_DUP_COINS[skin.rarity] or 25
-		prof.lobbyMoney += coins
-	end
-	return { caseId = caseId, wonId = wonId, coins = coins, unlocked = unlocked, maxed = not unlocked }
+	return grantRolledGun(player, prof, caseId, wonGun)
 end
 
 OpenCase.OnServerEvent:Connect(function(player, req)
@@ -1799,24 +1707,9 @@ local function doWheelSpin(player, prof)
 	if seg.kind == "coins" then
 		prof.lobbyMoney += seg.amount
 		rewardText = "+" .. seg.amount .. " COINS"
-	elseif seg.kind == "case" then
+	else -- crate
 		prof.cases[seg.case] = (prof.cases[seg.case] or 0) + 1
 		rewardText = "+1 " .. CASES[seg.case].name:upper()
-	else -- random skin (uniform over everything; duplicates convert to coins)
-		local ids = {}
-		for id in SKINS do
-			table.insert(ids, id)
-		end
-		table.sort(ids)
-		local wonId = ids[rng:NextInteger(1, #ids)]
-		if prof.skins.owned[wonId] then
-			local c = SKIN_DUP_COINS[SKINS[wonId].rarity] or 25
-			prof.lobbyMoney += c
-			rewardText = ("DUPE %s → +%d COINS"):format(SKINS[wonId].name:upper(), c)
-		else
-			prof.skins.owned[wonId] = true
-			rewardText = "SKIN UNLOCKED: " .. SKINS[wonId].name:upper()
-		end
 	end
 	markDirty(player)
 	return idx, rewardText
@@ -2865,7 +2758,7 @@ local function primeVip(player)
 			prof.cases.rare = (prof.cases.rare or 0) + 1
 			markDirty(player)
 			pushInv(player)
-			ShopGift:FireClient(player, { from = "VIP DAILY", name = "Rare Skin Crate", count = 1 })
+			ShopGift:FireClient(player, { from = "VIP DAILY", name = "Rare Gun Crate", count = 1 })
 		end
 	end)
 end
@@ -3055,7 +2948,7 @@ end)
 
 print(("[LobbyServer] started (party pads + 2-slot loadout + shop%s)"):format(RunService:IsStudio() and " — Studio: teleports won't fire until published" or ""))
 
--- Buy a gun outright with Coins (crates only pay skins now).
+-- Buy a gun outright with Coins.
 BuyGun.OnServerEvent:Connect(function(player, req)
 	if not allow(player, "Buy") or typeof(req) ~= "table" then
 		return
@@ -3119,7 +3012,7 @@ QuestClaim.OnServerEvent:Connect(function(player, req)
 		prof.cases[QUESTS.BonusCase] = (prof.cases[QUESTS.BonusCase] or 0) + 1
 		ShopGift:FireClient(player, {
 			from = "DAILY QUESTS",
-			name = QUESTS.BonusCase:sub(1, 1):upper() .. QUESTS.BonusCase:sub(2) .. " Skin Crate",
+			name = QUESTS.BonusCase:sub(1, 1):upper() .. QUESTS.BonusCase:sub(2) .. " Gun Crate",
 			count = 1,
 		})
 		pushInv(player)
@@ -3165,34 +3058,6 @@ TutorialDone.OnServerEvent:Connect(function(player)
 	end
 	prof.tutDone = true
 	markDirty(player)
-end)
-
--- Equip / clear a skin on a gun you own.
-EquipSkin.OnServerEvent:Connect(function(player, req)
-	if not allow(player, "Skin") or typeof(req) ~= "table" then
-		return
-	end
-	local prof = profileCache[player.UserId]
-	if not prof or prof.noPersist then
-		return
-	end
-	local weaponId = tostring(req.weaponId or "")
-	if not WEAPONS[weaponId] or not table.find(prof.ownedWeapons, weaponId) then
-		return
-	end
-	if req.skinId == nil or req.skinId == false then
-		prof.skins.equipped[weaponId] = nil
-	else
-		local skinId = tostring(req.skinId)
-		local fullId = weaponId .. "_" .. skinId
-		if not SKINS[fullId] or not prof.skins.owned[fullId] then
-			return
-		end
-		prof.skins.equipped[weaponId] = skinId
-	end
-	markDirty(player)
-	refreshCarry(player)
-	pushInv(player)
 end)
 
 -- Volume sliders -> the shared profile's settings.vol (read by BOTH places at join).

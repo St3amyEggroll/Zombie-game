@@ -1010,7 +1010,6 @@ end)
 local TweenService = game:GetService("TweenService")
 local InvRequest = remotes:WaitForChild("InvRequest")
 local BuyGun     = remotes:WaitForChild("BuyGun")
-local EquipSkin  = remotes:WaitForChild("EquipSkin")
 local InvSync    = remotes:WaitForChild("InvSync")
 local EquipSlot = remotes:WaitForChild("EquipSlot")
 local OpenCase   = remotes:WaitForChild("OpenCase")
@@ -2048,86 +2047,7 @@ local function renderInvDetail()
 			end
 		end
 		if ownsGun(id) then
-			-- SKINS — click to equip.
-			if invData.catalog.skins then
-				local cap = Instance.new("TextLabel")
-				cap.Position = UDim2.fromOffset(RIGHT_X, 178); cap.Size = UDim2.fromOffset(RIGHT_W, 14)
-				cap.BackgroundTransparency = 1; cap.FontFace = BODYB_FACE; cap.TextSize = 11
-				cap.TextXAlignment = Enum.TextXAlignment.Left; cap.TextColor3 = DIMTEXT
-				cap.Text = "SKINS — CLICK TO EQUIP"; cap.Parent = invDetail
-				local strip = Instance.new("Frame")
-				strip.Position = UDim2.fromOffset(RIGHT_X, 198); strip.Size = UDim2.fromOffset(RIGHT_W, 58)
-				strip.BackgroundTransparency = 1; strip.Parent = invDetail
-				local slay = Instance.new("UIListLayout")
-				slay.FillDirection = Enum.FillDirection.Horizontal; slay.Padding = UDim.new(0, 8); slay.Parent = strip
-				local skinIds = {}
-				for sid, sk in invData.catalog.skins do
-					if sk.gun == id then
-						table.insert(skinIds, sid)
-					end
-				end
-				table.sort(skinIds)
-				for _, sid in skinIds do
-					local sk = invData.catalog.skins[sid]
-					local sOwned = ownsSkin(sid)
-					local isOn = sOwned and invData.skins.equipped and invData.skins.equipped[id] == sk.skin
-					-- REDONE swatch: uniform dark card for every skin; ring = GREEN when equipped, the
-					-- skin's rarity color when owned, near-black when locked; locked art is dimmed with
-					-- a padlock. Clicking a locked one explains itself instead of doing nothing.
-					local sw = Instance.new("TextButton")
-					sw.Size = UDim2.fromOffset(56, 56); sw.Text = ""
-					sw.BackgroundColor3 = darker(PANEL2, 0.35)
-					sw.BorderSizePixel = 0; sw.AutoButtonColor = true; sw.Parent = strip
-					corner(sw, 5)
-					ledge(sw, isOn and ACCENT or (sOwned and rarityColor(sk.rarity) or darker(TRACK, 0.3)), isOn and 3 or 2.5)
-					local svp
-					if sk.image then -- the owner's art for this skin
-						svp = Instance.new("ImageLabel")
-						svp.BackgroundTransparency = 1
-						svp.Image = sk.image
-						svp.ScaleType = Enum.ScaleType.Fit
-					else -- its model, else the base gun tinted with the skin color
-						svp = makeGunViewport(sid, false) or makeGunViewport(sk.gun, false, nil, sk.tint)
-					end
-					if svp then
-						svp.Position = UDim2.fromOffset(3, 3)
-						svp.Size = UDim2.new(1, -6, 1, -12)
-						if not sOwned then
-							svp.ImageColor3 = Color3.fromRGB(55, 55, 55)
-						end
-						svp.Parent = sw
-					end
-					if not sOwned then
-						local lock = Instance.new("TextLabel")
-						lock.AnchorPoint = Vector2.new(0.5, 0.5); lock.Position = UDim2.fromScale(0.5, 0.45)
-						lock.Size = UDim2.fromOffset(24, 24); lock.BackgroundTransparency = 1
-						lock.FontFace = BODYB_FACE; lock.TextSize = 17; lock.TextColor3 = TEXTCOL
-						lock.Text = "🔒"; lock.ZIndex = 4; lock.Parent = sw
-					end
-					local rbar = Instance.new("Frame")
-					rbar.AnchorPoint = Vector2.new(0, 1); rbar.Position = UDim2.new(0, 4, 1, -3)
-					rbar.Size = UDim2.new(1, -8, 0, 4)
-					rbar.BackgroundColor3 = sOwned and rarityColor(sk.rarity) or darker(TRACK, 0.15)
-					rbar.BorderSizePixel = 0; rbar.ZIndex = 3; rbar.Parent = sw
-					corner(rbar, 2)
-					sw.Activated:Connect(function()
-						if sOwned then
-							lplay("Equip")
-							EquipSkin:FireServer({ weaponId = id, skinId = (not isOn) and sk.skin or false })
-						else
-							lplay("Error")
-							cap.Text = ("LOCKED — %s DROPS FROM CRATES"):format((sk.name or sid):upper())
-							cap.TextColor3 = ORANGE
-							task.delay(2, function()
-								if cap.Parent then
-									cap.Text = "SKINS — CLICK TO EQUIP"
-									cap.TextColor3 = DIMTEXT
-								end
-							end)
-						end
-					end)
-				end
-			end
+			-- (SKINS DELETED — the click-to-equip swatch strip lived here. Crates pay GUNS now.)
 			-- EQUIP / UNEQUIP — the page's big CTA.
 			local slIdx = (w.slot == "secondary") and 2 or 1
 			local equipped = (invData.loadout[slIdx] == id)
@@ -3532,7 +3452,7 @@ do
 		d.TextWrapped = true
 		d.TextXAlignment = Enum.TextXAlignment.Left
 		d.TextYAlignment = Enum.TextYAlignment.Top
-		d.Text = "COINS · CRATES · A SKIN · JACKPOT: A DIVINE CRATE. Come back daily — claim streaks make the jackpot slice fatter."
+		d.Text = "COINS · GUN CRATES · JACKPOT: A DIVINE CRATE. Come back daily — claim streaks make the jackpot slice fatter."
 		d.Parent = S.page.daily
 
 		S.spinBtn = Instance.new("TextButton")

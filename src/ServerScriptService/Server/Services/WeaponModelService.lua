@@ -16,7 +16,6 @@ local TweenService = game:GetService("TweenService")
 local SharedConfig = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local WeaponConfig = require(SharedConfig:WaitForChild("WeaponConfig"))
 local GameConfig = require(SharedConfig:WaitForChild("GameConfig"))
-local SkinConfig = require(SharedConfig:WaitForChild("SkinConfig"))
 local AnimationConfig = require(SharedConfig:WaitForChild("AnimationConfig"))
 
 local MatchService = require(script.Parent.MatchService)
@@ -74,11 +73,6 @@ for id, w in WeaponConfig do
 	if type(w) == "table" and w.name then
 		nameToId[sanitize(w.name)] = id
 	end
-end
--- Skin models register under their FULL id ("revolver_gold"); accept "Gold Revolver" style names too.
-for fullId, s in SkinConfig.Skins do
-	nameToId[sanitize(fullId)] = fullId
-	nameToId[sanitize(s.name)] = fullId
 end
 local function resolveWeaponId(modelName: string): string?
 	return nameToId[sanitize(modelName)]
@@ -208,19 +202,7 @@ local function updateBackCarry(player: Player)
 	if not otherId then
 		return
 	end
-	-- Equipped SKIN model first, base + tint as the fallback (same rules as the hand).
 	local template = templates[otherId]
-	local tint = nil
-	local skins = data and data.skins
-	local skinId = (type(skins) == "table" and type(skins.equipped) == "table") and skins.equipped[otherId] or nil
-	if skinId then
-		if templates[otherId .. "_" .. skinId] then
-			template = templates[otherId .. "_" .. skinId]
-		else
-			local sn = SkinConfig.SkinNames[skinId]
-			tint = sn and sn.tint or nil
-		end
-	end
 	if not template then
 		return
 	end
@@ -258,9 +240,6 @@ local function updateBackCarry(player: Player)
 			d.CanTouch = false
 			d.Massless = true
 			d.Anchored = false
-			if tint then
-				d.Color = tint:Lerp(d.Color, 0.15)
-			end
 			if d ~= handle then
 				local wc = Instance.new("WeldConstraint")
 				wc.Part0 = handle
@@ -295,21 +274,7 @@ local function attach(player: Player)
 	-- bug). The pose is independent of the in-hand model, so stamp it immediately on every equip.
 	playHold(player, ps.equippedWeapon)
 	updateBackCarry(player) -- the OTHER loadout gun rides the back; only the unequipped one shows there
-	-- Equipped SKIN first (profile skins.equipped, lobby-owned), base gun model as the fallback —
-	-- tinted when the skin is a TINT skin with no dedicated model (SkinConfig.SkinNames[skin].tint).
 	local template = templates[ps.equippedWeapon]
-	local tint = nil
-	local data = DataService.Get(player)
-	local skins = data and data.skins
-	local skinId = (type(skins) == "table" and type(skins.equipped) == "table") and skins.equipped[ps.equippedWeapon] or nil
-	if skinId then
-		if templates[ps.equippedWeapon .. "_" .. skinId] then
-			template = templates[ps.equippedWeapon .. "_" .. skinId]
-		else
-			local sn = SkinConfig.SkinNames[skinId]
-			tint = sn and sn.tint or nil
-		end
-	end
 	if not template then
 		return -- no model supplied for this weapon (the FP viewmodel still works in first person)
 	end
