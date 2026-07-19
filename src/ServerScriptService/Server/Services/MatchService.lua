@@ -146,6 +146,7 @@ local function makePlayerState(player: Player)
 		pendingDraft = nil,
 
 		buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 },
+		powerStacks = {}, -- NEW: Power Draft — powerId -> stacks picked this run
 	}
 end
 
@@ -161,6 +162,9 @@ local function resetRunState(player: Player, ps)
 	ps.draftsOwed = 0
 	ps.pendingDraft = nil
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
+	ps.powerStacks = {} -- NEW: Power Draft resets with the run
+	player:SetAttribute("PowerFireRate", nil) -- NEW: clear the client-read power mirrors
+	player:SetAttribute("PowerMagnet", nil)
 	ps.isDead = false
 	ps.isDowned = false
 	ps.downedUntil = 0
@@ -459,88 +463,45 @@ runMatch = function()
 	setPhase("Playing")
 	Remotes.Get("RoundChanged"):FireAllClients(state.round)
 
+	-- ===== CONTINUOUS HORDE (the pivot — owner call) ===== no waves, no breaks, no extraction. The
+	-- horde never stops: ZombieService keeps filling toward a living target, and an INTENSITY level
+	-- (state.round — the same field the wave number used, so scaling, XP-per-round, the best-"wave"
+	-- board, bosses and events all keep working untouched) ticks up every Continuous.IntensitySeconds.
+	-- Each tick still fires waveClearedEvent (per-level Coin payout + every-10th-level case drops) and
+	-- keeps the flawless streak (now "nobody downed this level"). PowerDraftService runs its own clock.
+	ZombieService.BeginContinuous(state.round, inMatchCount())
+	EventService.OnWaveStart(state.round)
+	local nextTick = os.clock() + GameConfig.Continuous.IntensitySeconds
 	while anyInMatch() do
-		local count = computeCount(state.round, inMatchCount())
-		state.zombiesRemaining = count
-		ZombieService.BeginRound(state.round, count)
-		local waveTotal = count               -- this wave's owed count (denominator for the count bar)
-		local lastRemaining = -1
-		Remotes.Get("WaveProgress"):FireAllClients(count, waveTotal)
+		state.zombiesAlive = ZombieService.GetAliveCount()
+		if os.clock() >= nextTick then
+			nextTick += GameConfig.Continuous.IntensitySeconds
 
-		-- A boss every BossEvery-th wave, cycling the roster forever. Boss HP scales × players.
-		if GameConfig.BossEvery > 0 and state.round % GameConfig.BossEvery == 0 then
-			local roster = GameConfig.BossRoster
-			local bossId = roster[math.floor(state.round / GameConfig.BossEvery - 1) % #roster + 1]
-			ZombieService.SpawnBoss(state.round, bossId, inMatchCount())
-		end
-
-		-- RANDOM EVENT roll (EventService): each wave can fire ONE surprise (supply drop / fog / nest / meteors).
-		EventService.OnWaveStart(state.round)
-
-		while not ZombieService.IsRoundCleared() do
-			if not anyInMatch() then
-				break
+			-- Flawless accounting for the level that just ended (drives the team Coin multiplier).
+			if state.waveDowned then
+				state.flawlessStreak = 0
+			else
+				state.flawlessStreak += 1
+				local mult = math.min(1 + state.flawlessStreak * GameConfig.FlawlessBonusPerWave, GameConfig.FlawlessMaxMult)
+				Remotes.Get("FlawlessWave"):FireAllClients(state.flawlessStreak, mult)
 			end
-			state.zombiesAlive = ZombieService.GetAliveCount()
-			state.zombiesRemaining = ZombieService.GetRemaining()
-			local left = ZombieService.GetLeft() -- remaining + alive → drops on every KILL, not just on spawn
-			if left ~= lastRemaining then
-				lastRemaining = left
-				Remotes.Get("WaveProgress"):FireAllClients(left, waveTotal)
-			end
-			task.wait(0.1) -- tight poll so the break starts right when the last zombie dies
-		end
-		if not anyInMatch() then
-			break
-		end
+			state.waveDowned = false
+			waveClearedEvent:Fire(state.round) -- per-level Coins + case drops ride this, unchanged
 
-		-- Flawless accounting: nobody downed all wave -> the streak (and the team's wave Coin payout
-		-- multiplier in ProgressionService) climbs; any down resets it. Updated BEFORE WaveCleared fires
-		-- so the payout uses this wave's streak.
-		if state.waveDowned then
-			state.flawlessStreak = 0
-		else
-			state.flawlessStreak += 1
-			local mult = math.min(1 + state.flawlessStreak * GameConfig.FlawlessBonusPerWave, GameConfig.FlawlessMaxMult)
-			Remotes.Get("FlawlessWave"):FireAllClients(state.flawlessStreak, mult)
-		end
-		state.waveDowned = false
+			state.round += 1
+			Remotes.Get("RoundChanged"):FireAllClients(state.round)
+			ZombieService.SetIntensity(state.round, inMatchCount())
 
-		waveClearedEvent:Fire(state.round) -- GameInventoryService drops wave-clear cases off this
-
-		setPhase("RoundBreak")
-		-- EXTRACTION WINDOW (every Nth wave): each player chooses CASH OUT (leave with pot × multiplier)
-		-- or DOUBLE DOWN (stay; the multiplier climbs when the window closes).
-		local ex = GameConfig.Extraction
-		if ex.Every > 0 and state.round % ex.Every == 0 and anyInMatch() then
-			local nextMult = state.extractMult + ex.MultPerStage
-			MatchService.ForEachPlayer(function(player, ps)
-				Remotes.Get("ExtractWindow"):FireClient(player, {
-					seconds = ex.WindowSeconds,
-					mult = state.extractMult,
-					nextMult = nextMult,
-					pot = ps.lobbyEarned or 0,
-				})
-			end)
-			local deadline = os.clock() + ex.WindowSeconds
-			while os.clock() < deadline and anyInMatch() do
-				task.wait(0.25)
+			-- A boss every BossEvery-th level, cycling the roster forever. Boss HP scales × players.
+			if GameConfig.BossEvery > 0 and state.round % GameConfig.BossEvery == 0 then
+				local roster = GameConfig.BossRoster
+				local bossId = roster[math.floor(state.round / GameConfig.BossEvery - 1) % #roster + 1]
+				ZombieService.SpawnBoss(state.round, bossId, inMatchCount())
 			end
-			Remotes.Get("ExtractWindow"):FireAllClients({ seconds = 0 }) -- close the prompt
-			if not anyInMatch() then
-				break -- everyone cashed out — the run is over
-			end
-			state.extractMult = nextMult -- the stayers doubled down
-			Remotes.Get("ExtractMult"):FireAllClients(state.extractMult)
-		else
-			task.wait(GameConfig.RoundBreakSeconds)
+			-- RANDOM EVENT roll (EventService): each level can fire ONE surprise.
+			EventService.OnWaveStart(state.round)
 		end
-		if not anyInMatch() then
-			break
-		end
-		state.round += 1
-		Remotes.Get("RoundChanged"):FireAllClients(state.round)
-		setPhase("Playing")
+		task.wait(0.25)
 	end
 
 	-- Run ended (everyone extracted/left, or the wipe banked them): clear the field and idle back to Lobby.

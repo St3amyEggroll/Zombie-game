@@ -107,7 +107,9 @@ end
 -- Damage every live zombie within cfg.radius of `center` (full at the center → 50% at the edge). Kills
 -- credit the shooter (fires killEvent) so AoE pays cash/XP exactly like a direct hit.
 local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
-	local radius = math.max(1, cfg.radius or 12)
+	-- NEW: BIGGER BOOMS (Power Draft) widens every blast this player causes.
+	local aoePs = MatchService.GetPlayerState(player)
+	local radius = math.max(1, cfg.radius or 12) * (1 + buffOf(aoePs or {}, "splash"))
 	local dmg = math.max(0, cfg.damage or 0)
 	if dmg > 0 then
 		for _, rec in ZombieService.GetActive() do
@@ -185,7 +187,9 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- holds FIRE_BURST, so the AVERAGE rate is still hard-capped but frame-bunched shots aren't eaten.
 	-- One bucket per player (not per weapon): switching weapons can't reset your cadence.
 	local now = os.clock()
-	local refill = eff.fireRate / FIRE_RATE_SLACK
+	-- NEW: TRIGGER DISCIPLINE (Power Draft) speeds the whole gate up — the client paces its own
+	-- shots by the same attribute, so buffed fire never trips the anti-cheat bucket.
+	local refill = eff.fireRate / FIRE_RATE_SLACK * (1 + buffOf(ps, "attackspeed"))
 	local b = c.fire
 	if not b then
 		b = { tokens = 1, last = now }
@@ -329,6 +333,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 				-- Ability status effects ride on live hits (a corpse can't be pinned or chilled).
 				if weapon.chill then
 					ZombieService.Chill(c.record, weapon.chill, weapon.shatter)
+				elseif buffOf(ps, "frost") > 0 and math.random() < buffOf(ps, "frost") then
+					-- NEW: FROST ROUNDS (Power Draft) — any gun can proc a partial chill (never the
+					-- freeze-solid the Freeze Ray keeps to itself).
+					ZombieService.Chill(c.record, { slowPct = 0.6, secs = 2 })
 				end
 				if weapon.pin then
 					ZombieService.Pin(c.record, weapon.pin.secs)

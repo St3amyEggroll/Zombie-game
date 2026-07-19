@@ -114,15 +114,28 @@ GameConfig.AllWorldsOpen = true -- OPEN EVERY MAP for now (must mirror the lobby
 -- Worlds unlock by ACCOUNT LEVEL now (no more "beat Nightmare" gates). Tune per world; 0 = always open.
 GameConfig.WorldUnlockLevel = { forest = 0, islands = 8 }
 
--- ===== EXTRACTION (cash out or double down — THE run loop) =====
--- Every `Every` waves the wave break becomes an EXTRACTION WINDOW: each player chooses CASH OUT (bank
--- this run's Coins × the current multiplier and leave) or ride on (DOUBLE DOWN: the multiplier climbs
--- by MultPerStage and the horde keeps coming). A team wipe pays the BASE Coins only — no multiplier.
-GameConfig.Extraction = {
-	Every = 5,            -- an extraction window after every Nth wave
-	WindowSeconds = 20,   -- how long the choice stays open
-	MultPerStage = 0.5,   -- declined windows raise the payout multiplier: 1.0x -> 1.5x -> 2.0x -> ...
+-- ===== CONTINUOUS HORDE + POWER DRAFT (THE run loop — replaced extraction, owner call) =====
+-- No waves, no breaks: zombies spawn FOREVER toward a living-count target that climbs with an
+-- INTENSITY level (state.round — same field as the old wave number, so scaling/XP/leaderboards/events
+-- all still work). Every Draft.Every seconds each player picks 1 of 3 stacking POWERS (the roguelite
+-- loop). A team wipe ends the run; Coins bank live; LEAVE just leaves.
+GameConfig.Continuous = {
+	IntensitySeconds = 30, -- seconds per intensity level (drives scaling/bosses/events/coin ticks)
+	BaseAlive        = 6,  -- living-zombie target at intensity 1 (solo)
+	AlivePerLevel    = 1.4, -- target += this per intensity level
+	SpawnInterval    = 0.35, -- seconds between fill spawns
+	SpawnIntervalRush = 0.12, -- ...when the deficit is big (post-nuke / post-event refill)
+	RushDeficit      = 8,
 }
+GameConfig.Draft = {
+	FirstAfter  = 25, -- seconds into the run before the FIRST power draft
+	Every       = 60, -- seconds between drafts after that
+	PickSeconds = 12, -- choice window; no pick = the first card auto-picks
+}
+
+-- (EXTRACTION IS DEAD — cash out/double down removed for the draft loop. Table kept so stale reads
+-- don't explode; nothing fires its windows anymore.)
+GameConfig.Extraction = { Every = 0, WindowSeconds = 20, MultPerStage = 0.5 }
 
 -- ===== RANDOM IN-RUN EVENTS ===== (EventService) — each wave can fire ONE surprise event.
 GameConfig.Events = {

@@ -66,7 +66,9 @@ end
 
 local function computeMaxHealth(player: Player): number
 	local cls = classOf(player) -- JUGGERNAUT's +HP
-	return GameConfig.PlayerMaxHealth + ((cls and cls.healthBonus) or 0)
+	local ps = MatchService.GetPlayerState(player) -- NEW: THICK SKIN (Power Draft) stacks +HP
+	local buff = (ps and ps.buffs and ps.buffs.maxhp) or 0
+	return GameConfig.PlayerMaxHealth + ((cls and cls.healthBonus) or 0) + buff
 end
 
 local function fireHealth(player: Player, humanoid: Humanoid)

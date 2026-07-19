@@ -2,18 +2,16 @@
 -- RunEventController.lua — client side of the run's SURPRISES:
 --   • RunEvent "announce" → the HUD announcement lane (event names ride the same queue as boss banners).
 --   • RunEvent "fog"      → thick Lighting fog rolls in for a while, then burns back off (local FX only).
---   • ExtractWindow       → THE choice: a centered CASH OUT (bank pot × multiplier, leave) vs DOUBLE DOWN
---                           (dismiss; the multiplier climbs) card with a live countdown.
---   • ExtractMult         → "DOUBLED DOWN" confirmation once the window closes for the stayers.
+-- (The EXTRACTION card lived here until the continuous-horde pivot — the run has no cash-out windows
+-- anymore, so the card, its remotes and its countdown are gone. PowerDraftController owns the run's
+-- recurring choice now.)
 
-local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Remotes = require(Shared.Modules.Remotes)
-local UITheme = require(Shared.Modules.UITheme)
 
 local HUDController = require(script.Parent.HUDController)
 
@@ -30,8 +28,6 @@ local COLORS = {
 	red = Color3.fromRGB(255, 96, 34),
 	grey = Color3.fromRGB(180, 186, 168),
 }
-
-local localPlayer = Players.LocalPlayer
 
 -- ===== FOG =====
 local fogToken = 0
@@ -56,115 +52,7 @@ local function rollFog(seconds: number)
 	end)
 end
 
--- ===== EXTRACTION CARD ===== ordered TOP-DOWN rows (header → payout → buttons → countdown), nothing
--- anchored from the bottom — the old mixed anchoring let the note render UNDER the CASH OUT button.
-local gui, panel, potLabel, multLabel, timeLabel, stayBtn, cashBtn
-local countdownToken = 0
-
-local function fmt(n: number): string
-	local s = tostring(math.floor(n))
-	return (s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", ""))
-end
-
-local function buildUI()
-	gui = Instance.new("ScreenGui")
-	gui.Name = "ExtractPrompt"
-	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = UITheme.Layer and UITheme.Layer.Modal or 30
-	gui.Enabled = false
-	gui.Parent = localPlayer:WaitForChild("PlayerGui")
-	UITheme.Attach(gui, 470, 340) -- mobile: the extraction card fills the phone screen
-
-	panel = UITheme.Panel(gui, "ExtractPanel")
-	panel.AnchorPoint = Vector2.new(0.5, 0.5)
-	panel.Position = UDim2.fromScale(0.5, 0.42)
-	panel.Size = UDim2.fromOffset(440, 306)
-	UITheme.Header(panel, "EXTRACTION", nil, UITheme.GOLD)
-
-	-- SAFE line: the run's coins are ALREADY banked live (they can never be lost) — say so plainly, so
-	-- "double down" doesn't read as risking money you've earned. Only the BONUS is at stake.
-	potLabel = UITheme.Title(panel, "Pot", 22)
-	potLabel.Position = UDim2.fromOffset(0, 58)
-	potLabel.Size = UDim2.new(1, 0, 0, 28)
-	potLabel.TextXAlignment = Enum.TextXAlignment.Center
-
-	multLabel = UITheme.Label(panel, "Mult", 14, nil, true)
-	multLabel.Position = UDim2.fromOffset(0, 88)
-	multLabel.Size = UDim2.new(1, 0, 0, 30)
-	multLabel.TextXAlignment = Enum.TextXAlignment.Center
-	multLabel.TextWrapped = true
-
-	-- DOUBLE DOWN rides on TOP in GREEN (the exciting default); CASH OUT below in RED (the bail-out).
-	stayBtn = UITheme.Button(panel, "DOUBLE DOWN", "primary")
-	stayBtn.Position = UDim2.new(0.5, 0, 0, 122)
-	stayBtn.AnchorPoint = Vector2.new(0.5, 0)
-	stayBtn.Size = UDim2.new(1, -36, 0, 56)
-	stayBtn.Activated:Connect(function()
-		gui.Enabled = false -- staying is the default: just dismiss (the window closing doubles you down)
-	end)
-
-	cashBtn = UITheme.Button(panel, "CASH OUT", "danger")
-	cashBtn.Position = UDim2.new(0.5, 0, 0, 190)
-	cashBtn.AnchorPoint = Vector2.new(0.5, 0)
-	cashBtn.Size = UDim2.new(1, -36, 0, 50)
-	cashBtn.Activated:Connect(function()
-		Remotes.Get("ExtractChoice"):FireServer()
-		gui.Enabled = false -- the server banks + teleports; hide immediately so it can't double-fire
-	end)
-
-	timeLabel = UITheme.Label(panel, "Clock", 15, nil, true)
-	timeLabel.AnchorPoint = Vector2.new(0.5, 1)
-	timeLabel.Position = UDim2.new(0.5, 0, 1, -12)
-	timeLabel.Size = UDim2.new(1, 0, 0, 18)
-	timeLabel.TextXAlignment = Enum.TextXAlignment.Center
-end
-
-local function showWindow(info)
-	local secs = tonumber(info.seconds) or 0
-	if secs <= 0 then
-		gui.Enabled = false
-		return
-	end
-	local pot = tonumber(info.pot) or 0
-	local mult = tonumber(info.mult) or 1
-	local nextMult = tonumber(info.nextMult) or (mult + 0.5)
-	-- HONEST NUMBERS: the base `pot` is already banked live and kept no matter what. The multiplier only
-	-- pays a BONUS = pot * (mult - 1), granted ONLY if you cash out alive — a wipe forfeits the bonus.
-	-- (The card used to scream pot * mult, ~2-3x what the server actually grants.)
-	local bonus = math.floor(pot * (mult - 1))
-	local nextBonus = math.floor(pot * (nextMult - 1))
-	potLabel.Text = ("%s COINS BANKED — SAFE"):format(fmt(pot))
-	if bonus > 0 then
-		multLabel.Text = ("Cash out for a +%s bonus (x%.1f). Wipe and you keep only the %s banked."):format(fmt(bonus), mult, fmt(pot))
-		cashBtn.Text = ("CASH OUT  ·  +%s"):format(fmt(bonus))
-	else
-		multLabel.Text = "Your coins are safe. Double down to start building a payout bonus."
-		cashBtn.Text = "CASH OUT & LEAVE"
-	end
-	stayBtn.Text = ("DOUBLE DOWN  →  x%.1f  (+%s)"):format(nextMult, fmt(nextBonus)) -- the reward grows here
-	gui.Enabled = true
-	countdownToken += 1
-	local myTok = countdownToken
-	task.spawn(function()
-		local deadline = os.clock() + secs
-		while gui.Enabled and myTok == countdownToken do
-			local left = deadline - os.clock()
-			if left <= 0 then
-				break
-			end
-			timeLabel.Text = ("HORDE RETURNS IN %ds"):format(math.ceil(left))
-			task.wait(0.2)
-		end
-		if myTok == countdownToken then
-			gui.Enabled = false
-		end
-	end)
-end
-
 function RunEventController.Start()
-	buildUI()
-
 	Remotes.Get("RunEvent").OnClientEvent:Connect(function(kind, payload)
 		payload = typeof(payload) == "table" and payload or {}
 		if kind == "announce" and typeof(payload.text) == "string" then
@@ -172,16 +60,6 @@ function RunEventController.Start()
 		elseif kind == "fog" then
 			rollFog(tonumber(payload.seconds) or 25)
 		end
-	end)
-
-	Remotes.Get("ExtractWindow").OnClientEvent:Connect(function(info)
-		if typeof(info) == "table" then
-			showWindow(info)
-		end
-	end)
-
-	Remotes.Get("ExtractMult").OnClientEvent:Connect(function(mult)
-		HUDController.Announce(("DOUBLED DOWN — PAYOUT NOW x%.1f"):format(tonumber(mult) or 1), COLORS.gold, 4)
 	end)
 
 	print("[RunEventController] started")

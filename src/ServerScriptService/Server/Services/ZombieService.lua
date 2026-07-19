@@ -2343,6 +2343,52 @@ function ZombieService.BeginRound(round: number, count: number)
 	end)
 end
 
+-- ===== CONTINUOUS MODE (the pivot: no waves) ===== keep the world filled toward a LIVING-zombie
+-- target that climbs with the intensity level. Spawning never stops; kills open room for the next.
+local contPlayers = 1
+local function livingCount(): number
+	local n = 0
+	for _ in active do
+		n += 1
+	end
+	return n
+end
+
+local function continuousTarget(): number
+	local c = GameConfig.Continuous
+	local base = c.BaseAlive + c.AlivePerLevel * math.max(0, currentRound - 1)
+	local scaled = base * (1 + (contPlayers - 1) * (GameConfig.PlayerCountScale or 0.7))
+	return math.min(GameConfig.MaxAliveZombies, math.floor(scaled))
+end
+
+-- Start (or restart) the endless filler. Intensity/roster changes ride SetIntensity — the loop reads
+-- currentRound live, so it never needs restarting mid-run.
+function ZombieService.BeginContinuous(round: number, playerCount: number?)
+	currentRound = round
+	contPlayers = math.max(1, playerCount or 1)
+	remaining = 0 -- wave bookkeeping retired; nothing is "owed"
+	roundToken += 1
+	local myToken = roundToken
+	task.spawn(function()
+		local c = GameConfig.Continuous
+		while myToken == roundToken do
+			local deficit = continuousTarget() - livingCount()
+			if deficit > 0 and aliveCount < GameConfig.MaxAliveZombies then
+				spawnOne(currentRound)
+			end
+			task.wait(deficit >= c.RushDeficit and c.SpawnIntervalRush or c.SpawnInterval)
+		end
+	end)
+end
+
+-- Intensity tick: harder stats + roster for NEW spawns and a bigger living target. Cheap — no restart.
+function ZombieService.SetIntensity(round: number, playerCount: number?)
+	currentRound = round
+	if playerCount then
+		contPlayers = math.max(1, playerCount)
+	end
+end
+
 -- Spawn exactly ONE boss for this wave: broadcasts an entrance, then streams its health to the boss bar
 -- until it dies. The boss counts toward aliveCount, so the wave won't clear until it's dead.
 -- Boss HP scales with the party: × the number of players in the run (2p = 2x, 3p = 3x, ...).

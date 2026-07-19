@@ -34,10 +34,14 @@ local DEFINITIONS: { [string]: string } = {
 	StartCountdown    = "RemoteEvent",     -- S->C: (seconds) — pre-run countdown while the party loads in (0 = clear)
 	WaveProgress      = "RemoteEvent",     -- S->C: (remaining, total) — zombies left to kill this wave (drives the count bar)
 
-	-- EXTRACTION (cash out or double down) + random in-run events
-	ExtractWindow     = "RemoteEvent",     -- S->C: ({seconds, mult, nextMult, pot}) window opened; ({seconds=0}) closed
-	ExtractChoice     = "RemoteEvent",     -- C->S: CASH OUT during an open window (server re-validates the phase)
-	ExtractMult       = "RemoteEvent",     -- S->C all: (mult) — the stayers doubled down; HUD shows the new multiplier
+	-- POWER DRAFT (the roguelite loop that replaced extraction) + random in-run events
+	DraftClock        = "RemoteEvent",     -- S->C all: (seconds) — time until the next power draft (HUD countdown)
+	DraftOffer        = "RemoteEvent",     -- S->C: ({powers = {{id,name,desc,stacks},...}, seconds}) pick 1 of 3
+	DraftPick         = "RemoteEvent",     -- C->S: (powerId) — must be one of YOUR offered three
+	-- (Extraction remotes kept registered so old clients don't error mid-update; nothing fires them.)
+	ExtractWindow     = "RemoteEvent",     -- (dead)
+	ExtractChoice     = "RemoteEvent",     -- (dead)
+	ExtractMult       = "RemoteEvent",     -- (dead)
 	RunEvent          = "RemoteEvent",     -- S->C all: (kind, payload) — event announce + client-side FX (fog, ...)
 	WorldVFX          = "RemoteEvent",     -- S->C all: (kind, {pos, ...}) — server announces, clients render particles
 	                                       -- (Emit() doesn't replicate, so all world VFX are client-side bursts)

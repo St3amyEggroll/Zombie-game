@@ -173,7 +173,12 @@ local function spawnBurst(pos: Vector3, special: boolean)
 		c.bounced = false
 		c.t0 = now
 		c.restAt = 0
-		c.restFor = REST_SECONDS + (i - 1) * REST_STAGGER
+		-- NEW: COIN MAGNET (Power Draft) — coins skip the ground rest and fly straight to you.
+		if localPlayer:GetAttribute("PowerMagnet") then
+			c.restFor = 0
+		else
+			c.restFor = REST_SECONDS + (i - 1) * REST_STAGGER
+		end
 		c.spin = math.random(0, 359)
 		c.img.Rotation = c.spin
 		c.part.Position = pos

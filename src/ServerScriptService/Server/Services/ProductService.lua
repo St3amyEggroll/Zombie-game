@@ -3,9 +3,10 @@
 -- game, and it lives here. Add a product = paste its id into GameConfig + add a granter below.
 --
 -- CURRENT PRODUCTS:
---   SKIP WAVE (GameConfig.SkipWaveProductId) — the small gold button beside the enemies bar. Clears the
---   current wave instantly: everything still owed is cancelled and every live zombie drops dead, so the
---   wave completes through the normal cleared check (no cash/XP credited — there's no shooter).
+--   NUKE (GameConfig.SkipWaveProductId — same product, renamed with the continuous pivot) — the small
+--   gold button beside the power-clock bar. Vaporizes the horde: everything still owed is cancelled and
+--   every live zombie drops dead (no cash/XP credited — there's no shooter). The horde immediately
+--   starts refilling; the buy is a panic button, not a pause.
 --   REVIVE (GameConfig.ReviveProductId) — the gold button on the death screen. Puts a dead player
 --   straight back into the live run and cancels a pending team-wipe countdown (MatchService.RobuxRevive).
 
@@ -23,15 +24,15 @@ local DataService = require(script.Parent.DataService)
 
 local ProductService = {}
 
-local function grantSkipWave(player: Player)
+local function grantSkipWave(player: Player) -- the NUKE (kept the old name — the receipt path is wired to it)
 	if MatchService.State.phase ~= "Playing" then
-		-- Nothing to skip right now (purchase landed between waves) — still consume the purchase below;
-		-- letting it retry forever would re-fire mid-next-wave unexpectedly.
-		warn(("[ProductService] %s bought SKIP WAVE outside a live wave — consumed with no effect"):format(player.Name))
+		-- No live horde right now (purchase landed outside a run) — still consume the purchase below;
+		-- letting it retry forever would re-fire mid-next-run unexpectedly.
+		warn(("[ProductService] %s bought NUKE outside a live run — consumed with no effect"):format(player.Name))
 		return
 	end
 	ZombieService.SkipWave()
-	print(("[ProductService] %s bought SKIP WAVE — wave %d cleared"):format(player.Name, MatchService.State.round))
+	print(("[ProductService] %s bought NUKE — horde wiped at threat %d"):format(player.Name, MatchService.State.round))
 end
 
 function ProductService.Start()
