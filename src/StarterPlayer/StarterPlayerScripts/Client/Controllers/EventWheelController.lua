@@ -139,6 +139,9 @@ local function runRoll(info)
 	local myTok = spinToken
 	wordScale.Scale = 1
 	gui.Enabled = true
+	-- The HUD's "NEXT WAVE IN n" countdown yields while the roller is up (they share the top-center
+	-- lane — both showing at once printed the garbled "NE:NEXT WAVEN 5" overlap).
+	localPlayer:SetAttribute("EventRollerUp", true)
 
 	-- The spin SOUND: the clip is ~1.5s, the roll is ~3s — re-play it back-to-back across the window.
 	task.spawn(function()
@@ -190,6 +193,7 @@ local function runRoll(info)
 		task.delay(HOLD_SECONDS, function()
 			if myTok == spinToken then
 				gui.Enabled = false
+				localPlayer:SetAttribute("EventRollerUp", false)
 			end
 		end)
 	end)

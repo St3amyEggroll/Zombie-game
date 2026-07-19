@@ -12,6 +12,19 @@ local UserInputService = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
+-- The right-edge party column IS the player list — kill Roblox's default leaderboard (retried:
+-- SetCoreGuiEnabled can fail in the first frames). No new file-scope locals (LC rule below).
+task.spawn(function()
+	for _ = 1, 10 do
+		if pcall(function()
+			game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+		end) then
+			return
+		end
+		task.wait(0.5)
+	end
+end)
+
 -- LC: low-traffic constants folded into ONE table -- the main chunk hit Luau's 200-local-register
 -- ceiling ("Out of local registers ... robuxGem"). New file-scope values go IN HERE (or on the
 -- C/S/Q/T/G/RV tables), never as fresh top-level locals.

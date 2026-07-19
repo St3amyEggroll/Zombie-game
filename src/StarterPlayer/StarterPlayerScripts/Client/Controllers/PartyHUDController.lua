@@ -153,6 +153,21 @@ local function refresh()
 end
 
 function PartyHUDController.Start()
+	-- The party column IS the player list — kill Roblox's default leaderboard (the "People/Wins" box
+	-- that fought it in the top-right). Retried: SetCoreGuiEnabled can fail in the first frames.
+	task.spawn(function()
+		local StarterGui = game:GetService("StarterGui")
+		for _ = 1, 10 do
+			local ok = pcall(function()
+				StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+			end)
+			if ok then
+				return
+			end
+			task.wait(0.5)
+		end
+	end)
+
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "PartyHUD"
 	gui.ResetOnSpawn = false

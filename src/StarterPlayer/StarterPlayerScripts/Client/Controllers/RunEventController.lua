@@ -31,14 +31,36 @@ local COLORS = {
 }
 
 -- ===== FOG ===== (whole-wave: "fog" rolls it in and holds; "fogclear" burns it off)
+-- FIXED (owner report: "fog doesn't work, I can still see fine"): when Lighting has an ATMOSPHERE,
+-- Roblox IGNORES the classic FogStart/FogEnd properties entirely — so we drive Atmosphere.Density/Haze
+-- when one exists, and fall back to classic fog when it doesn't. Both paths restore on clear.
 local fogToken = 0
-local fogBase -- Lighting values before the fog landed (restored by fogclear)
+local fogBase -- Lighting/Atmosphere values before the fog landed (restored by fogclear)
+
+local function atmosphere(): Atmosphere?
+	return Lighting:FindFirstChildOfClass("Atmosphere")
+end
 
 local function rollFog()
 	fogToken += 1
-	fogBase = fogBase or { FogEnd = Lighting.FogEnd, FogStart = Lighting.FogStart, FogColor = Lighting.FogColor }
+	local atmo = atmosphere()
+	fogBase = fogBase or {
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor,
+		Density = atmo and atmo.Density or nil,
+		Haze = atmo and atmo.Haze or nil,
+		AtmoColor = atmo and atmo.Color or nil,
+	}
 	Lighting.FogColor = Color3.fromRGB(120, 128, 112)
 	TweenService:Create(Lighting, TweenInfo.new(FOG_TWEEN), { FogEnd = FOG_END, FogStart = 12 }):Play()
+	if atmo then -- the path that actually shows on a modern place
+		TweenService:Create(atmo, TweenInfo.new(FOG_TWEEN), {
+			Density = 0.72, -- thick: ~40-stud practical visibility
+			Haze = 3,
+			Color = Color3.fromRGB(120, 128, 112),
+		}):Play()
+	end
 end
 
 local function clearFog()
@@ -48,6 +70,14 @@ local function clearFog()
 		return
 	end
 	local base = fogBase
+	local atmo = atmosphere()
+	if atmo and base.Density ~= nil then
+		TweenService:Create(atmo, TweenInfo.new(FOG_TWEEN), {
+			Density = base.Density,
+			Haze = base.Haze or atmo.Haze,
+			Color = base.AtmoColor or atmo.Color,
+		}):Play()
+	end
 	local out = TweenService:Create(Lighting, TweenInfo.new(FOG_TWEEN), { FogEnd = base.FogEnd, FogStart = base.FogStart })
 	out.Completed:Once(function()
 		if myTok == fogToken then

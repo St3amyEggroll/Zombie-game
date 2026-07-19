@@ -634,7 +634,10 @@ function HUDController.Start()
 		}):Play()
 	end)
 	RunService.RenderStepped:Connect(function()
-		if breakEndsAt > 0 and os.clock() < breakEndsAt then
+		-- The EVENT ROLLER owns the top-center while it's flashing — the countdown yields to it
+		-- (both at once overlapped into unreadable double-text) and takes over once it tucks away.
+		local rollerUp = localPlayer:GetAttribute("EventRollerUp") == true
+		if breakEndsAt > 0 and os.clock() < breakEndsAt and not rollerUp then
 			breakLabel.Text = ("NEXT WAVE IN %d"):format(math.ceil(breakEndsAt - os.clock()))
 			breakLabel.Visible = true
 		elseif breakLabel.Visible then
