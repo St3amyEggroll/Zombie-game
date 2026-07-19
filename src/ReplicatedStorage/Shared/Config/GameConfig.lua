@@ -123,7 +123,7 @@ GameConfig.Extraction = { Every = 0, WindowSeconds = 20, MultPerStage = 0.5 }
 -- too — its weight shrinks as waves climb, so deep runs get wilder. (0 weight disables an outcome.)
 GameConfig.Events = {
 	SpinSeconds = 3,          -- how long the client wheel animates before the reveal (< RoundBreakSeconds)
-	Weights = { calm = 0, bloodmoon = 3, fog = 3, meteors = 3 }, -- base weights (calm's is computed below)
+	Weights = { calm = 0, bloodmoon = 3, fog = 3, meteors = 3, lightning = 3 }, -- base weights (calm's is computed below)
 	CalmBase = 10,            -- calm's weight on wave 1...
 	CalmDecayPerWave = 0.5,   -- ...shrinking by this per wave...
 	CalmMin = 2,              -- ...but never below this (a breather is always possible)
@@ -134,6 +134,11 @@ GameConfig.Events = {
 	MeteorEvery  = 2.2,        -- seconds between strikes
 	MeteorDamage = 25,         -- to players inside a blast
 	MeteorRadius = 9,          -- studs
+	-- LIGHTNING STORM: the INVERSE of meteors — bolts kill ZOMBIES in the blue circles all wave
+	-- (kite the horde into them). Players are never hurt; bosses only take a chunk, never the kill.
+	LightningEvery     = 2.0,  -- seconds between bolts
+	LightningRadius    = 10,   -- studs
+	LightningBossFrac  = 0.05, -- bosses caught in a bolt lose this fraction of MAX HP (no instant kill)
 }
 
 -- ===== MAPS / WORLDS ===== how each world plays (this IS the difficulty table now — one row per world).

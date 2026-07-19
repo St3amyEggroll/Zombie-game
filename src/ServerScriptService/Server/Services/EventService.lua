@@ -182,12 +182,81 @@ local function endMeteors()
 	-- The strike loop watches `gen`; EndWaveEvent bumps it, so nothing else to do here.
 end
 
+-- ===== LIGHTNING STORM ===== whole wave: the INVERSE of meteors — bolts KILL ZOMBIES inside the
+-- blue circles (players are never hurt), so the play is kiting the horde into the strike zones.
+-- Storm kills pay nothing (no shooter) but count toward the wave clear like any death.
+local function beginLightning(myGen, round)
+	announce("LIGHTNING STORM — LURE THEM INTO THE CIRCLES!", "gold")
+	local radius = tonumber(cfg().LightningRadius) or 10
+	local every = math.max(0.8, tonumber(cfg().LightningEvery) or 2.0)
+	local bossFrac = tonumber(cfg().LightningBossFrac) or 0.05
+	task.spawn(function()
+		while myGen == gen do
+			task.spawn(function()
+				local at = randomPlayerPos()
+				if not at then
+					return
+				end
+				-- Bias the circle AHEAD of the player's crowd rather than on top of them: near a random
+				-- living player, wide scatter — the horde funnels toward players, so circles near the
+				-- approach lanes catch zombies without demanding suicide positioning.
+				local ground = groundAt(at + Vector3.new(math.random(-28, 28), 0, math.random(-28, 28)))
+				local disc = mkPart({ -- the telegraph: lure them into THIS
+					Shape = Enum.PartType.Cylinder,
+					Size = Vector3.new(0.4, radius * 2, radius * 2),
+					Color = Color3.fromRGB(120, 200, 255),
+					Material = Enum.Material.Neon,
+					Transparency = 0.5,
+					CFrame = CFrame.new(ground + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+				})
+				task.wait(METEOR_TELEGRAPH)
+				disc:Destroy()
+				if myGen ~= gen then
+					return
+				end
+				-- THE BOLT: a sky-to-ground neon column that flashes out, plus the layered boom flash.
+				local bolt = mkPart({
+					Size = Vector3.new(1.4, 110, 1.4),
+					Color = Color3.fromRGB(190, 230, 255),
+					Material = Enum.Material.Neon,
+					CFrame = CFrame.new(ground + Vector3.new(0, 55, 0)),
+				})
+				TweenService:Create(bolt, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+					{ Transparency = 1, Size = Vector3.new(0.2, 110, 0.2) }):Play()
+				task.delay(0.25, function()
+					if bolt.Parent then
+						bolt:Destroy()
+					end
+				end)
+				Remotes.Get("WorldVFX"):FireAllClients("boom", { pos = ground, r = radius * 0.7 })
+				-- Zombies in the circle DIE (bosses only lose a chunk of max HP — never the kill).
+				for _, rec in ZombieService.GetActive() do
+					local root = rec.root
+					if root and (root.Position - ground).Magnitude <= radius then
+						if rec.isBoss then
+							ZombieService.ApplyDamage(rec, (rec.maxHealth or 1000) * bossFrac)
+						else
+							ZombieService.ApplyDamage(rec, math.huge)
+						end
+					end
+				end
+			end)
+			task.wait(every)
+		end
+	end)
+end
+
+local function endLightning()
+	-- The bolt loop watches `gen`; EndWaveEvent bumps it.
+end
+
 -- outcome id -> { begin(myGen, round), stop() }. Add a wheel outcome = add a row + a weight in config.
 local OUTCOMES = {
 	calm      = { begin = nil,            stop = nil },
 	bloodmoon = { begin = beginBloodMoon, stop = endBloodMoon },
 	fog       = { begin = beginFog,       stop = endFog },
 	meteors   = { begin = beginMeteors,   stop = endMeteors },
+	lightning = { begin = beginLightning, stop = endLightning },
 }
 
 -- ===== PUBLIC =====

@@ -30,12 +30,13 @@ local LOCK_PUNCH = 1.22    -- the locked word's pop scale
 
 -- What each outcome reads as (server sends only the id). Add a wheel outcome = add a row.
 local LOOK = {
-	calm      = { name = "CALM WAVE",     color = Color3.fromRGB(124, 219, 35) },
-	bloodmoon = { name = "BLOOD MOON",    color = Color3.fromRGB(255, 70, 50) },
-	fog       = { name = "FOG",           color = Color3.fromRGB(180, 186, 168) },
-	meteors   = { name = "METEOR SHOWER", color = Color3.fromRGB(255, 140, 40) },
+	calm      = { name = "CALM WAVE",       color = Color3.fromRGB(124, 219, 35) },
+	bloodmoon = { name = "BLOOD MOON",      color = Color3.fromRGB(255, 70, 50) },
+	fog       = { name = "FOG",             color = Color3.fromRGB(180, 186, 168) },
+	meteors   = { name = "METEOR SHOWER",   color = Color3.fromRGB(255, 140, 40) },
+	lightning = { name = "LIGHTNING STORM", color = Color3.fromRGB(120, 200, 255) },
 }
-local IDS = { "calm", "bloodmoon", "fog", "meteors" }
+local IDS = { "calm", "bloodmoon", "fog", "meteors", "lightning" }
 
 local localPlayer = Players.LocalPlayer
 
