@@ -211,7 +211,7 @@ local function zombieSlot(kind, typeId)
 end
 
 -- ===== MUSIC STATE MACHINE =====
-local musicState = { phase = "Lobby", bossAlive = false }
+local musicState = { phase = "Lobby", bossAlive = false, bloodMoon = false }
 -- (Difficulty system removed — one combat loop for everyone; MusicNightmare only plays deep in a run.)
 local DEEP_WAVE = 15 -- from this wave on, the heavier combat loop takes over (if an id is pasted)
 local deepRun = false
@@ -272,6 +272,8 @@ local function updateMusic()
 	if inRun then
 		if musicState.bossAlive then
 			setMusic("MusicBoss")
+		elseif musicState.bloodMoon and def("MusicBloodMoon") then
+			setMusic("MusicBloodMoon") -- BLOOD MOON wave (event roller): its own loop, yields to a boss
 		elseif deepRun and def("MusicNightmare") then
 			setMusic("MusicNightmare") -- the heavier loop kicks in deep into a run
 		else
@@ -282,7 +284,8 @@ local function updateMusic()
 	end
 	-- Fall back down the chain when a track has no id yet (e.g. no boss track pasted -> keep combat).
 	if currentTrack and not def(currentTrack) then
-		if (currentTrack == "MusicBoss" or currentTrack == "MusicNightmare") and def("MusicCombat") then
+		if (currentTrack == "MusicBoss" or currentTrack == "MusicNightmare" or currentTrack == "MusicBloodMoon")
+			and def("MusicCombat") then
 			setMusic("MusicCombat")
 		elseif def("MusicCalm") then
 			setMusic("MusicCalm")
@@ -427,6 +430,13 @@ function SoundController.Start()
 	Remotes.Get("BossSpawned").OnClientEvent:Connect(function()
 		musicState.bossAlive = true
 		updateMusic()
+	end)
+	-- BLOOD MOON (event roller): its own music loop for exactly as long as the modifier is up.
+	Remotes.Get("RunEvent").OnClientEvent:Connect(function(kind, payload)
+		if kind == "bloodmoon" then
+			musicState.bloodMoon = typeof(payload) == "table" and payload.on == true
+			updateMusic()
+		end
 	end)
 	Remotes.Get("BossDefeated").OnClientEvent:Connect(function()
 		musicState.bossAlive = false

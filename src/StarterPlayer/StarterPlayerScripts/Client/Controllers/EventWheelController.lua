@@ -16,6 +16,8 @@ local Remotes = require(Shared.Modules.Remotes)
 local UITheme = require(Shared.Modules.UITheme)
 local LobbyLook = require(Shared.Modules.LobbyLook)
 
+local SoundController = require(script.Parent.SoundController) -- WheelSpin during the roll, WheelLock on the land
+
 local EventWheelController = {}
 
 -- ===== TUNABLES =====
@@ -137,6 +139,17 @@ local function runRoll(info)
 	wordScale.Scale = 1
 	gui.Enabled = true
 
+	-- The spin SOUND: the clip is ~1.5s, the roll is ~3s — re-play it back-to-back across the window.
+	task.spawn(function()
+		local SPIN_CLIP = 1.5
+		local t = 0
+		while myTok == spinToken and t < secs - 0.4 do
+			SoundController.Play("WheelSpin")
+			task.wait(SPIN_CLIP)
+			t += SPIN_CLIP
+		end
+	end)
+
 	task.spawn(function()
 		-- Build the step ladder: flashes speed-decay until they've spent the spin window. The LAST
 		-- step is the real outcome; every earlier flash shows a DIFFERENT name than the one before it
@@ -171,6 +184,7 @@ local function runRoll(info)
 			return
 		end
 		-- THE LOCK: the real outcome, full color, punched scale, % underneath.
+		SoundController.Play("WheelLock")
 		showWord(outcome, odds, true)
 		task.delay(HOLD_SECONDS, function()
 			if myTok == spinToken then

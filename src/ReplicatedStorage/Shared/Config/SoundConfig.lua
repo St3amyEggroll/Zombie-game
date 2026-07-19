@@ -32,6 +32,7 @@ SoundConfig.Sounds = {
 	MusicCombat    = S("140604599195788", 0.5,  0, 1, 1, true),   -- while a wave is active [action/horror combat loop]
 	MusicBoss      = S("", 0.55, 0, 1, 1, true),   -- while a boss is alive [epic boss battle loop]
 	MusicNightmare = S("88275367596456", 0.55, 0, 1, 1, true), -- Nightmare-difficulty combat loop
+	MusicBloodMoon = S("74581933230860", 0.55, 0, 1, 1, true), -- BLOOD MOON wave (event roller) — outranks combat, yields to boss
 
 	-- ===== GUN FIRE ===== (slot name = "Fire_" .. weaponId)
 	Fire_pistol    = S("103589268560856", 0.6, 160, 0.97, 1.03),  -- [pistol gunshot]
@@ -49,7 +50,7 @@ SoundConfig.Sounds = {
 	Fire_honeybadger = S("", 0.55, 160, 0.97, 1.03), -- [suppressed rifle shot]
 	Fire_m4        = S("", 0.6, 170, 0.97, 1.03),  -- [m4 gunshot]
 	Fire_p90       = S("", 0.55, 160, 0.97, 1.03), -- [p90 gunshot]
-	Fire_flamethrower = S("", 0.55, 120, 0.97, 1.03), -- [flamethrower whoosh]
+	Fire_flamethrower = S("98379420278014", 0.55, 120, 0.97, 1.03), -- [flamethrower whoosh, ~1s]
 	Fire_rocket    = S("", 0.7, 200, 0.97, 1.03),  -- [rocket launch]
 	GunEquip       = S("93254619475991", 0.55, 0, 0.98, 1.02), -- switching to / spawning with a gun (2D, local)
 	ZombieFrozen   = S("103076518786222", 0.6, 110, 1, 1),     -- Freeze Ray encases a zombie in ice (~4s clip)
@@ -109,6 +110,8 @@ SoundConfig.Sounds = {
 	BossDefeatedFanfare = S("", 0.75, 0, 1, 1),    -- [victory fanfare]
 	CountdownTick      = S("", 0.5, 0, 1, 1),      -- pre-run countdown [clock tick]
 	CountdownGo        = S("", 0.7, 0, 1, 1),      -- countdown hits zero [buzzer / GO]
+	WheelSpin          = S("9120657420", 0.6, 0, 1, 1),   -- the EVENT ROLLER's flashing (~1.5s clip, re-played across the roll)
+	WheelLock          = S("79662193870612", 0.7, 0, 1, 1), -- the roller LOCKS next wave's fate
 
 	-- ===== PICKUPS / PROGRESSION (2D) =====
 	CaseDrop       = S("", 0.65, 0, 1, 1),         -- case collected [reward chest]
