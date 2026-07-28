@@ -459,6 +459,7 @@ runMatch = function()
 	while anyInMatch() do
 		-- The roller's outcome runs for the WHOLE wave — started FIRST because some events resize or
 		-- re-mix the wave (Purge triples the count, Bodyguards thins it, Bomb Squad biases the spawns).
+		state.waveEvent = pendingEvent -- readable all wave (TitleService's event trophies key off it)
 		EventService.BeginWaveEvent(pendingEvent, state.round)
 
 		local count = math.max(1, math.floor(computeCount(state.round, inMatchCount()) * EventService.GetCountMult()))

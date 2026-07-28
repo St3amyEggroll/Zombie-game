@@ -39,6 +39,52 @@ local LeaveParty = remotes:WaitForChild("LeaveParty")
 local PartyStatus = remotes:WaitForChild("PartyStatus")
 local SetSoundSettings = remotes:WaitForChild("SetSoundSettings")
 
+-- ===== TITLES ===== (mirror of the game's TitleConfig BY HAND — change both). Everything rides LC
+-- (this file sits at Luau's 200-local ceiling): catalog + equip remote + the live stats snapshot.
+LC.TitleEquipR = remotes:WaitForChild("TitleEquip")
+LC.TITLES_ORDER = { "vip", "survivor", "veteran", "nightmare", "unkillable", "bloodmoon", "vaultcracker", "apocalypse", "god", "elite", "legend" }
+LC.TITLES = {
+	vip          = { name = "VIP",                 style = "rainbow", color = Color3.fromRGB(230, 180, 76),  source = "gamepass",    how = "OWN THE VIP GAMEPASS" },
+	survivor     = { name = "SURVIVOR",            style = "static",  color = Color3.fromRGB(235, 235, 235), source = "achievement", how = "REACH WAVE 10" },
+	veteran      = { name = "VETERAN",             style = "static",  color = Color3.fromRGB(95, 205, 95),   source = "achievement", how = "REACH WAVE 20" },
+	nightmare    = { name = "NIGHTMARE",           style = "flicker", color = Color3.fromRGB(175, 95, 235),  source = "achievement", how = "REACH WAVE 30" },
+	unkillable   = { name = "UNKILLABLE",          style = "pulse",   color = Color3.fromRGB(255, 215, 70),  source = "achievement", how = "REACH WAVE 40" },
+	bloodmoon    = { name = "BLOOD MOON",          style = "static",  color = Color3.fromRGB(255, 70, 50),   source = "achievement", how = "CLEAR A BLOOD MOON WAVE" },
+	vaultcracker = { name = "VAULT CRACKER",       style = "pulse",   color = Color3.fromRGB(240, 196, 82),  source = "achievement", how = "CRACK THE BODYGUARDS VAULT" },
+	apocalypse   = { name = "APOCALYPSE SURVIVOR", style = "pulse",   color = Color3.fromRGB(255, 120, 40),  source = "achievement", how = "SURVIVE AN APOCALYPSE" },
+	god          = { name = "GOD",                 style = "pulse",   color = Color3.fromRGB(120, 255, 235), source = "achievement", how = "LAND A GOD MODE ROLL" },
+	elite        = { name = "ELITE",               style = "static",  color = Color3.fromRGB(80, 145, 255),  source = "level", level = 20, how = "REACH LEVEL 20" },
+	legend       = { name = "LEGEND",              style = "rainbow", color = Color3.fromRGB(255, 80, 120),  source = "level", level = 40, how = "REACH LEVEL 40" },
+}
+LC.levelOf = function(totalXP) -- mirrors the server curve (120 × 1.18^n, cap 100)
+	local level, remaining = 1, math.max(0, tonumber(totalXP) or 0)
+	while level < 100 do
+		local need = math.floor(120 * (1.18 ^ (level - 1)))
+		if remaining < need then
+			return level
+		end
+		remaining -= need
+		level += 1
+	end
+	return 100
+end
+LC.titlesOwned = {}
+LC.titleEquipped = ""
+LC.hasVip = false
+-- Is this title wearable by ME right now? (mirror of the server's validation, for the picker UI)
+LC.titleUnlocked = function(id)
+	local def = LC.TITLES[id]
+	if not def then
+		return false
+	end
+	if def.source == "achievement" then
+		return LC.titlesOwned[id] == true
+	elseif def.source == "level" then
+		return LC.levelOf(localPlayer:GetAttribute("AccountXP")) >= (def.level or 999)
+	end
+	return LC.hasVip
+end
+
 -- ===== THEME (synced copy of the game's UITheme — gritty apocalypse; change there, mirror here) =====
 -- FONTS: paste the same Creator Store family ids as src/.../UITheme.lua FONT_IDS. Blank = fallbacks.
 local FONT_IDS = { Title = "", Body = "" } -- Black Ops One / Orbitron
@@ -4608,6 +4654,68 @@ do
 			end)
 		end
 
+		-- ===== TITLES ===== (owner call): the trophy worn over your head. Earned IN THE GAME (waves +
+		-- roller events), picked HERE. Appended into the same scroll list under the classes.
+		do
+			local hdr = C.text(C.list, "TITLES — YOUR TROPHY", 15)
+			hdr.LayoutOrder = 100
+			hdr.Size = UDim2.new(1, -6, 0, 30)
+			hdr.TextXAlignment = Enum.TextXAlignment.Left
+			C.trows = {}
+			for ti, tid in ipairs(LC.TITLES_ORDER) do
+				local td = LC.TITLES[tid]
+				local trow = Instance.new("TextButton")
+				trow.LayoutOrder = 100 + ti
+				trow.Size = UDim2.new(1, -6, 0, 44)
+				trow.BackgroundColor3 = Color3.fromRGB(19, 22, 14)
+				trow.BorderSizePixel = 0
+				trow.AutoButtonColor = true
+				trow.Text = ""
+				trow.Parent = C.list
+				corner(trow, 10)
+				local tring = ledge(trow, TBLACK, 2.5)
+				local tnm = C.text(trow, td.name, 16, td.color)
+				tnm.Position = UDim2.fromOffset(12, 4)
+				tnm.Size = UDim2.new(1, -24, 0, 20)
+				tnm.TextXAlignment = Enum.TextXAlignment.Left
+				local thow = Instance.new("TextLabel")
+				thow.Position = UDim2.fromOffset(12, 25)
+				thow.Size = UDim2.new(1, -24, 0, 14)
+				thow.BackgroundTransparency = 1
+				thow.FontFace = BODYB_FACE
+				thow.TextSize = 10
+				thow.TextColor3 = DIMTEXT
+				thow.TextXAlignment = Enum.TextXAlignment.Left
+				thow.Text = td.how
+				thow.Parent = trow
+				C.trows[tid] = { row = trow, ring = tring, nm = tnm, how = thow }
+				trow.Activated:Connect(function()
+					if not LC.titleUnlocked(tid) then
+						lplay("Error")
+						return -- locked: the row IS the how-to-earn hint
+					end
+					lplay("Equip")
+					LC.titleEquipped = (LC.titleEquipped == tid) and "" or tid -- optimistic; Stats echo confirms
+					LC.TitleEquipR:FireServer(LC.titleEquipped)
+					if C.refreshTitles then
+						C.refreshTitles()
+					end
+				end)
+			end
+			C.refreshTitles = function()
+				for tid, r in C.trows do
+					local unlocked = LC.titleUnlocked(tid)
+					local worn = (LC.titleEquipped == tid)
+					r.nm.TextColor3 = unlocked and LC.TITLES[tid].color or Color3.fromRGB(110, 112, 100)
+					r.nm.Text = (unlocked and "" or "🔒 ") .. LC.TITLES[tid].name
+					r.how.Text = worn and "EQUIPPED ✓ — TAP TO REMOVE" or LC.TITLES[tid].how
+					r.ring.Color = worn and Color3.new(1, 1, 1) or TBLACK
+					r.ring.Thickness = worn and 3 or 2.5
+				end
+			end
+			C.refreshTitles()
+		end
+
 		-- J1 GLOW PULSE — a soft green aura BEHIND the SELECT button (stacked translucent frames), pulsing
 		C.halo = Instance.new("Frame")
 		C.halo.AnchorPoint = Vector2.new(0.5, 1)
@@ -4937,6 +5045,16 @@ do
 		end
 	end)
 	StatsRemote.OnClientEvent:Connect(function(s)
+		if typeof(s) == "table" then -- TITLES snapshot (owned set + worn pick + VIP flag)
+			LC.titlesOwned = (typeof(s.titlesOwned) == "table") and s.titlesOwned or LC.titlesOwned
+			if typeof(s.titleEquipped) == "string" then
+				LC.titleEquipped = s.titleEquipped
+			end
+			LC.hasVip = s.vip == true or LC.hasVip
+			if C.refreshTitles then
+				C.refreshTitles()
+			end
+		end
 		if typeof(s) == "table" and typeof(s.class) == "string" then
 			C.equipped = s.class
 			for i, e in ipairs(CLASSES) do
@@ -6631,6 +6749,42 @@ task.spawn(function()
 				end
 			end
 		end
+	end
+end)
+
+-- ===== TITLE FX ===== animates the fancy overhead-title styles on EVERY player's tag (the server
+-- stamps TitleStyle on the player; billboard text edits are local-only, so each client runs its own):
+-- rainbow = hue cycles (VIP/LEGEND) · pulse = breathes · flicker = unstable dips. Zero new top-level
+-- locals (the 200-register ceiling) — everything lives inside the loop.
+task.spawn(function()
+	local base = {} -- userId -> captured base color for pulse
+	while true do
+		local now = os.clock()
+		for _, plr in Players:GetPlayers() do
+			local style = plr:GetAttribute("TitleStyle")
+			if style == "rainbow" or style == "pulse" or style == "flicker" then
+				local char = plr.Character
+				local head = char and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart"))
+				local bb = head and head:FindFirstChild("PlayerTag")
+				local l = bb and bb:FindFirstChild("Title")
+				if l and l.Text ~= "" then
+					if style == "rainbow" then
+						l.TextColor3 = Color3.fromHSV((now * 0.35 + (plr.UserId % 97) / 97) % 1, 0.8, 1)
+					elseif style == "pulse" then
+						if not base[plr.UserId] or l.TextTransparency == 0 then
+							base[plr.UserId] = l.TextColor3
+							l.TextTransparency = 0.05 -- marks "captured"; visually negligible
+						end
+						local b = base[plr.UserId]
+						local k = 0.78 + 0.22 * math.sin(now * 2.2 + plr.UserId % 7)
+						l.TextColor3 = Color3.new(b.R * k, b.G * k, b.B * k)
+					else -- flicker
+						l.TextTransparency = (math.random() < 0.22) and (0.35 + math.random() * 0.4) or 0
+					end
+				end
+			end
+		end
+		task.wait(0.08)
 	end
 end)
 

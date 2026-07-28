@@ -68,6 +68,8 @@ local TEMPLATE = {
 	cosmetics    = {},
 	settings     = { sfx = true, music = true, lowGfx = false },
 	redeemed     = {},                -- [CODE] = true — codes used (shared with the lobby's redeem bar)
+	titlesOwned  = {},                -- [titleId] = true — TITLE trophies earned in-run (TitleService)
+	titleEquipped = "",               -- the worn title (LOBBY-owned: picked on the classes showcase)
 }
 
 local store = DataStoreService:GetDataStore(STORE_NAME)
@@ -142,6 +144,7 @@ local GAME_OWNED_FIELDS = {
 	"lobbyMoney", "cases", -- cases: wave/boss case drops earned in-run must reach the lobby
 	"ownedWeapons", -- mid-run gun purchases (GunShopService) must reach the lobby too
 	"redeemed", -- in-game code redemptions must reach the lobby (same one-place-at-a-time argument)
+	"titlesOwned", -- TITLE trophies are EARNED here (TitleService); the lobby owns titleEquipped
 }
 
 local function saveAsync(player: Player): boolean

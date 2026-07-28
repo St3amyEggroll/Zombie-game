@@ -72,6 +72,31 @@ local function ensureTag(character)
 	return bb
 end
 
+-- The title the player actually gets to wear: their equipped pick if it VALIDATES (achievement owned /
+-- level reached / pass held), else VIP as the pass-holder default, else nothing.
+local function titleFor(player: Player, data, level: number)
+	local TitleConfig = require(ReplicatedStorage.Shared.Config.TitleConfig)
+	local id = (typeof(data.titleEquipped) == "string") and data.titleEquipped or ""
+	local def = TitleConfig.Titles[id]
+	local ok = false
+	if def then
+		if def.source == "achievement" then
+			ok = typeof(data.titlesOwned) == "table" and data.titlesOwned[id] == true
+		elseif def.source == "level" then
+			ok = level >= (def.level or math.huge)
+		elseif def.source == "gamepass" then
+			ok = player:GetAttribute("VIPPass") == true
+		end
+	end
+	if not ok then
+		if player:GetAttribute("VIPPass") then
+			return TitleConfig.Titles.vip
+		end
+		return nil
+	end
+	return def
+end
+
 function PlayerTagService.Refresh(player: Player)
 	local data = DataService.Get(player)
 	if not data then
@@ -89,7 +114,11 @@ function PlayerTagService.Refresh(player: Player)
 	local character = player.Character
 	local bb = character and ensureTag(character)
 	if bb then
-		bb.Title.Text = player:GetAttribute("VIPPass") and "VIP" or ""
+		local def = titleFor(player, data, level)
+		bb.Title.Text = def and def.name or ""
+		bb.Title.TextColor3 = def and def.color or Color3.new(1, 1, 1)
+		-- TitleFXController (every client) animates rainbow/pulse/flicker styles off this attribute.
+		player:SetAttribute("TitleStyle", def and def.style or nil)
 		bb.Wins.Text = ("%d WINS"):format(wins)
 		bb.Level.Text = ("LVL %d"):format(level)
 	end

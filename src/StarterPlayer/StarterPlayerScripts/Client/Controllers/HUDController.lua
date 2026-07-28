@@ -299,7 +299,21 @@ local function build()
 		row.Size = UDim2.new(1, -32, 0, 46)
 		row.TextSize = 17
 		row.TextColor3 = Color3.fromRGB(255, 255, 255)
-		local base = Util.FormatNumber(b.coins) .. " COINS" .. (b.bonus and ("  " .. b.bonus) or "")
+		-- The COIN SYMBOL carries "coins" (owner call: every money readout wears the icon, not the word).
+		local rowIcon = Instance.new("ImageLabel")
+		rowIcon.BackgroundTransparency = 1
+		rowIcon.AnchorPoint = Vector2.new(0, 0.5)
+		rowIcon.Position = UDim2.new(0, 12, 0.5, 0)
+		rowIcon.Size = UDim2.fromOffset(28, 28)
+		rowIcon.ScaleType = Enum.ScaleType.Fit
+		rowIcon.Image = "rbxassetid://84729396970772"
+		rowIcon.ZIndex = 3
+		rowIcon.Parent = row
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		local rowPad = Instance.new("UIPadding")
+		rowPad.PaddingLeft = UDim.new(0, 50)
+		rowPad.Parent = row
+		local base = Util.FormatNumber(b.coins) .. (b.bonus and ("  " .. b.bonus) or "")
 		local bid = tonumber(b.id) or 0
 		if bid > 0 then
 			row.Text = base

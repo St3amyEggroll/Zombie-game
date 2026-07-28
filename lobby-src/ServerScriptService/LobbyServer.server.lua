@@ -725,6 +725,8 @@ local function readProfile(player)
 		gunCopies = sanitizeGunCopies(data.gunCopies),
 		shop = sanitizeShop(data.shop),
 		settings = sanitizeSettings(data.settings),
+		titlesOwned = (typeof(data.titlesOwned) == "table") and data.titlesOwned or {}, -- GAME-owned (read-only here)
+		titleEquipped = tostring(data.titleEquipped or ""), -- OURS: picked on the classes showcase
 		class = CLASS_IDS[tostring(data.class)] and tostring(data.class) or "", -- equipped class (showcase)
 		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
 		starter = data.starter == true, -- STARTER PACK is one purchase ever
@@ -812,6 +814,7 @@ local function persist(player)
 				old.lobbyMoney = prof.lobbyMoney
 				old.shop = prof.shop
 				old.skins = nil -- SKINS DELETED: scrub the dead blob from the save
+				old.titleEquipped = prof.titleEquipped -- (titlesOwned is GAME-owned: never written here)
 				old.settings = prof.settings
 				old.redeemed = prof.redeemed
 				old.receipts = prof.receipts
@@ -2693,6 +2696,45 @@ end
 
 -- ===== OVERHEAD TAG + LEADERBOARD ===== plain floating text over each player: "N WINS" (gold, top)
 -- over "LVL n" (white) — no panel behind it — plus the WINS column on the Roblox leaderboard.
+
+-- ===== TITLES ===== (mirror of the game place's TitleConfig BY HAND — change both). Trophies are
+-- EARNED in the game (profile.titlesOwned, game-owned); they're EQUIPPED here (profile.titleEquipped,
+-- ours) on the classes showcase, and worn on the overhead tag's TOP line. VIP = rainbow.
+local TITLES = {
+	vip          = { name = "VIP",                 style = "rainbow", color = Color3.fromRGB(230, 180, 76),  source = "gamepass" },
+	survivor     = { name = "SURVIVOR",            style = "static",  color = Color3.fromRGB(235, 235, 235), source = "achievement" },
+	veteran      = { name = "VETERAN",             style = "static",  color = Color3.fromRGB(95, 205, 95),   source = "achievement" },
+	nightmare    = { name = "NIGHTMARE",           style = "flicker", color = Color3.fromRGB(175, 95, 235),  source = "achievement" },
+	unkillable   = { name = "UNKILLABLE",          style = "pulse",   color = Color3.fromRGB(255, 215, 70),  source = "achievement" },
+	bloodmoon    = { name = "BLOOD MOON",          style = "static",  color = Color3.fromRGB(255, 70, 50),   source = "achievement" },
+	vaultcracker = { name = "VAULT CRACKER",       style = "pulse",   color = Color3.fromRGB(240, 196, 82),  source = "achievement" },
+	apocalypse   = { name = "APOCALYPSE SURVIVOR", style = "pulse",   color = Color3.fromRGB(255, 120, 40),  source = "achievement" },
+	god          = { name = "GOD",                 style = "pulse",   color = Color3.fromRGB(120, 255, 235), source = "achievement" },
+	elite        = { name = "ELITE",               style = "static",  color = Color3.fromRGB(80, 145, 255),  source = "level", level = 20 },
+	legend       = { name = "LEGEND",              style = "rainbow", color = Color3.fromRGB(255, 80, 120),  source = "level", level = 40 },
+}
+
+-- The title this player actually gets to wear: their pick if it validates, else VIP for pass
+-- holders, else nothing. (Validation repeats server-side on equip — this is the render check.)
+local function wearableTitle(prof)
+	local id = tostring(prof.titleEquipped or "")
+	local def = TITLES[id]
+	local ok = false
+	if def then
+		if def.source == "achievement" then
+			ok = typeof(prof.titlesOwned) == "table" and prof.titlesOwned[id] == true
+		elseif def.source == "level" then
+			ok = accountLevel(prof.xp) >= (def.level or 999)
+		else
+			ok = prof.vip == true
+		end
+	end
+	if not ok then
+		return prof.vip and TITLES.vip or nil
+	end
+	return def
+end
+
 local function refreshPlayerTag(player)
 	local prof = profileCache[player.UserId]
 	if not prof then
@@ -2711,12 +2753,16 @@ local function refreshPlayerTag(player)
 		return
 	end
 	local bb = head:FindFirstChild("PlayerTag")
+	if bb and not bb:FindFirstChild("Title") then
+		bb:Destroy() -- an old two-line tag from before the TITLE row: rebuild fresh
+		bb = nil
+	end
 	if not bb then
 		bb = Instance.new("BillboardGui")
 		bb.Name = "PlayerTag"
 		-- STUDS-based size: the tag scales with the character (zoom in = bigger, out = smaller).
-		bb.Size = UDim2.new(6, 0, 1.5, 0)
-		bb.StudsOffset = Vector3.new(0, 2.1, 0)
+		bb.Size = UDim2.new(6, 0, 2.1, 0) -- three rows now: TITLE / WINS / LVL
+		bb.StudsOffset = Vector3.new(0, 2.5, 0)
 		bb.MaxDistance = 90
 		bb.Parent = head
 		local function line(name, yScale, hScale, color)
@@ -2730,12 +2776,16 @@ local function refreshPlayerTag(player)
 			st.Color = Color3.new(0, 0, 0); st.Thickness = 2
 			st.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual; st.Parent = l
 		end
-		line("Wins", 0, 0.55, Color3.fromRGB(230, 180, 76))
-		line("Level", 0.55, 0.45, Color3.fromRGB(255, 255, 255))
+		line("Title", 0, 0.34, Color3.fromRGB(230, 180, 76))
+		line("Wins", 0.34, 0.33, Color3.fromRGB(230, 180, 76))
+		line("Level", 0.67, 0.33, Color3.fromRGB(255, 255, 255))
 	end
+	local tdef = wearableTitle(prof)
+	bb.Title.Text = tdef and tdef.name or ""
+	bb.Title.TextColor3 = tdef and tdef.color or Color3.new(1, 1, 1)
+	player:SetAttribute("TitleStyle", tdef and tdef.style or nil) -- clients animate rainbow/pulse/flicker
 	bb.Wins.Text = ("%d WINS"):format(wins)
-	bb.Level.RichText = true
-	bb.Level.Text = ("LVL %d"):format(lvl) .. (prof.vip and '  <font color="#E6B44C">VIP</font>' or "")
+	bb.Level.Text = ("LVL %d"):format(lvl)
 end
 
 -- ===== VIP GAMEPASS ===== (id shared with the game's GameConfig.GamepassVIP). Benefits here:
@@ -3050,6 +3100,41 @@ ClassEquip.OnServerEvent:Connect(function(player, id)
 end)
 
 -- First-join pointer tour finished (or skipped): remember it so it never auto-runs again. Idempotent.
+-- Equip / clear a TITLE (the classes showcase's TITLES section). "" = wear nothing (VIP holders
+-- fall back to the rainbow VIP tag). Validated against how each title is sourced.
+local TitleEquip = mk("TitleEquip")
+TitleEquip.OnServerEvent:Connect(function(player, id)
+	if not allow(player, "Equip") then
+		return
+	end
+	local prof = profileCache[player.UserId]
+	if not prof or prof.noPersist then
+		return
+	end
+	id = tostring(id or "")
+	if id ~= "" then
+		local def = TITLES[id]
+		if not def then
+			return
+		end
+		local ok
+		if def.source == "achievement" then
+			ok = typeof(prof.titlesOwned) == "table" and prof.titlesOwned[id] == true
+		elseif def.source == "level" then
+			ok = accountLevel(prof.xp) >= (def.level or 999)
+		else
+			ok = prof.vip == true
+		end
+		if not ok then
+			return
+		end
+	end
+	prof.titleEquipped = id
+	markDirty(player)
+	refreshPlayerTag(player)
+	StatsRemote:FireClient(player, prof) -- echo so the picker's EQUIPPED badge confirms
+end)
+
 local TutorialDone = mk("TutorialDone")
 TutorialDone.OnServerEvent:Connect(function(player)
 	local prof = profileCache[player.UserId]

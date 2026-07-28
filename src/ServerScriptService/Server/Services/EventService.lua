@@ -599,6 +599,9 @@ local function beginBodyguards(myGen, round)
 				end)
 				Remotes.Get("WorldVFX"):FireAllClients("coins", { pos = pile.Position }) -- gold fountain
 				announce(("VAULT CRACKED! +%d COINS FOR THE TEAM"):format(coins), "green")
+				pcall(function() -- the VAULT CRACKER title (lazy require: no boot-order coupling)
+					require(script.Parent.TitleService).GrantInMatch("vaultcracker")
+				end)
 				pile:Destroy()
 				return
 			end
