@@ -52,6 +52,12 @@ CombatService.Kill = killEvent.Event         -- (player, zombieModel, isHeadshot
 CombatService.Equipped = equippedEvent.Event -- (player) — loadout/equip changed
 CombatService.Fired = firedEvent.Event       -- (player, weaponId) — a valid shot went out (drives recoil)
 
+-- NEW: lets other systems (traps, event hazards) credit a kill to a player through the SAME pipe as
+-- gunfire, so points + kill counts (PointsService) and coins/XP (ProgressionService) all pay out.
+function CombatService.ReportKill(player: Player, zombieModel: Model?, isHeadshot: boolean?, sourceId: string?)
+	killEvent:Fire(player, zombieModel, isHeadshot == true, sourceId or "world")
+end
+
 -- ===== PER-PLAYER COMBAT STATE =====
 -- combat[userId] = { fire = { tokens, last } } — the per-player fire-rate token bucket
 local combat: { [number]: any } = {}

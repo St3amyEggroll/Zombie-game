@@ -21,13 +21,12 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
-local GameConfig = require(Config.GameConfig)
 local Remotes = require(Modules.Remotes)
 
 local SecurityService = require(script.Parent.SecurityService)
-local MatchService = require(script.Parent.MatchService)
 local ZombieService = require(script.Parent.ZombieService)
 local PointsService = require(script.Parent.PointsService)
+local CombatService = require(script.Parent.CombatService) -- NEW: kill credit pipe (points+coins+XP)
 
 local TrapService = {}
 
@@ -56,22 +55,15 @@ local function inZone(part: BasePart, height: number, pos: Vector3): boolean
 		and rel.Y >= -half.Y and rel.Y <= half.Y + height
 end
 
--- Damage a zombie; credit the activating player with the kill cash if it dies.
+-- Damage a zombie; credit the activating player with the kill if it dies.
+-- CHANGED: kills now route through CombatService.ReportKill so trap kills pay points, kill counts,
+-- Coins AND XP exactly like gunfire (they used to self-award points only — no coins/XP).
 local function damageZombie(player: Player, record, amount: number)
 	if record.dead or (record.health or 0) <= 0 then
 		return
 	end
 	if ZombieService.ApplyDamage(record, amount) then
-		local model = record.model
-		local mult = (model and model:GetAttribute("PointsMult")) or 1
-		PointsService.Award(player, GameConfig.PointsPerKill * mult)
-		local ps = MatchService.GetPlayerState(player)
-		if ps then
-			ps.kills += 1
-			if model and model:GetAttribute("IsSpecial") then
-				ps.specialKills += 1
-			end
-		end
+		CombatService.ReportKill(player, record.model, false, "trap")
 	end
 end
 

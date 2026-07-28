@@ -30,6 +30,7 @@ local targetPlayer = nil
 local panel, nameLabel
 local vignette, diedLabel, diedSub, deathToken = nil, nil, nil, 0
 local wipeLabel, wipeTick = nil, 0 -- the "RUN ENDS IN Ns" line + its countdown token
+local reviveBtn, wipeLeaveBtn -- the wipe pair: green REVIVE + red LEAVE (visible only during the grace)
 local playerGuiRef = nil
 
 -- A player is a valid spectate target if it isn't me, isn't downed, and has a living character.
@@ -104,7 +105,8 @@ local function cycle(dir: number)
 end
 
 -- While spectating we strip the HUD down to just the menu buttons. Keep = ScreenGuis that stay on.
-local KEEP = { GunShop = true, Settings = true, SettingsModal = true, Spectate = true, HotbarHUD = true }
+local KEEP = { GunShop = true, Settings = true, SettingsModal = true, Spectate = true, HotbarHUD = true,
+	PartyHUD = true } -- teammate health rings STAY visible — "last one down ends the run" needs them most here
 local hiddenGuis = {}   -- gui -> its prior .Enabled
 local hiddenSlots = nil -- the hotbar's gun-slot row (hidden, but the CASES button beside it stays)
 
@@ -299,28 +301,49 @@ local function build(playerGui)
 	ss.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	ss.Parent = diedSub
 
-	-- NEW: ROBUX REVIVE — the gold buy-back button (only when GameConfig.ReviveProductId is set) with
-	-- the wipe countdown line under it ("RUN ENDS IN Ns", shown while the server holds a full wipe).
-	if (tonumber(GameConfig.ReviveProductId) or 0) > 0 then
-		local rb = UITheme.Button(vignette, "REVIVE — ROBUX", "gold")
-		rb.Name = "ReviveButton"
-		rb.AnchorPoint = Vector2.new(0.5, 0)
-		rb.Position = UDim2.fromScale(0.5, 0.55)
-		rb.Size = UDim2.fromOffset(230, 52)
-		rb.TextSize = 19
-		rb.TextColor3 = Color3.fromRGB(255, 255, 255)
-		rb.Activated:Connect(function()
-			MarketplaceService:PromptProductPurchase(localPlayer, tonumber(GameConfig.ReviveProductId))
-		end)
-		task.spawn(function() -- NEW: live Robux price on the button
+	-- THE WIPE PAIR (owner call): during the full-wipe grace window a GREEN REVIVE and a RED LEAVE sit
+	-- side by side under YOU DIED — always built (no product id needed to see them; without an id the
+	-- revive warns in Output instead of prompting). Hidden outside the wipe window (spectate keeps its
+	-- own smaller LEAVE RUN in the top strip).
+	reviveBtn = UITheme.Button(vignette, "REVIVE", "primary") -- green
+	reviveBtn.Name = "ReviveButton"
+	reviveBtn.AnchorPoint = Vector2.new(1, 0)
+	reviveBtn.Position = UDim2.new(0.5, -8, 0.55, 0)
+	reviveBtn.Size = UDim2.fromOffset(210, 56)
+	reviveBtn.TextSize = 20
+	reviveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	reviveBtn.Visible = false
+	reviveBtn.Activated:Connect(function()
+		local id = tonumber(GameConfig.ReviveProductId) or 0
+		if id > 0 then
+			MarketplaceService:PromptProductPurchase(localPlayer, id)
+		else
+			warn("[Spectate] REVIVE: set GameConfig.ReviveProductId to your Developer Product id")
+		end
+	end)
+	task.spawn(function() -- live Robux price on the button once the id is set
+		local id = tonumber(GameConfig.ReviveProductId) or 0
+		if id > 0 then
 			local ok, info = pcall(function()
-				return MarketplaceService:GetProductInfo(tonumber(GameConfig.ReviveProductId), Enum.InfoType.Product)
+				return MarketplaceService:GetProductInfo(id, Enum.InfoType.Product)
 			end)
 			if ok and info and tonumber(info.PriceInRobux) then
-				rb.Text = ("REVIVE — R$%d"):format(info.PriceInRobux)
+				reviveBtn.Text = ("REVIVE — R$%d"):format(info.PriceInRobux)
 			end
-		end)
-	end
+		end
+	end)
+
+	wipeLeaveBtn = UITheme.Button(vignette, "LEAVE", "danger") -- red
+	wipeLeaveBtn.Name = "WipeLeaveButton"
+	wipeLeaveBtn.AnchorPoint = Vector2.new(0, 0)
+	wipeLeaveBtn.Position = UDim2.new(0.5, 8, 0.55, 0)
+	wipeLeaveBtn.Size = UDim2.fromOffset(210, 56)
+	wipeLeaveBtn.TextSize = 20
+	wipeLeaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	wipeLeaveBtn.Visible = false
+	wipeLeaveBtn.Activated:Connect(function()
+		Remotes.Get("LeaveRun"):FireServer()
+	end)
 	wipeLabel = Instance.new("TextLabel")
 	wipeLabel.Name = "WipeCountdown"
 	wipeLabel.AnchorPoint = Vector2.new(0.5, 0)
@@ -420,9 +443,17 @@ function SpectateController.Start()
 		end
 		if secs <= 0 then
 			wipeLabel.Visible = false
+			if reviveBtn then
+				reviveBtn.Visible = false
+				wipeLeaveBtn.Visible = false
+			end
 			return
 		end
 		wipeLabel.Visible = true
+		if reviveBtn then -- the wipe pair appears for exactly the grace window
+			reviveBtn.Visible = true
+			wipeLeaveBtn.Visible = true
+		end
 		task.spawn(function()
 			for left = secs, 1, -1 do
 				if wipeTick ~= my then

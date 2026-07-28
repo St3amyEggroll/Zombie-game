@@ -116,30 +116,32 @@ local RARITY = {
 -- Stats mirror the game's WeaponConfig (kept in sync by hand) for the hover tooltips.
 -- CHANGED (owner call — skins DELETED): crates pay GUNS now. Guns ALSO auto-unlock free at account
 -- level (readProfile's XP-ONLY UNLOCKS) — a crate is the way to pull one EARLY. Dupes pay coins.
+-- CHANGED: mirrored the game's DPS-ladder retune (damage climbs with unlock level; Ray Gun is the
+-- capstone again) + HONEST ranges (combat clamps to 60 — only shotgun 40 / flamethrower 38 differ).
 local WEAPONS = {
-	pistol    = { name = "M1911",        tier = 1, rarity = "common",    damage = 30,  fireRate = 5,   range = 200, price = 0, slot = "secondary" },
-	revolver  = { name = "Revolver",     tier = 2, rarity = "uncommon",  damage = 70,  fireRate = 1.8, range = 220, price = 1500, slot = "secondary",
+	pistol    = { name = "M1911",        tier = 1, rarity = "common",    damage = 30,  fireRate = 5,   range = 60, price = 0, slot = "secondary" },
+	revolver  = { name = "Revolver",     tier = 2, rarity = "uncommon",  damage = 90,  fireRate = 1.8, range = 60, price = 1500, slot = "secondary",
 		ability = "PIERCE — rounds punch through up to 3 zombies in a line" },
-	shotgun   = { name = "Pump Shotgun", tier = 2, rarity = "uncommon",  damage = 16,  fireRate = 1.2, range = 40, pellets = 6, price = 2500, slot = "primary" },
-	ak47      = { name = "AK-47",        tier = 3, rarity = "rare",      damage = 40,  fireRate = 9,   range = 300, price = 6000, slot = "primary" },
-	crossbow  = { name = "Crossbow",     tier = 3, rarity = "rare",      damage = 110, fireRate = 1.0, range = 260, price = 8000, slot = "primary",
+	shotgun   = { name = "Pump Shotgun", tier = 2, rarity = "uncommon",  damage = 24,  fireRate = 1.2, range = 40, pellets = 6, price = 2500, slot = "primary" },
+	ak47      = { name = "AK-47",        tier = 3, rarity = "rare",      damage = 26,  fireRate = 9,   range = 60, price = 6000, slot = "primary" },
+	crossbow  = { name = "Crossbow",     tier = 3, rarity = "rare",      damage = 240, fireRate = 1.0, range = 60, price = 8000, slot = "primary",
 		ability = "PIN — bolts nail zombies in place for 2s" },
-	minigun   = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 16,  fireRate = 18,  range = 300, price = 15000, slot = "primary" },
-	freezeray = { name = "Freeze Ray",   tier = 4, rarity = "epic",      damage = 10,  fireRate = 10,  range = 180, price = 20000, slot = "primary",
+	minigun   = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 22,  fireRate = 18,  range = 60, price = 15000, slot = "primary" },
+	freezeray = { name = "Freeze Ray",   tier = 4, rarity = "epic",      damage = 16,  fireRate = 10,  range = 60, price = 20000, slot = "primary",
 		ability = "CRYO — chills 30%; chilled zombies SHATTER on death" },
-	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 80,  fireRate = 4,   range = 250, price = 40000, slot = "primary" },
-	m4        = { name = "M4 Carbine",         tier = 3, rarity = "rare",      damage = 34,  fireRate = 11,  range = 300, price = 7000,  slot = "primary" },
-	tommygun  = { name = "Tommy Gun",          tier = 2, rarity = "uncommon",  damage = 18,  fireRate = 12,  range = 170, price = 3500,  slot = "primary" },
-	sniper    = { name = "Bolt-Action Sniper", tier = 4, rarity = "epic",      damage = 150, fireRate = 0.9, range = 400, price = 12000, slot = "primary",
+	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 130, fireRate = 4,   range = 60, price = 40000, slot = "primary" },
+	m4        = { name = "M4 Carbine",         tier = 3, rarity = "rare",      damage = 26,  fireRate = 11,  range = 60, price = 7000,  slot = "primary" },
+	tommygun  = { name = "Tommy Gun",          tier = 2, rarity = "uncommon",  damage = 18,  fireRate = 12,  range = 60, price = 3500,  slot = "primary" },
+	sniper    = { name = "Bolt-Action Sniper", tier = 4, rarity = "epic",      damage = 480, fireRate = 0.9, range = 60, price = 12000, slot = "primary",
 		ability = "PIERCE — one shot punches through a whole line" },
 	flamethrower = { name = "Flamethrower",    tier = 4, rarity = "epic",      damage = 9,   fireRate = 12,  range = 38, pellets = 3, price = 18000, slot = "primary",
 		ability = "INFERNO — sprays a short cone of fire" },
-	rocket    = { name = "Rocket Launcher",    tier = 5, rarity = "legendary", damage = 20,  fireRate = 0.7, range = 300, price = 35000, slot = "primary",
+	rocket    = { name = "Rocket Launcher",    tier = 5, rarity = "legendary", damage = 20,  fireRate = 0.7, range = 60, price = 35000, slot = "primary",
 		ability = "EXPLOSIVE — the blast damages everything nearby" },
-	plasma    = { name = "Plasma Rifle",       tier = 5, rarity = "legendary", damage = 30,  fireRate = 6,   range = 280, price = 30000, slot = "primary",
+	plasma    = { name = "Plasma Rifle",       tier = 5, rarity = "legendary", damage = 78,  fireRate = 6,   range = 60, price = 30000, slot = "primary",
 		ability = "PLASMA — bolts splash on impact" },
-	honeybadger = { name = "Honey Badger",     tier = 3, rarity = "rare",      damage = 30,  fireRate = 10,  range = 260, price = 6500,  slot = "primary" },
-	p90       = { name = "P90",                tier = 3, rarity = "rare",      damage = 16,  fireRate = 13,  range = 180, price = 5000,  slot = "primary" },
+	honeybadger = { name = "Honey Badger",     tier = 3, rarity = "rare",      damage = 26,  fireRate = 10,  range = 60, price = 6500,  slot = "primary" },
+	p90       = { name = "P90",                tier = 3, rarity = "rare",      damage = 24,  fireRate = 13,  range = 60, price = 5000,  slot = "primary" },
 }
 
 -- ===== ACCOUNT-LEVEL GUN UNLOCKS =====
@@ -233,7 +235,9 @@ end
 for _, l in GUNS_BY_RARITY do
 	table.sort(l)
 end
-local GUN_DUP_COINS = { common = 150, uncommon = 300, rare = 600, epic = 1200, legendary = 2500 }
+-- CHANGED: dupe refunds cut way down — crates were a coin PRINTER (expected dupe value beat the
+-- crate price). Refunds must stay well below crate cost so opening is a gamble, not an ATM.
+local GUN_DUP_COINS = { common = 40, uncommon = 60, rare = 120, epic = 250, legendary = 500 }
 
 -- ===== CLASSES (C1 passive kits) ===== picked in the class SHOWCASE (camera-on-your-character screen).
 -- The GAME place applies the passives (its ClassConfig mirrors these numbers BY HAND — change both).
@@ -293,8 +297,9 @@ end
 local SHOP = {
 	RestockSeconds = 1800, -- 30 minutes per rotation
 	Slots = 6,
-	-- Coin price per case rarity (placeholder: ~4x the dupe refund).
-	Prices = { common = 100, uncommon = 160, rare = 240, epic = 360, legendary = 560, mythic = 880, divine = 1400 },
+	-- CHANGED: coin price per case rarity — raised so a crate always costs MORE than its expected
+	-- dupe refund (all-dupe EV on a common crate is ~114 coins vs the old 100-coin price).
+	Prices = { common = 400, uncommon = 650, rare = 1000, epic = 1600, legendary = 2500, mythic = 4000, divine = 6500 },
 	-- Per-PLAYER purchasable stock per slot per rotation (commons plentiful, top rarities scarce).
 	Stock = { common = 5, uncommon = 4, rare = 3, epic = 2, legendary = 2, mythic = 1, divine = 1 },
 	-- Per-slot rarity weights. Tuned so across 6 slots a MYTHIC appears in ~1 of 20 rotations and a

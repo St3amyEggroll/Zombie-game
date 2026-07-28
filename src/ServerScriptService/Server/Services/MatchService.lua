@@ -55,6 +55,7 @@ local state = {
 	extractMult = 1,       -- the CASH OUT payout multiplier; +MultPerStage per declined extraction window
 	zombiesRemaining = 0,
 	zombiesAlive = 0,
+	wipeActive = false,    -- a full-wipe grace window is counting down (gates the wave loop's advance)
 	players = {},          -- [userId] = PlayerMatchState
 	startedAt = 0,
 }
@@ -159,6 +160,7 @@ local function resetRunState(player: Player, ps)
 	ps.draftsOwed = 0
 	ps.pendingDraft = nil
 	ps.buffs = { damage = 0, attackspeed = 0, walkspeed = 0, range = 0, critchance = 0, critdamage = 0, luck = 0 }
+	ps.wonRun = false -- a WIN (wave 10 cleared) banks once per run
 	ps.isDead = false
 	ps.isDowned = false
 	ps.downedUntil = 0
@@ -207,7 +209,7 @@ bankRun = function(player: Player, ps)
 	if not LIVE then
 		DataService.Save(player)
 	end
-	return { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0 }
+	return { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0, win = ps.wonRun == true }
 end
 
 -- Send a player back to the lobby PLACE (published only): blocking-save so the bank lands first, then
@@ -294,13 +296,16 @@ end
 local wipeToken = 0 -- bumping this cancels any pending wipe-grace timer (revive bought / run already over)
 local function endRun()
 	wipeToken += 1
+	state.wipeActive = false
 	for _, player in Players:GetPlayers() do
 		local ps = state.players[player.UserId]
 		if ps and ps.inMatch then
 			ps.inMatch = false
 			local summary = bankRun(player, ps)
 			if LIVE then
-				teleportToLobby(player, summary) -- published: back to the lobby place
+				-- CONCURRENT: teleportToLobby blocks on SaveNow + retries (up to ~30s worst case) — doing
+				-- players sequentially held the LAST player on the death screen for minutes on a 4-wipe.
+				task.spawn(teleportToLobby, player, summary) -- published: back to the lobby place
 			else
 				task.delay(STUDIO_RESTART_DELAY, function() -- Studio: restart a fresh run so you can keep testing
 					if player.Parent then
@@ -359,22 +364,23 @@ function MatchService.CheckTeamWipe()
 		end
 	end
 	if anyInRun and not anyAlive then
-		-- CHANGED: with a ROBUX REVIVE product set up, a full wipe doesn't end the run instantly — it
-		-- HOLDS for ReviveGraceSeconds (clients show the countdown + the revive button) and only ends
-		-- if nobody buys back in. Without a product id, the old instant wipe stands.
-		local reviveId = tonumber(GameConfig.ReviveProductId) or 0
-		if reviveId <= 0 then
-			endRun() -- team wipe: bank + back to the lobby
+		-- FULL WIPE → the GRACE WINDOW always runs (owner call): the death screen shows the green
+		-- REVIVE + red LEAVE pair for ReviveGraceSeconds, then the run ends if nobody bought back in.
+		-- A wipe that's ALREADY counting is never re-armed — a dead teammate disconnecting used to
+		-- restart the clock from full (and could extend the wipe forever).
+		if state.wipeActive then
 			return
 		end
+		state.wipeActive = true
 		wipeToken += 1
 		local myToken = wipeToken
-		local secs = math.max(3, math.floor(tonumber(GameConfig.ReviveGraceSeconds) or 12))
+		local secs = math.max(3, math.floor(tonumber(GameConfig.ReviveGraceSeconds) or 10))
 		Remotes.Get("WipeCountdown"):FireAllClients(secs)
 		task.delay(secs, function()
 			if myToken ~= wipeToken then
 				return -- a revive landed (or the run already ended) — this wipe is stale
 			end
+			state.wipeActive = false
 			for _, plr in Players:GetPlayers() do -- re-verify nobody bought back in
 				local p2 = state.players[plr.UserId]
 				if p2 and p2.inMatch and not p2.isDead then
@@ -398,6 +404,7 @@ function MatchService.RobuxRevive(player: Player): boolean
 		return false
 	end
 	wipeToken += 1 -- cancel the wipe-grace timer, if one is running
+	state.wipeActive = false
 	Remotes.Get("WipeCountdown"):FireAllClients(0)
 	ps.isDead = false
 	Remotes.Get("DownedChanged"):FireAllClients(player.UserId, false, 0) -- client leaves the death screen
@@ -462,7 +469,17 @@ runMatch = function()
 		state.waveEvent = pendingEvent -- readable all wave (TitleService's event trophies key off it)
 		EventService.BeginWaveEvent(pendingEvent, state.round)
 
-		local count = math.max(1, math.floor(computeCount(state.round, inMatchCount()) * EventService.GetCountMult()))
+		-- Wave size scales with LIVING players only — dead spectators used to keep the waves sized for
+		-- a full team, making the last survivor's comeback progressively hopeless.
+		local livingNow = 0
+		for _, plr in Players:GetPlayers() do
+			local p2 = state.players[plr.UserId]
+			if p2 and p2.inMatch and not p2.isDead then
+				livingNow += 1
+			end
+		end
+		local count = math.clamp(math.floor(computeCount(state.round, math.max(1, livingNow)) * EventService.GetCountMult()),
+			1, GameConfig.MaxZombiesPerWave or math.huge) -- Purge's ×3 respects the safety cap too
 		state.zombiesRemaining = count
 		ZombieService.BeginRound(state.round, count)
 		local waveTotal = count               -- this wave's owed count (denominator for the count bar)
@@ -493,8 +510,44 @@ runMatch = function()
 		if not anyInMatch() then
 			break
 		end
+		-- If the wave cleared during a full-wipe grace window (an event killed the last zombie while
+		-- everyone was dead), HOLD here: no payout, no roller, no next wave over the death screen.
+		-- A revive un-wipes and the run continues; the grace expiring ends the run (anyInMatch drops).
+		while state.wipeActive and anyInMatch() do
+			task.wait(0.25)
+		end
+		if not anyInMatch() then
+			break
+		end
 
 		waveClearedEvent:Fire(state.round) -- GameInventoryService drops wave-clear cases off this
+
+		-- A WIN = clearing wave 10 (extraction's old win had no live definition — the WIN A RUN daily
+		-- quest was impossible). Once per run, survivors bank a win + the tag/leaderboard count.
+		if state.round >= 10 then
+			for _, plr in Players:GetPlayers() do
+				local p2 = state.players[plr.UserId]
+				if p2 and p2.inMatch and not p2.isDead and not p2.wonRun then
+					p2.wonRun = true
+					local d = DataService.Get(plr)
+					if d then
+						d.wins = (tonumber(d.wins) or 0) + 1
+						DataService.MarkDirty(plr)
+					end
+				end
+			end
+		end
+
+		-- REINFORCEMENTS (owner call): a teammate clearing the wave brings the DEAD back — death costs
+		-- you the rest of the wave, not the rest of the run. (A full wipe still ends it above.)
+		for _, plr in Players:GetPlayers() do
+			local p2 = state.players[plr.UserId]
+			if p2 and p2.inMatch and p2.isDead then
+				p2.isDead = false
+				Remotes.Get("DownedChanged"):FireAllClients(plr.UserId, false, 0) -- leaves the death screen
+				spawnCharacter(plr)
+			end
+		end
 
 		-- THE BREAK (RoundBreakSeconds): the wheel spins NEXT wave's event a beat in, so the reveal
 		-- lands mid-break and the dread has time to sink in before the wave starts.

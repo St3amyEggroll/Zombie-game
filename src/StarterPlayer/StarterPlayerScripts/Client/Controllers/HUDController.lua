@@ -601,6 +601,11 @@ function HUDController.Start()
 	Remotes.Get("HealthChanged").OnClientEvent:Connect(setHealth)
 	Remotes.Get("RoundChanged").OnClientEvent:Connect(function(round)
 		breakEndsAt = 0
+		-- CHANGED: restore the wave-mode layout (the pre-run countdown borrowed the whole strip).
+		roundLabel.Size = UDim2.fromOffset(130, 40)
+		if enemiesTrack then
+			enemiesTrack.Visible = true
+		end
 		if tonumber(round) == 1 then
 			-- The round-start audio leads by 1s; the text lands on its beat.
 			task.delay(1, function()
@@ -612,9 +617,15 @@ function HUDController.Start()
 	end)
 
 	-- Pre-run countdown (waiting for the party to load in): shown in the wave slot until the run starts.
+	-- CHANGED: the label takes the WHOLE strip and the enemies bar hides — "STARTING IN 5" used to
+	-- truncate to "STARTING I…" in the 130px wave slot with a contradictory "LOADING…" bar beside it.
 	Remotes.Get("StartCountdown").OnClientEvent:Connect(function(secs)
 		secs = tonumber(secs) or 0
 		if secs > 0 then
+			roundLabel.Size = UDim2.fromOffset(400, 40)
+			if enemiesTrack then
+				enemiesTrack.Visible = false
+			end
 			roundLabel.Text = ("STARTING IN %d"):format(secs)
 		end
 	end)
@@ -627,9 +638,10 @@ function HUDController.Start()
 			breakEndsAt = 0
 		end
 		if enemiesTrack and phase ~= "Playing" then
-			-- Between waves the bar STAYS (the run isn't over) and reads LOADING while the next wave preps.
+			-- Between waves the bar STAYS (the run isn't over). CHANGED: reads GET READY — "LOADING…"
+			-- right above "NEXT WAVE IN 5" read like the game was stuck.
 			enemiesTrack.Visible = true
-			enemiesLabel.Text = "LOADING..."
+			enemiesLabel.Text = "GET READY..."
 			enemiesFill.Size = UDim2.fromScale(1, 1)
 		end
 	end)
@@ -639,7 +651,7 @@ function HUDController.Start()
 		remaining = tonumber(remaining) or 0
 		total = tonumber(total) or 0
 		if total <= 0 or remaining <= 0 then
-			enemiesLabel.Text = "LOADING..." -- wave cleared: hold the bar, full fill, until the next wave
+			enemiesLabel.Text = "GET READY..." -- wave cleared: hold the bar, full fill, until the next wave
 			enemiesFill.Size = UDim2.fromScale(1, 1)
 			return
 		end

@@ -36,9 +36,13 @@ for _, r in BuffConfig.Rarities do
 	RARITIES[r.id] = { name = r.name, color = r.color }
 end
 
+-- CHANGED: the 8 newer guns were missing (they fell back to "common" in the in-game inventory).
+-- Mirrors the lobby's WEAPONS rarity column — keep the two in sync by hand.
 local WEAPON_RARITY = {
-	pistol = "common", revolver = "uncommon", shotgun = "uncommon", ak47 = "rare",
-	crossbow = "rare", minigun = "epic", freezeray = "epic", raygun = "legendary",
+	pistol = "common", revolver = "uncommon", shotgun = "uncommon", tommygun = "uncommon",
+	ak47 = "rare", crossbow = "rare", honeybadger = "rare", m4 = "rare", p90 = "rare",
+	minigun = "epic", freezeray = "epic", sniper = "epic", flamethrower = "epic",
+	raygun = "legendary", rocket = "legendary", plasma = "legendary",
 }
 
 local CASES = {}

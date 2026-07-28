@@ -21,7 +21,7 @@ GameConfig.SkipWaveProductId = 0
 -- On a FULL TEAM WIPE the run holds for ReviveGraceSeconds before ending, so a solo player (or the
 -- last one down) can buy back in; a revive cancels the wipe and the run rolls on.
 GameConfig.ReviveProductId    = 0
-GameConfig.ReviveGraceSeconds = 12
+GameConfig.ReviveGraceSeconds = 10 -- the wipe holds this long (green REVIVE + red LEAVE on screen)
 
 -- NEW: COIN BUNDLES sellable IN-GAME too — the gold "+" beside the HUD coin counter opens a buy card
 -- (broke mid-run at the gun shop = the moment that matters). These are the SAME four Developer
