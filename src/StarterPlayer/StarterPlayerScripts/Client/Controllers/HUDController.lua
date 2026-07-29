@@ -156,15 +156,17 @@ local function build()
 	enemiesFill.Parent = enemiesTrack
 	UITheme.Corner(enemiesFill, 5)
 
-	enemiesLabel = text(enemiesTrack, "EnemiesLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT)
+	-- CHANGED (owner: "blacked text"): pure white with a whisper of a stroke — the old bone-white +
+	-- heavy black outline read as black letters on the bright orange fill.
+	enemiesLabel = text(enemiesTrack, "EnemiesLabel", UITheme.BodyBoldFace, UITheme.Type.Value, Color3.new(1, 1, 1))
 	enemiesLabel.Size = UDim2.fromScale(1, 1)
 	enemiesLabel.ZIndex = 2
 	enemiesLabel.TextXAlignment = Enum.TextXAlignment.Center
 	enemiesLabel.Text = ""
 	local enStroke = Instance.new("UIStroke")
 	enStroke.Color = Color3.fromRGB(0, 0, 0)
-	enStroke.Transparency = 0.35
-	enStroke.Thickness = 1.5
+	enStroke.Transparency = 0.55
+	enStroke.Thickness = 1
 	enStroke.Parent = enemiesLabel
 
 	-- SKIP WAVE (Robux dev product) + LEAVE, flanking the bar: LEAVE on the strip's left, SKIP on its
@@ -334,13 +336,31 @@ local function build()
 		end
 	end
 
-	local plusBtn = UITheme.Button(coinsPill, "+", "gold")
+	-- CHANGED (owner: the + read "blacked out"): the themed slab button's dark base + heavy text
+	-- stroke swallowed a 30px chip. A FLAT bright-gold chip with a clean white plus instead.
+	local plusBtn = Instance.new("TextButton")
 	plusBtn.Name = "GetCoinsButton"
 	plusBtn.AnchorPoint = Vector2.new(1, 0.5)
 	plusBtn.Position = UDim2.new(1, -8, 0.5, 0)
 	plusBtn.Size = UDim2.fromOffset(30, 30)
-	plusBtn.TextSize = 22
-	plusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	plusBtn.BackgroundColor3 = UITheme.GOLD
+	plusBtn.BorderSizePixel = 0
+	plusBtn.AutoButtonColor = true
+	plusBtn.FontFace = UITheme.TitleFace
+	plusBtn.TextSize = 24
+	plusBtn.TextColor3 = Color3.new(1, 1, 1)
+	plusBtn.Text = "+"
+	plusBtn.Parent = coinsPill
+	UITheme.Corner(plusBtn, 9)
+	UITheme.Edge(plusBtn, UITheme.BLACK, 2)
+	do
+		local ps = Instance.new("UIStroke")
+		ps.Color = Color3.fromRGB(0, 0, 0)
+		ps.Transparency = 0.45
+		ps.Thickness = 1.2
+		ps.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		ps.Parent = plusBtn
+	end
 	plusBtn.Activated:Connect(function()
 		card.Visible = not card.Visible
 	end)
@@ -475,22 +495,47 @@ local function build()
 		-- (SHOP circle DELETED — owner call. The coin shop still lives on the coins pill's gold "+",
 		-- and the codes panel still flips over from that card's "HAVE A CODE?" line.)
 	}
-	local autoRing
+	local autoCirc, autoLbl
 	for _, def in DOCK do
 		local holder, circ = LobbyLook.DockButton(gui, def.label, def.icon, def.emoji)
 		holder.Position = UDim2.new(0.5, def.x - 33, 1, -6) -- -33 = half the 66px holder (center on x)
 		circ.Activated:Connect(def.onClick)
-		if def.label == "Autofire" then -- the toggle state rides a toxic ring on the glass circle
-			autoRing = Instance.new("UIStroke")
-			autoRing.Color = UITheme.TOXIC
-			autoRing.Thickness = 3
-			autoRing.Transparency = 1
-			autoRing.Parent = circ
+		if def.label == "Autofire" then
+			-- CHANGED (owner): the circle IS the state now — solid GREEN reading "ON" / solid RED
+			-- reading "OFF". No icon, no ring; you can read it from across the room.
+			local grad = circ:FindFirstChildOfClass("UIGradient")
+			if grad then
+				grad.Enabled = false -- the glass gradient would override the state color
+			end
+			for _, ch in circ:GetChildren() do
+				if ch:IsA("TextLabel") or ch:IsA("ImageLabel") then
+					ch:Destroy() -- drop the 🎯 stamp
+				end
+			end
+			autoCirc = circ
+			autoLbl = Instance.new("TextLabel")
+			autoLbl.BackgroundTransparency = 1
+			autoLbl.Size = UDim2.fromScale(1, 1)
+			autoLbl.FontFace = UITheme.TitleFace
+			autoLbl.TextSize = 19
+			autoLbl.TextColor3 = Color3.new(1, 1, 1)
+			autoLbl.Text = "OFF"
+			autoLbl.ZIndex = 3
+			autoLbl.Parent = circ
+			local ls = Instance.new("UIStroke")
+			ls.Color = Color3.fromRGB(0, 0, 0)
+			ls.Transparency = 0.35
+			ls.Thickness = 2
+			ls.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+			ls.Parent = autoLbl
 		end
 	end
 	local function paintAuto(on)
-		if autoRing then
-			autoRing.Transparency = on and 0.05 or 1
+		if autoCirc then
+			autoCirc.BackgroundColor3 = on and Color3.fromRGB(64, 176, 54) or Color3.fromRGB(196, 52, 40)
+		end
+		if autoLbl then
+			autoLbl.Text = on and "ON" or "OFF"
 		end
 	end
 	paintAuto(AutoShootController.IsOn())

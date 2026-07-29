@@ -74,8 +74,8 @@ table.sort(IDS)
 
 local BAND_DARK = Color3.fromRGB(5, 7, 4)
 local HAIR_IDLE = Color3.fromRGB(90, 97, 72)
-local ROW_DIM = Color3.fromRGB(125, 132, 116)   -- neighbor rows (steel)
-local PCT_DIM = Color3.fromRGB(96, 103, 88)     -- neighbor % lines
+local ROW_DIM = Color3.fromRGB(168, 174, 156)   -- neighbor rows — CHANGED: brighter (they read blacked-out)
+local PCT_DIM = Color3.fromRGB(132, 139, 120)   -- neighbor % lines
 
 local WINDOW_H = ROW_H * WINDOW_ROWS
 local BAND_H = WINDOW_H + 34 -- title strip above the window
@@ -528,10 +528,11 @@ local function runRoll(info)
 				end
 				local dist = math.abs(k - centerFloat)
 				local centered = dist < 0.5
+				-- CHANGED: neighbors kept readable (they used to fade near-black against the band).
 				slot.nm.TextColor3 = centered and LobbyLook.TEXTCOL or ROW_DIM
-				slot.nm.TextTransparency = centered and 0.05 or math.min(0.65, 0.3 + dist * 0.18)
+				slot.nm.TextTransparency = centered and 0.05 or math.min(0.5, 0.18 + dist * 0.14)
 				slot.pc.TextColor3 = centered and LobbyLook.DIMTEXT or PCT_DIM
-				slot.pc.TextTransparency = centered and 0.1 or math.min(0.75, 0.4 + dist * 0.18)
+				slot.pc.TextTransparency = centered and 0.1 or math.min(0.6, 0.28 + dist * 0.14)
 				slot.frame.Position = UDim2.new(0.5, 0, 0, math.floor(centerY + (k - centerFloat) * ROW_H + 0.5))
 			end
 		end

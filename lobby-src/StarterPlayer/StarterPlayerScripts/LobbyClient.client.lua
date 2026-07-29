@@ -746,19 +746,31 @@ coinPad.PaddingLeft = UDim.new(0, 6); coinPad.PaddingRight = UDim.new(0, 52) -- 
 coinPad.Parent = coinsRow
 do -- NEW: gold "+" beside the coins (same as in-game) — deep-links to the shop's coin bundles.
 	-- Built here, WIRED later where openShopTab exists (scope): stored on LC for the shop block.
+	-- CHANGED (owner: it read "blacked out"): the chip sits INSIDE the pill's reserved right pad now
+	-- (it used to hang past the pill's edge) with a clean WHITE plus instead of the dark-brown glyph.
 	local plus = Instance.new("TextButton")
 	plus.Name = "GetCoinsPlus"
 	plus.AnchorPoint = Vector2.new(1, 0.5)
-	plus.Position = UDim2.new(1, 40, 0.5, 0)
+	plus.Position = UDim2.new(1, 44, 0.5, 0) -- the row's right pad (52px) reserves this spot
 	plus.Size = UDim2.fromOffset(30, 30)
 	plus.BackgroundColor3 = GOLD
+	plus.AutoButtonColor = true
 	plus.FontFace = TITLE_FACE
-	plus.TextSize = 22
-	plus.TextColor3 = Color3.fromRGB(36, 26, 4)
+	plus.TextSize = 24
+	plus.TextColor3 = Color3.new(1, 1, 1)
 	plus.Text = "+"
+	plus.ZIndex = 5
 	plus.Parent = coinsRow
 	corner(plus, 9)
-	ledge(plus, TBLACK, 2.5)
+	ledge(plus, TBLACK, 2)
+	do
+		local ps = Instance.new("UIStroke")
+		ps.Color = Color3.fromRGB(0, 0, 0)
+		ps.Transparency = 0.45
+		ps.Thickness = 1.2
+		ps.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		ps.Parent = plus
+	end
 	LC.coinPlusBtn = plus
 end
 local coinIcon = Instance.new("ImageLabel")
@@ -2345,10 +2357,9 @@ do
 	ll.FillDirection = Enum.FillDirection.Vertical
 	ll.Padding = UDim.new(0, 12)
 	ll.Parent = rail
-	-- NEW (owner call): TITLES rides directly under GUNS. No owner photo yet — the 🏆 stamp fills in
-	-- (drop an image id into its slot to replace it).
+	-- NEW (owner call): TITLES rides directly under GUNS, wearing the owner's photo.
 	for i, d in { { "weapons", "GUNS", "rbxassetid://102091580612843" },
-		{ "titles", "TITLES", "" },
+		{ "titles", "TITLES", "rbxassetid://85019694670019" },
 		{ "cases", "CRATES", "rbxassetid://119161862051444" } } do
 		local holder = Instance.new("Frame")
 		holder.Name = "Hold_" .. d[1]
@@ -5780,13 +5791,16 @@ do
 	end
 	ledge(Q.rail, TBLACK, 2.5)
 	do
-		local em = Instance.new("TextLabel") -- the stamp (swap for an owner photo id anytime)
-		em.BackgroundTransparency = 1
-		em.Size = UDim2.fromScale(1, 1)
-		em.TextSize = 30
-		em.Text = "📜"
-		em.ZIndex = 5
-		em.Parent = Q.rail
+		local img = Instance.new("ImageLabel") -- CHANGED: the owner's quest photo fills the circle
+		img.BackgroundTransparency = 1
+		img.Size = UDim2.fromScale(1, 1)
+		img.ScaleType = Enum.ScaleType.Crop
+		img.Image = "rbxassetid://102249676801393"
+		img.ZIndex = 5
+		img.Parent = Q.rail
+		local ic = Instance.new("UICorner")
+		ic.CornerRadius = UDim.new(1, 0) -- clip the photo to the circle
+		ic.Parent = img
 		local vt = Q.text(Q.rail, "QUESTS", 13, Color3.fromRGB(217, 247, 184))
 		vt.AnchorPoint = Vector2.new(0.5, 0)
 		vt.Position = UDim2.new(0.5, 0, 1, 2)
