@@ -1563,60 +1563,8 @@ local selectedInv = nil -- { kind = "weapon"|"case"|"potion", id } — drives th
 local renderActive -- forward decl (grid + detail render)
 local playReel -- forward decl (the reel section below assigns it)
 
--- WEAPON CATEGORY sub-tabs: LEVEL / CRATE / EVENT. Only shown on the WEAPONS screen; the current pick
--- rides on invGrid:GetAttribute("WeaponCat") (an attribute, not a new local — the client is at Luau's
--- 200-local ceiling). Guns declare which bucket they live in via WEAPONS[id].source ("level" default).
-do
-	local catRow = Instance.new("Frame")
-	catRow.Name = "WeaponCatRow"
-	catRow.Position = UDim2.fromOffset(96, CONTENT_Y)
-	catRow.Size = UDim2.fromOffset(PANEL_W - 32, 34)
-	catRow.BackgroundTransparency = 1
-	catRow.Visible = false
-	catRow.Parent = invPanel
-	local ll = Instance.new("UIListLayout")
-	ll.FillDirection = Enum.FillDirection.Horizontal
-	ll.Padding = UDim.new(0, 8)
-	ll.Parent = catRow
-	invGrid:SetAttribute("WeaponCat", "level")
-	local defs = { { "level", "LEVEL" }, { "event", "EVENT" } } -- CRATE tab removed (collided with the CRATES side tab)
-	local btns = {}
-	local function paint()
-		local cur = invGrid:GetAttribute("WeaponCat") or "level"
-		for _, b in btns do
-			local on = b:GetAttribute("cat") == cur
-			b.BackgroundColor3 = on and ACCENT or CARD
-			b.TextColor3 = on and Color3.new(1, 1, 1) or TEXTCOL
-		end
-	end
-	for i, d in defs do
-		local b = Instance.new("TextButton")
-		b.Name = "Cat_" .. d[1]
-		b:SetAttribute("cat", d[1])
-		b.LayoutOrder = i
-		b.Size = UDim2.fromOffset(122, 34)
-		b.BackgroundColor3 = CARD
-		b.AutoButtonColor = true
-		b.FontFace = BODYB_FACE
-		b.TextSize = 15
-		b.TextColor3 = TEXTCOL
-		b.Text = d[2]
-		b.Parent = catRow
-		corner(b, 6)
-		ledge(b, TBLACK, 2)
-		table.insert(btns, b)
-		b.Activated:Connect(function()
-			if invGrid:GetAttribute("WeaponCat") == d[1] then
-				return
-			end
-			invGrid:SetAttribute("WeaponCat", d[1])
-			lplay("Click")
-			paint()
-			if renderActive then renderActive() end
-		end)
-	end
-	paint()
-end
+-- (The LEVEL / EVENT weapon-category sub-tabs were DELETED — owner call: the GUNS screen is just the
+-- player's gun ladder now, no filter chips. Guns' `source` field still exists server-side, unused here.)
 
 local function invSelect(kind, id)
 	print(("[LobbyInv] card clicked: %s %s"):format(tostring(kind), tostring(id))) -- diagnostic breadcrumb
@@ -2212,21 +2160,12 @@ end
 local function renderWeaponsGrid()
 	-- EVERY gun in the SELECTED category shows (locked ones carry their unlock). Category comes from the
 	-- LEVEL/CRATE/EVENT sub-tabs (invGrid attribute); a gun's bucket is WEAPONS[id].source (default level).
-	local cat = invGrid:GetAttribute("WeaponCat") or "level"
+	-- CHANGED: no category filter — ONE grid, every gun, ladder order (owner: "just the player's guns").
 	local ids = {}
 	for id in invData.catalog.weapons do
-		if (weaponInfo(id).source or "level") == cat then
-			table.insert(ids, id)
-		end
+		table.insert(ids, id)
 	end
 	if #ids == 0 then
-		local msg = Instance.new("TextLabel")
-		msg.Size = UDim2.fromOffset(360, 60); msg.BackgroundTransparency = 1; msg.FontFace = BODYB_FACE
-		msg.TextSize = 14; msg.TextWrapped = true; msg.TextColor3 = DIMTEXT
-		msg.Text = (cat == "crate") and "No crate guns yet — pull them from CRATES in the shop!"
-			or (cat == "event") and "No event guns right now — check back during events!"
-			or "No guns here yet."
-		msg.Parent = invGrid
 		return {}
 	end
 	table.sort(ids, function(a, b) -- LADDER order: the grid IS the unlock road
@@ -2304,7 +2243,66 @@ local function renderCasesGrid()
 	return out
 end
 
--- ===== SCREEN SWITCHING + MASTER RENDER ===== ("weapons" = the GUNS tab, "cases" = the CRATES tab)
+-- NEW (owner call): the TITLES tab — moved here from the classes screen. One card per title in the
+-- same ticket grid; tap an unlocked one to wear it (tap again to take it off). Locked cards carry
+-- their how-to-earn hint. No inspect page — the card IS the whole interaction.
+local function renderTitlesGrid()
+	local out = {}
+	for _, tid in ipairs(LC.TITLES_ORDER) do
+		local td = LC.TITLES[tid]
+		local unlocked = LC.titleUnlocked(tid)
+		local worn = (LC.titleEquipped == tid)
+		local card = Instance.new("TextButton")
+		card.Name = "Title_" .. tid
+		card.LayoutOrder = #out + 1
+		card.BackgroundColor3 = Color3.fromRGB(19, 22, 14)
+		card.BorderSizePixel = 0
+		card.AutoButtonColor = true
+		card.Text = ""
+		card.Parent = invGrid
+		corner(card, 12)
+		ledge(card, worn and Color3.new(1, 1, 1) or TBLACK, worn and 3.5 or 3)
+		local nm = Instance.new("TextLabel")
+		nm.BackgroundTransparency = 1
+		nm.Position = UDim2.fromOffset(8, 34)
+		nm.Size = UDim2.new(1, -16, 0, 44)
+		nm.FontFace = TITLE_FACE
+		nm.TextSize = 19
+		nm.TextWrapped = true
+		nm.TextColor3 = unlocked and td.color or Color3.fromRGB(110, 112, 100)
+		nm.Text = (unlocked and "" or "🔒 ") .. td.name
+		nm.Parent = card
+		local st = Instance.new("UIStroke")
+		st.Color = TBLACK
+		st.Thickness = 2
+		st.Parent = nm
+		local how = Instance.new("TextLabel")
+		how.BackgroundTransparency = 1
+		how.AnchorPoint = Vector2.new(0, 1)
+		how.Position = UDim2.new(0, 8, 1, -10)
+		how.Size = UDim2.new(1, -16, 0, 42)
+		how.FontFace = BODYB_FACE
+		how.TextSize = 11
+		how.TextWrapped = true
+		how.TextColor3 = worn and Color3.fromRGB(235, 240, 220) or DIMTEXT
+		how.Text = worn and "EQUIPPED ✓ — TAP TO REMOVE" or td.how
+		how.Parent = card
+		card.Activated:Connect(function()
+			if not LC.titleUnlocked(tid) then
+				lplay("Error")
+				return -- locked: the card IS the how-to-earn hint
+			end
+			lplay("Equip")
+			LC.titleEquipped = (LC.titleEquipped == tid) and "" or tid -- optimistic; Stats echo confirms
+			LC.TitleEquipR:FireServer(LC.titleEquipped)
+			renderActive()
+		end)
+		table.insert(out, { kind = "title", id = tid })
+	end
+	return out
+end
+
+-- ===== SCREEN SWITCHING + MASTER RENDER ===== ("weapons" = GUNS, "titles" = TITLES, "cases" = CRATES)
 local function showTab(id)
 	activeTab = id
 	selectedInv = nil -- switching screens resets the featured pane
@@ -2327,14 +2325,10 @@ local function showTab(id)
 			end
 		end
 	end
-	-- GUNS carries the LEVEL/CRATE/EVENT category row across the top; CRATES doesn't. Content sits
-	-- RIGHT of the image rail (68px + gutter).
-	local catRow = invPanel:FindFirstChild("WeaponCatRow")
-	if catRow then catRow.Visible = (id == "weapons") end
-	local gy = (id == "weapons") and (CONTENT_Y + 44) or CONTENT_Y
-	invGrid.Position = UDim2.fromOffset(96, gy)
-	invGrid.Size = UDim2.fromOffset(PANEL_W - 112, PANEL_H - gy - 16 - 24)
-	invRecolor(LC.HEADER_COLORS.guns) -- one LOCKER header color on both tabs
+	-- CHANGED: the category chip row is GONE — every tab is a clean grid right of the image rail.
+	invGrid.Position = UDim2.fromOffset(96, CONTENT_Y)
+	invGrid.Size = UDim2.fromOffset(PANEL_W - 112, PANEL_H - CONTENT_Y - 16 - 24)
+	invRecolor(LC.HEADER_COLORS.guns) -- one LOCKER header color on every tab
 end
 
 -- ===== LOCKER SIDE TABS ===== a LEFT column of IMAGE buttons (dock-style): GUNS (the old Weapons
@@ -2351,7 +2345,10 @@ do
 	ll.FillDirection = Enum.FillDirection.Vertical
 	ll.Padding = UDim.new(0, 12)
 	ll.Parent = rail
+	-- NEW (owner call): TITLES rides directly under GUNS. No owner photo yet — the 🏆 stamp fills in
+	-- (drop an image id into its slot to replace it).
 	for i, d in { { "weapons", "GUNS", "rbxassetid://102091580612843" },
+		{ "titles", "TITLES", "" },
 		{ "cases", "CRATES", "rbxassetid://119161862051444" } } do
 		local holder = Instance.new("Frame")
 		holder.Name = "Hold_" .. d[1]
@@ -2368,6 +2365,14 @@ do
 		b.Image = d[3]
 		b.ScaleType = Enum.ScaleType.Crop
 		b.Parent = holder
+		if d[3] == "" then -- photo-less tab: a big emoji stamp instead of a blank square
+			local em = Instance.new("TextLabel")
+			em.BackgroundTransparency = 1
+			em.Size = UDim2.fromScale(1, 1)
+			em.TextSize = 34
+			em.Text = "🏆"
+			em.Parent = b
+		end
 		corner(b, 10)
 		ledge(b, TBLACK, 2.5)
 		local nm = Instance.new("TextLabel")
@@ -2404,6 +2409,7 @@ renderActive = function()
 	local function paintGrid()
 		clearChildren(invGrid)
 		if activeTab == "weapons" then return renderWeaponsGrid()
+		elseif activeTab == "titles" then return renderTitlesGrid()
 		else return renderCasesGrid() end
 	end
 	local okG, entries = pcall(paintGrid)
@@ -4667,67 +4673,7 @@ do
 			end)
 		end
 
-		-- ===== TITLES ===== (owner call): the trophy worn over your head. Earned IN THE GAME (waves +
-		-- roller events), picked HERE. Appended into the same scroll list under the classes.
-		do
-			local hdr = C.text(C.list, "TITLES — YOUR TROPHY", 15)
-			hdr.LayoutOrder = 100
-			hdr.Size = UDim2.new(1, -6, 0, 30)
-			hdr.TextXAlignment = Enum.TextXAlignment.Left
-			C.trows = {}
-			for ti, tid in ipairs(LC.TITLES_ORDER) do
-				local td = LC.TITLES[tid]
-				local trow = Instance.new("TextButton")
-				trow.LayoutOrder = 100 + ti
-				trow.Size = UDim2.new(1, -6, 0, 44)
-				trow.BackgroundColor3 = Color3.fromRGB(19, 22, 14)
-				trow.BorderSizePixel = 0
-				trow.AutoButtonColor = true
-				trow.Text = ""
-				trow.Parent = C.list
-				corner(trow, 10)
-				local tring = ledge(trow, TBLACK, 2.5)
-				local tnm = C.text(trow, td.name, 16, td.color)
-				tnm.Position = UDim2.fromOffset(12, 4)
-				tnm.Size = UDim2.new(1, -24, 0, 20)
-				tnm.TextXAlignment = Enum.TextXAlignment.Left
-				local thow = Instance.new("TextLabel")
-				thow.Position = UDim2.fromOffset(12, 25)
-				thow.Size = UDim2.new(1, -24, 0, 14)
-				thow.BackgroundTransparency = 1
-				thow.FontFace = BODYB_FACE
-				thow.TextSize = 10
-				thow.TextColor3 = DIMTEXT
-				thow.TextXAlignment = Enum.TextXAlignment.Left
-				thow.Text = td.how
-				thow.Parent = trow
-				C.trows[tid] = { row = trow, ring = tring, nm = tnm, how = thow }
-				trow.Activated:Connect(function()
-					if not LC.titleUnlocked(tid) then
-						lplay("Error")
-						return -- locked: the row IS the how-to-earn hint
-					end
-					lplay("Equip")
-					LC.titleEquipped = (LC.titleEquipped == tid) and "" or tid -- optimistic; Stats echo confirms
-					LC.TitleEquipR:FireServer(LC.titleEquipped)
-					if C.refreshTitles then
-						C.refreshTitles()
-					end
-				end)
-			end
-			C.refreshTitles = function()
-				for tid, r in C.trows do
-					local unlocked = LC.titleUnlocked(tid)
-					local worn = (LC.titleEquipped == tid)
-					r.nm.TextColor3 = unlocked and LC.TITLES[tid].color or Color3.fromRGB(110, 112, 100)
-					r.nm.Text = (unlocked and "" or "🔒 ") .. LC.TITLES[tid].name
-					r.how.Text = worn and "EQUIPPED ✓ — TAP TO REMOVE" or LC.TITLES[tid].how
-					r.ring.Color = worn and Color3.new(1, 1, 1) or TBLACK
-					r.ring.Thickness = worn and 3 or 2.5
-				end
-			end
-			C.refreshTitles()
-		end
+		-- (TITLES picker MOVED to the LOCKER's TITLES tab — owner call. The classes screen is classes only.)
 
 		-- J1 GLOW PULSE — a soft green aura BEHIND the SELECT button (stacked translucent frames), pulsing
 		C.halo = Instance.new("Frame")
@@ -5064,9 +5010,7 @@ do
 				LC.titleEquipped = s.titleEquipped
 			end
 			LC.hasVip = s.vip == true or LC.hasVip
-			if C.refreshTitles then
-				C.refreshTitles()
-			end
+			-- (titles UI lives on the LOCKER's TITLES tab now; it repaints on open/tap, no push needed)
 		end
 		if typeof(s) == "table" and typeof(s.class) == "string" then
 			C.equipped = s.class
@@ -5787,7 +5731,7 @@ do
 	local TS = game:GetService("TweenService")
 	local QGOLD = Color3.fromRGB(230, 180, 76)
 	local QICON = { kills = "🧟", wave = "🌊", money = "🪙", runs = "🎮", wins = "🏆", crates = "📦" }
-	local PANEL_X_OPEN, PANEL_X_CLOSED = 64, -330
+	local PANEL_X_OPEN, PANEL_X_CLOSED = 92, -330 -- CHANGED: clears the new circle button (14..78px)
 
 	local Q = { open = false, data = nil, deadline = 0, autoArmed = true } -- one table (200-local ceiling)
 
@@ -5816,31 +5760,42 @@ do
 		return l
 	end
 
-	-- THE RAIL — a clean STRAIGHT-EDGED rectangle flush to the screen edge (no rounding, no tile):
-	-- vertical QUESTS text, the open/close chevron at the bottom, red badge on the corner.
+	-- THE BUTTON — CHANGED (owner: the flat edge slab "looked out of place"): a DOCK-STYLE CIRCLE now,
+	-- the same grammar as every other launcher — round CARD button, emoji stamp, sticker label under
+	-- it, red badge on the shoulder. Floats just off the left edge at mid-height.
 	Q.rail = Instance.new("TextButton")
 	Q.rail.Name = "QuestRail"
 	Q.rail.AnchorPoint = Vector2.new(0, 0.5)
-	Q.rail.Position = UDim2.new(0, 0, 0.5, 0)
-	Q.rail.Size = UDim2.fromOffset(44, 168)
-	Q.rail.BackgroundColor3 = Color3.fromRGB(14, 13, 10)
-	Q.rail.BackgroundTransparency = 0.08
+	Q.rail.Position = UDim2.new(0, 14, 0.5, 0)
+	Q.rail.Size = UDim2.fromOffset(64, 64)
+	Q.rail.BackgroundColor3 = CARD
 	Q.rail.BorderSizePixel = 0
 	Q.rail.AutoButtonColor = true
 	Q.rail.Text = ""
 	Q.rail.Parent = Q.gui
-	ledge(Q.rail, TBLACK, 3)
 	do
-		local vt = Q.text(Q.rail, "QUESTS", 15, Color3.fromRGB(217, 247, 184))
-		vt.AnchorPoint = Vector2.new(0.5, 0.5)
-		vt.Position = UDim2.new(0.5, 0, 0.5, -8)
-		vt.Size = UDim2.fromOffset(130, 20)
-		vt.Rotation = -90
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0) -- full circle
+		c.Parent = Q.rail
 	end
-	Q.arrow = Q.text(Q.rail, "▶", 13, ACCENT)
-	Q.arrow.AnchorPoint = Vector2.new(0.5, 1)
-	Q.arrow.Position = UDim2.new(0.5, 0, 1, -6)
-	Q.arrow.Size = UDim2.fromOffset(16, 16)
+	ledge(Q.rail, TBLACK, 2.5)
+	do
+		local em = Instance.new("TextLabel") -- the stamp (swap for an owner photo id anytime)
+		em.BackgroundTransparency = 1
+		em.Size = UDim2.fromScale(1, 1)
+		em.TextSize = 30
+		em.Text = "📜"
+		em.ZIndex = 5
+		em.Parent = Q.rail
+		local vt = Q.text(Q.rail, "QUESTS", 13, Color3.fromRGB(217, 247, 184))
+		vt.AnchorPoint = Vector2.new(0.5, 0)
+		vt.Position = UDim2.new(0.5, 0, 1, 2)
+		vt.Size = UDim2.fromOffset(80, 16)
+	end
+	Q.arrow = Q.text(Q.rail, "▶", 11, ACCENT) -- flips to point back at the panel while it's open
+	Q.arrow.AnchorPoint = Vector2.new(0, 0.5)
+	Q.arrow.Position = UDim2.new(1, 4, 0.5, 0)
+	Q.arrow.Size = UDim2.fromOffset(14, 14)
 	Q.badge = Instance.new("Frame")
 	Q.badge.AnchorPoint = Vector2.new(1, 0)
 	Q.badge.Position = UDim2.new(1, 8, 0, -8)

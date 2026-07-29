@@ -29,7 +29,7 @@ local EventWheelController = {}
 -- ===== TUNABLES =====
 local BAND_W = 520         -- CHANGED (owner): band width (px, hud-scaled) — a CENTERED STRIP now, not
                            -- edge-to-edge ("it stretches from the left of the screen to the right")
-local ROW_H = 46           -- one reel row (px, hud-scaled) — trimmed with the width pass
+local ROW_H = 56           -- one reel row (px, hud-scaled) — CHANGED (owner): bigger letters
 local WINDOW_ROWS = 3      -- rows visible in the clipped window (center + one each side)
 local BAND_Y = 0.11        -- band top, fraction of the screen (owner: tucked right under the wave strip)
 local DIM = 0.52           -- how dark the dimmer gets (0 = none, 1 = black)
@@ -135,9 +135,9 @@ local function makeSlot(parent: Frame)
 	nm.BackgroundTransparency = 1
 	nm.AnchorPoint = Vector2.new(0.5, 0)
 	nm.Position = UDim2.new(0.5, 0, 0, 1)
-	nm.Size = UDim2.new(1, 0, 0, 27)
+	nm.Size = UDim2.new(1, 0, 0, 34)
 	nm.FontFace = LobbyLook.TITLE_FACE
-	nm.TextSize = 24
+	nm.TextSize = 32 -- CHANGED (owner): bigger reel letters
 	nm.TextColor3 = ROW_DIM
 	nm.Text = ""
 	nm.ZIndex = 4
@@ -145,17 +145,17 @@ local function makeSlot(parent: Frame)
 	local st = Instance.new("UIStroke")
 	st.Color = Color3.fromRGB(0, 0, 0)
 	st.Transparency = 0.25
-	st.Thickness = 2.2
+	st.Thickness = 2.6
 	st.Parent = nm
 
 	local pc = Instance.new("TextLabel")
 	pc.Name = "Pc"
 	pc.BackgroundTransparency = 1
 	pc.AnchorPoint = Vector2.new(0.5, 0)
-	pc.Position = UDim2.new(0.5, 0, 0, 28)
-	pc.Size = UDim2.new(1, 0, 0, 15)
+	pc.Position = UDim2.new(0.5, 0, 0, 36)
+	pc.Size = UDim2.new(1, 0, 0, 17)
 	pc.FontFace = LobbyLook.BODYB_FACE
-	pc.TextSize = 12
+	pc.TextSize = 14
 	pc.TextColor3 = PCT_DIM
 	pc.Text = ""
 	pc.ZIndex = 4
