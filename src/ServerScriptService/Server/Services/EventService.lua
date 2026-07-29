@@ -796,7 +796,9 @@ function EventService.SpinForWave(wave: number): string
 		seconds = secs,
 		odds = odds,
 	})
-	task.delay(math.max(0.5, secs - 0.35), function() -- lands just before the visual lock beat
+	task.delay(math.max(0.4, secs * 0.5), function()
+		-- CHANGED (reel v2): the lock lands at HALF-spin — the client reel needs the target while
+		-- still scrolling so the final row can glide in naturally. Still unreadable at spin start.
 		Remotes.Get("EventSpin"):FireAllClients({
 			wave = wave,
 			lock = chosen,

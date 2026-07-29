@@ -1,20 +1,18 @@
 --!nonstrict
--- EventWheelController.lua — THE EVENT ROLLER, cinematic pass (owner-approved mock). Every wave break
--- the server broadcasts EventSpin {wave, outcome, seconds, odds}; this runs the show:
---   1. THE DIM — gameplay fades back ~50% under a vignette; the roll owns the screen.
---   2. THE BAND — a cinematic strip snaps open across the upper third (dark center, edges fading to
---      nothing, hairline rules top + bottom). The words flash inside it — blink out, blink in,
---      slowing like a thrown die — each stamped with its live % chance (one decimal, no rarity).
---   3. THE LOCK FLOOD — the real outcome slams in: band + hairlines flood the event's color, the word
---      punches (bigger for rarer odds), burst rays fire behind it, the SCREEN EDGES glow the color
---      for the whole hold. Then everything tucks away and the wave starts.
--- Pure theater: the server already decided the outcome. Sounds: WheelSpin loops the flash, WheelLock
--- lands with the flood.
--- CHANGED (anti-datamine): EventSpin arrives in TWO stages now — {wave, seconds, odds} starts the
--- roll WITHOUT the outcome, then {wave, lock = outcome} lands just before the visual lock beat. An
--- exploiter can no longer read next wave's fate at spin start.
+-- EventWheelController.lua — THE EVENT ROLLER, REEL v2 (owner-approved mock). Every wave break the
+-- server broadcasts EventSpin in TWO stages: {wave, seconds, odds} starts the roll WITHOUT the
+-- outcome (anti-datamine), then {wave, lock = outcome} lands at half-spin. This runs the show:
+--   1. THE DIM — gameplay fades back ~50%; the roll owns the screen (sits above hotbar/boss/chrome).
+--   2. THE REEL — a clipped window in the band; event names scroll VERTICALLY through it like a slot
+--      machine, each row stamped with its live % chance, visibly losing momentum until the locked
+--      outcome glides into the center rails and settles.
+--   3. THE LOCK FLOOD — neighbors snuff out, the centered name blooms in its event color (punch
+--      scaled by rarity), burst rays fire, the band + screen edges glow the color for the hold.
+-- Pure theater: the server already decided the outcome. Sounds: WheelSpin loops the scroll,
+-- WheelLock lands with the flood.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,23 +27,23 @@ local SoundController = require(script.Parent.SoundController) -- WheelSpin duri
 local EventWheelController = {}
 
 -- ===== TUNABLES =====
-local FIRST_STEP = 0.10    -- seconds the FIRST flash lasts...
-local STEP_GROWTH = 1.32   -- ...each flash lasting this much longer (the die losing steam)
-local GAP_FRAC = 0.35      -- slice of each step spent BLANK (the blink-out between words)
+local ROW_H = 52           -- one reel row (px, hud-scaled)
+local WINDOW_ROWS = 3      -- rows visible in the clipped window (center + one each side)
 local BAND_Y = 0.11        -- band top, fraction of the screen (owner: tucked right under the wave strip)
-local BAND_H = 132         -- band height (px, hud-scaled)
 local DIM = 0.52           -- how dark the dimmer gets (0 = none, 1 = black)
+local EASE_POW = 3.6       -- scroll deceleration curve (higher = harder slam at the end)
+local STEPS_PER_SEC = 7    -- how many rows scroll past per second of spin (before deceleration shaping)
 -- Spectacle scales with the ODDS — the rarer the landing, the harder it hits. `edge` = the screen-edge
 -- glow's transparency (1 = none at all): everyday rolls DON'T wash the screen; only rare ones do.
 local function dramaFor(pct: number)
 	if pct <= 1.5 then
-		return { punch = 1.38, hold = 3.4, rays = 14, edge = 0.6 } -- the 1%ers: full fireworks
+		return { punch = 1.32, hold = 3.4, rays = 14, edge = 0.6 } -- the 1%ers: full fireworks
 	elseif pct <= 4 then
-		return { punch = 1.26, hold = 2.9, rays = 12, edge = 0.72 }
+		return { punch = 1.22, hold = 2.9, rays = 12, edge = 0.72 }
 	elseif pct <= 8 then
-		return { punch = 1.18, hold = 2.5, rays = 10, edge = 0.82 }
+		return { punch = 1.15, hold = 2.5, rays = 10, edge = 0.82 }
 	end
-	return { punch = 1.12, hold = 2.2, rays = 8, edge = 1 } -- common rolls: no screen wash at all
+	return { punch = 1.1, hold = 2.2, rays = 8, edge = 1 } -- common rolls: no screen wash at all
 end
 
 -- What each outcome reads as (server sends only the id + odds). Add a wheel outcome = add a row.
@@ -74,19 +72,27 @@ table.sort(IDS)
 
 local BAND_DARK = Color3.fromRGB(5, 7, 4)
 local HAIR_IDLE = Color3.fromRGB(90, 97, 72)
+local ROW_DIM = Color3.fromRGB(125, 132, 116)   -- neighbor rows (steel)
+local PCT_DIM = Color3.fromRGB(96, 103, 88)     -- neighbor % lines
+
+local WINDOW_H = ROW_H * WINDOW_ROWS
+local BAND_H = WINDOW_H + 34 -- title strip above the window
 
 local localPlayer = Players.LocalPlayer
 
-local gui, dimmer, band, hairTop, hairBot, titleLabel, wordLabel, oddsLabel, wordScale, raysHolder
-local edges = {} -- the 4 screen-edge glow frames
-local rays = {}  -- pre-built burst spokes behind the word
+local gui, dimmer, band, hairTop, titleLabel, windowFrame, raysHolder
+local edges = {}  -- the 4 screen-edge glow frames
+local rays = {}   -- pre-built burst spokes behind the centered word
+local slots = {}  -- the recycled row frames (WINDOW_ROWS + 2 of them)
 local spinToken = 0
-local pendingLockId = nil -- the stage-2 locked outcome (arrives mid-roll; the flash loop waits on it)
+local pendingLockId = nil -- the stage-2 locked outcome (arrives mid-roll; the reel waits on it)
+local applyLock = nil     -- set by the active roll: retro-fixes the final strip row when the lock
+                          -- lands AFTER that row was already dealt a placeholder name
 
 -- Same predicate the HUD uses to push its top lane down on phones — the band must clear that lane.
 local TOUCH = UserInputService.TouchEnabled
 
--- A full-width frame whose UIGradient fades both ends to nothing (the band + hairline treatment).
+-- A full-width frame whose UIGradient fades both ends to nothing (the band treatment).
 -- SHORT fade zones (owner call): solid across almost the whole width, dropping off in the last ~7%.
 local function fadeEnds(frame: Frame, hard: number?)
 	local g = Instance.new("UIGradient")
@@ -101,13 +107,70 @@ local function fadeEnds(frame: Frame, hard: number?)
 	g.Parent = frame
 end
 
+local function fmtPct(pct: number?): string
+	if not pct then
+		return ""
+	end
+	if pct % 1 == 0 then
+		return ("%d%% CHANCE"):format(pct)
+	end
+	return ("%.1f%% CHANCE"):format(pct)
+end
+
+-- One recycled reel row: the event name + its % line, popped by its own UIScale on the lock.
+local function makeSlot(parent: Frame)
+	local row = Instance.new("Frame")
+	row.BackgroundTransparency = 1
+	-- Center-anchored so the lock pop's UIScale blooms in place (top-left anchoring shoves it
+	-- down-right — the owner screenshotted exactly this on the old word label).
+	row.AnchorPoint = Vector2.new(0.5, 0.5)
+	row.Size = UDim2.new(1, 0, 0, ROW_H)
+	row.ZIndex = 4
+	row.Parent = parent
+
+	local nm = Instance.new("TextLabel")
+	nm.Name = "Nm"
+	nm.BackgroundTransparency = 1
+	nm.AnchorPoint = Vector2.new(0.5, 0)
+	nm.Position = UDim2.new(0.5, 0, 0, 2)
+	nm.Size = UDim2.new(1, 0, 0, 30)
+	nm.FontFace = LobbyLook.TITLE_FACE
+	nm.TextSize = 27
+	nm.TextColor3 = ROW_DIM
+	nm.Text = ""
+	nm.ZIndex = 4
+	nm.Parent = row
+	local st = Instance.new("UIStroke")
+	st.Color = Color3.fromRGB(0, 0, 0)
+	st.Transparency = 0.25
+	st.Thickness = 2.2
+	st.Parent = nm
+
+	local pc = Instance.new("TextLabel")
+	pc.Name = "Pc"
+	pc.BackgroundTransparency = 1
+	pc.AnchorPoint = Vector2.new(0.5, 0)
+	pc.Position = UDim2.new(0.5, 0, 0, 32)
+	pc.Size = UDim2.new(1, 0, 0, 16)
+	pc.FontFace = LobbyLook.BODYB_FACE
+	pc.TextSize = 13
+	pc.TextColor3 = PCT_DIM
+	pc.Text = ""
+	pc.ZIndex = 4
+	pc.Parent = row
+
+	local sc = Instance.new("UIScale")
+	sc.Parent = row
+
+	return { frame = row, nm = nm, pc = pc, scale = sc, strip = nil }
+end
+
 local function build()
 	gui = Instance.new("ScreenGui")
 	gui.Name = "EventRoller"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	-- CHANGED: the roller sits ABOVE the hotbar/boss/chrome layers now — the cinematic dim used to
-	-- stop at the HUD layer, leaving dock circles and the boss bar full-bright over the "dimmed" roll.
+	-- The roller sits ABOVE the hotbar/boss/chrome layers — the cinematic dim covers everything.
 	gui.DisplayOrder = ((UITheme.Layer and (UITheme.Layer.Chrome or UITheme.Layer.HUD) or 8)) + 1
 	gui.Enabled = false
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
@@ -150,23 +213,22 @@ local function build()
 	edge("EdgeLeft",   Vector2.new(0, 0.5), UDim2.fromScale(0, 0.5), UDim2.fromScale(0.05, 1), 0)
 	edge("EdgeRight",  Vector2.new(1, 0.5), UDim2.fromScale(1, 0.5), UDim2.fromScale(0.05, 1), 180)
 
-	-- 2) THE BAND: snaps open across the upper third; everything lives inside it.
+	-- 2) THE BAND: title strip + the clipped reel window.
 	band = Instance.new("Frame")
 	band.Name = "Band"
 	band.AnchorPoint = Vector2.new(0.5, 0)
-	-- CHANGED: on touch the band drops below the HUD's 110px top lane (wave strip + LEAVE/SKIP) —
-	-- at BAND_Y it rendered UNDER those buttons on phones for the whole roll.
+	-- On touch the band drops below the HUD's 110px top lane (wave strip + LEAVE/SKIP buttons).
 	band.Position = TOUCH and UDim2.new(0.5, 0, 0, 164) or UDim2.new(0.5, 0, BAND_Y, 0)
 	band.Size = UDim2.new(1, 0, 0, BAND_H)
 	band.BackgroundColor3 = BAND_DARK
-	band.BackgroundTransparency = 1 -- fades in (no UIScale shutter — the scale pass left squish artifacts)
+	band.BackgroundTransparency = 1 -- fades in
 	band.BorderSizePixel = 0
 	band.Visible = false
 	band.ZIndex = 3
 	band.Parent = gui
 	fadeEnds(band)
 
-	-- ONE hairline, riding the band's top (the bottom one crowded the odds line — owner screenshot).
+	-- ONE hairline, riding the band's top.
 	hairTop = Instance.new("Frame")
 	hairTop.Name = "HairTop"
 	hairTop.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -181,44 +243,74 @@ local function build()
 
 	titleLabel = Instance.new("TextLabel")
 	titleLabel.BackgroundTransparency = 1
-	titleLabel.Position = UDim2.new(0, 0, 0, 12)
+	titleLabel.Position = UDim2.new(0, 0, 0, 10)
 	titleLabel.Size = UDim2.new(1, 0, 0, 16)
 	titleLabel.FontFace = LobbyLook.BODYB_FACE
 	titleLabel.TextSize = 13
 	titleLabel.TextColor3 = LobbyLook.DIMTEXT
-	titleLabel.Text = "—  NEXT WAVE  —"
+	titleLabel.Text = "—  NEXT WAVE FATE  —"
 	titleLabel.ZIndex = 5
 	titleLabel.Parent = band
 
-	wordLabel = Instance.new("TextLabel") -- THE slot: one event name at a time
-	wordLabel.BackgroundTransparency = 1
-	-- Center-anchored so the lock pop's UIScale blooms in place (top-left anchoring shoved it sideways).
-	wordLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	wordLabel.Position = UDim2.new(0.5, 0, 0.5, 4)
-	wordLabel.Size = UDim2.new(1, 0, 0, 46)
-	wordLabel.FontFace = LobbyLook.TITLE_FACE
-	wordLabel.TextSize = 40
-	wordLabel.TextColor3 = LobbyLook.TEXTCOL
-	wordLabel.Text = ""
-	wordLabel.ZIndex = 6
-	wordLabel.Parent = band
-	local wStroke = Instance.new("UIStroke")
-	wStroke.Color = Color3.fromRGB(0, 0, 0)
-	wStroke.Transparency = 0.2
-	wStroke.Thickness = 2.6
-	wStroke.Parent = wordLabel
-	wordScale = Instance.new("UIScale")
-	wordScale.Parent = wordLabel
+	-- THE WINDOW: rows scroll inside, clipped top and bottom.
+	windowFrame = Instance.new("Frame")
+	windowFrame.Name = "Window"
+	windowFrame.BackgroundTransparency = 1
+	windowFrame.ClipsDescendants = true
+	windowFrame.Position = UDim2.new(0, 0, 0, 34)
+	windowFrame.Size = UDim2.new(1, 0, 0, WINDOW_H)
+	windowFrame.ZIndex = 3
+	windowFrame.Parent = band
 
-	-- Burst rays: thin spokes through the word's center, pre-built, fired on the lock.
+	for _ = 1, WINDOW_ROWS + 2 do
+		table.insert(slots, makeSlot(windowFrame))
+	end
+
+	-- CENTER RAILS: the "this row counts" cue — two dashes flanking the settle line.
+	for side = 0, 1 do
+		local rail = Instance.new("Frame")
+		rail.Name = side == 0 and "RailL" or "RailR"
+		rail.AnchorPoint = Vector2.new(side, 0.5)
+		rail.Position = UDim2.new(side, side == 0 and 26 or -26, 0.5, 0)
+		rail.Size = UDim2.fromOffset(26, 2)
+		rail.BackgroundColor3 = LobbyLook.TEXTCOL
+		rail.BackgroundTransparency = 1 -- fades in with the band
+		rail.BorderSizePixel = 0
+		rail.ZIndex = 6
+		rail.Parent = windowFrame
+	end
+
+	-- Vertical fades so rows melt in/out at the window's clip edges instead of hard-cutting.
+	for topSide = 0, 1 do
+		local f = Instance.new("Frame")
+		f.Name = topSide == 0 and "FadeTop" or "FadeBot"
+		f.AnchorPoint = Vector2.new(0, topSide)
+		f.Position = UDim2.new(0, 0, topSide, 0)
+		f.Size = UDim2.new(1, 0, 0, math.floor(ROW_H * 0.7))
+		f.BackgroundColor3 = BAND_DARK
+		f.BackgroundTransparency = 1 -- driven with the band's fade-in (to 0-ish via gradient)
+		f.BorderSizePixel = 0
+		f.ZIndex = 5
+		f.Parent = windowFrame
+		local g = Instance.new("UIGradient")
+		g.Rotation = topSide == 0 and 90 or -90
+		g.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.25),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		g.Parent = f
+		fadeEnds(f)
+	end
+
+	-- Burst rays: thin spokes through the window's center, pre-built, fired on the lock.
 	raysHolder = Instance.new("Frame")
 	raysHolder.Name = "Rays"
 	raysHolder.AnchorPoint = Vector2.new(0.5, 0.5)
-	raysHolder.Position = UDim2.new(0.5, 0, 0.5, 4)
+	raysHolder.Position = UDim2.new(0.5, 0, 0.5, 0)
 	raysHolder.Size = UDim2.fromOffset(0, 0)
 	raysHolder.BackgroundTransparency = 1
-	raysHolder.ZIndex = 5
-	raysHolder.Parent = band
+	raysHolder.ZIndex = 3
+	raysHolder.Parent = windowFrame
 	for i = 1, 14 do
 		local r = Instance.new("Frame")
 		r.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -227,56 +319,29 @@ local function build()
 		r.Rotation = (i - 1) * (180 / 14) -- spokes THROUGH the center: 14 covers the full circle
 		r.BackgroundTransparency = 1
 		r.BorderSizePixel = 0
-		r.ZIndex = 5
+		r.ZIndex = 3
 		r.Parent = raysHolder
 		table.insert(rays, r)
 	end
-
-	oddsLabel = Instance.new("TextLabel") -- the live % line riding under every flashed word
-	oddsLabel.BackgroundTransparency = 1 -- FIXED (owner report): the default opaque background rendered
-	-- as a solid full-width grey strip that ignored the band's edge fade — this label is text only
-	oddsLabel.AnchorPoint = Vector2.new(0.5, 1)
-	oddsLabel.Position = UDim2.new(0.5, 0, 1, -12)
-	oddsLabel.Size = UDim2.new(1, 0, 0, 22)
-	oddsLabel.FontFace = LobbyLook.BODYB_FACE
-	oddsLabel.TextSize = 19 -- owner: slightly bigger
-	oddsLabel.TextColor3 = LobbyLook.DIMTEXT
-	oddsLabel.Text = ""
-	oddsLabel.ZIndex = 6
-	oddsLabel.Parent = band
-	local oStroke = Instance.new("UIStroke")
-	oStroke.Color = Color3.fromRGB(0, 0, 0)
-	oStroke.Transparency = 0.35
-	oStroke.Thickness = 1.5
-	oStroke.Parent = oddsLabel
-end
-
-local function fmtPct(pct: number?): string
-	if not pct then
-		return ""
-	end
-	if pct % 1 == 0 then
-		return ("%d%% CHANCE"):format(pct)
-	end
-	return ("%.1f%% CHANCE"):format(pct)
-end
-
--- One flashed word (+ its live %). Mid-roll words sit dimmed white; the LOCK pass floods everything.
-local function showWord(id: string, odds)
-	local look = LOOK[id] or LOOK.calm
-	wordLabel.Text = look.name
-	wordLabel.TextColor3 = LobbyLook.TEXTCOL
-	wordLabel.TextTransparency = 0.1
-	oddsLabel.Text = fmtPct(typeof(odds) == "table" and tonumber(odds[id]) or nil)
-	oddsLabel.TextColor3 = LobbyLook.DIMTEXT
 end
 
 local TW = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local function setStage(on: boolean)
-	-- The dim + the band FADE in/out together. (The first pass "shutter-opened" the band with a
-	-- UIScale — it squished the text and left artifacts on screen, owner screenshot — fades are clean.)
 	TweenService:Create(dimmer, TW, { BackgroundTransparency = on and DIM or 1 }):Play()
+	local railT = on and 0.45 or 1
+	for _, name in { "RailL", "RailR" } do
+		local rail = windowFrame:FindFirstChild(name)
+		if rail then
+			TweenService:Create(rail, TW, { BackgroundTransparency = railT }):Play()
+		end
+	end
+	for _, name in { "FadeTop", "FadeBot" } do
+		local f = windowFrame:FindFirstChild(name)
+		if f then
+			TweenService:Create(f, TW, { BackgroundTransparency = on and 0.1 or 1 }):Play()
+		end
+	end
 	if on then
 		band.Visible = true
 		band.BackgroundColor3 = BAND_DARK
@@ -287,50 +352,64 @@ local function setStage(on: boolean)
 	else
 		TweenService:Create(band, TW, { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(hairTop, TW, { BackgroundTransparency = 1 }):Play()
-		for _, l in { titleLabel, wordLabel, oddsLabel } do
-			TweenService:Create(l, TW, { TextTransparency = 1 }):Play()
+		TweenService:Create(titleLabel, TW, { TextTransparency = 1 }):Play()
+		for _, s in slots do
+			TweenService:Create(s.nm, TW, { TextTransparency = 1 }):Play()
+			TweenService:Create(s.pc, TW, { TextTransparency = 1 }):Play()
 		end
 		for _, e in edges do -- edges only glow during the lock; always clear them on the way out
 			TweenService:Create(e, TW, { BackgroundTransparency = 1 }):Play()
 		end
 		task.delay(0.32, function()
 			band.Visible = false
-			wordLabel.Text = ""
-			oddsLabel.Text = ""
-			wordLabel.TextTransparency = 0
-			oddsLabel.TextTransparency = 0
+			titleLabel.TextTransparency = 0
+			for _, s in slots do
+				s.nm.Text = ""
+				s.pc.Text = ""
+				s.nm.TextTransparency = 0
+				s.pc.TextTransparency = 0
+				s.scale.Scale = 1
+				s.strip = nil
+			end
 		end)
 	end
 end
 
--- THE LOCK FLOOD: color everything, punch the word, fire the rays.
-local function lockIn(outcome: string, odds)
+-- THE LOCK FLOOD: color everything, punch the centered row, fire the rays.
+local function lockIn(centerSlot, outcome: string, odds)
 	local look = LOOK[outcome] or LOOK.calm
 	local pct = typeof(odds) == "table" and tonumber(odds[outcome]) or 100
 	local drama = dramaFor(pct)
 
-	wordLabel.Text = look.name
-	wordLabel.TextColor3 = look.color
-	wordLabel.TextTransparency = 0
-	oddsLabel.Text = fmtPct(pct)
-	oddsLabel.TextColor3 = look.color
+	centerSlot.nm.Text = look.name
+	centerSlot.nm.TextColor3 = look.color
+	centerSlot.nm.TextTransparency = 0
+	centerSlot.pc.Text = fmtPct(pct)
+	centerSlot.pc.TextColor3 = look.color
+	centerSlot.pc.TextTransparency = 0
 
+	-- Neighbors snuff out so the winner owns the window.
+	for _, s in slots do
+		if s ~= centerSlot then
+			TweenService:Create(s.nm, TW, { TextTransparency = 1 }):Play()
+			TweenService:Create(s.pc, TW, { TextTransparency = 1 }):Play()
+		end
+	end
 	-- Band + hairline flood the event color (kept dark enough for the word to pop).
 	TweenService:Create(band, TW, { BackgroundColor3 = BAND_DARK:Lerp(look.color, 0.22) }):Play()
 	TweenService:Create(hairTop, TW, { BackgroundColor3 = look.color }):Play()
-	-- Screen edges glow the color for the hold — but ONLY as loud as the odds deserve (drama.edge = 1
-	-- means an everyday roll doesn't wash the screen at all).
+	-- Screen edges glow the color for the hold — but ONLY as loud as the odds deserve.
 	if drama.edge < 1 then
 		for _, e in edges do
 			e.BackgroundColor3 = look.color
 			TweenService:Create(e, TW, { BackgroundTransparency = drama.edge }):Play()
 		end
 	end
-	-- The punch (scaled by how rare the landing is).
-	wordScale.Scale = 0.72
-	TweenService:Create(wordScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+	-- The punch (scaled by how rare the landing is) — blooms about the row's center.
+	centerSlot.scale.Scale = 0.78
+	TweenService:Create(centerSlot.scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
 		{ Scale = drama.punch }):Play()
-	-- Burst rays: expanding, fading spokes through the word.
+	-- Burst rays: expanding, fading spokes behind the word.
 	for i, r in rays do
 		local active = i <= drama.rays
 		r.BackgroundColor3 = look.color
@@ -350,9 +429,12 @@ local function runRoll(info)
 	if typeof(info) ~= "table" then
 		return
 	end
-	-- STAGE 2: the locked outcome lands mid-roll — hand it to the running flash loop and bail.
+	-- STAGE 2: the locked outcome lands mid-roll — hand it to the running reel and bail.
 	if info.lock ~= nil then
 		pendingLockId = tostring(info.lock)
+		if applyLock then
+			applyLock(pendingLockId)
+		end
 		return
 	end
 
@@ -361,8 +443,7 @@ local function runRoll(info)
 	-- Legacy single-message shape (outcome at spin start) still locks correctly.
 	pendingLockId = typeof(info.outcome) == "string" and info.outcome or nil
 
-	-- CHANGED: flash only events actually IN this wave's odds table — the old ladder sampled all 15
-	-- LOOK ids, teasing outcomes that could not land (with a blank % line flickering under them).
+	-- Only events actually IN this wave's odds table ride the reel — no impossible teases.
 	local pool = {}
 	if odds then
 		for id in odds do
@@ -378,7 +459,6 @@ local function runRoll(info)
 
 	spinToken += 1
 	local myTok = spinToken
-	wordScale.Scale = 1
 	gui.Enabled = true
 	setStage(true)
 	-- The HUD's "NEXT WAVE IN n" countdown yields while the roller is up (they'd overlap).
@@ -396,44 +476,98 @@ local function runRoll(info)
 	end)
 
 	task.spawn(function()
-		-- The step ladder: flashes speed-decay until they've spent the spin window. The real outcome
-		-- arrives separately (stage 2) and locks the moment the ladder lands.
-		local steps = {}
-		local t, dur = 0, FIRST_STEP
-		while t + dur < secs - 0.35 do
-			table.insert(steps, dur)
-			t += dur
-			dur *= STEP_GROWTH
-		end
-		local prev = nil
-		for _, stepDur in steps do
-			if myTok ~= spinToken then
+		-- ===== THE REEL ===== a virtual strip of names scrolls through the window, decelerating to
+		-- land its FINAL index dead center. Names are lazily assigned per strip index; the final
+		-- index takes the locked outcome the moment stage 2 delivers it.
+		local steps = math.max(10, math.floor(secs * STEPS_PER_SEC + 0.5)) -- total rows scrolled past
+		local names = {} -- stripIndex -> event id
+		-- The final row can enter the window a beat BEFORE the stage-2 lock lands (it gets dealt a
+		-- placeholder while still at the clipped, fast-moving bottom edge). This retro-fix swaps in
+		-- the real outcome the instant the lock arrives, well before the row settles center.
+		applyLock = function(id: string)
+			if not LOOK[id] then
 				return
 			end
-			local id = pool[math.random(1, #pool)]
-			if id == prev and #pool > 1 then
-				id = pool[(table.find(pool, id) % #pool) + 1]
+			names[steps] = id
+			for _, s in slots do
+				if s.strip == steps then
+					s.strip = nil -- forces the next paint to re-deal this slot's text
+				end
 			end
-			prev = id
-			showWord(id, odds)
-			task.wait(stepDur * (1 - GAP_FRAC))
+		end
+		local function nameAt(k: number): string
+			if not names[k] then
+				if k == steps and pendingLockId and LOOK[pendingLockId] then
+					names[k] = pendingLockId
+				else
+					local id = pool[math.random(1, #pool)]
+					if id == names[k - 1] and #pool > 1 then
+						id = pool[(table.find(pool, id) % #pool) + 1]
+					end
+					names[k] = id
+				end
+			end
+			return names[k]
+		end
+
+		local centerY = WINDOW_H / 2
+		local function paint(centerFloat: number)
+			-- Frames pin to strip indices near the view; recycling = same frame, new index, new text.
+			local base = math.floor(centerFloat + 0.5)
+			for d = -2, 2 do
+				local k = base + d
+				local slot = slots[(k % #slots) + 1]
+				if slot.strip ~= k then
+					slot.strip = k
+					local id = nameAt(k)
+					local look = LOOK[id] or LOOK.calm
+					slot.nm.Text = look.name
+					slot.pc.Text = fmtPct(odds and tonumber(odds[id]) or nil)
+				end
+				local dist = math.abs(k - centerFloat)
+				local centered = dist < 0.5
+				slot.nm.TextColor3 = centered and LobbyLook.TEXTCOL or ROW_DIM
+				slot.nm.TextTransparency = centered and 0.05 or math.min(0.65, 0.3 + dist * 0.18)
+				slot.pc.TextColor3 = centered and LobbyLook.DIMTEXT or PCT_DIM
+				slot.pc.TextTransparency = centered and 0.1 or math.min(0.75, 0.4 + dist * 0.18)
+				slot.frame.Position = UDim2.new(0.5, 0, 0, math.floor(centerY + (k - centerFloat) * ROW_H + 0.5))
+			end
+		end
+
+		paint(0)
+		local t0 = os.clock()
+		local done = false
+		local conn
+		conn = RunService.RenderStepped:Connect(function()
 			if myTok ~= spinToken then
+				conn:Disconnect()
 				return
 			end
-			wordLabel.Text = "" -- the blink-out (the word goes away and comes back)
-			oddsLabel.Text = ""
-			task.wait(stepDur * GAP_FRAC)
-		end
-		if myTok ~= spinToken then
-			return
-		end
-		-- Hold (briefly) for the stage-2 lock if the network hasn't delivered it yet.
-		local deadline = os.clock() + 3
-		while myTok == spinToken and not pendingLockId and os.clock() < deadline do
+			local a = math.clamp((os.clock() - t0) / secs, 0, 1)
+			local eased = 1 - (1 - a) ^ EASE_POW -- slot-machine deceleration
+			-- STALL GUARD: if the lock is late, hover one row short at the terminal crawl instead of
+			-- settling on a random word (the last row only commits once the outcome is known).
+			local target = steps * eased
+			if not pendingLockId and target > steps - 1 then
+				target = steps - 1 + (target - (steps - 1)) * 0.15
+			end
+			paint(target)
+			if a >= 1 and pendingLockId then
+				done = true
+				conn:Disconnect()
+			end
+		end)
+
+		-- Wait for the scroll to finish (plus a lock-timeout safety if the remote never lands).
+		local deadline = os.clock() + secs + 3
+		while myTok == spinToken and not done and os.clock() < deadline do
 			task.wait(0.05)
 		end
 		if myTok ~= spinToken then
 			return
+		end
+		if conn.Connected then
+			conn:Disconnect()
 		end
 		local outcome = pendingLockId
 		if not outcome or not LOOK[outcome] then
@@ -447,8 +581,11 @@ local function runRoll(info)
 			localPlayer:SetAttribute("EventRollerUp", false)
 			return
 		end
+		names[steps] = outcome
+		paint(steps) -- settle EXACTLY centered, final row = the outcome
+		local centerSlot = slots[(steps % #slots) + 1]
 		SoundController.Play("WheelLock")
-		local drama = lockIn(outcome, odds)
+		local drama = lockIn(centerSlot, outcome, odds)
 		task.delay(drama.hold, function()
 			if myTok == spinToken then
 				setStage(false)
@@ -466,7 +603,7 @@ end
 function EventWheelController.Start()
 	build()
 	Remotes.Get("EventSpin").OnClientEvent:Connect(runRoll)
-	print("[EventWheelController] started (cinematic roller armed)")
+	print("[EventWheelController] started (REEL v2 armed)")
 end
 
 return EventWheelController
