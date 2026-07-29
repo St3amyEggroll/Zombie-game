@@ -27,7 +27,9 @@ local SoundController = require(script.Parent.SoundController) -- WheelSpin duri
 local EventWheelController = {}
 
 -- ===== TUNABLES =====
-local ROW_H = 52           -- one reel row (px, hud-scaled)
+local BAND_W = 520         -- CHANGED (owner): band width (px, hud-scaled) — a CENTERED STRIP now, not
+                           -- edge-to-edge ("it stretches from the left of the screen to the right")
+local ROW_H = 46           -- one reel row (px, hud-scaled) — trimmed with the width pass
 local WINDOW_ROWS = 3      -- rows visible in the clipped window (center + one each side)
 local BAND_Y = 0.11        -- band top, fraction of the screen (owner: tucked right under the wave strip)
 local DIM = 0.52           -- how dark the dimmer gets (0 = none, 1 = black)
@@ -132,10 +134,10 @@ local function makeSlot(parent: Frame)
 	nm.Name = "Nm"
 	nm.BackgroundTransparency = 1
 	nm.AnchorPoint = Vector2.new(0.5, 0)
-	nm.Position = UDim2.new(0.5, 0, 0, 2)
-	nm.Size = UDim2.new(1, 0, 0, 30)
+	nm.Position = UDim2.new(0.5, 0, 0, 1)
+	nm.Size = UDim2.new(1, 0, 0, 27)
 	nm.FontFace = LobbyLook.TITLE_FACE
-	nm.TextSize = 27
+	nm.TextSize = 24
 	nm.TextColor3 = ROW_DIM
 	nm.Text = ""
 	nm.ZIndex = 4
@@ -150,10 +152,10 @@ local function makeSlot(parent: Frame)
 	pc.Name = "Pc"
 	pc.BackgroundTransparency = 1
 	pc.AnchorPoint = Vector2.new(0.5, 0)
-	pc.Position = UDim2.new(0.5, 0, 0, 32)
-	pc.Size = UDim2.new(1, 0, 0, 16)
+	pc.Position = UDim2.new(0.5, 0, 0, 28)
+	pc.Size = UDim2.new(1, 0, 0, 15)
 	pc.FontFace = LobbyLook.BODYB_FACE
-	pc.TextSize = 13
+	pc.TextSize = 12
 	pc.TextColor3 = PCT_DIM
 	pc.Text = ""
 	pc.ZIndex = 4
@@ -219,7 +221,7 @@ local function build()
 	band.AnchorPoint = Vector2.new(0.5, 0)
 	-- On touch the band drops below the HUD's 110px top lane (wave strip + LEAVE/SKIP buttons).
 	band.Position = TOUCH and UDim2.new(0.5, 0, 0, 164) or UDim2.new(0.5, 0, BAND_Y, 0)
-	band.Size = UDim2.new(1, 0, 0, BAND_H)
+	band.Size = UDim2.new(0, BAND_W, 0, BAND_H) -- CHANGED: fixed-width centered strip (was full-screen)
 	band.BackgroundColor3 = BAND_DARK
 	band.BackgroundTransparency = 1 -- fades in
 	band.BorderSizePixel = 0
