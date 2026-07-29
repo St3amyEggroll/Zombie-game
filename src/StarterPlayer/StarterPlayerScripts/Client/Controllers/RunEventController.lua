@@ -195,6 +195,9 @@ local function rumble(secs: number)
 	quakeToken += 1
 	local myTok = quakeToken
 	local player = game:GetService("Players").LocalPlayer
+	if player:GetAttribute("ShakeOff") then
+		return -- CHANGED: the CAMERA SHAKE setting now silences the earthquake rumble too
+	end
 	task.spawn(function()
 		local t0 = os.clock()
 		while os.clock() - t0 < secs and myTok == quakeToken do

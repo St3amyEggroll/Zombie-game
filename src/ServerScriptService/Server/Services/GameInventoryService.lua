@@ -246,7 +246,10 @@ local function rollCaseRarity(wave: number): string
 	local stage = math.max(0, math.floor(wave / GameConfig.CaseDropEvery) - 1)
 	local weights, total = {}, 0
 	for i, base in GameConfig.CaseWeightsBase do
-		local w = base * (GameConfig.CaseWeightGrowth ^ ((i - 1) * stage))
+		-- CHANGED: exponent capped — uncapped, wave 40 (stage 3) put mythic+divine at ~58% of every
+		-- boss roll and the tier ladder inverted. The cap keeps deep waves generous but never lets
+		-- the top tiers take the roll over.
+		local w = base * (GameConfig.CaseWeightGrowth ^ math.min((i - 1) * stage, GameConfig.CaseWeightExpCap or 8))
 		weights[i] = w
 		total += w
 	end

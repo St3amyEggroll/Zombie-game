@@ -45,7 +45,7 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local healthFill, healthLabel, roundLabel, coinsLabel, breakLabel, announceLabel
+local roundLabel, coinsLabel, breakLabel, announceLabel
 local coinPopScale -- UIScale on the coins label (pickup pop)
 local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
 local leaveBtn -- LEAVE banks your run and exits (always available — coins bank live, nothing to forfeit)
@@ -344,9 +344,6 @@ local function build()
 	plusBtn.Activated:Connect(function()
 		card.Visible = not card.Visible
 	end)
-	HUDController.ToggleCoinShop = function() -- the dock's SHOP circle opens the same card
-		card.Visible = not card.Visible
-	end
 
 	-- ===== BOTTOM-RIGHT: the LVL / XP card — the lobby's, verbatim (big blue LVL, next-unlock
 	-- headline, XP bar with the numbers riding on it).
@@ -533,6 +530,9 @@ local announceQueue = {}
 local announceBusy = false
 function HUDController.Announce(textStr: string, color: Color3?, dur: number?)
 	table.insert(announceQueue, { text = tostring(textStr), color = color or COL_GOLD, dur = dur or 3.5 })
+	if #announceQueue > 4 then -- CHANGED: a burst can't build a minute-long backlog — oldest drops
+		table.remove(announceQueue, 1)
+	end
 	if announceBusy or not announceLabel then
 		return
 	end

@@ -220,6 +220,9 @@ GameConfig.CaseDropEvery   = 10
 GameConfig.CaseRarities    = { "common", "uncommon", "rare", "epic", "legendary", "mythic", "divine" }
 GameConfig.CaseWeightsBase = { 50, 25, 12, 7, 4, 1.5, 0.5 } -- odds at wave 10 (per rarity, in order)
 GameConfig.CaseWeightGrowth = 1.5                            -- higher = deeper waves upgrade odds faster
+-- CHANGED: growth exponent cap — uncapped, mythic+divine were ~58% of every boss roll by wave 40.
+-- At the cap (1.5^8 ≈ 25.6x) divine tops out around 12% of a deep-wave roll instead of owning it.
+GameConfig.CaseWeightExpCap = 8
 
 -- (ELITE golden zombies REMOVED — no more random 4×-HP glowing spawns.)
 

@@ -2282,6 +2282,19 @@ local function renderCasesGrid()
 			})
 		end
 	end
+	-- CHANGED: cases OUTSIDE the 7 rarities (the featured GUN PACK) render too — the dock badge
+	-- counted them while this grid silently skipped them, so a bought pack looked like it vanished.
+	for caseId, count in invData.cases do
+		if (tonumber(count) or 0) > 0 and not table.find(invData.catalog.rarityOrder, caseId) then
+			local disp = invData.catalog.cases[caseId]
+			table.insert(out, { kind = "case", id = caseId })
+			invCard({
+				kind = "case", id = caseId, order = #out, image = disp and disp.image,
+				name = tostring((disp and disp.name) or "GUN PACK"):upper(),
+				color = rarityColor("legendary"), count = count, subText = "CRATE",
+			})
+		end
+	end
 	if #out == 0 then
 		local msg = Instance.new("TextLabel")
 		msg.Size = UDim2.fromOffset(320, 60); msg.BackgroundTransparency = 1; msg.FontFace = BODYB_FACE

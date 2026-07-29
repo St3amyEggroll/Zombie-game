@@ -116,11 +116,23 @@ local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
 	local radius = math.max(1, cfg.radius or 12)
 	local dmg = math.max(0, cfg.damage or 0)
 	if dmg > 0 then
+		-- NEW: blasts respect cover — a world-only ray from the blast center (zombies/players
+		-- excluded as blockers) must reach the zombie, so rockets no longer damage through walls.
+		local blastParams = RaycastParams.new()
+		blastParams.FilterType = Enum.RaycastFilterType.Exclude
+		blastParams.IgnoreWater = true
+		local blastExclude = { ZombieService.GetFolder() }
+		for _, pl in Players:GetPlayers() do
+			if pl.Character then
+				table.insert(blastExclude, pl.Character)
+			end
+		end
+		blastParams.FilterDescendantsInstances = blastExclude
 		for _, rec in ZombieService.GetActive() do
 			local root = rec.root
 			if root then
 				local dist = (root.Position - center).Magnitude
-				if dist <= radius then
+				if dist <= radius and not Workspace:Raycast(center, root.Position - center, blastParams) then
 					local dealt = dmg * (1 - (dist / radius) * 0.5)
 					ZombieService.NoteHit(rec, center)
 					local killed = ZombieService.ApplyDamage(rec, dealt)
@@ -191,7 +203,19 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- holds FIRE_BURST, so the AVERAGE rate is still hard-capped but frame-bunched shots aren't eaten.
 	-- One bucket per player (not per weapon): switching weapons can't reset your cadence.
 	local now = os.clock()
-	local refill = eff.fireRate / FIRE_RATE_SLACK
+	local allowedRate = eff.fireRate
+	-- NEW: SPIN-UP enforced SERVER-side too (it was client-only — a modified client fired the minigun
+	-- at full rate instantly). A firing session starts after a >0.6s gap; while it's younger than
+	-- weapon.spinUp the allowed rate ramps 30% -> 100%, mirroring InputController's client ramp.
+	if weapon.spinUp and weapon.spinUp > 0 then
+		if not c.spinStart or (now - (c.lastShot or 0)) > 0.6 then
+			c.spinStart = now
+		end
+		local ramp = math.clamp((now - c.spinStart) / weapon.spinUp, 0, 1)
+		allowedRate = eff.fireRate * (0.3 + 0.7 * ramp)
+	end
+	c.lastShot = now
+	local refill = allowedRate / FIRE_RATE_SLACK
 	local b = c.fire
 	if not b then
 		b = { tokens = 1, last = now }
@@ -280,8 +304,9 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	end
 
 	-- PIERCE ability (weapon.pierce = N): after the first target locks, the round keeps flying — up to
-	-- N zombies standing in a TIGHT lane behind it (±PIERCE_ARC°) each take FULL damage. No LOS re-check
-	-- past the first target: the bullet is already inside the crowd (bodies are what it pierces).
+	-- N zombies standing in a TIGHT lane behind it (±10°) each take FULL damage. Bodies are what it
+	-- pierces — CHANGED: walls are not. Each lane target must now be BEHIND the first impact and pass
+	-- the same world-only LOS ray (losParams ignores zombies/characters, so only real cover blocks).
 	if weapon.pierce and weapon.pierce > 1 and targets[1] then
 		local laneDot = math.cos(math.rad(10)) -- half-angle of the pierce lane
 		local laneDir = (targets[1].root.Position - origin)
@@ -291,9 +316,10 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 			if #targets >= weapon.pierce then
 				break
 			end
-			if c ~= targets[1] then
+			if c ~= targets[1] and c.dist > targets[1].dist then
 				local flatTo = Vector3.new(c.root.Position.X - origin.X, 0, c.root.Position.Z - origin.Z)
-				if flatTo.Magnitude > 0.01 and flatTo.Unit:Dot(laneDir) >= laneDot then
+				if flatTo.Magnitude > 0.01 and flatTo.Unit:Dot(laneDir) >= laneDot
+					and not Workspace:Raycast(origin, c.root.Position - origin, losParams) then
 					table.insert(targets, c)
 				end
 			end

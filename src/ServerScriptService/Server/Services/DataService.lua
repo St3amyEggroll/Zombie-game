@@ -70,6 +70,8 @@ local TEMPLATE = {
 	redeemed     = {},                -- [CODE] = true — codes used (shared with the lobby's redeem bar)
 	titlesOwned  = {},                -- [titleId] = true — TITLE trophies earned in-run (TitleService)
 	titleEquipped = "",               -- the worn title (LOBBY-owned: picked on the classes showcase)
+	pendingRunSummary = false,        -- last run's server-set summary {id, wave, kills, money, win} —
+	                                  --   the LOBBY's daily quests consume this (TeleportData is spoofable)
 }
 
 local store = DataStoreService:GetDataStore(STORE_NAME)
@@ -145,6 +147,7 @@ local GAME_OWNED_FIELDS = {
 	"ownedWeapons", -- mid-run gun purchases (GunShopService) must reach the lobby too
 	"redeemed", -- in-game code redemptions must reach the lobby (same one-place-at-a-time argument)
 	"titlesOwned", -- TITLE trophies are EARNED here (TitleService); the lobby owns titleEquipped
+	"pendingRunSummary", -- server-stamped run summary — the lobby's quest feed trusts THIS, not TeleportData
 }
 
 local function saveAsync(player: Player): boolean

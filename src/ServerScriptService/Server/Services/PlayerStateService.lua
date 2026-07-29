@@ -295,10 +295,17 @@ local function onHeartbeat(dt: number)
 				humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + GameConfig.HealthRegenRate * step)
 			end
 
-			-- Sprint stamina.
+			-- Sprint stamina. CHANGED: hysteresis at empty — hitting 0 locks sprint until stamina
+			-- recovers to 25% (drain > regen meant speed flip-flopped 16<->22 every tick at zero,
+			-- a visible stutter while shift was held).
 			local moving = humanoid.MoveDirection.Magnitude > 0.05
 			local baseSpeed = computeMoveSpeed(player)
-			local sprinting = r.sprintWanted and moving and r.stamina > 0
+			if r.stamina <= 0 then
+				r.sprintLocked = true
+			elseif r.sprintLocked and r.stamina >= GameConfig.SprintStaminaMax * 0.25 then
+				r.sprintLocked = false
+			end
+			local sprinting = r.sprintWanted and moving and r.stamina > 0 and not r.sprintLocked
 			if sprinting then
 				r.stamina = math.max(0, r.stamina - GameConfig.SprintDrainPerSec * step)
 			else

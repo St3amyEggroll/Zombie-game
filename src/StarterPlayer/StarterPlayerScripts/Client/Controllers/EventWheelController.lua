@@ -10,9 +10,13 @@
 --      for the whole hold. Then everything tucks away and the wave starts.
 -- Pure theater: the server already decided the outcome. Sounds: WheelSpin loops the flash, WheelLock
 -- lands with the flood.
+-- CHANGED (anti-datamine): EventSpin arrives in TWO stages now — {wave, seconds, odds} starts the
+-- roll WITHOUT the outcome, then {wave, lock = outcome} lands just before the visual lock beat. An
+-- exploiter can no longer read next wave's fate at spin start.
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -77,6 +81,10 @@ local gui, dimmer, band, hairTop, hairBot, titleLabel, wordLabel, oddsLabel, wor
 local edges = {} -- the 4 screen-edge glow frames
 local rays = {}  -- pre-built burst spokes behind the word
 local spinToken = 0
+local pendingLockId = nil -- the stage-2 locked outcome (arrives mid-roll; the flash loop waits on it)
+
+-- Same predicate the HUD uses to push its top lane down on phones — the band must clear that lane.
+local TOUCH = UserInputService.TouchEnabled
 
 -- A full-width frame whose UIGradient fades both ends to nothing (the band + hairline treatment).
 -- SHORT fade zones (owner call): solid across almost the whole width, dropping off in the last ~7%.
@@ -98,7 +106,9 @@ local function build()
 	gui.Name = "EventRoller"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = (UITheme.Layer and UITheme.Layer.HUD or 4) + 1
+	-- CHANGED: the roller sits ABOVE the hotbar/boss/chrome layers now — the cinematic dim used to
+	-- stop at the HUD layer, leaving dock circles and the boss bar full-bright over the "dimmed" roll.
+	gui.DisplayOrder = ((UITheme.Layer and (UITheme.Layer.Chrome or UITheme.Layer.HUD) or 8)) + 1
 	gui.Enabled = false
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
 	UITheme.Attach(gui, nil, nil, "hud")
@@ -144,7 +154,9 @@ local function build()
 	band = Instance.new("Frame")
 	band.Name = "Band"
 	band.AnchorPoint = Vector2.new(0.5, 0)
-	band.Position = UDim2.new(0.5, 0, BAND_Y, 0)
+	-- CHANGED: on touch the band drops below the HUD's 110px top lane (wave strip + LEAVE/SKIP) —
+	-- at BAND_Y it rendered UNDER those buttons on phones for the whole roll.
+	band.Position = TOUCH and UDim2.new(0.5, 0, 0, 164) or UDim2.new(0.5, 0, BAND_Y, 0)
 	band.Size = UDim2.new(1, 0, 0, BAND_H)
 	band.BackgroundColor3 = BAND_DARK
 	band.BackgroundTransparency = 1 -- fades in (no UIScale shutter — the scale pass left squish artifacts)
@@ -335,12 +347,34 @@ local function lockIn(outcome: string, odds)
 end
 
 local function runRoll(info)
-	local outcome = typeof(info) == "table" and tostring(info.outcome) or "calm"
-	if not LOOK[outcome] then
-		outcome = "calm"
+	if typeof(info) ~= "table" then
+		return
 	end
+	-- STAGE 2: the locked outcome lands mid-roll — hand it to the running flash loop and bail.
+	if info.lock ~= nil then
+		pendingLockId = tostring(info.lock)
+		return
+	end
+
 	local secs = math.max(1, tonumber(info.seconds) or 3)
-	local odds = typeof(info) == "table" and info.odds or nil
+	local odds = typeof(info.odds) == "table" and info.odds or nil
+	-- Legacy single-message shape (outcome at spin start) still locks correctly.
+	pendingLockId = typeof(info.outcome) == "string" and info.outcome or nil
+
+	-- CHANGED: flash only events actually IN this wave's odds table — the old ladder sampled all 15
+	-- LOOK ids, teasing outcomes that could not land (with a blank % line flickering under them).
+	local pool = {}
+	if odds then
+		for id in odds do
+			if LOOK[id] then
+				table.insert(pool, id)
+			end
+		end
+	end
+	if #pool == 0 then
+		pool = IDS
+	end
+	table.sort(pool)
 
 	spinToken += 1
 	local myTok = spinToken
@@ -362,8 +396,8 @@ local function runRoll(info)
 	end)
 
 	task.spawn(function()
-		-- The step ladder: flashes speed-decay until they've spent the spin window; the LAST step is
-		-- the real outcome. No word ever repeats back-to-back (a roll never stutters).
+		-- The step ladder: flashes speed-decay until they've spent the spin window. The real outcome
+		-- arrives separately (stage 2) and locks the moment the ladder lands.
 		local steps = {}
 		local t, dur = 0, FIRST_STEP
 		while t + dur < secs - 0.35 do
@@ -376,9 +410,9 @@ local function runRoll(info)
 			if myTok ~= spinToken then
 				return
 			end
-			local id = IDS[math.random(1, #IDS)]
-			if id == prev then
-				id = IDS[(table.find(IDS, id) % #IDS) + 1]
+			local id = pool[math.random(1, #pool)]
+			if id == prev and #pool > 1 then
+				id = pool[(table.find(pool, id) % #pool) + 1]
 			end
 			prev = id
 			showWord(id, odds)
@@ -391,6 +425,26 @@ local function runRoll(info)
 			task.wait(stepDur * GAP_FRAC)
 		end
 		if myTok ~= spinToken then
+			return
+		end
+		-- Hold (briefly) for the stage-2 lock if the network hasn't delivered it yet.
+		local deadline = os.clock() + 3
+		while myTok == spinToken and not pendingLockId and os.clock() < deadline do
+			task.wait(0.05)
+		end
+		if myTok ~= spinToken then
+			return
+		end
+		local outcome = pendingLockId
+		if not outcome or not LOOK[outcome] then
+			-- The lock never arrived (dropped remote / run ended): tuck away without a false reveal.
+			setStage(false)
+			task.delay(0.3, function()
+				if myTok == spinToken then
+					gui.Enabled = false
+				end
+			end)
+			localPlayer:SetAttribute("EventRollerUp", false)
 			return
 		end
 		SoundController.Play("WheelLock")

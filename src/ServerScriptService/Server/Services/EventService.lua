@@ -45,6 +45,8 @@ local folder         -- workspace container for event props (cleared by StopAll)
 local activeEvent    -- the outcome currently modifying the wave (nil between waves / on calm)
 local coinMult = 1   -- ProgressionService multiplies every kill's Coin grant by this
 local waveCountMult = 1 -- MatchService multiplies the wave's zombie count by this (Purge/Bodyguards)
+local lastWaveCoinMult = 1 -- NEW: the mult the JUST-ENDED wave ran under (wave-clear bonus reads this,
+                           -- because EndWaveEvent resets coinMult before the payout fires)
 
 local function cfg()
 	return GameConfig.Events or {}
@@ -248,6 +250,36 @@ end
 -- ===== METEOR SHOWER (uncommon) ===== OVERHAULED: the owner's meteor models tumble out of the sky
 -- with a fire trail, land in a RING around players (never on top of them — owner report), crater-
 -- scorch the ground, hurt players in the blast AND crush zombies (center = death, edge = half HP).
+-- NEW: EVENT KILLS PAY. Lightning/meteor kills used to call ApplyDamage raw — zero points/Coins/XP,
+-- which made "LURE THEM INTO THE CIRCLES" a lie. Kills now credit the nearest living in-match player
+-- through CombatService.ReportKill, the same pipe as gunfire (points + kill count + Coins + XP).
+local function creditEventKill(rec, pos: Vector3, sourceId: string)
+	local best, bestD = nil, math.huge
+	MatchService.ForEachPlayer(function(player)
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if root and hum and hum.Health > 0 then
+			local d = (root.Position - pos).Magnitude
+			if d < bestD then
+				best, bestD = player, d
+			end
+		end
+	end)
+	if best then
+		pcall(function()
+			require(script.Parent.CombatService).ReportKill(best, rec.model, false, sourceId)
+		end)
+	end
+end
+
+-- Damage a zombie from an event strike; on a kill, pay the nearest player.
+local function eventStrike(rec, amount: number, pos: Vector3, sourceId: string)
+	if ZombieService.ApplyDamage(rec, amount) then
+		creditEventKill(rec, pos, sourceId)
+	end
+end
+
 local function meteorLoop(myGen, round)
 	local c = cfg()
 	local dmg = tonumber(c.MeteorDamage) or 25
@@ -321,18 +353,29 @@ local function meteorLoop(myGen, round)
 					if zr then
 						local d = (zr.Position - ground).Magnitude
 						if d <= radius then
+							-- CHANGED: crush kills PAY now (eventStrike credits the nearest player).
 							if rec.isBoss then
-								ZombieService.ApplyDamage(rec, (rec.maxHealth or 1000) * bossFrac)
+								eventStrike(rec, (rec.maxHealth or 1000) * bossFrac, ground, "meteor")
 							elseif d <= radius * 0.55 then
-								ZombieService.ApplyDamage(rec, math.huge) -- dead center: flattened
+								eventStrike(rec, math.huge, ground, "meteor") -- dead center: flattened
 							else
-								ZombieService.ApplyDamage(rec, (rec.maxHealth or 100) * 0.5)
+								eventStrike(rec, (rec.maxHealth or 100) * 0.5, ground, "meteor")
 							end
 						end
 					end
 				end
-				if math.random() < 0.25 then -- some craters cough up a zombie
-					ZombieService.SpawnExtra(round, nil, CFrame.new(ground + Vector3.new(0, 3, 0)))
+				-- CHANGED: craters only cough up a zombie while the wave still has meat — near the end
+				-- of a wave the "last zombie" moment kept sliding away as craters minted stragglers.
+				if math.random() < 0.25 then
+					local alive = 0
+					for _, r2 in ZombieService.GetActive() do
+						if not r2.dead then
+							alive += 1
+						end
+					end
+					if alive > 2 or ZombieService.GetRemaining() > 0 then
+						ZombieService.SpawnExtra(round, nil, CFrame.new(ground + Vector3.new(0, 3, 0)))
+					end
 				end
 				task.delay(5, function()
 					if rock.Parent then
@@ -404,10 +447,11 @@ local function beginLightning(myGen, round)
 				for _, rec in ZombieService.GetActive() do
 					local root = rec.root
 					if root and (root.Position - ground).Magnitude <= radius then
+						-- CHANGED: lured kills PAY now (the event's whole instruction is to lure them in).
 						if rec.isBoss then
-							ZombieService.ApplyDamage(rec, (rec.maxHealth or 1000) * bossFrac)
+							eventStrike(rec, (rec.maxHealth or 1000) * bossFrac, ground, "lightning")
 						else
-							ZombieService.ApplyDamage(rec, math.huge)
+							eventStrike(rec, math.huge, ground, "lightning")
 						end
 					end
 				end
@@ -570,6 +614,12 @@ local function beginBodyguards(myGen, round)
 		for i = 1, 2 do
 			local rec
 			for _ = 1, 20 do -- retry in case the spot is briefly crowded
+				if myGen ~= gen then -- CHANGED: wave ended mid-retry — stop injecting brutes into the break
+					if pile.Parent then
+						pile:Destroy()
+					end
+					return
+				end
 				rec = ZombieService.SpawnExtra(round, "tank",
 					CFrame.new(ground + Vector3.new(i == 1 and -7 or 7, 3, 0)))
 				if rec then
@@ -581,7 +631,17 @@ local function beginBodyguards(myGen, round)
 				table.insert(guards, rec)
 			end
 		end
-		while myGen == gen do
+		-- CHANGED: the payout no longer loses the wave-clear race. Killing the second guard usually
+		-- CLEARS the wave, which bumps `gen` within 0.1s — the old 0.5s poll died before it ever saw
+		-- the kill. The payout now fires off CombatService.Kill (synchronous with the killing shot,
+		-- so it always beats the gen bump), with a gen-guarded poll as fallback for kill paths that
+		-- skip the Kill signal (frost shatter). Skip/wipe teardowns mark guards dead WITHOUT firing
+		-- Kill and bump gen first, so they still pay nothing.
+		local paid = false
+		local function tryPayout()
+			if paid or myGen ~= gen then
+				return
+			end
 			local allDead = #guards > 0
 			for _, r in guards do
 				if not r.dead then
@@ -589,25 +649,39 @@ local function beginBodyguards(myGen, round)
 					break
 				end
 			end
-			if allDead then
-				local coins = tonumber(cfg().GuardCoins) or 400
-				MatchService.ForEachPlayer(function(pl)
-					pcall(function()
-						DataService.AddMoney(pl, coins)
-						Remotes.Get("LobbyMoneyChanged"):FireClient(pl, DataService.GetMoney(pl))
-					end)
-				end)
-				Remotes.Get("WorldVFX"):FireAllClients("coins", { pos = pile.Position }) -- gold fountain
-				announce(("VAULT CRACKED! +%d COINS FOR THE TEAM"):format(coins), "green")
-				pcall(function() -- the VAULT CRACKER title (lazy require: no boot-order coupling)
-					require(script.Parent.TitleService).GrantInMatch("vaultcracker")
-				end)
-				pile:Destroy()
+			if not allDead then
 				return
 			end
-			task.wait(0.5)
+			paid = true
+			local coins = tonumber(cfg().GuardCoins) or 400
+			MatchService.ForEachPlayer(function(pl)
+				pcall(function()
+					-- CHANGED: pay through ProgressionService so the Scavenger class mult applies
+					-- and the coins count in the end-of-run summary (raw AddMoney skipped both).
+					require(script.Parent.ProgressionService).AwardCoins(pl, coins)
+				end)
+			end)
+			Remotes.Get("WorldVFX"):FireAllClients("coins", { pos = pile.Position }) -- gold fountain
+			announce(("VAULT CRACKED! +%d COINS FOR THE TEAM"):format(coins), "green")
+			pcall(function() -- the VAULT CRACKER title (lazy require: no boot-order coupling)
+				require(script.Parent.TitleService).GrantInMatch("vaultcracker")
+			end)
+			pile:Destroy()
 		end
-		if pile.Parent then -- wave ended around it (wipe/skip): no payout, clean up
+		local conn = require(script.Parent.CombatService).Kill:Connect(function(_pl, model)
+			for _, r in guards do
+				if r.model == model then
+					tryPayout() -- r.dead is already set when Kill fires
+					break
+				end
+			end
+		end)
+		while not paid and myGen == gen do
+			tryPayout()
+			task.wait(0.25)
+		end
+		conn:Disconnect()
+		if not paid and pile.Parent then -- wave ended around it (wipe/skip): no payout, clean up
 			pile:Destroy()
 		end
 	end)
@@ -712,12 +786,22 @@ function EventService.SpinForWave(wave: number): string
 			odds[id] = math.floor((weight / total) * 1000 + 0.5) / 10 -- one decimal, honest small odds
 		end
 	end
+	-- CHANGED: two-stage broadcast so the outcome can't be datamined at spin start. Stage 1 starts
+	-- the roller with only the odds table; stage 2 delivers the locked outcome right when the
+	-- animation needs it. (It used to ride in stage 1 — an exploiter could read next wave's fate the
+	-- moment the break began and pre-position/pre-buy around it.)
+	local secs = tonumber(c.SpinSeconds) or 3
 	Remotes.Get("EventSpin"):FireAllClients({
 		wave = wave,
-		outcome = chosen,
-		seconds = tonumber(c.SpinSeconds) or 3,
+		seconds = secs,
 		odds = odds,
 	})
+	task.delay(math.max(0.5, secs - 0.35), function() -- lands just before the visual lock beat
+		Remotes.Get("EventSpin"):FireAllClients({
+			wave = wave,
+			lock = chosen,
+		})
+	end)
 	print(("[EventService] wave %d roller: %s"):format(wave, chosen))
 	return chosen
 end
@@ -744,6 +828,7 @@ end
 -- The wave cleared (or the run ended): shut the modifier off.
 function EventService.EndWaveEvent()
 	waveCountMult = 1
+	lastWaveCoinMult = coinMult -- NEW: remember the ended wave's mult for the wave-clear bonus
 	if not activeEvent then
 		return
 	end
@@ -758,6 +843,13 @@ end
 -- The active event's live Coin multiplier — ProgressionService reads this on every kill grant.
 function EventService.CoinMult(): number
 	return coinMult
+end
+
+-- NEW: the coin multiplier the JUST-ENDED wave ran under. The wave-clear bonus fires AFTER
+-- EndWaveEvent has reset coinMult, so Blood Moon / Gold Rush / Apocalypse never doubled the
+-- 50-coin clear payout — this closes that gap.
+function EventService.WaveCoinMult(): number
+	return lastWaveCoinMult
 end
 
 -- The active event's wave-size multiplier — MatchService reads this when computing the wave count.

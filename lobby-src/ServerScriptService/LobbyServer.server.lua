@@ -128,7 +128,7 @@ local WEAPONS = {
 		ability = "PIN — bolts nail zombies in place for 2s" },
 	minigun   = { name = "Minigun",      tier = 4, rarity = "epic",      damage = 22,  fireRate = 18,  range = 60, price = 15000, slot = "primary" },
 	freezeray = { name = "Freeze Ray",   tier = 4, rarity = "epic",      damage = 16,  fireRate = 10,  range = 60, price = 20000, slot = "primary",
-		ability = "CRYO — chills 30%; chilled zombies SHATTER on death" },
+		ability = "CRYO — freezes zombies SOLID in ice for 4s; frozen zombies SHATTER on death" },
 	raygun    = { name = "Ray Gun",      tier = 5, rarity = "legendary", damage = 130, fireRate = 4,   range = 60, price = 40000, slot = "primary" },
 	m4        = { name = "M4 Carbine",         tier = 3, rarity = "rare",      damage = 26,  fireRate = 11,  range = 60, price = 7000,  slot = "primary" },
 	tommygun  = { name = "Tommy Gun",          tier = 2, rarity = "uncommon",  damage = 18,  fireRate = 12,  range = 60, price = 3500,  slot = "primary" },
@@ -337,7 +337,9 @@ local SHOP = {
 	StarterProductId = 0,
 	StarterCases = { rare = 3 },
 	StarterCoins = 2000,
-	-- PITY: a LEGENDARY gun is guaranteed within this many crate opens (counts every crate).
+	-- PITY: a LEGENDARY gun is guaranteed within this many RARITY-crate opens. (gunpack opens are
+	-- excluded on purpose — the featured pack rolls its own fixed table and neither feeds nor resets
+	-- the meter.)
 	PityEvery = 10,
 }
 
@@ -732,6 +734,10 @@ local function readProfile(player)
 		settings = sanitizeSettings(data.settings),
 		titlesOwned = (typeof(data.titlesOwned) == "table") and data.titlesOwned or {}, -- GAME-owned (read-only here)
 		titleEquipped = tostring(data.titleEquipped or ""), -- OURS: picked on the classes showcase
+		-- NEW: server-stamped last-run summary (GAME-owned) + the id we last fed into quests (OURS).
+		-- Quests consume THIS instead of TeleportData — teleport payloads are client-spoofable.
+		pendingRunSummary = (typeof(data.pendingRunSummary) == "table") and data.pendingRunSummary or nil,
+		lastRunSummaryId = tostring(data.lastRunSummaryId or ""),
 		class = CLASS_IDS[tostring(data.class)] and tostring(data.class) or "", -- equipped class (showcase)
 		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
 		starter = data.starter == true, -- STARTER PACK is one purchase ever
@@ -820,6 +826,7 @@ local function persist(player)
 				old.shop = prof.shop
 				old.skins = nil -- SKINS DELETED: scrub the dead blob from the save
 				old.titleEquipped = prof.titleEquipped -- (titlesOwned is GAME-owned: never written here)
+				old.lastRunSummaryId = prof.lastRunSummaryId -- quest-feed dedup (pendingRunSummary is GAME-owned)
 				old.settings = prof.settings
 				old.redeemed = prof.redeemed
 				old.receipts = prof.receipts
@@ -1245,7 +1252,10 @@ end
 
 -- ===== RATE LIMITING (token buckets — the lobby's SecurityService-lite) =====
 -- Every C->S remote passes through allow() so a spamming client burns its bucket, not the DataStore.
-local RATE = { Inv = 2, Equip = 4, Case = 2, Party = 3, Shop = 4, Settings = 3, Buy = 3 } -- refill/second (burst = 2s worth)
+-- CHANGED: Case 2 -> 6. OPEN ALL fast-forwards a crate per CaseResult round-trip (~5+/s on a good
+-- connection) and the old 2/s bucket reliably aborted big batches mid-chain. Opening is server-
+-- authoritative and cheap — the limiter only needs to stop a hammering loop, not honest speed.
+local RATE = { Inv = 2, Equip = 4, Case = 6, Party = 3, Shop = 4, Settings = 3, Buy = 3 } -- refill/second (burst = 2s worth)
 local buckets = {} -- userId -> { [action] = { tokens, last } }
 
 local function allow(player, action)
@@ -1325,8 +1335,9 @@ local function grantRolledGun(player, prof, caseId, wonGun)
 			refreshCarry(player)
 		end
 		local wr = WEAPONS[wonGun].rarity
-		if wr == "epic" or wr == "legendary" then
-			-- the live pull TICKER: brag about big pulls to the whole server
+		if wr == "legendary" then
+			-- the live pull TICKER: brag about big pulls to the whole server. CHANGED: legendary ONLY —
+			-- epics are up to ~44% of crate weights, and a ticker that fires constantly brags about nothing.
 			ShopTicker:FireAllClients({ name = player.DisplayName or player.Name, item = WEAPONS[wonGun].name, rarity = wr })
 		end
 		return { caseId = caseId, wonId = wonGun, coins = 0, unlocked = true }
@@ -1735,7 +1746,9 @@ end
 
 WheelSpin.OnServerEvent:Connect(function(player)
 	if not allow(player, "Shop") then
-		return
+		-- CHANGED: reply instead of a silent drop — a rate-limited SPIN FREE tap left the client
+		-- staring at a wheel that never moved.
+		return WheelSpin:FireClient(player, { failed = true, msg = "SLOW DOWN — TRY AGAIN" })
 	end
 	local prof = profileCache[player.UserId]
 	if not prof or prof.noPersist then
@@ -1810,7 +1823,13 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 	end
 	prof.receipts = prof.receipts or {}
 	if table.find(prof.receipts, receiptInfo.PurchaseId) then
-		return Enum.ProductPurchaseDecision.PurchaseGranted -- retry of an already-granted receipt
+		-- CHANGED: a retry of an already-recorded receipt must still CONFIRM durability. The first
+		-- attempt may have granted in memory but failed its write — answering PurchaseGranted off the
+		-- in-memory id alone could burn the Robux on a crash. Re-persist, then grant.
+		if persist(player) then
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	table.insert(prof.receipts, receiptInfo.PurchaseId)
 	if #prof.receipts > 200 then -- CHANGED: 50 was too small; an evicted id lets a slow retry double-grant
@@ -2862,14 +2881,13 @@ local function onJoin(player)
 		refreshCarry(player)
 		refreshPlayerTag(player)
 		primeVip(player)
-		-- DAILY QUESTS: the game place teleports back with a SERVER-set run summary — feed it in.
-		-- (GetJoinData's TeleportData comes from the sending server, not the client — trustable.)
-		local okJD, jd = pcall(function()
-			return player:GetJoinData()
-		end)
-		local sum = okJD and typeof(jd) == "table" and typeof(jd.TeleportData) == "table"
-			and typeof(jd.TeleportData.summary) == "table" and jd.TeleportData.summary or nil
-		if sum then
+		-- DAILY QUESTS: consume the game server's PROFILE-stamped run summary (bankRun writes it and
+		-- blocking-saves before the teleport). CHANGED: TeleportData is no longer trusted — a client
+		-- can initiate its own teleport here with a fabricated summary; the DataStore copy it can't
+		-- touch. The summary id de-dupes (a resurrected stale write can't double-feed quests).
+		local sum = profile.pendingRunSummary
+		if typeof(sum) == "table" and typeof(sum.id) == "string" and sum.id ~= profile.lastRunSummaryId then
+			profile.lastRunSummaryId = sum.id
 			bumpQuest(player, "kills", math.floor(tonumber(sum.kills) or 0))
 			bumpQuest(player, "money", math.floor(tonumber(sum.money) or 0))
 			bumpQuest(player, "wave", math.floor(tonumber(sum.wave) or 0))
@@ -2877,6 +2895,7 @@ local function onJoin(player)
 			if sum.win == true then
 				bumpQuest(player, "wins", 1)
 			end
+			markDirty(player)
 		end
 		pushQuests(player)
 	end)

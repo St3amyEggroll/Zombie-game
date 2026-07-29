@@ -206,10 +206,22 @@ bankRun = function(player: Player, ps)
 	-- here would just be an in-flight write that SaveNow has to wait out). Studio saves via autosave.
 	DataService.UpdateBestWave(player, wave)
 	DataService.IncrementStat(player, "matchesPlayed", 1)
+	local summary = { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0, win = ps.wonRun == true }
+	-- NEW: the run summary ALSO rides the PROFILE (game-owned field, saved by the blocking SaveNow
+	-- before teleport). The lobby's daily quests read this copy — TeleportData can be spoofed by a
+	-- client-initiated teleport, the DataStore can't. `id` de-dupes consumption lobby-side.
+	local d = DataService.Get(player)
+	if d then
+		d.pendingRunSummary = {
+			id = ("%d-%d"):format(os.time(), state.round),
+			wave = summary.wave, kills = summary.kills, money = summary.money, win = summary.win,
+		}
+		DataService.MarkDirty(player)
+	end
 	if not LIVE then
 		DataService.Save(player)
 	end
-	return { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0, win = ps.wonRun == true }
+	return summary
 end
 
 -- Send a player back to the lobby PLACE (published only): blocking-save so the bank lands first, then
@@ -232,6 +244,12 @@ local function teleportToLobby(player: Player, summary)
 		task.wait(2)
 	end
 	warn(("[MatchService] ALL lobby teleports failed for %s — restarting a run as a last resort"):format(player.Name))
+	-- NEW: let the old run loop finish tearing down first. startRunFor during the teardown window
+	-- joined a match loop that was about to exit — the player stood in an idle arena with no waves.
+	local t0 = os.clock()
+	while matchRunning and player.Parent and os.clock() - t0 < 10 do
+		task.wait(0.25)
+	end
 	if player.Parent then
 		startRunFor(player)
 	end
@@ -718,15 +736,8 @@ function MatchService.IsInMatch(player: Player): boolean
 	return ps ~= nil and ps.inMatch == true
 end
 
-function MatchService.AdvanceRound()
-	state.round += 1
-	Remotes.Get("RoundChanged"):FireAllClients(state.round)
-	Remotes.Get("MatchStateChanged"):FireAllClients(state.phase, state.round)
-end
-
-function MatchService.SetPhase(phase: string)
-	setPhase(phase)
-end
+-- (AdvanceRound/SetPhase were deleted — zero callers, and an out-of-band RoundChanged would have
+-- desynced the wave loop, which owns state.round/phase directly.)
 
 -- ===== LIFECYCLE =====
 function MatchService.Start()

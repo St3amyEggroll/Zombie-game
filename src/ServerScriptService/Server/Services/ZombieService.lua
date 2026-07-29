@@ -1556,8 +1556,10 @@ local function startEmergence(record, spawnCF: CFrame)
 end
 
 -- Spawn one zombie. `forcedType` overrides the random pick (used by the boss). Returns the record (or nil).
-local function spawnOne(round: number, forcedType: string?)
-	local spawnCF = getSpawnCFrame()
+-- CHANGED: optional `atCF` places the spawn THERE (events: meteor craters, vault guards) — it must flow
+-- into startEmergence, because a PivotTo after the fact was overwritten by the emergence rise.
+local function spawnOne(round: number, forcedType: string?, atCF: CFrame?)
+	local spawnCF = atCF or getSpawnCFrame()
 	if not spawnCF then
 		return nil
 	end
@@ -2452,11 +2454,9 @@ end
 -- meteor craters). Registers through the normal spawn path, so it counts as alive (the wave won't clear
 -- until it dies) and pools/cleans up like any other zombie. Optional cf overrides where it appears.
 function ZombieService.SpawnExtra(round: number, typeId: string?, cf: CFrame?)
-	local record = spawnOne(round, typeId)
-	if record and cf and record.model then
-		record.model:PivotTo(cf)
-	end
-	return record
+	-- CHANGED: cf now rides INTO spawnOne (and startEmergence) — the old post-spawn PivotTo was
+	-- silently undone 0.8s later when the emergence rise re-pivoted to the original spawn point.
+	return spawnOne(round, typeId, cf)
 end
 
 -- True once every owed zombie has spawned and the world is clear of living zombies.

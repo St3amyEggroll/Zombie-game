@@ -182,7 +182,10 @@ local function build(playerGui)
 	gui.IgnoreGuiInset = true
 	gui.DisplayOrder = UITheme.Layer.Spectate
 	gui.Parent = playerGui
-	UITheme.Attach(gui, 720, 500) -- mobile: death-screen buttons at finger size
+	-- CHANGED: fit height 500 -> 390. On a landscape phone the modal-fit scale came out 0.56, which
+	-- rendered the WATCHING pill and the REVIVE/LEAVE buttons ~26px tall — under the 36px touch
+	-- floor at the exact moment a Robux revive is being sold. 390 keeps them finger-sized.
+	UITheme.Attach(gui, 720, 390) -- mobile: death-screen buttons at finger size
 
 	-- Bottom chrome (the approved plan): [ ◀  WATCHING: NAME  ▶ ] pill + red LEAVE RUN beside it.
 	panel = Instance.new("Frame")

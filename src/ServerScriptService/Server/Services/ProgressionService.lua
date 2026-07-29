@@ -42,6 +42,9 @@ local function awardCoins(player: Player, amount: number)
 	end
 	Remotes.Get("LobbyMoneyChanged"):FireClient(player, DataService.GetMoney(player))
 end
+-- NEW: public entry for event payouts (Bodyguards vault) — same pipe as kill coins, so the
+-- Scavenger class mult applies and the amount counts in the end-of-run summary.
+ProgressionService.AwardCoins = awardCoins
 
 -- Grant XP + push it LIVE: the HUD's blue level bar listens to ProgressChanged (without this push it
 -- only refreshed on spawn — the bar looked frozen all run).
@@ -76,11 +79,13 @@ end
 function ProgressionService.Start()
 	CombatService.Kill:Connect(onKill)
 
-	-- Per-wave Coins pay out on WAVE CLEAR (flat — the flawless-streak multiplier was removed, owner
-	-- call). Paying on clear (not wave start) also means the FINAL wave pays out.
+	-- Per-wave Coins pay out on WAVE CLEAR. Paying on clear (not wave start) also means the FINAL
+	-- wave pays out. CHANGED: the bonus now honors the ended wave's coin event — surviving a Blood
+	-- Moon / Gold Rush wave multiplies the clear payout too, not just the per-kill trickle.
 	MatchService.WaveCleared:Connect(function(_round)
+		local mult = require(script.Parent.EventService).WaveCoinMult()
 		MatchService.ForEachPlayer(function(player)
-			awardCoins(player, GameConfig.LobbyMoneyPerWave)
+			awardCoins(player, math.floor(GameConfig.LobbyMoneyPerWave * mult + 0.5))
 		end)
 	end)
 
