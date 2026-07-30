@@ -102,13 +102,16 @@ function PlayerTagService.Refresh(player: Player)
 	if not data then
 		return
 	end
-	local wins = tonumber(data.wins) or 0
+	-- CHANGED (owner): the brag stat is HOW DEEP YOU GOT, not wins — "BEST WAVE 24" says more about a
+	-- player than a win count in an endless wave game. (profile.wins still exists and still counts
+	-- wave-10 clears; it just isn't what the tag/leaderboard shows.)
+	local bestWave = tonumber(data.bestWave) or 0
 	local level = ProgressionConfig.LevelForXP(tonumber(data.xp) or 0)
 	-- Leaderboard column.
 	local ls = player:FindFirstChild("leaderstats")
-	local winsStat = ls and ls:FindFirstChild("Wins")
-	if winsStat then
-		winsStat.Value = wins
+	local waveStat = ls and ls:FindFirstChild("Best Wave")
+	if waveStat then
+		waveStat.Value = bestWave
 	end
 	-- Overhead text.
 	local character = player.Character
@@ -119,7 +122,7 @@ function PlayerTagService.Refresh(player: Player)
 		bb.Title.TextColor3 = def and def.color or Color3.new(1, 1, 1)
 		-- TitleFXController (every client) animates rainbow/pulse/flicker styles off this attribute.
 		player:SetAttribute("TitleStyle", def and def.style or nil)
-		bb.Wins.Text = ("%d WINS"):format(wins)
+		bb.Wins.Text = ("BEST WAVE %d"):format(bestWave)
 		bb.Level.Text = ("LVL %d"):format(level)
 	end
 end
@@ -128,9 +131,9 @@ local function onJoin(player)
 	local ls = Instance.new("Folder")
 	ls.Name = "leaderstats"
 	ls.Parent = player
-	local wins = Instance.new("IntValue")
-	wins.Name = "Wins"
-	wins.Parent = ls
+	local waveStat = Instance.new("IntValue") -- CHANGED: the board column is BEST WAVE now, not wins
+	waveStat.Name = "Best Wave"
+	waveStat.Parent = ls
 
 	player.CharacterAdded:Connect(function()
 		task.defer(PlayerTagService.Refresh, player)

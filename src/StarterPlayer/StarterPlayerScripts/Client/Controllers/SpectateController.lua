@@ -171,6 +171,8 @@ local function exit()
 	if vignette then
 		vignette.Visible = false
 	end
+	-- Hand the crosshair back its cursor (see CrosshairController's NeedsCursor check).
+	Players.LocalPlayer:SetAttribute("NeedsCursor", nil)
 	restoreHud()
 	restoreSubject()
 end
@@ -375,6 +377,9 @@ local function showDeathScreen()
 	deathToken += 1
 	local my = deathToken
 	vignette.Visible = true
+	-- The death screen is a CLICKABLE screen (REVIVE / LEAVE): ask for the real cursor back, the
+	-- crosshair gets out of the way. Without this the buttons sat under an invisible mouse.
+	Players.LocalPlayer:SetAttribute("NeedsCursor", true)
 	for _, f in vignette:GetChildren() do
 		if f:IsA("Frame") then
 			f.BackgroundTransparency = 0

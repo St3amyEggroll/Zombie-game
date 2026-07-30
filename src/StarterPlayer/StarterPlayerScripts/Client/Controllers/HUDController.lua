@@ -36,6 +36,9 @@ local COL_TEXT      = UITheme.TEXT
 local COL_TEXT_DIM  = UITheme.DIM
 local COL_ACCENT    = UITheme.TOXIC
 local COL_DANGER    = UITheme.ORANGE
+-- NEW: the wave strip's bar carries TWO meanings, so it carries two colors — ORANGE while enemies
+-- are alive (kill these), TOXIC GREEN while the break clock drains (breathe, this is your breather).
+local COL_BREAK     = UITheme.TOXIC
 local COL_GOLD      = UITheme.GOLD
 local COL_TRACK     = UITheme.TRACK
 local PANEL_ALPHA   = 0.06
@@ -45,7 +48,7 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local roundLabel, coinsLabel, breakLabel, announceLabel
+local roundLabel, coinsLabel, announceLabel -- (breakLabel deleted: the enemies bar IS the countdown now)
 local coinPopScale -- UIScale on the coins label (pickup pop)
 local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
 local leaveBtn -- LEAVE banks your run and exits (always available — coins bank live, nothing to forfeit)
@@ -224,12 +227,9 @@ local function build()
 	waveStroke.Thickness = 1.5
 	waveStroke.Parent = roundLabel
 
-	-- Row 3: NEXT WAVE countdown (collapses out of the lane whenever it's empty).
-	breakLabel = text(lane, "BreakLabel", UITheme.BodyBoldFace, UITheme.Type.Value, COL_TEXT_DIM)
-	breakLabel.Size = UDim2.fromOffset(300, 20)
-	breakLabel.LayoutOrder = 30
-	breakLabel.Visible = false
-	breakLabel.Text = ""
+	-- (Row 3 — the separate "NEXT WAVE IN n" line — was DELETED. The strip's bar IS the countdown
+	-- now: it drains with the enemy count during a wave and with the break clock between waves.
+	-- One element, two jobs; the duplicate line that sat under it is gone.)
 
 	-- Row 4: the ANNOUNCEMENT slot — one label, fed by a queue (INCOMING!, FLAWLESS, crate drops...).
 	-- Simultaneous events take turns instead of printing on top of each other.
@@ -484,7 +484,8 @@ local function build()
 		-- CHANGED (owner): the buttons FLANK the bottom hotbar now — Autofire on its left, Settings on
 		-- its right, Shop beyond Settings. x = the button's CENTER offset from screen center; the
 		-- hotbar (HotbarController) is 178px wide at bottom-center, so ±136 clears it with a gap.
-		{ label = "Autofire", icon = "", emoji = "🎯", x = -136, onClick = function()
+		-- Autofire carries NO icon at all (owner call) — the circle's color + ON/OFF text IS the button.
+		{ label = "Autofire", icon = "", emoji = "", x = -136, onClick = function()
 			AutoShootController.Toggle()
 		end },
 		{ label = "Settings", icon = "94140673883223", x = 136, onClick = function()
@@ -506,11 +507,6 @@ local function build()
 			local grad = circ:FindFirstChildOfClass("UIGradient")
 			if grad then
 				grad.Enabled = false -- the glass gradient would override the state color
-			end
-			for _, ch in circ:GetChildren() do
-				if ch:IsA("TextLabel") or ch:IsA("ImageLabel") then
-					ch:Destroy() -- drop the 🎯 stamp
-				end
 			end
 			autoCirc = circ
 			autoLbl = Instance.new("TextLabel")
@@ -683,11 +679,12 @@ function HUDController.Start()
 			breakEndsAt = 0
 		end
 		if enemiesTrack and phase ~= "Playing" then
-			-- Between waves the bar STAYS (the run isn't over). CHANGED: reads GET READY — "LOADING…"
-			-- right above "NEXT WAVE IN 5" read like the game was stuck.
+			-- Between waves the bar STAYS (the run isn't over) and becomes the BREAK CLOCK — the
+			-- RenderStepped loop below drains it. It starts full and green the moment the break opens.
 			enemiesTrack.Visible = true
-			enemiesLabel.Text = "GET READY..."
+			enemiesFill.BackgroundColor3 = COL_BREAK
 			enemiesFill.Size = UDim2.fromScale(1, 1)
+			enemiesLabel.Text = (phase == "RoundBreak") and "NEXT WAVE" or "WAVE CLEAR!"
 		end
 	end)
 
@@ -696,27 +693,36 @@ function HUDController.Start()
 		remaining = tonumber(remaining) or 0
 		total = tonumber(total) or 0
 		if total <= 0 or remaining <= 0 then
-			enemiesLabel.Text = "GET READY..." -- wave cleared: hold the bar, full fill, until the next wave
+			-- Wave cleared: hold the bar full until the break clock takes it over a beat later.
+			enemiesLabel.Text = "WAVE CLEAR!"
+			enemiesFill.BackgroundColor3 = COL_BREAK
 			enemiesFill.Size = UDim2.fromScale(1, 1)
 			return
 		end
 		enemiesTrack.Visible = true
+		enemiesFill.BackgroundColor3 = COL_DANGER -- fighting: the bar is the ENEMY count again
 		enemiesLabel.Text = ("%d %s LEFT"):format(remaining, remaining == 1 and "ENEMY" or "ENEMIES")
 		TweenService:Create(enemiesFill, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 			Size = UDim2.fromScale(math.clamp(remaining / total, 0, 1), 1),
 		}):Play()
 	end)
+	-- THE BREAK CLOCK: the strip's bar drains over the wave break with the countdown reading INSIDE
+	-- it. (It no longer yields to the event roller — the roller's band sits well below the strip, so
+	-- both are readable at once; the old separate line overlapped it, which is why it used to hide.)
 	RunService.RenderStepped:Connect(function()
-		-- The EVENT ROLLER owns the top-center while it's flashing — the countdown yields to it
-		-- (both at once overlapped into unreadable double-text) and takes over once it tucks away.
-		local rollerUp = localPlayer:GetAttribute("EventRollerUp") == true
-		if breakEndsAt > 0 and os.clock() < breakEndsAt and not rollerUp then
-			breakLabel.Text = ("NEXT WAVE IN %d"):format(math.ceil(breakEndsAt - os.clock()))
-			breakLabel.Visible = true
-		elseif breakLabel.Visible then
-			breakLabel.Text = ""
-			breakLabel.Visible = false -- collapses its lane slot
+		if breakEndsAt <= 0 or not enemiesTrack then
+			return
 		end
+		local left = breakEndsAt - os.clock()
+		if left <= 0 then
+			breakEndsAt = 0
+			return
+		end
+		local span = math.max(0.1, GameConfig.RoundBreakSeconds or 8)
+		enemiesTrack.Visible = true
+		enemiesFill.BackgroundColor3 = COL_BREAK
+		enemiesFill.Size = UDim2.fromScale(math.clamp(left / span, 0, 1), 1)
+		enemiesLabel.Text = ("NEXT WAVE IN %d"):format(math.ceil(left))
 	end)
 
 	-- Event banners ride the announcement QUEUE — simultaneous events take turns in the one slot.

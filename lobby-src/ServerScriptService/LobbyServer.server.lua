@@ -2764,12 +2764,13 @@ local function refreshPlayerTag(player)
 	if not prof then
 		return
 	end
-	local wins = tonumber(prof.wins) or 0
+	-- CHANGED (owner): the brag stat is BEST WAVE, not wins — mirrors the game place's tag.
+	local bestWave = tonumber(prof.bestWave) or 0
 	local lvl = accountLevel(prof.xp)
 	local ls = player:FindFirstChild("leaderstats")
-	local winsStat = ls and ls:FindFirstChild("Wins")
-	if winsStat then
-		winsStat.Value = wins
+	local waveStat = ls and ls:FindFirstChild("Best Wave")
+	if waveStat then
+		waveStat.Value = bestWave
 	end
 	local char = player.Character
 	local head = char and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart"))
@@ -2808,7 +2809,7 @@ local function refreshPlayerTag(player)
 	bb.Title.Text = tdef and tdef.name or ""
 	bb.Title.TextColor3 = tdef and tdef.color or Color3.new(1, 1, 1)
 	player:SetAttribute("TitleStyle", tdef and tdef.style or nil) -- clients animate rainbow/pulse/flicker
-	bb.Wins.Text = ("%d WINS"):format(wins)
+	bb.Wins.Text = ("BEST WAVE %d"):format(bestWave)
 	bb.Level.Text = ("LVL %d"):format(lvl)
 end
 
@@ -2844,13 +2845,13 @@ end)
 
 -- ===== LIFECYCLE =====
 local function onJoin(player)
-	-- WINS on the Roblox leaderboard (filled in once the profile loads).
+	-- BEST WAVE on the Roblox leaderboard (filled in once the profile loads).
 	local lstats = Instance.new("Folder")
 	lstats.Name = "leaderstats"
 	lstats.Parent = player
-	local winsStat = Instance.new("IntValue")
-	winsStat.Name = "Wins"
-	winsStat.Parent = lstats
+	local waveStat = Instance.new("IntValue")
+	waveStat.Name = "Best Wave"
+	waveStat.Parent = lstats
 	player.CharacterAdded:Connect(function(character)
 		setCollisionGroup(character)
 		if playerParty[player.UserId] then

@@ -252,6 +252,9 @@ function SettingsController.Start()
 	-- corner gear is hidden (kept as dead chrome so nothing else breaks) and the dock calls Toggle().
 	local function togglePanel()
 		root.Visible = not root.Visible
+		-- The open panel needs the REAL cursor (the crosshair hides it during play) — same fix as the
+		-- death screen. CrosshairController watches this attribute.
+		localPlayer:SetAttribute("NeedsCursor", root.Visible or nil)
 		if root.Visible then
 			UIFocus.Open()
 			renderAll()
@@ -265,6 +268,7 @@ function SettingsController.Start()
 	closeBtn.Activated:Connect(function()
 		if root.Visible then UIFocus.Close() end
 		root.Visible = false
+		localPlayer:SetAttribute("NeedsCursor", nil) -- closing via ✕ hands the crosshair back too
 	end)
 
 	-- Load the saved camera-shake preference (default ON) + volumes; then refresh the toggle/sliders.

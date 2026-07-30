@@ -75,10 +75,16 @@ local function update(dt: number)
 	if not holder then
 		return
 	end
-	-- Hide the OS mouse icon during gameplay (the crosshair replaces it). No character (spectating a
-	-- teammate, loading in) = back off and show the real cursor. (The in-game GUNS/CRATES panels are
-	-- gone — weapons and crates live in the lobby now, so there's no panel check anymore.)
-	if not localPlayer.Character then
+	-- Hide the OS mouse icon during gameplay (the crosshair replaces it) — but ONLY while you're
+	-- actually playing. Back off and hand the real cursor back when there's no character, when you're
+	-- DEAD (your corpse still counts as a Character, which left the death screen's REVIVE / LEAVE
+	-- buttons unclickable — owner report), or when any UI asks for the cursor via the NeedsCursor
+	-- attribute (SpectateController sets it; any future modal can too).
+	local char = localPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local wantsCursor = (not char) or (not hum) or hum.Health <= 0
+		or localPlayer:GetAttribute("NeedsCursor") == true
+	if wantsCursor then
 		holder.Visible = false
 		UserInputService.MouseIconEnabled = true
 		return
