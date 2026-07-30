@@ -142,6 +142,10 @@ local function makeSlot(parent: Frame)
 	nm.Text = ""
 	nm.ZIndex = 4
 	nm.Parent = row
+	-- THE BLACKED-TEXT BUG (owner report): a UIStroke's transparency is INDEPENDENT of TextTransparency.
+	-- Fading a row used to leave the fill translucent while this black outline stayed solid — the word
+	-- turned into a black silhouette (worst during the post-lock fade-out, when the fill goes to 0%).
+	-- Every place that fades text now fades this stroke WITH it (see fadeText below).
 	local st = Instance.new("UIStroke")
 	st.Color = Color3.fromRGB(0, 0, 0)
 	st.Transparency = 0.25
@@ -164,7 +168,20 @@ local function makeSlot(parent: Frame)
 	local sc = Instance.new("UIScale")
 	sc.Parent = row
 
-	return { frame = row, nm = nm, pc = pc, scale = sc, strip = nil }
+	return { frame = row, nm = nm, pc = pc, stroke = st, scale = sc, strip = nil }
+end
+
+-- Fade a reel row's name + its outline TOGETHER (t = 0 solid, 1 invisible). The stroke never gets
+-- more opaque than the glyph it outlines, so a fading word never turns into a black silhouette.
+local function setRowFade(slot, t: number)
+	slot.nm.TextTransparency = t
+	slot.stroke.Transparency = math.max(t, 0.25 + t * 0.75)
+end
+
+-- Same idea as a tween pair (used by the lock + the tuck-away).
+local function tweenRowFade(slot, t: number, info: TweenInfo)
+	TweenService:Create(slot.nm, info, { TextTransparency = t }):Play()
+	TweenService:Create(slot.stroke, info, { Transparency = math.max(t, 0.25 + t * 0.75) }):Play()
 end
 
 local function build()
@@ -355,8 +372,11 @@ local function setStage(on: boolean)
 		TweenService:Create(band, TW, { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(hairTop, TW, { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(titleLabel, TW, { TextTransparency = 1 }):Play()
+		-- THE BLACKED-TEXT FIX: fade each row's OUTLINE with its fill. Fading only the fill left the
+		-- black stroke behind — the locked word turned into black letters floating over the world for
+		-- the whole tuck-away (owner: "once the events are done the blacked text occurs").
 		for _, s in slots do
-			TweenService:Create(s.nm, TW, { TextTransparency = 1 }):Play()
+			tweenRowFade(s, 1, TW)
 			TweenService:Create(s.pc, TW, { TextTransparency = 1 }):Play()
 		end
 		for _, e in edges do -- edges only glow during the lock; always clear them on the way out
@@ -368,7 +388,7 @@ local function setStage(on: boolean)
 			for _, s in slots do
 				s.nm.Text = ""
 				s.pc.Text = ""
-				s.nm.TextTransparency = 0
+				setRowFade(s, 0) -- fill + outline both reset for the next roll
 				s.pc.TextTransparency = 0
 				s.scale.Scale = 1
 				s.strip = nil
@@ -385,15 +405,15 @@ local function lockIn(centerSlot, outcome: string, odds)
 
 	centerSlot.nm.Text = look.name
 	centerSlot.nm.TextColor3 = look.color
-	centerSlot.nm.TextTransparency = 0
+	setRowFade(centerSlot, 0) -- fill AND outline fully solid on the winner
 	centerSlot.pc.Text = fmtPct(pct)
 	centerSlot.pc.TextColor3 = look.color
 	centerSlot.pc.TextTransparency = 0
 
-	-- Neighbors snuff out so the winner owns the window.
+	-- Neighbors snuff out so the winner owns the window (outline fades with them — see setRowFade).
 	for _, s in slots do
 		if s ~= centerSlot then
-			TweenService:Create(s.nm, TW, { TextTransparency = 1 }):Play()
+			tweenRowFade(s, 1, TW)
 			TweenService:Create(s.pc, TW, { TextTransparency = 1 }):Play()
 		end
 	end
@@ -528,9 +548,10 @@ local function runRoll(info)
 				end
 				local dist = math.abs(k - centerFloat)
 				local centered = dist < 0.5
-				-- CHANGED: neighbors kept readable (they used to fade near-black against the band).
+				-- CHANGED: neighbors stay READABLE — the outline fades with the fill (setRowFade), so a
+				-- dimmed row reads as grey text, never as a black silhouette.
 				slot.nm.TextColor3 = centered and LobbyLook.TEXTCOL or ROW_DIM
-				slot.nm.TextTransparency = centered and 0.05 or math.min(0.5, 0.18 + dist * 0.14)
+				setRowFade(slot, centered and 0.05 or math.min(0.5, 0.18 + dist * 0.14))
 				slot.pc.TextColor3 = centered and LobbyLook.DIMTEXT or PCT_DIM
 				slot.pc.TextTransparency = centered and 0.1 or math.min(0.6, 0.28 + dist * 0.14)
 				slot.frame.Position = UDim2.new(0.5, 0, 0, math.floor(centerY + (k - centerFloat) * ROW_H + 0.5))
