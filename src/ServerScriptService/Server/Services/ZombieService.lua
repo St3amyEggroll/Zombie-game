@@ -99,6 +99,13 @@ local BRIDGE_CLEAR     = 25     -- studs: never surface within this range of a p
 local GRAVE_STAND_HEIGHT = 3.5 -- studs the zombie's root sits above the ground when fully risen (feet land
                                -- just above ground so it settles cleanly instead of toppling)
 local MIN_SPAWN_DIST   = 10    -- min studs between a new spawn and any active grave (no stacking spawns)
+-- Where pooled rigs are parked (frozen, far under any map) while they wait to be reused. They stay in
+-- Workspace so a spawn doesn't have to re-replicate the whole model to every client — see release().
+local PARK_POS         = Vector3.new(0, -900, 0)
+-- How often the emergence/grave rises push a new CFrame. These used to run at the server's full frame
+-- rate (~60Hz) on EVERY spawning zombie AND its headstone; with ~7-16 of them overlapping that was
+-- thousands of replicated CFrame writes per second. 20Hz looks identical on a 1.6s rise.
+local RISE_STEP        = 1 / 20
 local EMERGE_DEPTH     = 5      -- studs below ground a zombie starts buried (then rises out)
 local EMERGE_TIME      = 1.6    -- seconds a zombie takes to claw its way up out of the ground (slow, but
                                -- still FASTER than the death sink SINK_TIME so it reads as "rising out")
@@ -450,10 +457,24 @@ local function buildZombie(typeId: string, t): Model
 	return model
 end
 
+-- Wake a parked rig: undo exactly what release() froze (prepModel's rule — ONLY the root collides).
+local function unpark(model: Model)
+	local rootPart = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+			p.CanCollide = (p == rootPart)
+			p.CanQuery = true
+		end
+	end
+end
+
 local function acquire(typeId: string, t): Model
 	local list = pool[typeId]
 	if list and #list > 0 then
-		return table.remove(list) :: Model
+		local model = table.remove(list) :: Model
+		unpark(model) -- it was frozen under the map; hand it back ready to walk
+		return model
 	end
 	return buildZombie(typeId, t)
 end
@@ -543,6 +564,18 @@ local function release(record)
 		end
 	end
 
+	-- PARK IT (perf — see the pool note at poolFolder's creation): the pooled rig STAYS in Workspace,
+	-- frozen and hidden far under the map. Sending it to ServerStorage made every client DESTROY the
+	-- model on death and re-download the whole rig on the next spawn — that round trip was the spawn
+	-- lag. Parked = anchored, non-colliding, non-queryable, so it can't be hit, raycast, or simulated.
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+			p.CanQuery = false
+		end
+	end
+	model:PivotTo(CFrame.new(PARK_POS))
 	model.Parent = poolFolder
 	local list = pool[record.typeId]
 	if not list then
@@ -807,9 +840,12 @@ local function sinkAndRelease(record)
 		return
 	end
 	-- Slide each frozen part straight down in world space over SINK_TIME.
+	-- 20Hz, not every frame (see RISE_STEP). Every part here is ANCHORED, so each write is its own
+	-- replicated property change — at 60Hz, 12 settling corpses × a ~15-part rig was ~10k CFrame
+	-- writes a second going out to every client. Over a 3.2s sink 20Hz looks identical.
 	local elapsed = 0
 	while elapsed < SINK_TIME and model.Parent do
-		elapsed += task.wait()
+		elapsed += task.wait(RISE_STEP)
 		local drop = Vector3.new(0, -SINK_DEPTH * math.clamp(elapsed / SINK_TIME, 0, 1), 0)
 		for p, cf in frozen do
 			if p.Parent then
@@ -1435,7 +1471,7 @@ local function placeGrave(x: number, groundY: number, z: number, normal: Vector3
 		-- 1) the headstone rises up out of the ground FIRST — ALONG the surface normal.
 		local elapsed = 0
 		while elapsed < GRAVE_RISE_TIME and grave.Parent do
-			elapsed += task.wait()
+			elapsed += task.wait(RISE_STEP) -- 20Hz, not every frame (see RISE_STEP)
 			grave:PivotTo(buriedCF + up * (riseDepth * math.clamp(elapsed / GRAVE_RISE_TIME, 0, 1)))
 		end
 		if not grave.Parent then
@@ -1448,7 +1484,7 @@ local function placeGrave(x: number, groundY: number, z: number, normal: Vector3
 		local sinkStart = grave:GetPivot()
 		elapsed = 0
 		while elapsed < GRAVE_SINK_TIME and grave.Parent do
-			elapsed += task.wait()
+			elapsed += task.wait(RISE_STEP) -- 20Hz, not every frame (see RISE_STEP)
 			grave:PivotTo(sinkStart - up * (riseDepth * math.clamp(elapsed / GRAVE_SINK_TIME, 0, 1)))
 		end
 		grave:Destroy()
@@ -1538,7 +1574,7 @@ local function startEmergence(record, spawnCF: CFrame)
 		task.wait(GRAVE_RISE_TIME) -- let the headstone rise out of the ground FIRST, then the zombie climbs out
 		local elapsed = 0
 		while elapsed < EMERGE_TIME and model.Parent and not record.dead do
-			elapsed += task.wait()
+			elapsed += task.wait(RISE_STEP) -- 20Hz, not every frame (see RISE_STEP)
 			local a = math.clamp(elapsed / EMERGE_TIME, 0, 1)
 			model:PivotTo(base + Vector3.new(0, EMERGE_DEPTH * a, 0))
 		end
@@ -2570,9 +2606,15 @@ function ZombieService.Start()
 	graveFolder.Name = "Graves"
 	graveFolder.Parent = Workspace
 
+	-- THE POOL LIVES IN WORKSPACE (perf — this was the spawn-lag fix). A pooled rig parked in
+	-- ServerStorage is NOT replicated: every death told all clients to destroy the model, and every
+	-- spawn re-sent the entire rig (parts, meshes, textures, welds, tag GUI) to everyone. Parking the
+	-- rigs in Workspace instead means a spawn only replicates a CFrame + a few property flips, because
+	-- the client already has the model. release() freezes them (anchored / no collision / no raycast)
+	-- far under the map; unpark() wakes them.
 	poolFolder = Instance.new("Folder")
 	poolFolder.Name = "ZombiePool"
-	poolFolder.Parent = ServerStorage
+	poolFolder.Parent = Workspace
 
 	templatesFolder = Instance.new("Folder")
 	templatesFolder.Name = "ZombieTemplates"
