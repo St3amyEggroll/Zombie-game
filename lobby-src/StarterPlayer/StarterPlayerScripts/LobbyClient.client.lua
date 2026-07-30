@@ -1553,6 +1553,36 @@ invGrid.CanvasSize = UDim2.new(); invGrid.AutomaticCanvasSize = Enum.AutomaticSi
 local invGridLayout = Instance.new("UIGridLayout")
 invGridLayout.CellSize = UDim2.fromOffset(138, 158); invGridLayout.CellPadding = UDim2.fromOffset(11, 11); invGridLayout.Parent = invGrid -- ticket cards, 138x158 per the mock
 
+-- ===== TITLES LIST (owner-approved layout A) ===== titles aren't picture cards — they're a short
+-- list of words where the HOW-TO-EARN matters as much as the name, so they get their own scrolling
+-- container with a vertical list layout, swapped in for the card grid on the TITLES tab.
+-- (Everything hangs off LC because this file sits at Luau's 200-local ceiling.)
+LC.invList = Instance.new("ScrollingFrame")
+LC.invList.Name = "TitlesList"
+LC.invList.Position = invGrid.Position
+LC.invList.Size = invGrid.Size
+LC.invList.BackgroundTransparency = 1
+LC.invList.BorderSizePixel = 0
+LC.invList.ScrollBarThickness = 6
+LC.invList.CanvasSize = UDim2.new()
+LC.invList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+LC.invList.Visible = false
+LC.invList.Parent = invPanel
+do
+	local ll = Instance.new("UIListLayout")
+	ll.FillDirection = Enum.FillDirection.Vertical
+	ll.Padding = UDim.new(0, 7)
+	ll.SortOrder = Enum.SortOrder.LayoutOrder
+	ll.Parent = LC.invList
+end
+-- Which body the current tab shows: the card GRID (guns/crates) or the titles LIST. `showing` means
+-- an inspect page is open, which hides both.
+LC.setBodyVis = function(showing)
+	local onTitles = (activeTab == "titles")
+	invGrid.Visible = (not showing) and not onTitles
+	LC.invList.Visible = (not showing) and onTitles
+end
+
 local invHint = Instance.new("TextLabel") -- "CLICK A GUN TO INSPECT IT" strip under the grid
 invHint.AnchorPoint = Vector2.new(0, 1); invHint.Position = UDim2.new(0, 16, 1, -12)
 invHint.Size = UDim2.fromOffset(PANEL_W - 32, 18); invHint.BackgroundTransparency = 1
@@ -1863,7 +1893,7 @@ local function renderInvDetail()
 	-- MODE FLIP — the whole mechanism: inspecting shows this frame and hides the grid. One boolean.
 	local showing = invData ~= nil and selectedInv ~= nil
 	invDetail.Visible = showing
-	invGrid.Visible = not showing
+	LC.setBodyVis(showing) -- hides BOTH bodies while an inspect page is open
 	invHint.Visible = not showing
 	if not showing then
 		return
@@ -1877,7 +1907,7 @@ local function renderInvDetail()
 	if not entry then
 		selectedInv = nil
 		invDetail.Visible = false
-		invGrid.Visible = true
+		LC.setBodyVis(false)
 		invHint.Visible = true
 		return
 	end
@@ -2260,55 +2290,203 @@ end
 -- their how-to-earn hint. No inspect page — the card IS the whole interaction.
 local function renderTitlesGrid()
 	local out = {}
+	clearChildren(LC.invList)
+	local W = PANEL_W - 118 -- the list's usable width (panel minus the image rail + scrollbar)
+
+	-- Tap handler shared by every row: unlocked toggles the worn title, locked just buzzes.
+	local function wear(tid)
+		if not LC.titleUnlocked(tid) then
+			lplay("Error")
+			return -- locked: the row's hint IS the how-to-earn
+		end
+		lplay("Equip")
+		LC.titleEquipped = (LC.titleEquipped == tid) and "" or tid -- optimistic; Stats echo confirms
+		LC.TitleEquipR:FireServer(LC.titleEquipped)
+		renderActive()
+	end
+
+	-- ===== 1) THE BANNER ===== what you're WEARING, big, at the top — the whole point of the screen.
+	do
+		local wornId = LC.titleEquipped
+		local wd = (wornId ~= "" ) and LC.TITLES[wornId] or nil
+		local ban = Instance.new("Frame")
+		ban.Name = "WornBanner"
+		ban.LayoutOrder = 1
+		ban.Size = UDim2.new(0, W, 0, 68)
+		ban.BackgroundColor3 = wd and Color3.fromRGB(29, 36, 21) or Color3.fromRGB(19, 22, 14)
+		ban.BorderSizePixel = 0
+		ban.Parent = LC.invList
+		corner(ban, 10)
+		ledge(ban, wd and ACCENT or TBLACK, wd and 3 or 2.5)
+
+		local lbl = Instance.new("TextLabel")
+		lbl.BackgroundTransparency = 1
+		lbl.Position = UDim2.fromOffset(16, 11)
+		lbl.Size = UDim2.fromOffset(240, 14)
+		lbl.FontFace = BODYB_FACE
+		lbl.TextSize = 11
+		lbl.TextColor3 = DIMTEXT
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.Text = wd and "WEARING" or "NO TITLE EQUIPPED"
+		lbl.Parent = ban
+
+		local val = Instance.new("TextLabel")
+		val.Name = "WornName" -- TitleFX (rainbow/pulse/flicker) can find it by name later
+		val.BackgroundTransparency = 1
+		val.Position = UDim2.fromOffset(16, 26)
+		val.Size = UDim2.new(1, -150, 0, 30)
+		val.FontFace = TITLE_FACE
+		val.TextSize = 26
+		val.TextColor3 = wd and wd.color or Color3.fromRGB(110, 112, 100)
+		val.TextXAlignment = Enum.TextXAlignment.Left
+		val.TextTruncate = Enum.TextTruncate.AtEnd
+		val.Text = wd and wd.name or "PICK ONE BELOW"
+		val.Parent = ban
+		local vs = Instance.new("UIStroke")
+		vs.Color = TBLACK
+		vs.Thickness = 2.5
+		vs.Parent = val
+
+		if wd then -- REMOVE only exists when there's something to take off
+			local rm = Instance.new("TextButton")
+			rm.AnchorPoint = Vector2.new(1, 0.5)
+			rm.Position = UDim2.new(1, -14, 0.5, 0)
+			rm.Size = UDim2.fromOffset(104, 36)
+			rm.BackgroundColor3 = CARD
+			rm.AutoButtonColor = true
+			rm.FontFace = BODYB_FACE
+			rm.TextSize = 13
+			rm.TextColor3 = TEXTCOL
+			rm.Text = "REMOVE"
+			rm.Parent = ban
+			corner(rm, 8)
+			ledge(rm, TBLACK, 2)
+			rm.Activated:Connect(function()
+				wear(wornId) -- tapping the worn title again takes it off
+			end)
+		end
+	end
+
+	-- Split the roster: your trophies first, the chase list after.
+	local unlockedIds, lockedIds = {}, {}
 	for _, tid in ipairs(LC.TITLES_ORDER) do
+		table.insert(LC.titleUnlocked(tid) and unlockedIds or lockedIds, tid)
+	end
+
+	-- ===== 2) GROUP HEADER ===== "UNLOCKED — 3" with a hairline running off to the right.
+	local function header(text, count, order)
+		local h = Instance.new("Frame")
+		h.LayoutOrder = order
+		h.Size = UDim2.new(0, W, 0, 30)
+		h.BackgroundTransparency = 1
+		h.Parent = LC.invList
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.AnchorPoint = Vector2.new(0, 1)
+		l.Position = UDim2.new(0, 2, 1, -6)
+		l.Size = UDim2.fromOffset(190, 14)
+		l.FontFace = BODYB_FACE
+		l.TextSize = 11
+		l.TextColor3 = DIMTEXT
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.Text = ("%s — %d"):format(text, count)
+		l.Parent = h
+		local rule = Instance.new("Frame")
+		rule.AnchorPoint = Vector2.new(1, 1)
+		rule.Position = UDim2.new(1, -2, 1, -12)
+		rule.Size = UDim2.new(1, -200, 0, 1)
+		rule.BackgroundColor3 = Color3.fromRGB(42, 47, 34)
+		rule.BorderSizePixel = 0
+		rule.Parent = h
+	end
+
+	-- ===== 3) ONE ROW PER TITLE ===== name left, how-to-earn beside it, state chip on the right.
+	local function row(tid, order)
 		local td = LC.TITLES[tid]
 		local unlocked = LC.titleUnlocked(tid)
 		local worn = (LC.titleEquipped == tid)
-		local card = Instance.new("TextButton")
-		card.Name = "Title_" .. tid
-		card.LayoutOrder = #out + 1
-		card.BackgroundColor3 = Color3.fromRGB(19, 22, 14)
-		card.BorderSizePixel = 0
-		card.AutoButtonColor = true
-		card.Text = ""
-		card.Parent = invGrid
-		corner(card, 12)
-		ledge(card, worn and Color3.new(1, 1, 1) or TBLACK, worn and 3.5 or 3)
+		local r = Instance.new("TextButton")
+		r.Name = "Title_" .. tid
+		r.LayoutOrder = order
+		r.Size = UDim2.new(0, W, 0, 46)
+		r.BackgroundColor3 = worn and Color3.fromRGB(29, 36, 21) or Color3.fromRGB(26, 30, 20)
+		r.BackgroundTransparency = unlocked and 0 or 0.45 -- locked rows sit back
+		r.BorderSizePixel = 0
+		r.AutoButtonColor = true
+		r.Text = ""
+		r.Parent = LC.invList
+		corner(r, 9)
+		ledge(r, worn and ACCENT or TBLACK, worn and 2.5 or 2)
+
 		local nm = Instance.new("TextLabel")
 		nm.BackgroundTransparency = 1
-		nm.Position = UDim2.fromOffset(8, 34)
-		nm.Size = UDim2.new(1, -16, 0, 44)
+		nm.Position = UDim2.fromOffset(14, 0)
+		nm.Size = UDim2.fromOffset(200, 46)
 		nm.FontFace = TITLE_FACE
-		nm.TextSize = 19
-		nm.TextWrapped = true
+		nm.TextSize = 18
 		nm.TextColor3 = unlocked and td.color or Color3.fromRGB(110, 112, 100)
+		nm.TextXAlignment = Enum.TextXAlignment.Left
+		nm.TextTruncate = Enum.TextTruncate.AtEnd
 		nm.Text = (unlocked and "" or "🔒 ") .. td.name
-		nm.Parent = card
-		local st = Instance.new("UIStroke")
-		st.Color = TBLACK
-		st.Thickness = 2
-		st.Parent = nm
-		local how = Instance.new("TextLabel")
+		nm.Parent = r
+		local ns = Instance.new("UIStroke")
+		ns.Color = TBLACK
+		ns.Thickness = 2
+		ns.Parent = nm
+
+		local how = Instance.new("TextLabel") -- the hint sits BESIDE the name, on one line
 		how.BackgroundTransparency = 1
-		how.AnchorPoint = Vector2.new(0, 1)
-		how.Position = UDim2.new(0, 8, 1, -10)
-		how.Size = UDim2.new(1, -16, 0, 42)
+		how.Position = UDim2.fromOffset(222, 0)
+		how.Size = UDim2.new(1, -352, 1, 0)
 		how.FontFace = BODYB_FACE
-		how.TextSize = 11
-		how.TextWrapped = true
-		how.TextColor3 = worn and Color3.fromRGB(235, 240, 220) or DIMTEXT
-		how.Text = worn and "EQUIPPED ✓ — TAP TO REMOVE" or td.how
-		how.Parent = card
-		card.Activated:Connect(function()
-			if not LC.titleUnlocked(tid) then
-				lplay("Error")
-				return -- locked: the card IS the how-to-earn hint
+		how.TextSize = 12
+		how.TextColor3 = DIMTEXT
+		how.TextXAlignment = Enum.TextXAlignment.Left
+		how.TextTruncate = Enum.TextTruncate.AtEnd
+		how.Text = td.how
+		how.Parent = r
+
+		if worn or not unlocked then -- state chip, far right
+			local chip = Instance.new("TextLabel")
+			chip.AnchorPoint = Vector2.new(1, 0.5)
+			chip.Position = UDim2.new(1, -12, 0.5, 0)
+			chip.Size = UDim2.fromOffset(worn and 88 or 76, 22)
+			chip.BackgroundColor3 = worn and ACCENT or Color3.fromRGB(16, 19, 12)
+			chip.BorderSizePixel = 0
+			chip.FontFace = BODYB_FACE
+			chip.TextSize = 10
+			chip.TextColor3 = worn and Color3.fromRGB(13, 18, 7) or DIMTEXT
+			chip.Text = worn and "WEARING" or "LOCKED"
+			chip.Parent = r
+			corner(chip, 11)
+			if not worn then
+				ledge(chip, Color3.fromRGB(42, 47, 34), 1.5)
 			end
-			lplay("Equip")
-			LC.titleEquipped = (LC.titleEquipped == tid) and "" or tid -- optimistic; Stats echo confirms
-			LC.TitleEquipR:FireServer(LC.titleEquipped)
-			renderActive()
+		end
+
+		r.Activated:Connect(function()
+			wear(tid)
 		end)
+	end
+
+	local order = 10
+	if #unlockedIds > 0 then
+		header("UNLOCKED", #unlockedIds, order)
+		order += 1
+		for _, tid in ipairs(unlockedIds) do
+			row(tid, order)
+			order += 1
+		end
+	end
+	if #lockedIds > 0 then
+		header("LOCKED", #lockedIds, order)
+		order += 1
+		for _, tid in ipairs(lockedIds) do
+			row(tid, order)
+			order += 1
+		end
+	end
+	for _, tid in ipairs(LC.TITLES_ORDER) do
 		table.insert(out, { kind = "title", id = tid })
 	end
 	return out
@@ -2318,8 +2496,10 @@ end
 local function showTab(id)
 	activeTab = id
 	selectedInv = nil -- switching screens resets the featured pane
-	invTitle.Text = "LOCKER" -- one identity; the GUNS/CRATES tabs carry which screen you're on
-	invDetail.Visible = false; invGrid.Visible = true; invHint.Visible = true -- back to GRID mode
+	invTitle.Text = "LOCKER" -- one identity; the tabs carry which screen you're on
+	invDetail.Visible = false; invHint.Visible = true -- back to BROWSE mode
+	LC.setBodyVis(false) -- grid for guns/crates, the titles LIST for titles
+	invHint.Text = (id == "titles") and "TAP A TITLE TO WEAR IT" or "CLICK SOMETHING TO INSPECT IT"
 	-- repaint the side rail (selected = bright ring + full-brightness photo; others dim)
 	local rail = invPanel:FindFirstChild("LockerTabs")
 	if rail then
@@ -2337,9 +2517,11 @@ local function showTab(id)
 			end
 		end
 	end
-	-- CHANGED: the category chip row is GONE — every tab is a clean grid right of the image rail.
+	-- CHANGED: the category chip row is GONE — every tab is a clean body right of the image rail.
 	invGrid.Position = UDim2.fromOffset(96, CONTENT_Y)
 	invGrid.Size = UDim2.fromOffset(PANEL_W - 112, PANEL_H - CONTENT_Y - 16 - 24)
+	LC.invList.Position = invGrid.Position -- the titles list shares the grid's footprint
+	LC.invList.Size = invGrid.Size
 	invRecolor(LC.HEADER_COLORS.guns) -- one LOCKER header color on every tab
 end
 
@@ -2446,7 +2628,7 @@ renderActive = function()
 	if not okD then
 		warn("[LobbyInv] inspect render failed: " .. tostring(errD))
 		invDetail.Visible = false -- fail SAFE: never strand the panel in a half-built inspect view
-		invGrid.Visible = true
+		LC.setBodyVis(false)
 		invHint.Visible = true
 	end
 end
