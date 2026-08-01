@@ -189,12 +189,14 @@ local function build(playerGui)
 	-- floor at the exact moment a Robux revive is being sold. 390 keeps them finger-sized.
 	UITheme.Attach(gui, 720, 390) -- mobile: death-screen buttons at finger size
 
-	-- Bottom chrome (the approved plan): [ ◀  WATCHING: NAME  ▶ ] pill + red LEAVE RUN beside it.
+	-- Bottom chrome: just the [ ◀  WATCHING: NAME  ▶ ] people selector, centered.
+	-- CHANGED (owner): the LEAVE RUN button that used to sit beside it is GONE — leaving is the red
+	-- LEAVE of the REVIVE/LEAVE pair, which now rides directly above this selector.
 	panel = Instance.new("Frame")
 	panel.Name = "SpectatePanel"
 	panel.AnchorPoint = Vector2.new(0.5, 1)
 	panel.Position = UDim2.new(0.5, 0, 1, -24)
-	panel.Size = UDim2.fromOffset(510, 46)
+	panel.Size = UDim2.fromOffset(350, 46)
 	panel.BackgroundTransparency = 1
 	panel.Visible = false
 	panel.Parent = gui
@@ -232,14 +234,7 @@ local function build(playerGui)
 	arrow("◀", 8, -1)
 	arrow("▶", 350 - 42, 1)
 
-	local leaveBtn = UITheme.Button(panel, "LEAVE RUN", "danger")
-	leaveBtn.Name = "SpectateLeave"
-	leaveBtn.Position = UDim2.fromOffset(362, 0)
-	leaveBtn.Size = UDim2.fromOffset(148, 46)
-	leaveBtn.TextSize = 15
-	leaveBtn.Activated:Connect(function()
-		Remotes.Get("LeaveRun"):FireServer()
-	end)
+	-- (The old LEAVE RUN button here was DELETED — owner call.)
 
 	-- DEATH SCREEN: red vignette creeping in from every edge + the "YOU DIED" sticker slam.
 	vignette = Instance.new("Frame")
@@ -307,13 +302,16 @@ local function build(playerGui)
 	ss.Parent = diedSub
 
 	-- THE WIPE PAIR (owner call): during the full-wipe grace window a GREEN REVIVE and a RED LEAVE sit
-	-- side by side under YOU DIED — always built (no product id needed to see them; without an id the
-	-- revive warns in Output instead of prompting). Hidden outside the wipe window (spectate keeps its
-	-- own smaller LEAVE RUN in the top strip).
+	-- side by side — always built (no product id needed to see them; without an id the revive warns in
+	-- Output instead of prompting). CHANGED (owner): they now live at the BOTTOM of the screen, stacked
+	-- directly ABOVE the people selector, so every action on the death screen is in one place — the
+	-- selector's own LEAVE RUN button was deleted in favour of this pair's red LEAVE.
+	-- Anchored to the bottom edge: the selector sits at 24px up and is 46 tall, so 24+46+12 = 82.
+	local PAIR_BOTTOM = 82
 	reviveBtn = UITheme.Button(vignette, "REVIVE", "primary") -- green
 	reviveBtn.Name = "ReviveButton"
-	reviveBtn.AnchorPoint = Vector2.new(1, 0)
-	reviveBtn.Position = UDim2.new(0.5, -8, 0.55, 0)
+	reviveBtn.AnchorPoint = Vector2.new(1, 1)
+	reviveBtn.Position = UDim2.new(0.5, -8, 1, -PAIR_BOTTOM)
 	reviveBtn.Size = UDim2.fromOffset(210, 56)
 	reviveBtn.TextSize = 20
 	reviveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -340,8 +338,8 @@ local function build(playerGui)
 
 	wipeLeaveBtn = UITheme.Button(vignette, "LEAVE", "danger") -- red
 	wipeLeaveBtn.Name = "WipeLeaveButton"
-	wipeLeaveBtn.AnchorPoint = Vector2.new(0, 0)
-	wipeLeaveBtn.Position = UDim2.new(0.5, 8, 0.55, 0)
+	wipeLeaveBtn.AnchorPoint = Vector2.new(0, 1)
+	wipeLeaveBtn.Position = UDim2.new(0.5, 8, 1, -PAIR_BOTTOM)
 	wipeLeaveBtn.Size = UDim2.fromOffset(210, 56)
 	wipeLeaveBtn.TextSize = 20
 	wipeLeaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -351,8 +349,10 @@ local function build(playerGui)
 	end)
 	wipeLabel = Instance.new("TextLabel")
 	wipeLabel.Name = "WipeCountdown"
-	wipeLabel.AnchorPoint = Vector2.new(0.5, 0)
-	wipeLabel.Position = UDim2.fromScale(0.5, 0.64)
+	-- Rides just ABOVE the button pair (which is itself above the people selector), so the countdown,
+	-- the choice, and the selector read as one bottom stack.
+	wipeLabel.AnchorPoint = Vector2.new(0.5, 1)
+	wipeLabel.Position = UDim2.new(0.5, 0, 1, -(PAIR_BOTTOM + 56 + 8))
 	wipeLabel.Size = UDim2.fromOffset(400, 24)
 	wipeLabel.BackgroundTransparency = 1
 	wipeLabel.FontFace = UITheme.TitleFace
