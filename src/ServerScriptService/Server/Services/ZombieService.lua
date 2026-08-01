@@ -457,6 +457,21 @@ local function buildZombie(typeId: string, t): Model
 	return model
 end
 
+-- PARK a rig (perf — see the pool note at poolFolder's creation): a pooled rig STAYS in Workspace,
+-- frozen and hidden far under the map. Sending it to ServerStorage made every client DESTROY the model
+-- on death and re-download the whole rig on the next spawn — that round trip was the spawn lag.
+-- Parked = anchored, non-colliding, non-queryable, so it can't be hit, raycast, or simulated.
+local function parkModel(model: Model)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+			p.CanQuery = false
+		end
+	end
+	model:PivotTo(CFrame.new(PARK_POS))
+end
+
 -- Wake a parked rig: undo exactly what release() froze (prepModel's rule — ONLY the root collides).
 local function unpark(model: Model)
 	local rootPart = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
@@ -564,18 +579,7 @@ local function release(record)
 		end
 	end
 
-	-- PARK IT (perf — see the pool note at poolFolder's creation): the pooled rig STAYS in Workspace,
-	-- frozen and hidden far under the map. Sending it to ServerStorage made every client DESTROY the
-	-- model on death and re-download the whole rig on the next spawn — that round trip was the spawn
-	-- lag. Parked = anchored, non-colliding, non-queryable, so it can't be hit, raycast, or simulated.
-	for _, p in model:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Anchored = true
-			p.CanCollide = false
-			p.CanQuery = false
-		end
-	end
-	model:PivotTo(CFrame.new(PARK_POS))
+	parkModel(model) -- freeze it under the map, still in Workspace (see parkModel)
 	model.Parent = poolFolder
 	local list = pool[record.typeId]
 	if not list then
@@ -2391,6 +2395,58 @@ local function onHeartbeat()
 end
 
 -- ===== PUBLIC API (the round loop in MatchService drives these) =====
+
+-- NEW (spawn-lag fix): PREWARM the pool during the pre-run countdown.
+--
+-- On a FRESH JOIN the pool is empty, so the first wave pays the full price mid-combat: a :Clone() of
+-- the rig, prepModel() walking every descendant, configureRig(), the tag BillboardGui — and, worse,
+-- the CLIENTS have never seen the model (owner templates get moved into ServerStorage by
+-- registerTemplate), so they download its meshes and textures at the exact moment the first zombies
+-- appear. That is the hitch the owner feels with only 6 zombies on screen.
+--
+-- Building the rigs up front moves ALL of that into the countdown (dead time), and because the pool
+-- now lives in Workspace, parking them also REPLICATES the models to every client before the wave —
+-- so the first real spawn is just a CFrame change on a rig the client already has loaded.
+-- One rig is built per frame so the warm-up itself never spikes a frame.
+local PREWARM_PER_TYPE = 3   -- rigs to pre-build per early zombie type
+local PREWARM_MAX      = 14  -- total rigs to pre-build (keep the warm-up short)
+
+function ZombieService.Prewarm(round: number?)
+	round = math.max(1, tonumber(round) or 1)
+	task.spawn(function()
+		local made = 0
+		for id, t in ZOMBIE_TYPES do
+			if made >= PREWARM_MAX then
+				break
+			end
+			-- Only the types that can actually show up around this wave (bosses have spawnWeight 0).
+			if (t.spawnWeight or 0) > 0 and (t.minRound or 1) <= round + 2 then
+				local list = pool[id]
+				if not list then
+					list = {}
+					pool[id] = list
+				end
+				for _ = 1, PREWARM_PER_TYPE do
+					if made >= PREWARM_MAX or #list >= PREWARM_PER_TYPE then
+						break
+					end
+					local ok, model = pcall(buildZombie, id, t)
+					if not ok or not model then
+						break -- no template for this type: skip it, don't spam the log
+					end
+					parkModel(model)
+					model.Parent = poolFolder
+					table.insert(list, model)
+					made += 1
+					task.wait() -- one rig per frame: the warm-up must never hitch either
+				end
+			end
+		end
+		if made > 0 then
+			print(("[ZombieService] prewarmed %d zombie rigs (pool is hot before wave 1)"):format(made))
+		end
+	end)
+end
 
 -- Begin spawning `count` zombies for `round`, throttled by SPAWN_INTERVAL and the MaxAliveZombies cap.
 function ZombieService.BeginRound(round: number, count: number)

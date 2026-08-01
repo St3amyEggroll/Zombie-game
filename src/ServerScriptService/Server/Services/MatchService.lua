@@ -448,6 +448,10 @@ runMatch = function()
 	state.round = (GameConfig.DebugStartWave and GameConfig.DebugStartWave > 0) and GameConfig.DebugStartWave or 1
 	state.startedAt = os.clock()
 
+	-- PREWARM the zombie pool while the countdown runs (spawn-lag fix): builds the rigs and pushes them
+	-- to every client NOW, so wave 1 doesn't clone models and download meshes mid-combat.
+	ZombieService.Prewarm(state.round)
+
 	-- PRE-RUN COUNTDOWN: wait for the whole party to load in (up to StartCountdownSeconds); the moment
 	-- everyone expected is present, the countdown snaps down to StartCountdownQuick. No zombies until zero.
 	local expected = state.expectedPlayers or 1
