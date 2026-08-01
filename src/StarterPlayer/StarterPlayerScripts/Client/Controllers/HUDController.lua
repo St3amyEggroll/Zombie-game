@@ -17,6 +17,7 @@ local Config = Shared:WaitForChild("Config")
 local Modules = Shared:WaitForChild("Modules")
 
 local GameConfig = require(Config.GameConfig)
+local EventLook = require(Config.EventLook) -- event name + colour for the live event chip
 local WeaponConfig = require(Config.WeaponConfig) -- next-unlock headline on the LVL card
 local ProgressionConfig = require(Config.ProgressionConfig)
 local BuffConfig = require(Config.BuffConfig)     -- rarity colors
@@ -48,7 +49,8 @@ local LOW_HP_PCT    = 0.4
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
-local roundLabel, coinsLabel, announceLabel -- (breakLabel deleted: the enemies bar IS the countdown now)
+local roundLabel, coinsLabel, announceLabel
+local eventChip, eventChipDot, eventChipLabel, eventChipEdge -- the live "what's running" pill -- (breakLabel deleted: the enemies bar IS the countdown now)
 local coinPopScale -- UIScale on the coins label (pickup pop)
 local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
 local leaveBtn -- LEAVE banks your run and exits (always available — coins bank live, nothing to forfeit)
@@ -230,6 +232,45 @@ local function build()
 	-- (Row 3 — the separate "NEXT WAVE IN n" line — was DELETED. The strip's bar IS the countdown
 	-- now: it drains with the enemy count during a wave and with the break clock between waves.
 	-- One element, two jobs; the duplicate line that sat under it is gone.)
+
+	-- Row 3b: THE LIVE EVENT CHIP (owner: "I can't see what event is currently happening"). The roller
+	-- reveals the wave's fate and then tucks away — after that nothing on screen said you were in a
+	-- Blood Moon. This pill sits under the wave strip for the WHOLE wave, in the event's own colour,
+	-- and disappears on CALM (a plain wave needs no badge). Fed by RunEvent "waveevent".
+	eventChip = Instance.new("Frame")
+	eventChip.Name = "EventChip"
+	eventChip.LayoutOrder = 20
+	eventChip.Size = UDim2.fromOffset(300, 26)
+	eventChip.BackgroundColor3 = Color3.fromRGB(12, 14, 9)
+	eventChip.BackgroundTransparency = 0.15
+	eventChip.BorderSizePixel = 0
+	eventChip.Visible = false
+	eventChip.Parent = lane
+	UITheme.Corner(eventChip, 13)
+	eventChipEdge = UITheme.Edge(eventChip, UITheme.BLACK, 2)
+
+	eventChipDot = Instance.new("Frame") -- a colour bead so the event reads at a glance, pre-text
+	eventChipDot.AnchorPoint = Vector2.new(0, 0.5)
+	eventChipDot.Position = UDim2.new(0, 10, 0.5, 0)
+	eventChipDot.Size = UDim2.fromOffset(10, 10)
+	eventChipDot.BackgroundColor3 = Color3.new(1, 1, 1)
+	eventChipDot.BorderSizePixel = 0
+	eventChipDot.Parent = eventChip
+	UITheme.Corner(eventChipDot, 5)
+
+	eventChipLabel = text(eventChip, "EventChipLabel", UITheme.BodyBoldFace, 15, COL_TEXT)
+	eventChipLabel.Position = UDim2.fromOffset(26, 0)
+	eventChipLabel.Size = UDim2.new(1, -32, 1, 0)
+	eventChipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	eventChipLabel.Text = ""
+	do
+		local ecs = Instance.new("UIStroke")
+		ecs.Color = Color3.fromRGB(0, 0, 0)
+		ecs.Transparency = 0.4
+		ecs.Thickness = 1.2
+		ecs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		ecs.Parent = eventChipLabel
+	end
 
 	-- Row 4: the ANNOUNCEMENT slot — one label, fed by a queue (INCOMING!, FLAWLESS, crate drops...).
 	-- Simultaneous events take turns instead of printing on top of each other.
@@ -669,6 +710,26 @@ function HUDController.Start()
 			end
 			roundLabel.Text = ("STARTING IN %d"):format(secs)
 		end
+	end)
+
+	-- THE LIVE EVENT CHIP: the server announces the wave's modifier when it starts and clears it when
+	-- the wave ends, so the badge is up for exactly as long as the event is actually running.
+	Remotes.Get("RunEvent").OnClientEvent:Connect(function(kind, payload)
+		if kind ~= "waveevent" or not eventChip then
+			return
+		end
+		local id = typeof(payload) == "table" and payload.id or nil
+		local look = (typeof(id) == "string") and EventLook[id] or nil
+		-- CALM is the absence of an event — no badge for "nothing is happening".
+		if not look or id == "calm" then
+			eventChip.Visible = false
+			return
+		end
+		eventChipLabel.Text = look.name
+		eventChipLabel.TextColor3 = look.color
+		eventChipDot.BackgroundColor3 = look.color
+		eventChipEdge.Color = look.color
+		eventChip.Visible = true
 	end)
 
 	-- Between waves: run the NEXT WAVE countdown under the wave number (the event wheel spins alongside).

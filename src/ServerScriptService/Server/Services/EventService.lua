@@ -18,6 +18,7 @@
 -- All visuals are procedural except the meteors (ReplicatedStorage > Assets > Meteors, owner models).
 -- Tune everything in GameConfig.Events.
 
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -814,6 +815,10 @@ function EventService.BeginWaveEvent(outcome: string?, wave: number)
 	EventService.EndWaveEvent() -- belt-and-braces: never stack two wave modifiers
 	waveCountMult = 1
 	local def = outcome and OUTCOMES[outcome]
+	-- NEW: tell every client what's running THIS WAVE so the HUD can show a live event chip. Once the
+	-- roller tucked away there was nothing on screen saying you were in a Blood Moon — the whole
+	-- promise of the wheel evaporated three seconds after the reveal.
+	Remotes.Get("RunEvent"):FireAllClients("waveevent", { id = def and outcome or nil })
 	if not def then
 		return
 	end
@@ -834,6 +839,7 @@ function EventService.EndWaveEvent()
 	if not activeEvent then
 		return
 	end
+	Remotes.Get("RunEvent"):FireAllClients("waveevent", { id = nil }) -- clear the HUD's event chip
 	local def = OUTCOMES[activeEvent]
 	activeEvent = nil
 	gen += 1 -- cancels every event loop / in-flight strike follow-up
@@ -876,6 +882,16 @@ function EventService.Start()
 	-- Scan for the meteor models AT BOOT (not lazily at the first strike) so the Output line that says
 	-- what was found — or the warning that says where it looked — is sitting right there on startup.
 	task.spawn(getMeteorTemplates)
+
+	-- Anyone arriving mid-wave gets the running event pushed to them, so a late joiner's HUD chip
+	-- matches everyone else's instead of staying blank until the next wave.
+	Players.PlayerAdded:Connect(function(player)
+		task.delay(2, function()
+			if activeEvent and player.Parent then
+				Remotes.Get("RunEvent"):FireClient(player, "waveevent", { id = activeEvent })
+			end
+		end)
+	end)
 
 	-- TOXIC BITES (acid rain / apocalypse): a zombie hit also poisons — 3 extra ticks over ~2.4s.
 	-- Listens to the Damaged signal so every zombie attack path is covered without touching them.

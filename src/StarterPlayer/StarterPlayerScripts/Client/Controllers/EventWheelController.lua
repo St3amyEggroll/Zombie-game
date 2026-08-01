@@ -49,24 +49,9 @@ local function dramaFor(pct: number)
 	return { punch = 1.1, hold = 2.2, rays = 8, edge = 1 } -- common rolls: no screen wash at all
 end
 
--- What each outcome reads as (server sends only the id + odds). Add a wheel outcome = add a row.
-local LOOK = {
-	calm       = { name = "CALM WAVE",       color = Color3.fromRGB(124, 219, 35) },
-	fog        = { name = "FOG",             color = Color3.fromRGB(180, 186, 168) },
-	rain       = { name = "RAIN",            color = Color3.fromRGB(165, 195, 225) },
-	meteors    = { name = "METEOR SHOWER",   color = Color3.fromRGB(255, 140, 40) },
-	bombsquad  = { name = "BOMB SQUAD",      color = Color3.fromRGB(255, 96, 34) },
-	earthquake = { name = "EARTHQUAKE",      color = Color3.fromRGB(190, 160, 120) },
-	bloodmoon  = { name = "BLOOD MOON",      color = Color3.fromRGB(255, 70, 50) },
-	lightning  = { name = "LIGHTNING STORM", color = Color3.fromRGB(120, 200, 255) },
-	acidrain   = { name = "ACID RAIN",       color = Color3.fromRGB(120, 230, 60) },
-	hounds     = { name = "BLOODHOUNDS",     color = Color3.fromRGB(200, 120, 60) },
-	purge      = { name = "THE PURGE",       color = Color3.fromRGB(220, 60, 60) },
-	bodyguards = { name = "BODYGUARDS",      color = Color3.fromRGB(240, 196, 82) },
-	goldrush   = { name = "GOLD RUSH",       color = Color3.fromRGB(255, 215, 70) },
-	apocalypse = { name = "APOCALYPSE",      color = Color3.fromRGB(255, 60, 90) },
-	godmode    = { name = "GOD MODE",        color = Color3.fromRGB(120, 255, 235) },
-}
+-- What each outcome reads as (server sends only the id + odds). CHANGED: the names/colours moved to
+-- Shared/Config/EventLook so the reel and the HUD's live event chip can never drift apart.
+local LOOK = require(Shared.Config.EventLook)
 local IDS = {}
 for id in LOOK do
 	table.insert(IDS, id)
