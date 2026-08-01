@@ -57,7 +57,11 @@ local WeaponConfig: { [string]: Weapon } = {
 		chill={slowPct=1, secs=4}, shatter={damage=45, radius=10},
 		ability="CRYO — freezes zombies SOLID in ice for 4s; frozen zombies SHATTER on death (frost AoE)" },
 	minigun = { id="minigun", name="Minigun",       tier=4, damage=22, fireRate=18,  range=60, pellets=1, auto=true,  spinUp=1.0, knockback=16, price=15000 },
-	raygun  = { id="raygun",  name="Ray Gun",       tier=5, damage=130, fireRate=4,  range=60, pellets=1, auto=true,  knockback=40, price=40000 },
+	-- CHANGED (owner: "the raygun shoots twice in one shot"). It was auto=true at 4 rounds/sec, i.e. one
+	-- shot every 0.25s while the button is DOWN — and a normal click is easily held that long, so a
+	-- single click fired twice. It's a punchy single-shot energy pistol, so it's SEMI-AUTO now: the
+	-- client's pendingShot path guarantees exactly one shot per click, no matter how long you hold.
+	raygun  = { id="raygun",  name="Ray Gun",       tier=5, damage=130, fireRate=4,  range=60, pellets=1, auto=false, knockback=40, price=40000 },
 
 	-- ===== NEW GUNS =====
 	m4         = { id="m4",         name="M4 Carbine",         tier=3, damage=26,  fireRate=11,  range=60, pellets=1, auto=true,  knockback=22, price=7000 },

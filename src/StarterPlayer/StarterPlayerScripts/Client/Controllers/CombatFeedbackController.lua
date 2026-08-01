@@ -710,6 +710,9 @@ end
 -- `pellets` (shotguns) fans that many bolts with a little scatter around the endpoint, so a shell visibly
 -- sprays instead of drawing one line.
 local MAX_VISUAL_PELLETS = 6
+-- How far a SINGLE bolt may drift off the exact endpoint, as a fraction of the shot's distance.
+-- Deliberately tiny — it should read as "the gun isn't a laser pointer", never as inaccuracy.
+local MISS_SPREAD = 0.022
 local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vector3, weaponId: string?, pellets: number?)
 	local shooter = Players:GetPlayerByUserId(shooterUserId)
 	local character = shooter and shooter.Character
@@ -729,12 +732,24 @@ local function onShotFired(shooterUserId: number, origin: Vector3, endpoint: Vec
 	end
 
 	local count = math.clamp(tonumber(pellets) or 1, 1, MAX_VISUAL_PELLETS)
-	if count <= 1 then
-		spawnProjectile(from, endpoint, weaponId)
-		return
-	end
 	local dir = endpoint - from
 	local dist = dir.Magnitude
+	if count <= 1 then
+		-- NEW (owner): even a SINGLE bullet gets a whisper of scatter, so repeated shots don't stack
+		-- into one identical laser-straight line. Auto-aim still decides what you HIT — this is purely
+		-- where the bolt is drawn, and it's tiny (MISS_SPREAD of the distance).
+		if dist >= 1 then
+			local u = (math.abs(dir.Unit.Y) > 0.99) and Vector3.xAxis or Vector3.yAxis
+			local rt = dir.Unit:Cross(u).Unit
+			local up2 = dir.Unit:Cross(rt).Unit
+			local ang = math.random() * math.pi * 2
+			local r = math.sqrt(math.random()) * dist * MISS_SPREAD
+			spawnProjectile(from, endpoint + (rt * math.cos(ang) + up2 * math.sin(ang)) * r, weaponId)
+		else
+			spawnProjectile(from, endpoint, weaponId)
+		end
+		return
+	end
 	if dist < 1 then
 		spawnProjectile(from, endpoint, weaponId)
 		return
