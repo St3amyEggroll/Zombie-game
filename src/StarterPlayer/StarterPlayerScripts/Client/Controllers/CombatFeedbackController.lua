@@ -434,11 +434,31 @@ local function spawnRocket(from: Vector3, to: Vector3)
 	glow.Range = 9
 	glow.Parent = tail
 
+	-- NEW (VFX revamp): a CORKSCREW smoke ribbon. The trail's attachments are offset off-axis, and
+	-- updateBolts spins the rocket about its own forward axis (b.roll), so the ribbon wraps around the
+	-- flight path instead of running dead straight — the classic rocket spiral.
+	local c0 = Instance.new("Attachment"); c0.Position = Vector3.new(0.55, 0, body.Size.Z * 0.35); c0.Parent = body
+	local c1 = Instance.new("Attachment"); c1.Position = Vector3.new(0.15, 0, body.Size.Z * 0.35); c1.Parent = body
+	local curl = Instance.new("Trail")
+	curl.Attachment0 = c0
+	curl.Attachment1 = c1
+	curl.Color = ColorSequence.new(Color3.fromRGB(196, 190, 182), Color3.fromRGB(96, 94, 90))
+	curl.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	curl.Lifetime = 0.9 -- the spiral lingers well behind the rocket
+	curl.FaceCamera = true
+	curl.LightEmission = 0
+	curl.WidthScale = NumberSequence.new(1, 2.2)
+	curl.Parent = body
+
 	body.Parent = fxFolder
 	table.insert(activeBolts, {
 		part = body, from = from, dir = dir, dist = dist,
 		speed = cfg.Speed, life = cfg.Life or 0.7, t = 0,
 		rocket = true, -- arrival = vanish + let the smoke finish; the server's "boom" is the explosion
+		roll = true,   -- spin about the forward axis so the smoke ribbon corkscrews
 	})
 end
 
@@ -511,13 +531,105 @@ local function spawnProjectile(from: Vector3, to: Vector3, weaponId: string?)
 	trail.WidthScale = NumberSequence.new(1, 0.2)
 	trail.Parent = bolt
 
+	-- PLASMA (VFX revamp): not a bolt — a fat energy ORB. Round it out, add a glow light, and widen the
+	-- ribbon into a proper wake. updateBolts pulses it as it flies (see b.pulse).
+	local isPlasma = (weaponId == "plasma")
+	if isPlasma then
+		bolt.Shape = Enum.PartType.Ball
+		bolt.Size = Vector3.new(1.05, 1.05, 1.05)
+		bolt.Transparency = 0
+		trail.WidthScale = NumberSequence.new(1.6, 0.1)
+		trail.Lifetime = 0.18
+		local glow = Instance.new("PointLight")
+		glow.Color = cfg.Color
+		glow.Range = 12
+		glow.Brightness = 2.4
+		glow.Parent = bolt
+	end
+
 	bolt.Parent = fxFolder
 	table.insert(activeBolts, {
 		part = bolt, from = from, dir = dir, dist = dist,
 		speed = cfg.Speed, life = cfg.Life or 0.05, t = 0,
 		weaponId = weaponId, -- ability guns pop their own colors on arrival (impactPop)
 		burstColor = cfg.BurstColor, -- optional colored pop where the bolt lands
+		pulse = isPlasma or nil,     -- plasma orbs breathe in flight
 	})
+end
+
+-- PLASMA IMPACT (VFX revamp): the rifle's splash used to be completely invisible — the bolt just
+-- stopped. Now it cracks: a flat expanding RING shockwave sized to the weapon's real 6-stud AoE, a
+-- bright core flash, and a handful of arcing sparks that fall away. All anchored + tweened (no
+-- physics, no particles to leak) and it cleans itself up in well under half a second.
+local PLASMA_COL = Color3.fromRGB(123, 227, 255)
+local function plasmaBurst(pos: Vector3)
+	local RADIUS = 6 -- matches WeaponConfig.plasma.aoe.radius
+
+	local ring = Instance.new("Part")
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CastShadow = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = PLASMA_COL
+	ring.Transparency = 0.25
+	ring.Size = Vector3.new(0.25, 1.2, 1.2)
+	ring.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = fxFolder
+	TweenService:Create(ring, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.1, RADIUS * 2, RADIUS * 2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(ring, 0.36)
+
+	local core = Instance.new("Part")
+	core.Shape = Enum.PartType.Ball
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanQuery = false
+	core.CanTouch = false
+	core.CastShadow = false
+	core.Material = Enum.Material.Neon
+	core.Color = Color3.fromRGB(232, 253, 255)
+	core.Transparency = 0.1
+	core.Size = Vector3.new(1.4, 1.4, 1.4)
+	core.CFrame = CFrame.new(pos)
+	core.Parent = fxFolder
+	local light = Instance.new("PointLight")
+	light.Color = PLASMA_COL
+	light.Range = 16
+	light.Brightness = 3
+	light.Parent = core
+	TweenService:Create(core, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(RADIUS * 0.9, RADIUS * 0.9, RADIUS * 0.9),
+		Transparency = 1,
+	}):Play()
+	TweenService:Create(light, TweenInfo.new(0.2), { Brightness = 0 }):Play()
+	Debris:AddItem(core, 0.25)
+
+	for i = 1, 7 do
+		local ang = (math.pi * 2) * (i / 7) + math.random() * 0.6
+		local out = Vector3.new(math.cos(ang), 0.35 + math.random() * 0.5, math.sin(ang))
+		local spark = Instance.new("Part")
+		spark.Anchored = true
+		spark.CanCollide = false
+		spark.CanQuery = false
+		spark.CanTouch = false
+		spark.CastShadow = false
+		spark.Material = Enum.Material.Neon
+		spark.Color = PLASMA_COL
+		spark.Size = Vector3.new(0.16, 0.16, 0.9)
+		spark.CFrame = CFrame.new(pos)
+		spark.Parent = fxFolder
+		local land = pos + out * (RADIUS * (0.6 + math.random() * 0.5)) - Vector3.new(0, 1.6, 0)
+		TweenService:Create(spark, TweenInfo.new(0.34, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = CFrame.lookAt(land, land + out),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(spark, 0.38)
+	end
 end
 
 -- Advance every in-flight bolt; when one reaches its impact point, fade it out (over its cfg.Life) and
@@ -567,6 +679,9 @@ local function updateBolts(dt: number)
 					TweenService:Create(puff, TweenInfo.new(0.22), { Transparency = 1, Size = Vector3.new(2.2, 2.2, 2.2) }):Play()
 					Debris:AddItem(puff, 0.25)
 				end
+				if b.weaponId == "plasma" then
+					plasmaBurst(pos) -- ring shockwave + arcing sparks: the splash is finally visible
+				end
 				if b.weaponId == "plasma" or b.weaponId == "raygun" or b.weaponId == "crossbow" then
 					impactPop(pos, b.weaponId) -- ability-gun landing signature
 				end
@@ -574,6 +689,15 @@ local function updateBolts(dt: number)
 			else
 				local pos = b.from + b.dir * traveled
 				b.part.CFrame = CFrame.lookAt(pos, pos + b.dir)
+				if b.roll then
+					-- Spin about the travel axis: drags the offset smoke ribbon into a corkscrew.
+					b.part.CFrame = b.part.CFrame * CFrame.Angles(0, 0, b.t * 16)
+				end
+				if b.pulse then
+					-- The plasma orb breathes as it travels (and the ball ignores lookAt rotation anyway).
+					local s = 1.05 + math.sin(b.t * 34) * 0.22
+					b.part.Size = Vector3.new(s, s, s)
+				end
 			end
 		end
 	end

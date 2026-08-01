@@ -3660,6 +3660,22 @@ do
 		ledge(wheel, TBLACK, 4)
 		ledge(wheel, Color3.fromRGB(255, 210, 62), 1.5, 0.5)
 		S.wheelFace = wheel
+		-- THE POINTER — a gold marker pinned OUTSIDE the spinning face (its own parent, so the disc's
+		-- rotation doesn't drag it around). Whatever wedge sits under this when the wheel stops wins.
+		do
+			local ptr = Instance.new("Frame")
+			ptr.Name = "WheelPointer"
+			ptr.AnchorPoint = Vector2.new(0.5, 0.5)
+			ptr.Position = UDim2.fromOffset(20 + 120, 42 + 6) -- top-center of the 240px wheel
+			ptr.Size = UDim2.fromOffset(20, 20)
+			ptr.BackgroundColor3 = Color3.fromRGB(255, 210, 62)
+			ptr.BorderSizePixel = 0
+			ptr.Rotation = 45 -- a diamond: the corner points down into the wedge
+			ptr.ZIndex = 8
+			ptr.Parent = S.page.daily
+			corner(ptr, 4)
+			ledge(ptr, TBLACK, 2.5)
+		end
 		local hub = Instance.new("Frame")
 		hub.AnchorPoint = Vector2.new(0.5, 0.5)
 		hub.Position = UDim2.fromScale(0.5, 0.5)
@@ -3667,7 +3683,10 @@ do
 		hub.BackgroundColor3 = Color3.fromRGB(13, 15, 10)
 		hub.BorderSizePixel = 0
 		hub.ZIndex = 5
-		hub.Parent = wheel
+		-- The hub sits OUTSIDE the spinning face so "SPIN!" never rides the rotation.
+		hub.AnchorPoint = Vector2.new(0.5, 0.5)
+		hub.Position = UDim2.fromOffset(20 + 120, 42 + 120)
+		hub.Parent = S.page.daily
 		local hc = Instance.new("UICorner")
 		hc.CornerRadius = UDim.new(1, 0)
 		hc.Parent = hub
@@ -3921,7 +3940,12 @@ do
 		end
 	end
 
-	-- The spin: a light chases around the chips, decelerating, and lands on the server's segment.
+	-- THE SPIN (owner call: "it isn't really a wheel"). The whole FACE now turns — real momentum,
+	-- decelerating, ticking past the pointer at the top, then settling with a little wobble onto the
+	-- segment the server rolled. Every wedge is the SAME SIZE (equal spacing around the disc) so it
+	-- reads as a proper prize wheel; the real odds live in the server's weights and are printed as the
+	-- % on each chip, so a rare slice looks identical but stays rare — you can see what you're chasing.
+	-- Chips counter-rotate so their labels stay upright while the disc turns.
 	S.spinTo = function(idx, rewardText, jackpotHit)
 		if #S.wheelChips == 0 then
 			S.wheelResult.Text = rewardText -- wheel not built (no data yet): just show the prize
@@ -3931,21 +3955,49 @@ do
 		S.wheelResult.Text = ""
 		task.spawn(function()
 			local n = #S.wheelChips
-			local steps = n * 2 + (idx - 1) -- two laps, then land on idx (chase starts at chip 1)
-			local prev = nil
-			for s = 0, steps do
-				local at = (s % n) + 1
-				if prev then
-					local pc = S.wheelChips[prev]
-					pc.ring.Color = pc.jackpot and Color3.fromRGB(255, 210, 62) or TBLACK
-					pc.ring.Thickness = 2.5
+			local step = 360 / n
+			-- Chip i sits at (i-1)*step clockwise from the top, so landing it under the pointer means
+			-- turning the face BACK by that much (plus whole laps).
+			local LAPS = 5
+			local target = LAPS * 360 - (idx - 1) * step
+			local startRot = S.wheelFace.Rotation % 360
+			local delta = target - startRot
+			local DUR = 4.1
+			local t0 = os.clock()
+			local lastTick = -1
+			while true do
+				local a = math.clamp((os.clock() - t0) / DUR, 0, 1)
+				-- Ease out hard, then a small damped wobble as it settles into the detent.
+				local e = 1 - (1 - a) ^ 3.4
+				if a > 0.9 then
+					e = 1 + math.sin((a - 0.9) / 0.1 * math.pi * 2) * 0.004 * (1 - a) / 0.1
 				end
-				local c = S.wheelChips[at]
-				c.ring.Color = Color3.new(1, 1, 1)
-				c.ring.Thickness = 4
-				prev = at
-				lplay("ReelTick", 0.9 + (s / steps) * 0.25)
-				task.wait(0.05 + (s / steps) ^ 2 * 0.32)
+				local rot = startRot + delta * e
+				S.wheelFace.Rotation = rot
+				for _, c in S.wheelChips do
+					c.chip.Rotation = -rot -- keep every label upright while the disc turns
+				end
+				-- Ratchet: one tick each time a new wedge passes the pointer, pitching up with speed.
+				local passed = math.floor(rot / step)
+				if passed ~= lastTick then
+					lastTick = passed
+					lplay("ReelTick", 0.85 + (1 - a) * 0.5)
+				end
+				if a >= 1 then
+					break
+				end
+				task.wait()
+			end
+			S.wheelFace.Rotation = target % 360
+			for _, c in S.wheelChips do
+				c.chip.Rotation = -(target % 360)
+			end
+			-- The landing beat: the winning wedge lights up, everything else dims back.
+			for i, c in S.wheelChips do
+				local won = (i == idx)
+				c.ring.Color = won and Color3.new(1, 1, 1)
+					or (c.jackpot and Color3.fromRGB(255, 210, 62) or TBLACK)
+				c.ring.Thickness = won and 4.5 or 2.5
 			end
 			lplay(jackpotHit and "RevealJackpot" or "RevealHigh")
 			S.wheelResult.Text = rewardText

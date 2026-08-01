@@ -212,6 +212,93 @@ local function boomExtras(pos: Vector3, radius: number)
 		Transparency = 1,
 	}):Play()
 	Debris:AddItem(ring, 0.5)
+
+	-- NEW (VFX revamp): the detonation reads as a real explosion instead of one ring.
+	-- 1) A hard WHITE FLASH ball — the first two frames of any big blast are pure white.
+	local flash = Instance.new("Part")
+	flash.Shape = Enum.PartType.Ball
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.CanQuery = false
+	flash.CanTouch = false
+	flash.CastShadow = false
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(255, 252, 236)
+	flash.Transparency = 0.05
+	flash.Size = Vector3.new(radius * 0.5, radius * 0.5, radius * 0.5)
+	flash.CFrame = CFrame.new(pos)
+	flash.Parent = fxFolder
+	TweenService:Create(flash, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(radius * 1.5, radius * 1.5, radius * 1.5),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(flash, 0.2)
+
+	-- 2) The FIREBALL swelling out behind the flash — slower, orange, so you can read the real radius.
+	local ball = Instance.new("Part")
+	ball.Shape = Enum.PartType.Ball
+	ball.Anchored = true
+	ball.CanCollide = false
+	ball.CanQuery = false
+	ball.CanTouch = false
+	ball.CastShadow = false
+	ball.Material = Enum.Material.Neon
+	ball.Color = Color3.fromRGB(255, 146, 48)
+	ball.Transparency = 0.25
+	ball.Size = Vector3.new(radius * 0.35, radius * 0.35, radius * 0.35)
+	ball.CFrame = CFrame.new(pos)
+	ball.Parent = fxFolder
+	TweenService:Create(ball, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Size = Vector3.new(radius * 1.9, radius * 1.9, radius * 1.9),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(ball, 0.5)
+
+	-- 3) A SCORCH disc on the deck: the blast leaves a mark that lingers and fades, so the damage
+	--    footprint is legible after the fire clears.
+	local scorch = Instance.new("Part")
+	scorch.Shape = Enum.PartType.Cylinder
+	scorch.Anchored = true
+	scorch.CanCollide = false
+	scorch.CanQuery = false
+	scorch.CanTouch = false
+	scorch.CastShadow = false
+	scorch.Material = Enum.Material.Slate
+	scorch.Color = Color3.fromRGB(26, 22, 18)
+	scorch.Transparency = 0.25
+	scorch.Size = Vector3.new(0.2, radius * 1.7, radius * 1.7)
+	scorch.CFrame = CFrame.new(pos - Vector3.new(0, 2.4, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	scorch.Parent = fxFolder
+	TweenService:Create(scorch, TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Transparency = 1 }):Play()
+	Debris:AddItem(scorch, 1.9)
+
+	-- 4) DEBRIS thrown outward — a handful of chunks arcing away and fading. Cheap (anchored, tweened,
+	--    no physics) and it's what sells the force.
+	local CHUNKS = 8
+	for i = 1, CHUNKS do
+		local ang = (math.pi * 2) * (i / CHUNKS) + math.random() * 0.5
+		local out = Vector3.new(math.cos(ang), 0, math.sin(ang))
+		local chunk = Instance.new("Part")
+		chunk.Anchored = true
+		chunk.CanCollide = false
+		chunk.CanQuery = false
+		chunk.CanTouch = false
+		chunk.CastShadow = false
+		chunk.Material = Enum.Material.Slate
+		chunk.Color = Color3.fromRGB(58, 50, 42)
+		local s = 0.35 + math.random() * 0.5
+		chunk.Size = Vector3.new(s, s, s)
+		chunk.CFrame = CFrame.new(pos) * CFrame.Angles(math.random() * 6, math.random() * 6, 0)
+		chunk.Parent = fxFolder
+		local land = pos + out * (radius * (0.7 + math.random() * 0.6)) - Vector3.new(0, 2, 0)
+		TweenService:Create(chunk, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = CFrame.new(land) * CFrame.Angles(math.random() * 6, math.random() * 6, 0),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(chunk, 0.6)
+	end
+
 	local light = Instance.new("PointLight")
 	light.Color = Color3.fromRGB(255, 170, 70)
 	light.Range = math.min(40, radius * 3)
