@@ -575,6 +575,10 @@ runMatch = function()
 		-- lands mid-break and the dread has time to sink in before the wave starts.
 		setPhase("RoundBreak")
 		pendingEvent = EventService.SpinForWave(state.round + 1)
+		-- Top the zombie pool up during the break for the types unlocking soon (audit): without this,
+		-- every new enemy's FIRST spawn cold-built its rig — and downloaded its model to every client —
+		-- mid-wave. Idempotent: already-warm types are a no-op, and it builds one rig per frame.
+		ZombieService.Prewarm(state.round + 1)
 		task.wait(GameConfig.RoundBreakSeconds)
 		if not anyInMatch() then
 			break

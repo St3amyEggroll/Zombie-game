@@ -515,10 +515,20 @@ local function restoreColors(model: Model)
 end
 
 -- Flash a zombie white briefly on a non-lethal hit, then back to its base color.
+-- PERF (audit): DEBOUNCED. This runs synchronously inside the FireWeapon remote — the one the shooter
+-- is waiting on — and each call walks the whole rig with GetDescendants twice (once to whiten, once to
+-- restore), writing a replicated Color per part. A minigun at 18 rounds/sec fires every 0.055s, well
+-- inside HIT_FLASH_TIME, so the flash never even finished before the next one restarted it: pure
+-- duplicated work and duplicated replication on the hot path. One flash at a time per zombie now.
 local function flashWhite(record)
 	if record.dead then
 		return
 	end
+	local now = os.clock()
+	if now < (record.flashUntil or 0) then
+		return -- already white from a hit a few milliseconds ago; the pending restore still covers it
+	end
+	record.flashUntil = now + HIT_FLASH_TIME
 	recolor(record.model, FLASH_COLOR)
 	task.delay(HIT_FLASH_TIME, function()
 		if not record.dead and record.model.Parent then
@@ -1591,6 +1601,15 @@ local function startEmergence(record, spawnCF: CFrame)
 				root:SetNetworkOwner(nil)
 			end)
 		end
+		-- PERF (audit): restart the progress clocks the moment the zombie is actually free to move.
+		-- The AI skips a record while it's emerging (~2.4s), but the stuck timer kept counting — so the
+		-- FIRST think() after emerging always saw "no progress for 2.4s > STUCK_REPLAN 0.9" and, with
+		-- lastPath still at its 0 sentinel, fired a PathfindingService:ComputeAsync immediately. That was
+		-- one wasted navmesh query for EVERY zombie that ever spawned, clustered right on the spawn burst
+		-- — and it also shoved a zombie with a clear line of sight onto a stale waypoint detour.
+		record.lastPos = root.Position
+		record.lastMoveTime = os.clock()
+		record.lastPath = os.clock()
 		record.emerging = false
 	end)
 end
@@ -2408,8 +2427,11 @@ end
 -- now lives in Workspace, parking them also REPLICATES the models to every client before the wave —
 -- so the first real spawn is just a CFrame change on a rig the client already has loaded.
 -- One rig is built per frame so the warm-up itself never spikes a frame.
-local PREWARM_PER_TYPE = 3   -- rigs to pre-build per early zombie type
-local PREWARM_MAX      = 14  -- total rigs to pre-build (keep the warm-up short)
+-- CHANGED (audit): 3-per-type wasn't enough to cover even wave 1. computeCount gives 6 zombies solo /
+-- 15 at four players, and on Forest waves 1-2 can only roll ONE type — so spawns 4,5,6… still fell
+-- through to the cold buildZombie path mid-combat, which is the exact hitch this was meant to kill.
+local PREWARM_PER_TYPE = 12  -- rigs to pre-build per eligible zombie type
+local PREWARM_MAX      = 28  -- total rigs to pre-build (one per frame ≈ half a second)
 
 function ZombieService.Prewarm(round: number?)
 	round = math.max(1, tonumber(round) or 1)
@@ -2420,7 +2442,11 @@ function ZombieService.Prewarm(round: number?)
 				break
 			end
 			-- Only the types that can actually show up around this wave (bosses have spawnWeight 0).
-			if (t.spawnWeight or 0) > 0 and (t.minRound or 1) <= round + 2 then
+			-- CHANGED (audit): match pickType's world filter. Without it, half the warm-up budget went to
+			-- Islands-only types (drowned/lurker) whose pool entries can never be read on Forest — so the
+			-- map you're actually playing came up short.
+			if (t.spawnWeight or 0) > 0 and (t.minRound or 1) <= round + 2
+				and (t.worlds == nil or t.worlds[currentMap] == true) then
 				local list = pool[id]
 				if not list then
 					list = {}

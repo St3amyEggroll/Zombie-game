@@ -27,8 +27,7 @@ local AssetPreloadController = {}
 -- ===== TUNABLES =====
 local POOL_WAIT     = 25   -- seconds to wait for the prewarmed pool to appear before giving up
 local SETTLE_TIME   = 0.6  -- seconds to let the pool finish filling before we preload it
-local RETRY_EVERY   = 4    -- seconds between top-up passes (later waves add new zombie types)
-local RETRY_PASSES  = 6    -- how many top-up passes to run
+local BATCH_WINDOW  = 1.0  -- seconds to let a pool top-up finish before preloading it as one batch
 
 -- Preload a list of instances/ids. PreloadAsync yields and can throw on a bad id — always pcall it,
 -- and never let it run on an empty list (that logs a warning for nothing).
@@ -95,11 +94,23 @@ function AssetPreloadController.Start()
 		end
 		preload(worldAssets())
 
-		-- Top-up passes: later waves introduce new zombie types, and each one's first rig lands in the
-		-- pool only when that type first dies. Catching them here keeps deep waves smooth too.
-		for _ = 1, RETRY_PASSES do
-			task.wait(RETRY_EVERY)
-			preload(worldAssets())
+		-- TOP-UPS, for the whole run (audit): this used to be six timed passes and then it stopped
+		-- forever — 24 seconds after joining — which missed every zombie type that unlocks at a deeper
+		-- wave. Now we watch the pool: MatchService tops it up during each wave break, and every rig
+		-- that lands gets warmed here BEFORE that type ever claws out of the ground. Batched behind a
+		-- short debounce so a 12-rig top-up is one PreloadAsync, not twelve.
+		if pool then
+			local pending = false
+			pool.ChildAdded:Connect(function()
+				if pending then
+					return
+				end
+				pending = true
+				task.delay(BATCH_WINDOW, function()
+					pending = false
+					preload(worldAssets())
+				end)
+			end)
 		end
 	end)
 	print("[AssetPreloadController] started (warming zombie rigs + animations)")
