@@ -65,6 +65,83 @@ local function rollFog()
 	end
 end
 
+-- ===== BLIZZARD ===== a WHITE-OUT: the same Atmosphere blindfold as the fog but cold and brighter,
+-- plus driving snow that sweeps across the camera. (The server owns the speed penalties; this is the
+-- look.) It reuses fogBase/fogToken so a blizzard and a fog can never fight over the sky — only one
+-- weather event runs per wave anyway.
+local snowEmitter -- ParticleEmitter parented to the camera, so the snow follows you
+local function rollBlizzard()
+	fogToken += 1
+	local atmo = atmosphere()
+	fogBase = fogBase or {
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor,
+		Density = atmo and atmo.Density or nil,
+		Haze = atmo and atmo.Haze or nil,
+		AtmoColor = atmo and atmo.Color or nil,
+	}
+	Lighting.FogColor = Color3.fromRGB(226, 238, 248)
+	TweenService:Create(Lighting, TweenInfo.new(FOG_TWEEN), { FogEnd = 120, FogStart = 8 }):Play()
+	if atmo then
+		TweenService:Create(atmo, TweenInfo.new(FOG_TWEEN), {
+			Density = 0.62,
+			Haze = 4,
+			Color = Color3.fromRGB(226, 238, 248), -- cold white, not the fog's sickly grey-green
+		}):Play()
+	end
+	-- The snow itself: driven sideways past the camera so it reads as WIND, not gentle flakes.
+	local cam = Workspace.CurrentCamera
+	if cam and not snowEmitter then
+		local holder = Instance.new("Part")
+		holder.Name = "BlizzardSnow"
+		holder.Anchored = true
+		holder.CanCollide = false
+		holder.CanQuery = false
+		holder.CanTouch = false
+		holder.Transparency = 1
+		holder.Size = Vector3.new(1, 1, 1)
+		holder.CFrame = cam.CFrame
+		holder.Parent = cam
+		local e = Instance.new("ParticleEmitter")
+		e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		e.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+		e.LightEmission = 0.5
+		e.LightInfluence = 0
+		e.Size = NumberSequence.new(0.18, 0.05)
+		e.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.25),
+			NumberSequenceKeypoint.new(1, 0.85),
+		})
+		e.Rate = 260
+		e.Lifetime = NumberRange.new(0.8, 1.5)
+		e.Speed = NumberRange.new(26, 42)
+		e.SpreadAngle = Vector2.new(28, 28)
+		e.Acceleration = Vector3.new(0, -14, 0)
+		e.EmissionDirection = Enum.NormalId.Front
+		e.Parent = holder
+		snowEmitter = e
+		-- Keep the emitter riding the camera without parenting particles to a moving CFrame every frame.
+		task.spawn(function()
+			while snowEmitter == e and holder.Parent do
+				local c = Workspace.CurrentCamera
+				if c then
+					holder.CFrame = c.CFrame * CFrame.new(0, 14, 26) * CFrame.Angles(math.rad(-115), 0, 0)
+				end
+				task.wait(0.06)
+			end
+			holder:Destroy()
+		end)
+	end
+end
+
+local function clearBlizzard()
+	if snowEmitter then
+		snowEmitter.Rate = 0 -- stop making flakes; the loop tears the holder down once the ref clears
+		snowEmitter = nil
+	end
+end
+
 local function clearFog()
 	fogToken += 1
 	local myTok = fogToken
@@ -227,6 +304,13 @@ function RunEventController.Start()
 			rollFog()
 		elseif kind == "fogclear" then
 			clearFog()
+		elseif kind == "blizzard" then
+			if payload.on == true then
+				rollBlizzard()
+			else
+				clearBlizzard()
+				clearFog() -- the white-out uses the fog's sky slot; this restores it
+			end
 		elseif kind == "bloodmoon" then
 			setBloodMoon(payload.on == true)
 		elseif kind == "quake" then

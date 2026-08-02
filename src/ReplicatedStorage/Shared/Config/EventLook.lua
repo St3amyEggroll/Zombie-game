@@ -16,7 +16,7 @@ local EventLook: { [string]: Look } = {
 	rain       = { name = "RAIN",            color = Color3.fromRGB(165, 195, 225) },
 	meteors    = { name = "METEOR SHOWER",   color = Color3.fromRGB(255, 140, 40) },
 	bombsquad  = { name = "BOMB SQUAD",      color = Color3.fromRGB(255, 96, 34) },
-	earthquake = { name = "EARTHQUAKE",      color = Color3.fromRGB(190, 160, 120) },
+	blizzard   = { name = "BLIZZARD",        color = Color3.fromRGB(200, 232, 255) },
 	bloodmoon  = { name = "BLOOD MOON",      color = Color3.fromRGB(255, 70, 50) },
 	lightning  = { name = "LIGHTNING STORM", color = Color3.fromRGB(120, 200, 255) },
 	acidrain   = { name = "ACID RAIN",       color = Color3.fromRGB(120, 230, 60) },

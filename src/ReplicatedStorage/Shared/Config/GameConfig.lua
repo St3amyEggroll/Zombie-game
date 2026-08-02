@@ -123,7 +123,7 @@ GameConfig.Events = {
 		rain       = 12,
 		meteors    = 10,
 		bombsquad  = 9,
-		earthquake = 8,
+		blizzard   = 8,
 		bloodmoon  = 7,
 		lightning  = 6,
 		acidrain   = 5,
@@ -156,9 +156,14 @@ GameConfig.Events = {
 	LightningBossFrac  = 0.05, -- bosses caught in a bolt lose this fraction of MAX HP (no instant kill)
 	-- BOMB SQUAD (uncommon): the wave is salted with bomb zombies whose blasts CHAIN into other zombies.
 	BombShare = 0.4,           -- fraction of spawns forced to bomb zombies
-	-- EARTHQUAKE (uncommon): periodic tremors — screen shake + every non-boss zombie staggers.
+	-- TREMORS: screen shake + every non-boss zombie staggers. (The standalone EARTHQUAKE event was
+	-- removed — owner call — but APOCALYPSE still runs this loop, so these stay.)
 	QuakeEvery = 8,            -- seconds between tremors
 	QuakeStun  = 1.4,          -- zombie stagger seconds per tremor
+	-- BLIZZARD (common): a white-out. Everything slows — but YOU slow more, so backing away stops
+	-- working and you have to stand and fight. Both are multipliers on normal speed.
+	BlizzardZombieSpeed = 0.75, -- horde speed × this
+	BlizzardPlayerSpeed = 0.6,  -- player speed × this (lower than the horde's on purpose)
 	-- ACID RAIN (rare): green splashes leave sizzling puddles that burn PLAYERS standing in them.
 	AcidEvery      = 1.7,      -- seconds between splashes
 	AcidPuddleSecs = 8,        -- how long each puddle sizzles

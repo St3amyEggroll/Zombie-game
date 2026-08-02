@@ -8,7 +8,7 @@
 -- THE WHEEL (rarity — event):
 --   COMMON     calm (a plain wave), fog (Atmosphere blindfold)
 --   UNCOMMON   meteors (owner-model rocks, crush zombies too), bombsquad (chaining bombers),
---              earthquake (tremors stagger the horde)
+--              blizzard (white-out: everything slows, YOU slow more)
 --   RARE       bloodmoon (fast + double coins), lightning (bolts kill zombies in the circles),
 --              acidrain (sizzling puddles burn players), hounds (a sprinting dog pack)
 --   EPIC       purge (a sea of regulars), bodyguards (two brutes guard a team coin vault)
@@ -474,7 +474,9 @@ local function endBombSquad()
 	ZombieService.SetBombChain(false)
 end
 
--- ===== EARTHQUAKE (uncommon) ===== periodic tremors: screen shake + the whole horde staggers.
+-- ===== TREMORS ===== periodic quake: screen shake + the whole horde staggers.
+-- (The standalone EARTHQUAKE event was DELETED — owner call. This loop stays because APOCALYPSE still
+-- runs it alongside the meteors and acid.)
 local function quakeLoop(myGen)
 	local every = math.max(3, tonumber(cfg().QuakeEvery) or 8)
 	local stun = tonumber(cfg().QuakeStun) or 1.4
@@ -490,9 +492,20 @@ local function quakeLoop(myGen)
 	end)
 end
 
-local function beginEarthquake(myGen, round)
-	announce("EARTHQUAKE — THE GROUND WON'T SIT STILL!", "grey")
-	quakeLoop(myGen)
+-- ===== BLIZZARD (common) ===== a white-out. Snow blinds the whole map, the horde wades through it —
+-- and YOU wade harder, so the usual kite-backwards answer stops working and you have to hold ground.
+local function beginBlizzard(myGen, round)
+	announce("BLIZZARD — EVERYTHING SLOWS. YOU SLOW MORE.", "grey")
+	local c = cfg()
+	ZombieService.SetSpeedMult(tonumber(c.BlizzardZombieSpeed) or 0.75)
+	PlayerStateService.SetSpeedMult(tonumber(c.BlizzardPlayerSpeed) or 0.6)
+	Remotes.Get("RunEvent"):FireAllClients("blizzard", { on = true }) -- white-out sky + snowfall
+end
+
+local function endBlizzard()
+	ZombieService.SetSpeedMult(1)
+	PlayerStateService.SetSpeedMult(1)
+	Remotes.Get("RunEvent"):FireAllClients("blizzard", { on = false })
 end
 
 -- ===== ACID RAIN (rare) ===== green splashes leave sizzling puddles that burn PLAYERS.
@@ -736,7 +749,7 @@ local OUTCOMES = {
 	rain       = { begin = beginRain,       stop = endRain },
 	meteors    = { begin = beginMeteors },
 	bombsquad  = { begin = beginBombSquad,  stop = endBombSquad },
-	earthquake = { begin = beginEarthquake },
+	blizzard   = { begin = beginBlizzard,   stop = endBlizzard },
 	bloodmoon  = { begin = beginBloodMoon,  stop = endBloodMoon },
 	lightning  = { begin = beginLightning },
 	acidrain   = { begin = beginAcidRain,   stop = endAcidRain },

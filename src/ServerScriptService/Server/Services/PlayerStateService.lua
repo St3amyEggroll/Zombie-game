@@ -57,11 +57,16 @@ local function getRuntime(player: Player)
 end
 
 -- Base walk speed × the in-run Move Speed buff (BuffService). Sprint multiplies this on top (see heartbeat).
+-- NEW: a whole-wave EVENT multiplier on player move speed (BLIZZARD wades everyone through snow).
+-- The heartbeat recomputes move speed every tick, so setting this takes effect immediately and
+-- resetting it to 1 restores everyone with no per-player bookkeeping.
+local eventSpeedMult = 1
+
 local function computeMoveSpeed(player: Player): number
 	local ps = MatchService.GetPlayerState(player)
 	local buff = (ps and ps.buffs and ps.buffs.walkspeed) or 0
 	local cls = classOf(player) -- RUNNER's +speed (sprint stacks on top)
-	return GameConfig.PlayerWalkSpeed * (1 + buff) * ((cls and cls.speedMult) or 1)
+	return GameConfig.PlayerWalkSpeed * (1 + buff) * ((cls and cls.speedMult) or 1) * eventSpeedMult
 end
 
 local function computeMaxHealth(player: Player): number
@@ -205,6 +210,11 @@ end
 -- GOD MODE (event wheel): while true, EVERY damage source no-ops — this function is the single
 -- validated way players lose health, so one gate covers bites, bombs, meteors and acid alike.
 local invulnerable = false
+-- Whole-wave event speed multiplier (1 = normal). BLIZZARD slows everyone down; EndWaveEvent resets it.
+function PlayerStateService.SetSpeedMult(mult: number)
+	eventSpeedMult = math.clamp(tonumber(mult) or 1, 0.2, 3)
+end
+
 function PlayerStateService.SetInvulnerable(on: boolean)
 	invulnerable = on == true
 end
