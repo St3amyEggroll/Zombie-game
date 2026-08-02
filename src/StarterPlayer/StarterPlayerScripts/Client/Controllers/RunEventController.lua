@@ -7,6 +7,7 @@
 -- (The wheel's visible SPIN itself is EventWheelController; this file only renders the world FX.)
 
 local Lighting = game:GetService("Lighting")
+local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -69,7 +70,11 @@ end
 -- plus driving snow that sweeps across the camera. (The server owns the speed penalties; this is the
 -- look.) It reuses fogBase/fogToken so a blizzard and a fog can never fight over the sky — only one
 -- weather event runs per wave anyway.
-local snowEmitter -- ParticleEmitter parented to the camera, so the snow follows you
+local snowHolder   -- the camera-riding rig carrying the three snow depth layers
+local snowDrift    -- the low rig blowing snow across the ground
+local blizzardCC   -- ColorCorrection that blue-shifts the whole world
+local frostGui     -- the icy screen-edge vignette
+local breathToken = 0 -- cancels the breath-puff loop when the blizzard lifts
 local function rollBlizzard()
 	fogToken += 1
 	local atmo = atmosphere()
@@ -90,9 +95,28 @@ local function rollBlizzard()
 			Color = Color3.fromRGB(226, 238, 248), -- cold white, not the fog's sickly grey-green
 		}):Play()
 	end
-	-- The snow itself: driven sideways past the camera so it reads as WIND, not gentle flakes.
+	-- COLD-SHIFT THE WHOLE WORLD: a ColorCorrection tint + a little desaturation, so the map itself
+	-- looks frozen instead of just having white particles drawn over it.
+	if not blizzardCC then
+		local cc = Instance.new("ColorCorrectionEffect")
+		cc.Name = "BlizzardCC"
+		cc.TintColor = Color3.fromRGB(255, 255, 255)
+		cc.Saturation = 0
+		cc.Brightness = 0
+		cc.Parent = Lighting
+		blizzardCC = cc
+		TweenService:Create(cc, TweenInfo.new(FOG_TWEEN), {
+			TintColor = Color3.fromRGB(214, 233, 255), -- blue-shifted
+			Saturation = -0.22,
+			Brightness = 0.03,
+		}):Play()
+	end
+
+	-- THE SNOW — three DEPTH LAYERS instead of one flat sheet: big soft flakes drifting close to the
+	-- camera, fine fast ones far away. That parallax is what makes it read as a volume you're standing
+	-- inside rather than an overlay stuck to the screen.
 	local cam = Workspace.CurrentCamera
-	if cam and not snowEmitter then
+	if cam and not snowHolder then
 		local holder = Instance.new("Part")
 		holder.Name = "BlizzardSnow"
 		holder.Anchored = true
@@ -103,42 +127,198 @@ local function rollBlizzard()
 		holder.Size = Vector3.new(1, 1, 1)
 		holder.CFrame = cam.CFrame
 		holder.Parent = cam
-		local e = Instance.new("ParticleEmitter")
-		e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-		e.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-		e.LightEmission = 0.5
-		e.LightInfluence = 0
-		e.Size = NumberSequence.new(0.18, 0.05)
-		e.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.25),
-			NumberSequenceKeypoint.new(1, 0.85),
+		snowHolder = holder
+
+		-- {size, rate, speed, lifetime, transparency} per depth: near → far
+		local LAYERS = {
+			{ size = 0.42, rate = 55,  speed = { 16, 24 }, life = { 1.1, 1.8 }, t0 = 0.42 },
+			{ size = 0.22, rate = 130, speed = { 26, 38 }, life = { 0.9, 1.5 }, t0 = 0.3 },
+			{ size = 0.1,  rate = 190, speed = { 40, 58 }, life = { 0.6, 1.0 }, t0 = 0.22 },
+		}
+		for _, L in LAYERS do
+			local e = Instance.new("ParticleEmitter")
+			e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			e.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+			e.LightEmission = 0.5
+			e.LightInfluence = 0
+			e.Size = NumberSequence.new(L.size, L.size * 0.3)
+			e.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, L.t0),
+				NumberSequenceKeypoint.new(1, 0.9),
+			})
+			e.Rate = L.rate
+			e.Lifetime = NumberRange.new(L.life[1], L.life[2])
+			e.Speed = NumberRange.new(L.speed[1], L.speed[2])
+			e.SpreadAngle = Vector2.new(30, 30)
+			e.Acceleration = Vector3.new(0, -14, 0)
+			e.EmissionDirection = Enum.NormalId.Front
+			e.Parent = holder
+		end
+
+		-- GROUND DRIFT: a separate low emitter blowing snow flat across the floor, so the ground moves
+		-- too. Without it the world reads as a static plane with flakes falling past it.
+		local ground = Instance.new("Part")
+		ground.Name = "BlizzardDrift"
+		ground.Anchored = true
+		ground.CanCollide = false
+		ground.CanQuery = false
+		ground.CanTouch = false
+		ground.Transparency = 1
+		ground.Size = Vector3.new(1, 1, 1)
+		ground.Parent = cam
+		local d = Instance.new("ParticleEmitter")
+		d.Texture = "rbxasset://textures/particles/smoke_main.dds"
+		d.Color = ColorSequence.new(Color3.fromRGB(236, 246, 255))
+		d.LightInfluence = 0
+		d.Size = NumberSequence.new(2.2, 5.5)
+		d.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.82),
+			NumberSequenceKeypoint.new(0.4, 0.72),
+			NumberSequenceKeypoint.new(1, 1),
 		})
-		e.Rate = 260
-		e.Lifetime = NumberRange.new(0.8, 1.5)
-		e.Speed = NumberRange.new(26, 42)
-		e.SpreadAngle = Vector2.new(28, 28)
-		e.Acceleration = Vector3.new(0, -14, 0)
-		e.EmissionDirection = Enum.NormalId.Front
-		e.Parent = holder
-		snowEmitter = e
-		-- Keep the emitter riding the camera without parenting particles to a moving CFrame every frame.
+		d.Rate = 26
+		d.Lifetime = NumberRange.new(1.2, 2)
+		d.Speed = NumberRange.new(30, 46)
+		d.SpreadAngle = Vector2.new(8, 4)
+		d.EmissionDirection = Enum.NormalId.Front
+		d.Parent = ground
+		snowDrift = ground
+
+		-- Both rigs ride the camera. The falling snow comes in over your shoulder; the drift sits at
+		-- ankle height and blows straight across.
 		task.spawn(function()
-			while snowEmitter == e and holder.Parent do
+			while snowHolder == holder and holder.Parent do
 				local c = Workspace.CurrentCamera
 				if c then
 					holder.CFrame = c.CFrame * CFrame.new(0, 14, 26) * CFrame.Angles(math.rad(-115), 0, 0)
+					local look = c.CFrame.LookVector
+					local flat = Vector3.new(look.X, 0, look.Z)
+					flat = (flat.Magnitude > 0.01) and flat.Unit or Vector3.zAxis
+					local base = c.CFrame.Position + flat * 34 - Vector3.new(0, 9, 0)
+					ground.CFrame = CFrame.lookAt(base, base + Vector3.new(-flat.Z, 0, flat.X))
 				end
 				task.wait(0.06)
 			end
 			holder:Destroy()
+			if ground.Parent then
+				ground:Destroy()
+			end
 		end)
 	end
+
+	-- FROST VIGNETTE: ice creeping in from the screen edges. Four gradient frames (the same trick the
+	-- event roller's edge glow uses) — cheap, and it frames every shot without hiding the middle.
+	if not frostGui then
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "BlizzardFrost"
+		gui.ResetOnSpawn = false
+		gui.IgnoreGuiInset = true
+		gui.DisplayOrder = 3 -- under the HUD; this is atmosphere, not information
+		gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+		frostGui = gui
+		local function edge(anchor, pos, size, rot)
+			local f = Instance.new("Frame")
+			f.AnchorPoint = anchor
+			f.Position = pos
+			f.Size = size
+			f.BackgroundColor3 = Color3.fromRGB(214, 238, 255)
+			f.BackgroundTransparency = 1
+			f.BorderSizePixel = 0
+			f.Parent = gui
+			local g = Instance.new("UIGradient")
+			g.Rotation = rot
+			g.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.55),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+			g.Parent = f
+			TweenService:Create(f, TweenInfo.new(FOG_TWEEN), { BackgroundTransparency = 0 }):Play()
+		end
+		edge(Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0), UDim2.fromScale(1, 0.16), 90)
+		edge(Vector2.new(0.5, 1), UDim2.fromScale(0.5, 1), UDim2.fromScale(1, 0.16), -90)
+		edge(Vector2.new(0, 0.5), UDim2.fromScale(0, 0.5), UDim2.fromScale(0.11, 1), 0)
+		edge(Vector2.new(1, 0.5), UDim2.fromScale(1, 0.5), UDim2.fromScale(0.11, 1), 180)
+	end
+
+	-- BREATH: little white puffs off your character. Cheap, and it sells "cold" harder than the snow.
+	breathToken += 1
+	local myBreath = breathToken
+	task.spawn(function()
+		while myBreath == breathToken do
+			task.wait(2.4 + math.random() * 1.2)
+			if myBreath ~= breathToken then
+				return
+			end
+			local char = Players.LocalPlayer.Character
+			local head = char and char:FindFirstChild("Head")
+			if head then
+				local puff = Instance.new("Part")
+				puff.Shape = Enum.PartType.Ball
+				puff.Anchored = true
+				puff.CanCollide = false
+				puff.CanQuery = false
+				puff.CanTouch = false
+				puff.CastShadow = false
+				puff.Material = Enum.Material.SmoothPlastic
+				puff.Color = Color3.fromRGB(238, 248, 255)
+				puff.Transparency = 0.55
+				puff.Size = Vector3.new(0.3, 0.3, 0.3)
+				local out = head.CFrame.LookVector
+				puff.CFrame = CFrame.new(head.Position + out * 0.9)
+				puff.Parent = Workspace.CurrentCamera
+				TweenService:Create(puff, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					CFrame = CFrame.new(head.Position + out * 3.2 + Vector3.new(0, 0.8, 0)),
+					Size = Vector3.new(1.5, 1.5, 1.5),
+					Transparency = 1,
+				}):Play()
+				game:GetService("Debris"):AddItem(puff, 1.2)
+			end
+		end
+	end)
 end
 
 local function clearBlizzard()
-	if snowEmitter then
-		snowEmitter.Rate = 0 -- stop making flakes; the loop tears the holder down once the ref clears
-		snowEmitter = nil
+	breathToken += 1 -- stop breathing
+	if snowHolder then
+		for _, e in snowHolder:GetDescendants() do
+			if e:IsA("ParticleEmitter") then
+				e.Rate = 0 -- stop making flakes; in-flight ones finish naturally
+			end
+		end
+		snowHolder = nil -- the ride loop sees this and tears both rigs down
+	end
+	if snowDrift then
+		for _, e in snowDrift:GetDescendants() do
+			if e:IsA("ParticleEmitter") then
+				e.Rate = 0
+			end
+		end
+		snowDrift = nil
+	end
+	if blizzardCC then
+		local cc = blizzardCC
+		blizzardCC = nil
+		local out = TweenService:Create(cc, TweenInfo.new(FOG_TWEEN), {
+			TintColor = Color3.fromRGB(255, 255, 255),
+			Saturation = 0,
+			Brightness = 0,
+		})
+		out.Completed:Once(function()
+			cc:Destroy()
+		end)
+		out:Play()
+	end
+	if frostGui then
+		local gui = frostGui
+		frostGui = nil
+		for _, f in gui:GetChildren() do
+			if f:IsA("Frame") then
+				TweenService:Create(f, TweenInfo.new(FOG_TWEEN), { BackgroundTransparency = 1 }):Play()
+			end
+		end
+		task.delay(FOG_TWEEN + 0.2, function()
+			gui:Destroy()
+		end)
 	end
 end
 
