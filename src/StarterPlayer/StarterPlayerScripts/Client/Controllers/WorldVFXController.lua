@@ -317,12 +317,242 @@ local function boomExtras(pos: Vector3, radius: number)
 	Debris:AddItem(holder, 0.4)
 end
 
+-- ===== LIGHTNING BOLT (owner-approved rework) =====
+-- Was a single straight neon rectangle — it read as a glowing pole, not lightning. Now: a JAGGED
+-- multi-segment strike with forking branches, a white screen-flash, a ground burst that throws sparks,
+-- a lingering scorch, and two fainter after-strikes. Drawn per-client (the server only says where), so
+-- a dozen segments per strike costs zero replication.
+local BOLT_TOP = 110      -- studs above the impact the bolt starts
+local BOLT_SEGS = 9       -- segments per strike (more = more jagged)
+local BOLT_JITTER = 7     -- studs of sideways wander per segment
+
+-- One glowing segment between two points.
+local function boltSegment(a: Vector3, b: Vector3, width: number, color: Color3, life: number)
+	local d = (b - a).Magnitude
+	if d < 0.05 then
+		return
+	end
+	local seg = Instance.new("Part")
+	seg.Anchored = true
+	seg.CanCollide = false
+	seg.CanQuery = false
+	seg.CanTouch = false
+	seg.CastShadow = false
+	seg.Material = Enum.Material.Neon
+	seg.Color = color
+	seg.Transparency = 0.05
+	seg.Size = Vector3.new(width, width, d)
+	seg.CFrame = CFrame.lookAt(a, b) * CFrame.new(0, 0, -d * 0.5)
+	seg.Parent = fxFolder
+	TweenService:Create(seg, TweenInfo.new(life, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Transparency = 1 }):Play()
+	Debris:AddItem(seg, life + 0.05)
+end
+
+-- A jagged path from `top` down to `ground`, drawn as segments; returns the points so branches can
+-- fork off it.
+local function drawBolt(ground: Vector3, top: Vector3, width: number, color: Color3, life: number)
+	local pts = { top }
+	for i = 1, BOLT_SEGS - 1 do
+		local f = i / BOLT_SEGS
+		local mid = top:Lerp(ground, f)
+		pts[#pts + 1] = mid + Vector3.new(
+			(math.random() - 0.5) * BOLT_JITTER * 2,
+			0,
+			(math.random() - 0.5) * BOLT_JITTER * 2)
+	end
+	pts[#pts + 1] = ground
+	for i = 1, #pts - 1 do
+		boltSegment(pts[i], pts[i + 1], width, color, life)
+	end
+	return pts
+end
+
+local function lightningStrike(ground: Vector3, radius: number)
+	local COL = Color3.fromRGB(226, 246, 255)
+	local top = ground + Vector3.new((math.random() - 0.5) * 20, BOLT_TOP, (math.random() - 0.5) * 20)
+
+	-- The main strike: a wide soft core + a thin white filament down the same path.
+	local pts = drawBolt(ground, top, 1.5, Color3.fromRGB(150, 215, 255), 0.34)
+	for i = 1, #pts - 1 do
+		boltSegment(pts[i], pts[i + 1], 0.45, COL, 0.3)
+	end
+
+	-- 2 forks peeling off mid-air and dying in the sky.
+	for _ = 1, 2 do
+		local from = pts[math.random(2, math.max(2, #pts - 3))]
+		local away = from + Vector3.new((math.random() - 0.5) * 46, -math.random(8, 20), (math.random() - 0.5) * 46)
+		local bp = { from }
+		for i = 1, 3 do
+			bp[#bp + 1] = from:Lerp(away, i / 3) + Vector3.new((math.random() - 0.5) * 6, 0, (math.random() - 0.5) * 6)
+		end
+		for i = 1, #bp - 1 do
+			boltSegment(bp[i], bp[i + 1], 0.32, COL, 0.24)
+		end
+	end
+
+	-- The white flash: a big soft ball at the impact, gone in a few frames.
+	local flash = Instance.new("Part")
+	flash.Shape = Enum.PartType.Ball
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.CanQuery = false
+	flash.CanTouch = false
+	flash.CastShadow = false
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(240, 250, 255)
+	flash.Transparency = 0.1
+	flash.Size = Vector3.new(radius, radius, radius)
+	flash.CFrame = CFrame.new(ground)
+	flash.Parent = fxFolder
+	local fl = Instance.new("PointLight")
+	fl.Color = Color3.fromRGB(190, 230, 255)
+	fl.Range = 46
+	fl.Brightness = 6
+	fl.Parent = flash
+	TweenService:Create(flash, TweenInfo.new(0.18), {
+		Size = Vector3.new(radius * 2.2, radius * 2.2, radius * 2.2),
+		Transparency = 1,
+	}):Play()
+	TweenService:Create(fl, TweenInfo.new(0.18), { Brightness = 0 }):Play()
+	Debris:AddItem(flash, 0.24)
+
+	-- Ground burst ring + a scorch that lingers.
+	boomExtras(ground, radius * 0.75)
+
+	-- Sparks thrown off the impact.
+	for i = 1, 12 do
+		local ang = (math.pi * 2) * (i / 12) + math.random() * 0.5
+		local out = Vector3.new(math.cos(ang), 0, math.sin(ang))
+		local sp = Instance.new("Part")
+		sp.Anchored = true
+		sp.CanCollide = false
+		sp.CanQuery = false
+		sp.CanTouch = false
+		sp.CastShadow = false
+		sp.Material = Enum.Material.Neon
+		sp.Color = COL
+		sp.Size = Vector3.new(0.14, 0.14, 1.1)
+		sp.CFrame = CFrame.new(ground)
+		sp.Parent = fxFolder
+		local land = ground + out * (radius * (0.7 + math.random() * 0.7)) + Vector3.new(0, math.random() * 3, 0)
+		TweenService:Create(sp, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = CFrame.lookAt(land, land + out),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(sp, 0.34)
+	end
+
+	-- AFTER-STRIKES: real lightning flickers. Two fainter bolts down a slightly different path.
+	task.delay(0.13, function()
+		drawBolt(ground, top + Vector3.new(6, 0, -4), 0.7, COL, 0.2)
+	end)
+	task.delay(0.26, function()
+		drawBolt(ground, top + Vector3.new(-7, 0, 5), 0.5, COL, 0.16)
+	end)
+end
+
+-- ===== ACID PUDDLE LIFE (owner-approved rework) =====
+-- The server owns the puddle disc + its damage; this adds the things that make it read as CAUSTIC:
+-- a splash burst on landing, blobs that rise and pop on the surface, and green vapour drifting up.
+-- Client-side so a wave full of puddles costs no replication.
+local function acidPuddle(pos: Vector3, radius: number, secs: number)
+	-- The landing splash: droplets thrown out of the impact.
+	for i = 1, 10 do
+		local ang = (math.pi * 2) * (i / 10) + math.random() * 0.6
+		local out = Vector3.new(math.cos(ang), 0, math.sin(ang))
+		local d = Instance.new("Part")
+		d.Shape = Enum.PartType.Ball
+		d.Anchored = true
+		d.CanCollide = false
+		d.CanQuery = false
+		d.CanTouch = false
+		d.CastShadow = false
+		d.Material = Enum.Material.Neon
+		d.Color = Color3.fromRGB(141, 255, 94)
+		d.Size = Vector3.new(0.5, 0.5, 0.5)
+		d.CFrame = CFrame.new(pos + Vector3.new(0, 0.5, 0))
+		d.Parent = fxFolder
+		local land = pos + out * (radius * (0.5 + math.random() * 0.8))
+		TweenService:Create(d, TweenInfo.new(0.34, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = CFrame.new(land),
+			Size = Vector3.new(0.1, 0.1, 0.1),
+			Transparency = 1,
+		}):Play()
+		Debris:AddItem(d, 0.4)
+	end
+
+	-- BUBBLES + VAPOUR for the puddle's life. One loop, tapering off as the puddle dies so the visual
+	-- agrees with the server's shrink.
+	task.spawn(function()
+		local t0 = os.clock()
+		while os.clock() - t0 < secs do
+			local left = secs - (os.clock() - t0)
+			local health = math.clamp(left / math.max(0.001, secs), 0, 1)
+			local rr = radius * (0.45 + 0.55 * math.min(1, left / 2))
+			-- a bubble swelling on the surface, then popping
+			local ang = math.random() * math.pi * 2
+			local at = pos + Vector3.new(math.cos(ang), 0, math.sin(ang)) * (math.random() * rr * 0.85)
+			local b = Instance.new("Part")
+			b.Shape = Enum.PartType.Ball
+			b.Anchored = true
+			b.CanCollide = false
+			b.CanQuery = false
+			b.CanTouch = false
+			b.CastShadow = false
+			b.Material = Enum.Material.Neon
+			b.Color = Color3.fromRGB(176, 255, 130)
+			b.Transparency = 0.25
+			b.Size = Vector3.new(0.2, 0.2, 0.2)
+			b.CFrame = CFrame.new(at + Vector3.new(0, 0.2, 0))
+			b.Parent = fxFolder
+			local big = 0.7 + math.random() * 0.9
+			TweenService:Create(b, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(big, big, big),
+				Transparency = 1,
+			}):Play()
+			Debris:AddItem(b, 0.45)
+			-- vapour drifting off the surface
+			if math.random() < 0.6 then
+				local v = Instance.new("Part")
+				v.Shape = Enum.PartType.Ball
+				v.Anchored = true
+				v.CanCollide = false
+				v.CanQuery = false
+				v.CanTouch = false
+				v.CastShadow = false
+				v.Material = Enum.Material.SmoothPlastic
+				v.Color = Color3.fromRGB(150, 230, 110)
+				v.Transparency = 0.72
+				v.Size = Vector3.new(1.2, 1.2, 1.2)
+				v.CFrame = CFrame.new(at)
+				v.Parent = fxFolder
+				TweenService:Create(v, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					CFrame = CFrame.new(at + Vector3.new((math.random() - 0.5) * 3, 4.5, (math.random() - 0.5) * 3)),
+					Size = Vector3.new(3, 3, 3),
+					Transparency = 1,
+				}):Play()
+				Debris:AddItem(v, 1.2)
+			end
+			task.wait(0.16 + (1 - health) * 0.25) -- bubbling calms as the puddle dies
+		end
+	end)
+end
+
 -- ===== THE HANDLER =====
 local function handle(kind: string, p)
 	p = typeof(p) == "table" and p or {}
 	local cam = Workspace.CurrentCamera
 	local pos = typeof(p.pos) == "Vector3" and p.pos or nil
 	if pos and cam and (cam.CFrame.Position - pos).Magnitude > CULL_DISTANCE then
+		return
+	end
+	if kind == "bolt" and pos then
+		lightningStrike(pos, math.clamp(tonumber(p.r) or 10, 4, 30))
+		return
+	end
+	if kind == "acid" and pos then
+		acidPuddle(pos, math.clamp(tonumber(p.r) or 6, 2, 20), math.clamp(tonumber(p.secs) or 8, 1, 30))
 		return
 	end
 	if kind == "boom" and pos then

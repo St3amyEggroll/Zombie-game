@@ -418,33 +418,30 @@ local function beginLightning(myGen, round)
 					return
 				end
 				local ground = groundAt(at + Vector3.new(math.random(-28, 28), 0, math.random(-28, 28)))
-				local disc = mkPart({ -- the telegraph: lure them into THIS
+				-- THE TELEGRAPH — it CHARGES now (owner-approved rework): the ring tightens and brightens
+				-- over the warning window so you can feel the strike coming, instead of a static disc.
+				local disc = mkPart({
 					Shape = Enum.PartType.Cylinder,
-					Size = Vector3.new(0.4, radius * 2, radius * 2),
+					Size = Vector3.new(0.4, radius * 2.5, radius * 2.5),
 					Color = Color3.fromRGB(120, 200, 255),
 					Material = Enum.Material.Neon,
-					Transparency = 0.5,
+					Transparency = 0.72,
 					CFrame = CFrame.new(ground + Vector3.new(0, 0.3, 0)) * CFrame.Angles(0, 0, math.rad(90)),
 				})
+				TweenService:Create(disc, TweenInfo.new(METEOR_TELEGRAPH, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+					Size = Vector3.new(0.4, radius * 2, radius * 2),
+					Transparency = 0.32,
+				}):Play()
 				task.wait(METEOR_TELEGRAPH)
 				disc:Destroy()
 				if myGen ~= gen then
 					return
 				end
-				local bolt = mkPart({
-					Size = Vector3.new(1.4, 110, 1.4),
-					Color = Color3.fromRGB(190, 230, 255),
-					Material = Enum.Material.Neon,
-					CFrame = CFrame.new(ground + Vector3.new(0, 55, 0)),
-				})
-				TweenService:Create(bolt, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-					{ Transparency = 1, Size = Vector3.new(0.2, 110, 0.2) }):Play()
-				task.delay(0.25, function()
-					if bolt.Parent then
-						bolt:Destroy()
-					end
-				end)
-				Remotes.Get("WorldVFX"):FireAllClients("boom", { pos = ground, r = radius * 0.7 })
+				-- THE BOLT is drawn CLIENT-SIDE (WorldVFXController "bolt"): a jagged forking strike is
+				-- a dozen segments, and replicating a dozen server parts per strike — several strikes a
+				-- second, all wave — is exactly the kind of spawn-time traffic we just spent two passes
+				-- removing. The server owns the damage; each client draws its own lightning.
+				Remotes.Get("WorldVFX"):FireAllClients("bolt", { pos = ground, r = radius })
 				for _, rec in ZombieService.GetActive() do
 					local root = rec.root
 					if root and (root.Position - ground).Magnitude <= radius then
@@ -531,26 +528,59 @@ local function acidLoop(myGen)
 					Transparency = 0.65,
 					CFrame = CFrame.new(ground + Vector3.new(0, 0.25, 0)) * CFrame.Angles(0, 0, math.rad(90)),
 				})
-				task.wait(ACID_TELEGRAPH)
+			task.wait(ACID_TELEGRAPH)
 				if myGen ~= gen then
 					disc:Destroy()
 					return
 				end
-				-- The puddle: sizzles for puddleSecs, burning players standing in it.
+				-- THE SPLASH (owner-approved rework): the puddle lands rather than appearing — it snaps
+				-- open from a point, with a darker corroded rim under it, and the client adds bubbling +
+				-- vapour on top (WorldVFX "acid").
 				disc.Transparency = 0.3
 				disc.Color = Color3.fromRGB(96, 210, 40)
+				disc.Size = Vector3.new(0.3, 1, 1)
+				TweenService:Create(disc, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+					{ Size = Vector3.new(0.3, radius * 2, radius * 2) }):Play()
+				local rim = mkPart({ -- the burnt ground the acid is eating through
+					Shape = Enum.PartType.Cylinder,
+					Size = Vector3.new(0.22, 1, 1),
+					Color = Color3.fromRGB(56, 92, 26),
+					Material = Enum.Material.Slate,
+					Transparency = 0.2,
+					CFrame = CFrame.new(ground + Vector3.new(0, 0.16, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+				})
+				TweenService:Create(rim, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+					{ Size = Vector3.new(0.22, radius * 2.3, radius * 2.3) }):Play()
+				Remotes.Get("WorldVFX"):FireAllClients("acid", { pos = ground, r = radius, secs = puddleSecs })
+
+				-- The puddle: sizzles for puddleSecs, burning players standing in it.
 				local t0 = os.clock()
+				local FADE = 2 -- seconds of visible DYING at the end
 				while myGen == gen and os.clock() - t0 < puddleSecs do
 					damagePlayersNear(ground, radius, dps * 0.5, "acid")
+					-- IT VISIBLY DIES (the gameplay half of the rework): over the last FADE seconds the
+					-- puddle shrinks and dims, so you can read which puddles are safe to step back into
+					-- instead of guessing. It still burns until it's actually gone.
+					local left = puddleSecs - (os.clock() - t0)
+					if left <= FADE and disc.Parent then
+						local k = math.clamp(left / FADE, 0, 1)
+						disc.Size = Vector3.new(0.3, radius * 2 * (0.45 + 0.55 * k), radius * 2 * (0.45 + 0.55 * k))
+						disc.Transparency = 0.3 + (1 - k) * 0.45
+						if rim.Parent then
+							rim.Transparency = 0.2 + (1 - k) * 0.6
+						end
+					end
 					task.wait(0.5)
 				end
-				if disc.Parent then
-					TweenService:Create(disc, TweenInfo.new(0.8), { Transparency = 1 }):Play()
-					task.delay(0.9, function()
-						if disc.Parent then
-							disc:Destroy()
-						end
-					end)
+				for _, part in { disc, rim } do
+					if part.Parent then
+						TweenService:Create(part, TweenInfo.new(0.5), { Transparency = 1 }):Play()
+						task.delay(0.6, function()
+							if part.Parent then
+								part:Destroy()
+							end
+						end)
+					end
 				end
 			end)
 			task.wait(every)
