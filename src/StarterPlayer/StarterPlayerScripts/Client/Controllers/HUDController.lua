@@ -606,6 +606,30 @@ local function setXP(totalXP)
 	end
 end
 
+-- THE LIVE EVENT CHIP, driven from one place so both the server broadcast and the roller's hand-off
+-- animation set it identically. `id` = an EventLook key, or nil/"calm" to clear it (a plain wave needs
+-- no badge). Exposed so EventWheelController can fly the reveal into it.
+function HUDController.SetEventChip(id: string?)
+	if not eventChip then
+		return
+	end
+	local look = (typeof(id) == "string") and EventLook[id] or nil
+	if not look or id == "calm" then
+		eventChip.Visible = false
+		return
+	end
+	eventChipLabel.Text = look.name
+	eventChipLabel.TextColor3 = look.color
+	eventChipDot.BackgroundColor3 = look.color
+	eventChipEdge.Color = look.color
+	eventChip.Visible = true
+end
+
+-- The chip frame itself (the roller reads its AbsolutePosition to know where to fly the reveal).
+function HUDController.GetEventChip(): Frame?
+	return eventChip
+end
+
 -- ===== ANNOUNCEMENT QUEUE ===== one slot in the top lane; events take turns. Other controllers
 -- (crate toasts etc.) can call HUDController.Announce(text, color, seconds) too.
 local announceQueue = {}
@@ -715,21 +739,10 @@ function HUDController.Start()
 	-- THE LIVE EVENT CHIP: the server announces the wave's modifier when it starts and clears it when
 	-- the wave ends, so the badge is up for exactly as long as the event is actually running.
 	Remotes.Get("RunEvent").OnClientEvent:Connect(function(kind, payload)
-		if kind ~= "waveevent" or not eventChip then
+		if kind ~= "waveevent" then
 			return
 		end
-		local id = typeof(payload) == "table" and payload.id or nil
-		local look = (typeof(id) == "string") and EventLook[id] or nil
-		-- CALM is the absence of an event — no badge for "nothing is happening".
-		if not look or id == "calm" then
-			eventChip.Visible = false
-			return
-		end
-		eventChipLabel.Text = look.name
-		eventChipLabel.TextColor3 = look.color
-		eventChipDot.BackgroundColor3 = look.color
-		eventChipEdge.Color = look.color
-		eventChip.Visible = true
+		HUDController.SetEventChip(typeof(payload) == "table" and payload.id or nil)
 	end)
 
 	-- Between waves: run the NEXT WAVE countdown under the wave number (the event wheel spins alongside).
