@@ -1575,12 +1575,14 @@ do
 	ll.SortOrder = Enum.SortOrder.LayoutOrder
 	ll.Parent = LC.invList
 end
--- Which body the current tab shows: the card GRID (guns/crates) or the titles LIST. `showing` means
--- an inspect page is open, which hides both.
+-- Which body the current tab shows: the card GRID (guns/crates) or the titles LIST.
+-- CHANGED (owner): the body STAYS VISIBLE while an inspect popup is open — that's the whole point of
+-- the popup. `showing` now only drives the scrim + popup, which render above it.
 LC.setBodyVis = function(showing)
 	local onTitles = (activeTab == "titles")
-	invGrid.Visible = (not showing) and not onTitles
-	LC.invList.Visible = (not showing) and onTitles
+	invGrid.Visible = not onTitles
+	LC.invList.Visible = onTitles
+	invScrim.Visible = showing == true
 end
 
 local invHint = Instance.new("TextLabel") -- "CLICK A GUN TO INSPECT IT" strip under the grid
@@ -1589,11 +1591,36 @@ invHint.Size = UDim2.fromOffset(PANEL_W - 32, 18); invHint.BackgroundTransparenc
 invHint.FontFace = BODYB_FACE; invHint.TextSize = 12; invHint.TextColor3 = DIMTEXT
 invHint.Text = "CLICK SOMETHING TO INSPECT IT"; invHint.Parent = invPanel
 
-local invDetail = Instance.new("Frame") -- INSPECT mode: fills the whole panel body
-invDetail.Position = UDim2.fromOffset(16, CONTENT_Y)
-invDetail.Size = UDim2.fromOffset(PANEL_W - 32, PANEL_H - CONTENT_Y - 16)
-invDetail.Visible = false -- GRID mode by default; selecting a card flips this on (and the grid off)
-invDetail.BackgroundTransparency = 1; invDetail.BorderSizePixel = 0; invDetail.Parent = invPanel
+-- INSPECT is a POPUP now (owner call): it floats OVER the grid instead of replacing it, so you can
+-- still see your other guns/crates around it while you read one. A dim scrim behind it keeps the
+-- popup readable and doubles as a click-anywhere-to-close target.
+local INSPECT_W = PANEL_W - 250
+local INSPECT_H = PANEL_H - CONTENT_Y - 96
+
+local invScrim = Instance.new("TextButton") -- dims the grid + closes on click
+invScrim.Name = "InspectScrim"
+invScrim.Position = UDim2.fromOffset(0, 0)
+invScrim.Size = UDim2.fromScale(1, 1)
+invScrim.BackgroundColor3 = Color3.fromRGB(4, 6, 3)
+invScrim.BackgroundTransparency = 0.45
+invScrim.BorderSizePixel = 0
+invScrim.AutoButtonColor = false
+invScrim.Text = ""
+invScrim.ZIndex = 20
+invScrim.Visible = false
+invScrim.Parent = invPanel
+
+local invDetail = Instance.new("Frame") -- INSPECT popup: centered card over the grid
+invDetail.AnchorPoint = Vector2.new(0.5, 0.5)
+invDetail.Position = UDim2.new(0.5, 0, 0.5, math.floor(CONTENT_Y / 2))
+invDetail.Size = UDim2.fromOffset(INSPECT_W, INSPECT_H)
+invDetail.Visible = false -- GRID mode by default; selecting a card pops this open ON TOP of the grid
+invDetail.BackgroundColor3 = Color3.fromRGB(21, 24, 16)
+invDetail.BorderSizePixel = 0
+invDetail.ZIndex = 21
+invDetail.Parent = invPanel
+corner(invDetail, 14)
+ledge(invDetail, TBLACK, 3)
 
 local invActs = Instance.new("Frame") -- (legacy right stack — the sheet owns all actions now)
 invActs.AnchorPoint = Vector2.new(1, 0); invActs.Position = UDim2.new(1, -16, 0, CONTENT_Y)
@@ -1912,9 +1939,10 @@ local function renderInvDetail()
 		return
 	end
 
-	local W = PANEL_W - 32
-	local H = PANEL_H - CONTENT_Y - 16
-	local LEFT_W = 380
+	-- CHANGED: these size the POPUP now, not the whole panel body (the popup floats over the grid).
+	local W = INSPECT_W
+	local H = INSPECT_H
+	local LEFT_W = 320
 	local RIGHT_X = LEFT_W + 14
 	local RIGHT_W = W - RIGHT_X
 
@@ -2591,10 +2619,9 @@ do
 			renderActive()
 		end)
 	end
-	-- INSPECT mode owns the whole panel — the rail ducks out (its BACK button sat right on CRATES).
-	invDetail:GetPropertyChangedSignal("Visible"):Connect(function()
-		rail.Visible = not invDetail.Visible
-	end)
+	-- (The rail used to duck out during INSPECT because the old full-panel page covered it. The popup
+	-- floats over the grid now and the scrim dims it, so the tabs STAY — the whole point is that you
+	-- can still see everything else while a card is open.)
 end
 
 renderActive = function()
@@ -2630,8 +2657,29 @@ renderActive = function()
 		invDetail.Visible = false -- fail SAFE: never strand the panel in a half-built inspect view
 		LC.setBodyVis(false)
 		invHint.Visible = true
+	elseif invDetail.Visible then
+		-- LIFT THE POPUP ABOVE THE GRID. This GUI is ZIndexBehavior.Global, so a child does NOT
+		-- automatically draw above its parent — every element competes on its own absolute ZIndex.
+		-- renderInvDetail builds its contents at 1..~20 (fine when it owned the whole panel), which
+		-- would render UNDER the scrim and the cards now that it floats over them. Children are rebuilt
+		-- from scratch on every render (clearChildren at the top), so this offset never compounds.
+		for _, d in invDetail:GetDescendants() do
+			if d:IsA("GuiObject") then
+				d.ZIndex += 22
+			end
+		end
 	end
 end
+
+-- Clicking the dimmed area around the popup closes it (declared here: selectedInv/renderActive don't
+-- exist yet where the scrim is built).
+invScrim.Activated:Connect(function()
+	if selectedInv then
+		lplay("Close")
+		selectedInv = nil
+		renderActive()
+	end
+end)
 
 -- Reusable INVENTORY-CARD FACE (the v3 ticket look) as a plain Frame — so the reel tiles, the reveal,
 -- and the multi-open summary all render the SAME card as the inventory/weapons grid. Fills `parent`.
