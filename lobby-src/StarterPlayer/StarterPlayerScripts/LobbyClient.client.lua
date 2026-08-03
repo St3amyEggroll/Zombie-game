@@ -1582,7 +1582,9 @@ LC.setBodyVis = function(showing)
 	local onTitles = (activeTab == "titles")
 	invGrid.Visible = not onTitles
 	LC.invList.Visible = onTitles
-	invScrim.Visible = showing == true
+	if LC.invScrim then
+		LC.invScrim.Visible = showing == true
+	end
 end
 
 local invHint = Instance.new("TextLabel") -- "CLICK A GUN TO INSPECT IT" strip under the grid
@@ -1594,26 +1596,26 @@ invHint.Text = "CLICK SOMETHING TO INSPECT IT"; invHint.Parent = invPanel
 -- INSPECT is a POPUP now (owner call): it floats OVER the grid instead of replacing it, so you can
 -- still see your other guns/crates around it while you read one. A dim scrim behind it keeps the
 -- popup readable and doubles as a click-anywhere-to-close target.
-local INSPECT_W = PANEL_W - 250
-local INSPECT_H = PANEL_H - CONTENT_Y - 96
+LC.INSPECT_W = PANEL_W - 250
+LC.INSPECT_H = PANEL_H - CONTENT_Y - 96
 
-local invScrim = Instance.new("TextButton") -- dims the grid + closes on click
-invScrim.Name = "InspectScrim"
-invScrim.Position = UDim2.fromOffset(0, 0)
-invScrim.Size = UDim2.fromScale(1, 1)
-invScrim.BackgroundColor3 = Color3.fromRGB(4, 6, 3)
-invScrim.BackgroundTransparency = 0.45
-invScrim.BorderSizePixel = 0
-invScrim.AutoButtonColor = false
-invScrim.Text = ""
-invScrim.ZIndex = 20
-invScrim.Visible = false
-invScrim.Parent = invPanel
+LC.invScrim = Instance.new("TextButton") -- dims the grid + closes on click
+LC.invScrim.Name = "InspectScrim"
+LC.invScrim.Position = UDim2.fromOffset(0, 0)
+LC.invScrim.Size = UDim2.fromScale(1, 1)
+LC.invScrim.BackgroundColor3 = Color3.fromRGB(4, 6, 3)
+LC.invScrim.BackgroundTransparency = 0.45
+LC.invScrim.BorderSizePixel = 0
+LC.invScrim.AutoButtonColor = false
+LC.invScrim.Text = ""
+LC.invScrim.ZIndex = 20
+LC.invScrim.Visible = false
+LC.invScrim.Parent = invPanel
 
 local invDetail = Instance.new("Frame") -- INSPECT popup: centered card over the grid
 invDetail.AnchorPoint = Vector2.new(0.5, 0.5)
 invDetail.Position = UDim2.new(0.5, 0, 0.5, math.floor(CONTENT_Y / 2))
-invDetail.Size = UDim2.fromOffset(INSPECT_W, INSPECT_H)
+invDetail.Size = UDim2.fromOffset(LC.INSPECT_W, LC.INSPECT_H)
 invDetail.Visible = false -- GRID mode by default; selecting a card pops this open ON TOP of the grid
 invDetail.BackgroundColor3 = Color3.fromRGB(21, 24, 16)
 invDetail.BorderSizePixel = 0
@@ -1940,8 +1942,8 @@ local function renderInvDetail()
 	end
 
 	-- CHANGED: these size the POPUP now, not the whole panel body (the popup floats over the grid).
-	local W = INSPECT_W
-	local H = INSPECT_H
+	local W = LC.INSPECT_W
+	local H = LC.INSPECT_H
 	local LEFT_W = 320
 	local RIGHT_X = LEFT_W + 14
 	local RIGHT_W = W - RIGHT_X
@@ -2673,7 +2675,7 @@ end
 
 -- Clicking the dimmed area around the popup closes it (declared here: selectedInv/renderActive don't
 -- exist yet where the scrim is built).
-invScrim.Activated:Connect(function()
+LC.invScrim.Activated:Connect(function()
 	if selectedInv then
 		lplay("Close")
 		selectedInv = nil
