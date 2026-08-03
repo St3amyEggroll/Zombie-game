@@ -112,51 +112,56 @@ local function rollBlizzard()
 		}):Play()
 	end
 
-	-- THE SNOW — three DEPTH LAYERS instead of one flat sheet: big soft flakes drifting close to the
-	-- camera, fine fast ones far away. That parallax is what makes it read as a volume you're standing
-	-- inside rather than an overlay stuck to the screen.
+	-- THE SNOW — FIXED (owner: "it's just particles that follow the camera"). The first pass parented
+	-- the emitter to the Camera and re-aimed it every frame, so the flakes always sprayed from the same
+	-- spot on screen: a screen effect, not weather. It now uses the SAME rig the rain does — a wide
+	-- sheet in WORKSPACE riding above the camera, emitting DOWNWARD — so the snow is in world space,
+	-- falls past the map and the zombies, and you can walk through it.
+	-- Three emitters on that sheet give the depth: big slow flakes, mid, and fine fast ones.
 	local cam = Workspace.CurrentCamera
 	if cam and not snowHolder then
-		local holder = Instance.new("Part")
-		holder.Name = "BlizzardSnow"
-		holder.Anchored = true
-		holder.CanCollide = false
-		holder.CanQuery = false
-		holder.CanTouch = false
-		holder.Transparency = 1
-		holder.Size = Vector3.new(1, 1, 1)
-		holder.CFrame = cam.CFrame
-		holder.Parent = cam
-		snowHolder = holder
+		local sheet = Instance.new("Part")
+		sheet.Name = "BlizzardSheet"
+		sheet.Anchored = true
+		sheet.CanCollide = false
+		sheet.CanQuery = false
+		sheet.CanTouch = false
+		sheet.Transparency = 1
+		sheet.Size = Vector3.new(150, 1, 150)
+		sheet.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(0, 48, 0))
+		sheet.Parent = Workspace
+		snowHolder = sheet
 
-		-- {size, rate, speed, lifetime, transparency} per depth: near → far
+		-- { size, rate, fall speed, lifetime, start transparency } — near/heavy → far/fine
 		local LAYERS = {
-			{ size = 0.42, rate = 55,  speed = { 16, 24 }, life = { 1.1, 1.8 }, t0 = 0.42 },
-			{ size = 0.22, rate = 130, speed = { 26, 38 }, life = { 0.9, 1.5 }, t0 = 0.3 },
-			{ size = 0.1,  rate = 190, speed = { 40, 58 }, life = { 0.6, 1.0 }, t0 = 0.22 },
+			{ size = 0.55, rate = 60,  speed = { 18, 26 }, life = { 2.2, 3.0 }, t0 = 0.35 },
+			{ size = 0.3,  rate = 120, speed = { 26, 36 }, life = { 1.8, 2.6 }, t0 = 0.45 },
+			{ size = 0.14, rate = 170, speed = { 34, 48 }, life = { 1.4, 2.0 }, t0 = 0.6 },
 		}
 		for _, L in LAYERS do
 			local e = Instance.new("ParticleEmitter")
 			e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
 			e.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-			e.LightEmission = 0.5
+			e.LightEmission = 0.4
 			e.LightInfluence = 0
-			e.Size = NumberSequence.new(L.size, L.size * 0.3)
+			e.Size = NumberSequence.new(L.size)
 			e.Transparency = NumberSequence.new({
 				NumberSequenceKeypoint.new(0, L.t0),
-				NumberSequenceKeypoint.new(1, 0.9),
+				NumberSequenceKeypoint.new(0.85, L.t0),
+				NumberSequenceKeypoint.new(1, 1),
 			})
 			e.Rate = L.rate
 			e.Lifetime = NumberRange.new(L.life[1], L.life[2])
 			e.Speed = NumberRange.new(L.speed[1], L.speed[2])
-			e.SpreadAngle = Vector2.new(30, 30)
-			e.Acceleration = Vector3.new(0, -14, 0)
-			e.EmissionDirection = Enum.NormalId.Front
-			e.Parent = holder
+			e.SpreadAngle = Vector2.new(25, 25)
+			-- Sideways wind + gentle fall: snow drifts, it doesn't plummet like rain.
+			e.Acceleration = Vector3.new(16, -12, 6)
+			e.EmissionDirection = Enum.NormalId.Bottom
+			e.Parent = sheet
 		end
 
-		-- GROUND DRIFT: a separate low emitter blowing snow flat across the floor, so the ground moves
-		-- too. Without it the world reads as a static plane with flakes falling past it.
+		-- GROUND DRIFT: a low sheet blowing snow flat across the floor, so the ground moves too. Also
+		-- world-space, riding just below the camera.
 		local ground = Instance.new("Part")
 		ground.Name = "BlizzardDrift"
 		ground.Anchored = true
@@ -164,42 +169,39 @@ local function rollBlizzard()
 		ground.CanQuery = false
 		ground.CanTouch = false
 		ground.Transparency = 1
-		ground.Size = Vector3.new(1, 1, 1)
-		ground.Parent = cam
+		ground.Size = Vector3.new(120, 1, 120)
+		ground.Parent = Workspace
 		local d = Instance.new("ParticleEmitter")
 		d.Texture = "rbxasset://textures/particles/smoke_main.dds"
 		d.Color = ColorSequence.new(Color3.fromRGB(236, 246, 255))
 		d.LightInfluence = 0
-		d.Size = NumberSequence.new(2.2, 5.5)
+		d.Size = NumberSequence.new(2.4, 6)
 		d.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.82),
-			NumberSequenceKeypoint.new(0.4, 0.72),
+			NumberSequenceKeypoint.new(0, 0.85),
+			NumberSequenceKeypoint.new(0.35, 0.74),
 			NumberSequenceKeypoint.new(1, 1),
 		})
-		d.Rate = 26
-		d.Lifetime = NumberRange.new(1.2, 2)
-		d.Speed = NumberRange.new(30, 46)
-		d.SpreadAngle = Vector2.new(8, 4)
-		d.EmissionDirection = Enum.NormalId.Front
+		d.Rate = 30
+		d.Lifetime = NumberRange.new(1.4, 2.2)
+		d.Speed = NumberRange.new(2, 6)
+		d.SpreadAngle = Vector2.new(25, 25)
+		d.Acceleration = Vector3.new(34, 1, 12) -- blown along the ground by the same wind
+		d.EmissionDirection = Enum.NormalId.Top
 		d.Parent = ground
 		snowDrift = ground
 
-		-- Both rigs ride the camera. The falling snow comes in over your shoulder; the drift sits at
-		-- ankle height and blows straight across.
+		-- Both sheets follow the camera POSITION only (never its rotation) — that's the difference
+		-- between weather you move through and particles stuck to your face.
 		task.spawn(function()
-			while snowHolder == holder and holder.Parent do
+			while snowHolder == sheet and sheet.Parent do
 				local c = Workspace.CurrentCamera
 				if c then
-					holder.CFrame = c.CFrame * CFrame.new(0, 14, 26) * CFrame.Angles(math.rad(-115), 0, 0)
-					local look = c.CFrame.LookVector
-					local flat = Vector3.new(look.X, 0, look.Z)
-					flat = (flat.Magnitude > 0.01) and flat.Unit or Vector3.zAxis
-					local base = c.CFrame.Position + flat * 34 - Vector3.new(0, 9, 0)
-					ground.CFrame = CFrame.lookAt(base, base + Vector3.new(-flat.Z, 0, flat.X))
+					sheet.CFrame = CFrame.new(c.CFrame.Position + Vector3.new(0, 48, 0))
+					ground.CFrame = CFrame.new(c.CFrame.Position - Vector3.new(0, 7, 0))
 				end
-				task.wait(0.06)
+				task.wait()
 			end
-			holder:Destroy()
+			sheet:Destroy()
 			if ground.Parent then
 				ground:Destroy()
 			end
@@ -405,6 +407,8 @@ end
 -- grey-blue wash; ACID RAIN reuses the same rig dyed toxic green. One emitter, one follow connection.
 local rainPart, rainEmitter, rainConn
 
+local rainHaze, rainMist -- the far-off wall of drizzle + the ground mist kicked up by the downpour
+
 local function setRain(on: boolean, acid: boolean)
 	if on then
 		if not rainPart then
@@ -418,31 +422,108 @@ local function setRain(on: boolean, acid: boolean)
 			rainPart.Size = Vector3.new(140, 1, 140)
 			rainPart.Parent = Workspace
 
+			-- MAIN DOWNPOUR — long fast streaks, driven slightly sideways so it reads as weather with
+			-- a direction rather than a vertical curtain.
 			rainEmitter = Instance.new("ParticleEmitter")
-			rainEmitter.Rate = 320
-			rainEmitter.Speed = NumberRange.new(70, 95)
+			rainEmitter.Rate = 420
+			rainEmitter.Speed = NumberRange.new(85, 115)
 			rainEmitter.Lifetime = NumberRange.new(1.1, 1.5)
 			rainEmitter.EmissionDirection = Enum.NormalId.Bottom
 			rainEmitter.Orientation = Enum.ParticleOrientation.VelocityParallel -- streaks, not dots
-			rainEmitter.Size = NumberSequence.new(0.35)
-			rainEmitter.Transparency = NumberSequence.new(0.35)
-			rainEmitter.Acceleration = Vector3.new(0, -70, 0)
-			rainEmitter.LightEmission = 0.2
+			rainEmitter.Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.5),
+				NumberSequenceKeypoint.new(1, 0.32),
+			})
+			rainEmitter.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.55), -- fades IN so drops don't pop into existence
+				NumberSequenceKeypoint.new(0.15, 0.25),
+				NumberSequenceKeypoint.new(1, 0.35),
+			})
+			rainEmitter.Acceleration = Vector3.new(14, -85, 0) -- wind: falls at a slant
+			rainEmitter.LightEmission = 0.25
+			rainEmitter.SpreadAngle = Vector2.new(4, 4)
 			rainEmitter.Parent = rainPart
+
+			-- HAZE — a second, much slower and softer layer far behind the streaks. This is what turns
+			-- "particles falling" into "you are inside a storm": depth.
+			rainHaze = Instance.new("ParticleEmitter")
+			rainHaze.Rate = 90
+			rainHaze.Speed = NumberRange.new(30, 45)
+			rainHaze.Lifetime = NumberRange.new(1.6, 2.2)
+			rainHaze.EmissionDirection = Enum.NormalId.Bottom
+			rainHaze.Orientation = Enum.ParticleOrientation.VelocityParallel
+			rainHaze.Size = NumberSequence.new(0.16)
+			rainHaze.Transparency = NumberSequence.new(0.72)
+			rainHaze.Acceleration = Vector3.new(9, -40, 0)
+			rainHaze.SpreadAngle = Vector2.new(12, 12)
+			rainHaze.Parent = rainPart
 
 			rainConn = RunService.Heartbeat:Connect(function()
 				local cam = Workspace.CurrentCamera
 				if cam and rainPart then
 					rainPart.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(0, 55, 0))
+					if rainMist then
+						-- The mist rides at ankle height: rain visibly HITS something.
+						rainMist.CFrame = CFrame.new(cam.CFrame.Position - Vector3.new(0, 6, 0))
+					end
 				end
 			end)
 		end
-		rainEmitter.Color = ColorSequence.new(acid
+		if not rainMist then
+			local mist = Instance.new("Part")
+			mist.Name = "RainMist"
+			mist.Anchored = true
+			mist.CanCollide = false
+			mist.CanQuery = false
+			mist.CanTouch = false
+			mist.Transparency = 1
+			mist.Size = Vector3.new(120, 1, 120)
+			mist.Parent = Workspace
+			local m = Instance.new("ParticleEmitter")
+			m.Name = "MistEmitter"
+			m.Rate = 34
+			m.Speed = NumberRange.new(1, 4)
+			m.Lifetime = NumberRange.new(0.7, 1.2)
+			m.EmissionDirection = Enum.NormalId.Top -- spray kicks UP off the ground
+			m.Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.6),
+				NumberSequenceKeypoint.new(1, 2.6),
+			})
+			m.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.7),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+			m.Acceleration = Vector3.new(6, 2, 0)
+			m.SpreadAngle = Vector2.new(40, 40)
+			m.Parent = mist
+			rainMist = mist
+		end
+		local col = acid
 			and Color3.fromRGB(120, 230, 60)   -- ACID: toxic green
-			or Color3.fromRGB(165, 195, 225))  -- RAIN: grey-blue water
+			or Color3.fromRGB(165, 195, 225)   -- RAIN: grey-blue water
+		rainEmitter.Color = ColorSequence.new(col)
+		rainHaze.Color = ColorSequence.new(col)
 		rainEmitter.Enabled = true
-	elseif rainEmitter then
-		rainEmitter.Enabled = false -- in-flight drops die out on their own; the rig idles for next time
+		rainHaze.Enabled = true
+		local me = rainMist:FindFirstChild("MistEmitter")
+		if me then
+			me.Color = ColorSequence.new(col)
+			me.Enabled = true
+		end
+	else
+		-- In-flight drops die out on their own; the rigs idle for next time.
+		if rainEmitter then
+			rainEmitter.Enabled = false
+		end
+		if rainHaze then
+			rainHaze.Enabled = false
+		end
+		if rainMist then
+			local me = rainMist:FindFirstChild("MistEmitter")
+			if me then
+				me.Enabled = false
+			end
+		end
 	end
 end
 

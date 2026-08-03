@@ -405,8 +405,14 @@ local function beginMeteors(myGen, round)
 end
 
 -- ===== LIGHTNING STORM (rare) ===== bolts KILL ZOMBIES in the blue circles all wave.
+local function endLightning()
+	Remotes.Get("RunEvent"):FireAllClients("rain", { on = false })
+end
+
 local function beginLightning(myGen, round)
 	announce("LIGHTNING STORM — LURE THEM INTO THE CIRCLES!", "gold")
+	-- A lightning storm without rain is just... lights. The downpour rides along all wave (owner call).
+	Remotes.Get("RunEvent"):FireAllClients("rain", { on = true })
 	local radius = tonumber(cfg().LightningRadius) or 10
 	local every = math.max(0.8, tonumber(cfg().LightningEvery) or 2.0)
 	local bossFrac = tonumber(cfg().LightningBossFrac) or 0.05
@@ -781,7 +787,7 @@ local OUTCOMES = {
 	bombsquad  = { begin = beginBombSquad,  stop = endBombSquad },
 	blizzard   = { begin = beginBlizzard,   stop = endBlizzard },
 	bloodmoon  = { begin = beginBloodMoon,  stop = endBloodMoon },
-	lightning  = { begin = beginLightning },
+	lightning  = { begin = beginLightning, stop = endLightning },
 	acidrain   = { begin = beginAcidRain,   stop = endAcidRain },
 	hounds     = { begin = beginHounds,     stop = endHounds },
 	purge      = { begin = beginPurge,      stop = endPurge,   countMultKey = "PurgeCountMult" },
