@@ -50,7 +50,10 @@ local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local roundLabel, coinsLabel, announceLabel
-local eventChip, eventChipDot, eventChipLabel, eventChipEdge -- the live "what's running" pill -- (breakLabel deleted: the enemies bar IS the countdown now)
+-- The live "what's running this wave" badge: the reel's own text, parked. eventChipDot is the % line.
+local eventChip, eventChipDot, eventChipLabel
+local eventChipId -- which event the badge is currently showing (so a nil-pct update can keep the %)
+local EVENT_CHIP_TEXT = 24 -- the badge's text size; the roller's flight lands on exactly this -- (breakLabel deleted: the enemies bar IS the countdown now)
 local coinPopScale -- UIScale on the coins label (pickup pop)
 local coinTarget, coinShown, coinHoldUntil = 0, 0, 0 -- NEW: counter ticks up as loot coins land
 local leaveBtn -- LEAVE banks your run and exits (always available — coins bank live, nothing to forfeit)
@@ -237,40 +240,36 @@ local function build()
 	-- reveals the wave's fate and then tucks away — after that nothing on screen said you were in a
 	-- Blood Moon. This pill sits under the wave strip for the WHOLE wave, in the event's own colour,
 	-- and disappears on CALM (a plain wave needs no badge). Fed by RunEvent "waveevent".
+	-- CHANGED (owner): the badge IS the reel's text, parked and smaller — same face, same weight, same
+	-- colour, same "% CHANCE" line. No pill, no bead. That way the hand-off from the roller is a pure
+	-- move-and-shrink: your eye follows ONE object instead of watching it morph into another widget.
 	eventChip = Instance.new("Frame")
 	eventChip.Name = "EventChip"
 	eventChip.LayoutOrder = 20
-	eventChip.Size = UDim2.fromOffset(300, 26)
-	eventChip.BackgroundColor3 = Color3.fromRGB(12, 14, 9)
-	eventChip.BackgroundTransparency = 0.15
-	eventChip.BorderSizePixel = 0
+	eventChip.Size = UDim2.fromOffset(420, 44)
+	eventChip.BackgroundTransparency = 1
 	eventChip.Visible = false
 	eventChip.Parent = lane
-	UITheme.Corner(eventChip, 13)
-	eventChipEdge = UITheme.Edge(eventChip, UITheme.BLACK, 2)
 
-	eventChipDot = Instance.new("Frame") -- a colour bead so the event reads at a glance, pre-text
-	eventChipDot.AnchorPoint = Vector2.new(0, 0.5)
-	eventChipDot.Position = UDim2.new(0, 10, 0.5, 0)
-	eventChipDot.Size = UDim2.fromOffset(10, 10)
-	eventChipDot.BackgroundColor3 = Color3.new(1, 1, 1)
-	eventChipDot.BorderSizePixel = 0
-	eventChipDot.Parent = eventChip
-	UITheme.Corner(eventChipDot, 5)
-
-	eventChipLabel = text(eventChip, "EventChipLabel", UITheme.BodyBoldFace, 15, COL_TEXT)
-	eventChipLabel.Position = UDim2.fromOffset(26, 0)
-	eventChipLabel.Size = UDim2.new(1, -32, 1, 0)
-	eventChipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	eventChipLabel = text(eventChip, "EventChipLabel", UITheme.TitleFace, EVENT_CHIP_TEXT, COL_TEXT)
+	eventChipLabel.Position = UDim2.fromOffset(0, 0)
+	eventChipLabel.Size = UDim2.new(1, 0, 0, 28)
+	eventChipLabel.TextXAlignment = Enum.TextXAlignment.Center
 	eventChipLabel.Text = ""
 	do
 		local ecs = Instance.new("UIStroke")
 		ecs.Color = Color3.fromRGB(0, 0, 0)
-		ecs.Transparency = 0.4
-		ecs.Thickness = 1.2
+		ecs.Transparency = 0.15
+		ecs.Thickness = 2.2
 		ecs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 		ecs.Parent = eventChipLabel
 	end
+
+	eventChipDot = text(eventChip, "EventChipOdds", UITheme.BodyBoldFace, 11, COL_TEXT_DIM) -- the % line
+	eventChipDot.Position = UDim2.fromOffset(0, 28)
+	eventChipDot.Size = UDim2.new(1, 0, 0, 14)
+	eventChipDot.TextXAlignment = Enum.TextXAlignment.Center
+	eventChipDot.Text = ""
 
 	-- Row 4: the ANNOUNCEMENT slot — one label, fed by a queue (INCOMING!, FLAWLESS, crate drops...).
 	-- Simultaneous events take turns instead of printing on top of each other.
@@ -609,25 +608,34 @@ end
 -- THE LIVE EVENT CHIP, driven from one place so both the server broadcast and the roller's hand-off
 -- animation set it identically. `id` = an EventLook key, or nil/"calm" to clear it (a plain wave needs
 -- no badge). Exposed so EventWheelController can fly the reveal into it.
-function HUDController.SetEventChip(id: string?)
+-- `pct` is optional: the ROLLER knows this wave's odds and passes them, while the server's broadcast
+-- (and a late joiner's push) doesn't — so a nil pct KEEPS whatever's already showing for the same
+-- event instead of blanking the line the roller just handed over.
+function HUDController.SetEventChip(id: string?, pct: number?)
 	if not eventChip then
 		return
 	end
 	local look = (typeof(id) == "string") and EventLook[id] or nil
 	if not look or id == "calm" then
 		eventChip.Visible = false
+		eventChipId = nil
 		return
 	end
 	eventChipLabel.Text = look.name
 	eventChipLabel.TextColor3 = look.color
-	eventChipDot.BackgroundColor3 = look.color
-	eventChipEdge.Color = look.color
+	if typeof(pct) == "number" then
+		eventChipDot.Text = (pct % 1 == 0) and ("%d%% CHANCE"):format(pct) or ("%.1f%% CHANCE"):format(pct)
+	elseif id ~= eventChipId then
+		eventChipDot.Text = "" -- different event with no odds to show: don't print the old one's
+	end
+	eventChipId = id
 	eventChip.Visible = true
 end
 
--- The chip frame itself (the roller reads its AbsolutePosition to know where to fly the reveal).
-function HUDController.GetEventChip(): Frame?
-	return eventChip
+-- The badge's label (the roller reads its AbsolutePosition/size to fly the reveal into it) and the
+-- on-screen text size it should land at.
+function HUDController.GetEventChip(): (TextLabel?, number)
+	return eventChipLabel, EVENT_CHIP_TEXT
 end
 
 -- ===== ANNOUNCEMENT QUEUE ===== one slot in the top lane; events take turns. Other controllers

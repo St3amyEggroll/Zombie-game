@@ -23,6 +23,7 @@ local UITheme = require(Shared.Modules.UITheme)
 local LobbyLook = require(Shared.Modules.LobbyLook)
 
 local SoundController = require(script.Parent.SoundController) -- WheelSpin during the roll, WheelLock on the land
+local HUDController = require(script.Parent.HUDController)     -- the event badge the reveal flies into
 
 local EventWheelController = {}
 
@@ -154,7 +155,7 @@ local function makeSlot(parent: Frame)
 	local sc = Instance.new("UIScale")
 	sc.Parent = row
 
-	return { frame = row, nm = nm, pc = pc, stroke = st, scale = sc, strip = nil }
+	return { frame = row, nm = nm, pc = pc, stroke = st, scale = sc, strip = nil, color = nil }
 end
 
 -- Fade a reel row's name + its outline TOGETHER (t = 0 solid, 1 invisible). The stroke never gets
@@ -383,6 +384,72 @@ local function setStage(on: boolean)
 	end
 end
 
+-- THE HAND-OFF: the winning word FLIES from the reel to the HUD's event badge and shrinks into it.
+-- Purely a move — the text, face and colour are already identical at both ends (the reel row was
+-- drawn in the event's colour, and the badge is the same type), so nothing morphs mid-flight. This is
+-- what teaches players where to look for "what am I in?" for the rest of the wave.
+--
+-- The flier lives in its OWN ScreenGui with NO UIScale: the roller and HUD are both scaled, so working
+-- in raw AbsolutePosition pixels is the only way the start and end points line up on every screen.
+local FLY_TIME = 0.55
+local function flyToBadge(centerSlot, outcome: string, odds)
+	local badgeLabel, badgeSize = HUDController.GetEventChip()
+	local look = LOOK[outcome]
+	if not badgeLabel or not look or not centerSlot then
+		HUDController.SetEventChip(outcome, typeof(odds) == "table" and tonumber(odds[outcome]) or nil)
+		return -- no badge to fly to (or a calm wave): just set it
+	end
+	local nm = centerSlot.nm
+	local fromPos = nm.AbsolutePosition
+	local fromH = nm.AbsoluteSize.Y
+	-- The reel's on-screen text size (its 40pt design size times whatever UIScale the HUD is running).
+	local fromText = 40 * (fromH > 0 and (fromH / 42) or 1)
+	local toPos = badgeLabel.AbsolutePosition
+	local toH = badgeLabel.AbsoluteSize.Y
+	local toText = badgeSize * (toH > 0 and (toH / 28) or 1)
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "EventHandoff"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 60 -- over everything for the half-second it exists
+	gui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+	local flier = Instance.new("TextLabel")
+	flier.BackgroundTransparency = 1
+	flier.Position = UDim2.fromOffset(fromPos.X, fromPos.Y)
+	flier.Size = UDim2.fromOffset(nm.AbsoluteSize.X, fromH)
+	flier.FontFace = LobbyLook.TITLE_FACE
+	flier.TextSize = fromText
+	flier.TextColor3 = look.color
+	flier.Text = look.name
+	flier.Parent = gui
+	local fs = Instance.new("UIStroke")
+	fs.Color = Color3.fromRGB(0, 0, 0)
+	fs.Transparency = 0.15
+	fs.Thickness = 2.6
+	fs.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	fs.Parent = flier
+
+	-- Hide the reel's copy the instant the flier exists, so there's never two of the same word.
+	nm.TextTransparency = 1
+	centerSlot.stroke.Transparency = 1
+	centerSlot.pc.TextTransparency = 1
+
+	local info = TweenInfo.new(FLY_TIME, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut)
+	TweenService:Create(flier, info, {
+		Position = UDim2.fromOffset(toPos.X, toPos.Y),
+		Size = UDim2.fromOffset(badgeLabel.AbsoluteSize.X, toH),
+		TextSize = toText,
+	}):Play()
+
+	task.delay(FLY_TIME, function()
+		-- Land: the real badge takes over on the same pixel the flier stopped on.
+		HUDController.SetEventChip(outcome, typeof(odds) == "table" and tonumber(odds[outcome]) or nil)
+		gui:Destroy()
+	end)
+end
+
 -- THE LOCK FLOOD: color everything, punch the centered row, fire the rays.
 local function lockIn(centerSlot, outcome: string, odds)
 	local look = LOOK[outcome] or LOOK.calm
@@ -530,13 +597,18 @@ local function runRoll(info)
 					local id = nameAt(k)
 					local look = LOOK[id] or LOOK.calm
 					slot.nm.Text = look.name
+					slot.color = look.color -- CHANGED: every row wears its OWN event colour
 					slot.pc.Text = fmtPct(odds and tonumber(odds[id]) or nil)
 				end
 				local dist = math.abs(k - centerFloat)
 				local centered = dist < 0.5
-				-- CHANGED: neighbors stay READABLE — the outline fades with the fill (setRowFade), so a
-				-- dimmed row reads as grey text, never as a black silhouette.
-				slot.nm.TextColor3 = centered and LobbyLook.TEXTCOL or ROW_DIM
+				-- EVERY ROW IS ITS EVENT'S COLOUR (owner call): BLOOD MOON scrolls past red, ACID RAIN
+				-- green, GOD MODE cyan. The centred row burns at full colour and the neighbours are the
+				-- SAME hue pushed toward the band's dark, so they read as "the same list, further away"
+				-- instead of grey mystery text. It also means the lock changes nothing about the colour —
+				-- the winner was already red, so the hand-off to the HUD badge is red-to-red.
+				local col = slot.color or LobbyLook.TEXTCOL
+				slot.nm.TextColor3 = centered and col or col:Lerp(BAND_DARK, 0.42)
 				setRowFade(slot, centered and 0.05 or math.min(0.5, 0.18 + dist * 0.14))
 				slot.pc.TextColor3 = centered and LobbyLook.DIMTEXT or PCT_DIM
 				slot.pc.TextTransparency = centered and 0.1 or math.min(0.6, 0.28 + dist * 0.14)
@@ -598,6 +670,7 @@ local function runRoll(info)
 		local drama = lockIn(centerSlot, outcome, odds)
 		task.delay(drama.hold, function()
 			if myTok == spinToken then
+				flyToBadge(centerSlot, outcome, odds) -- the word travels to the HUD badge
 				setStage(false)
 				task.delay(0.3, function()
 					if myTok == spinToken then
