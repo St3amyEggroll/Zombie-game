@@ -17,6 +17,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -31,6 +32,7 @@ local Remotes = require(Modules.Remotes)
 
 local DataService = require(script.Parent.DataService)
 local MapService = require(script.Parent.MapService)
+local TelemetryService = require(script.Parent.TelemetryService) -- launch pass: funnels (no deps back on us)
 
 -- Required lazily in Start() to break the cycle (Match -> Zombie -> PlayerState -> Match).
 local ZombieService
@@ -199,14 +201,27 @@ end
 
 -- Bank a finished run into the PERSISTENT profile: best wave, lobby money (per wave + per kill), match
 -- count. Returns a small summary table for the lobby's end-of-run screen.
-bankRun = function(player: Player, ps)
+bankRun = function(player: Player, ps, cause: string?)
 	local wave = state.round
+	-- NEW (launch pass): was this run a personal best? Compared against the best BEFORE THIS RUN
+	-- (ps.bestAtStart, captured in startRunFor) — ProgressionService stamps bestWave live at every wave
+	-- start, so by now the profile already says "wave"; the profile alone can't tell. The lobby shows
+	-- a "NEW PERSONAL BEST" recap (+ the like nudge) off this flag.
+	local base = tonumber(ps.bestAtStart)
+	if base == nil then
+		local prevData = DataService.Get(player)
+		base = (prevData and tonumber(prevData.bestWave)) or 0
+	end
+	local newBest = wave > base
 	-- Coins were already granted live (ProgressionService); here we just record best wave + match count.
 	-- No async save here: the LIVE path does a BLOCKING SaveNow right before the teleport (an async save
 	-- here would just be an in-flight write that SaveNow has to wait out). Studio saves via autosave.
 	DataService.UpdateBestWave(player, wave)
 	DataService.IncrementStat(player, "matchesPlayed", 1)
-	local summary = { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0, win = ps.wonRun == true }
+	local summary = { wave = wave, kills = ps.kills, money = ps.lobbyEarned or 0, win = ps.wonRun == true, newBest = newBest }
+	-- ANALYTICS: how deep + how it ended (wipe / leave / quit / extract), per world.
+	TelemetryService.Custom(player, "run_end", wave, state.map or GameConfig.DefaultMap, cause or "unknown",
+		newBest and "new_best" or "no_best")
 	-- NEW: the run summary ALSO rides the PROFILE (game-owned field, saved by the blocking SaveNow
 	-- before teleport). The lobby's daily quests read this copy — TeleportData can be spoofed by a
 	-- client-initiated teleport, the DataStore can't. `id` de-dupes consumption lobby-side.
@@ -215,6 +230,7 @@ bankRun = function(player: Player, ps)
 		d.pendingRunSummary = {
 			id = ("%d-%d"):format(os.time(), state.round),
 			wave = summary.wave, kills = summary.kills, money = summary.money, win = summary.win,
+			newBest = summary.newBest == true, -- the lobby's run recap reads this
 		}
 		DataService.MarkDirty(player)
 	end
@@ -319,7 +335,7 @@ local function endRun()
 		local ps = state.players[player.UserId]
 		if ps and ps.inMatch then
 			ps.inMatch = false
-			local summary = bankRun(player, ps)
+			local summary = bankRun(player, ps, "wipe")
 			if LIVE then
 				-- CONCURRENT: teleportToLobby blocks on SaveNow + retries (up to ~30s worst case) — doing
 				-- players sequentially held the LAST player on the death screen for minutes on a 4-wipe.
@@ -348,7 +364,7 @@ local function extractPlayer(player: Player, ps)
 		DataService.AddMoney(player, bonus)
 	end
 	DataService.AddWin(player) -- extracting alive IS the win now
-	local summary = bankRun(player, ps)
+	local summary = bankRun(player, ps, "extract")
 	summary.win = true
 	summary.money = (summary.money or 0) + bonus
 	local extractRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -544,6 +560,30 @@ runMatch = function()
 
 		waveClearedEvent:Fire(state.round) -- GameInventoryService drops wave-clear cases off this
 
+		-- ANALYTICS (launch pass): RUN funnel milestones + the onboarding ladder's wave steps.
+		do
+			local clearedWave = state.round
+			local world = state.map or GameConfig.DefaultMap
+			local step, stepName = TelemetryService.RunStepFor(clearedWave)
+			for _, plr in Players:GetPlayers() do
+				local p2 = state.players[plr.UserId]
+				if p2 and p2.inMatch then
+					if step and p2.runFunnelId then
+						TelemetryService.Funnel(plr, "Run", p2.runFunnelId, step, stepName, world)
+					end
+					if clearedWave == 1 or clearedWave == 5 then
+						local d = DataService.Get(plr)
+						local played = (d and typeof(d.stats) == "table" and tonumber(d.stats.matchesPlayed)) or 0
+						if clearedWave == 1 and played == 0 then
+							TelemetryService.Onboarding(plr, TelemetryService.Onboard.Wave1Cleared, world)
+						elseif clearedWave == 5 and d and (tonumber(d.bestWave) or 0) <= 5 then
+							TelemetryService.Onboarding(plr, TelemetryService.Onboard.Wave5Reached, world)
+						end
+					end
+				end
+			end
+		end
+
 		-- A WIN = clearing wave 10 (extraction's old win had no live definition — the WIN A RUN daily
 		-- quest was impossible). Once per run, survivors bank a win + the tag/leaderboard count.
 		if state.round >= 10 then
@@ -623,6 +663,31 @@ startRunFor = function(player: Player)
 	ps.inMatch = true
 	ps.ownedWeapons = runWeaponsFor(player) -- re-read the lobby selection (it may have changed between runs)
 	resetRunState(player, ps)
+	-- NEW (launch pass): the best wave BEFORE this run (bankRun's "new personal best" test). The profile
+	-- is loaded by now (runWeaponsFor waited for it) except in DebugUnlockAllWeapons mode — then the
+	-- spawned thread below fills it in after WaitFor.
+	do
+		local d0 = DataService.Get(player)
+		ps.bestAtStart = d0 and (tonumber(d0.bestWave) or 0) or nil
+	end
+	-- ANALYTICS (launch pass): one RUN funnel session per player per run + the onboarding ladder
+	-- (first run / second run). Off-thread: WaitFor may yield on a slow profile load.
+	ps.runFunnelId = HttpService:GenerateGUID(false)
+	ps.telemCoins = 0
+	task.spawn(function()
+		local world = state.map or GameConfig.DefaultMap
+		TelemetryService.Funnel(player, "Run", ps.runFunnelId, 1, "run_start", world)
+		local d = DataService.WaitFor(player)
+		if ps.bestAtStart == nil then
+			ps.bestAtStart = (d and tonumber(d.bestWave)) or 0
+		end
+		local played = (d and typeof(d.stats) == "table" and tonumber(d.stats.matchesPlayed)) or 0
+		if played == 0 then
+			TelemetryService.Onboarding(player, TelemetryService.Onboard.RunStarted, world)
+		elseif played == 1 then
+			TelemetryService.Onboarding(player, TelemetryService.Onboard.SecondRun, world)
+		end
+	end)
 	MapService.Activate(state.map or GameConfig.DefaultMap) -- show the chosen world's map BEFORE the player spawns onto it
 	spawnCharacter(player)
 	startMatchIfNeeded()
@@ -778,7 +843,7 @@ function MatchService.Start()
 		local ps = state.players[player.UserId]
 		if ps and ps.inMatch then
 			ps.inMatch = false
-			bankRun(player, ps)
+			bankRun(player, ps, "quit")
 		end
 		state.players[player.UserId] = nil
 		MatchService.CheckTeamWipe()
@@ -806,7 +871,7 @@ function MatchService.Start()
 			return
 		end
 		ps.inMatch = false
-		local summary = bankRun(player, ps)
+		local summary = bankRun(player, ps, "leave")
 		MatchService.CheckTeamWipe()
 		if LIVE then
 			task.spawn(teleportToLobby, player, summary)

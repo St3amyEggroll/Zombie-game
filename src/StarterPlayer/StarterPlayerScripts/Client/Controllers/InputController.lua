@@ -43,6 +43,12 @@ local SPIN_START_FRAC = 0.3
 
 local localPlayer = Players.LocalPlayer
 
+-- TOUCH-FIRST devices (phones/tablets — no mouse): a raw screen touch is NOT a trigger pull. The default
+-- touch camera is a one-finger drag, so every camera swipe used to fire (and hold-fire the autos). On
+-- those devices the FIRE button (TouchControlsController) + Autofire drive shooting instead. Studio's
+-- phone emulator keeps MouseEnabled=true, so raw touches still fire there — handy for testing.
+local TOUCH_FIRST = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+
 -- ===== STATE =====
 local equipped = "pistol"
 local ownedWeapons: { string } = { "pistol" }
@@ -152,17 +158,36 @@ local function equipSlot(i: number)
 end
 
 -- ===== INPUT =====
-local function onInputBegan(input: InputObject, gameProcessed: boolean)
-	if gameProcessed then
-		return
-	end
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
+-- Trigger pull / release — shared by the mouse button, raw touches (non-touch-first devices) and the
+-- on-screen FIRE button. Press: autos hold-fire, semi-autos queue exactly one shot. Release: stop.
+function InputController.SetManualFire(down: boolean)
+	if down then
 		wantManual = true
 		local weapon = WeaponConfig[equipped]
 		if weapon and not weapon.auto then
 			pendingShot = true -- semi-auto: exactly one shot per click, fired the moment the gate opens
 		end
+	else
+		wantManual = false
+	end
+end
+
+-- Touch-button twins of the Shift / E keys (TouchControlsController).
+function InputController.SetSprint(on: boolean)
+	Remotes.Get("Sprint"):FireServer(on == true)
+end
+
+function InputController.Interact()
+	Remotes.Get("Interact"):FireServer()
+end
+
+local function onInputBegan(input: InputObject, gameProcessed: boolean)
+	if gameProcessed then
+		return
+	end
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or (input.UserInputType == Enum.UserInputType.Touch and not TOUCH_FIRST) then
+		InputController.SetManualFire(true)
 	elseif input.UserInputType == Enum.UserInputType.Keyboard then
 		if input.KeyCode == KEY_SPRINT then
 			Remotes.Get("Sprint"):FireServer(true)
@@ -176,7 +201,7 @@ end
 
 local function onInputEnded(input: InputObject)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
+		or (input.UserInputType == Enum.UserInputType.Touch and not TOUCH_FIRST) then
 		wantManual = false
 	elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == KEY_SPRINT then
 		Remotes.Get("Sprint"):FireServer(false)

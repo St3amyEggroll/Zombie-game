@@ -316,6 +316,31 @@ local function build()
 	coinPopScale = Instance.new("UIScale") -- pickup pop when a loot coin lands
 	coinPopScale.Parent = coinsLabel
 
+	-- ===== FRIEND BONUS chip (launch pass) ===== rides on top of the coins pill while a Roblox FRIEND is
+	-- in the server (ProgressionService sets the FriendBonus attribute; Coins × GameConfig.FriendCoinMult).
+	do
+		local chip = panel(gui, "FriendBonus")
+		chip.AnchorPoint = Vector2.new(0, 1)
+		chip.Position = UDim2.new(0, 16, 1, -14 - 54 - 6) -- 6px above the coins pill
+		chip.Size = UDim2.fromOffset(252, 26)
+		chip.Visible = false
+		local lbl = text(chip, "Label", UITheme.TitleFace, 15, COL_GOLD)
+		lbl.Size = UDim2.fromScale(1, 1)
+		lbl.TextXAlignment = Enum.TextXAlignment.Center
+		local pct = math.floor(((tonumber(GameConfig.FriendCoinMult) or 1) - 1) * 100 + 0.5)
+		lbl.Text = ("FRIEND BONUS  +%d%% COINS"):format(pct)
+		local ls = Instance.new("UIStroke")
+		ls.Color = Color3.fromRGB(0, 0, 0)
+		ls.Transparency = 0.35
+		ls.Thickness = 1.2
+		ls.Parent = lbl
+		local function paint()
+			chip.Visible = pct > 0 and localPlayer:GetAttribute("FriendBonus") == true
+		end
+		localPlayer:GetAttributeChangedSignal("FriendBonus"):Connect(paint)
+		paint()
+	end
+
 	-- ===== GET COINS (in-run coin bundles) ===== a small gold "+" beside the coin readout opens a
 	-- buy card with the same Developer Products as the lobby shop (GameConfig.CoinBundleProducts).
 	-- Being broke at the mid-run gun shop is the moment this exists for. Rows with id=0 say SOON.

@@ -99,6 +99,8 @@ local BRIDGE_CLEAR     = 25     -- studs: never surface within this range of a p
 local GRAVE_STAND_HEIGHT = 3.5 -- studs the zombie's root sits above the ground when fully risen (feet land
                                -- just above ground so it settles cleanly instead of toppling)
 local MIN_SPAWN_DIST   = 10    -- min studs between a new spawn and any active grave (no stacking spawns)
+local SPAWN_RING_MIN   = 28    -- near-player spawns land this far out... (was a fixed 35-stud ring)
+local SPAWN_RING_MAX   = 48    -- ...to this far, so a busy ring has more room before it saturates
 -- Where pooled rigs are parked (frozen, far under any map) while they wait to be reused. They stay in
 -- Workspace so a spawn doesn't have to re-replicate the whole model to every client — see release().
 local PARK_POS         = Vector3.new(0, -900, 0)
@@ -817,13 +819,14 @@ end
 -- After the limp body has flopped and settled, freeze each part in its settled pose and lower the whole
 -- pile straight down — slowly — so the corpse appears to sink into the earth, then pool it.
 local corpseCount = 0 -- live flop+sink loops (capped at MAX_CORPSES; the overflow fast-pools)
-local CORPSE_PRESSURE_ALIVE = 80 -- with this many zombies alive, corpses fast-pool too (ragdolls are
+local CORPSE_PRESSURE_ALIVE = 60 -- with this many zombies alive, corpses fast-pool too (ragdolls are
                                  -- the most expensive physics left — spend the budget on the living)
+                                 -- CHANGED: 60 (was 80 = never, now that MaxAliveZombies is 80)
 
-local function sinkAndRelease(record)
+local function sinkAndRelease(record, fast: boolean?)
 	local model = record.model
 	corpseCount += 1
-	if corpseCount > MAX_CORPSES or aliveCount > CORPSE_PRESSURE_ALIVE then
+	if fast or corpseCount > MAX_CORPSES or aliveCount > CORPSE_PRESSURE_ALIVE then
 		-- Over the corpse budget: a short beat so the kill still reads, then pool immediately.
 		task.wait(0.35)
 		corpseCount -= 1
@@ -963,12 +966,18 @@ local function onZombieDied(record)
 		end
 	end)
 
+	-- CHANGED (launch pass): decide NOW whether this corpse gets the full flop+sink or fast-pools. A
+	-- fast-pooled corpse used to get a full ragdoll built anyway (attachments + ball sockets on every
+	-- joint + a network-owner call per part) only to be torn down 0.35s later — at horde density that
+	-- was most of the death cost. Over budget = a cheap topple instead.
+	local fastPool = (corpseCount >= MAX_CORPSES) or (aliveCount > CORPSE_PRESSURE_ALIVE)
+
 	-- Ragdoll: play a death animation if configured, else make the rig LIMP (limbs flop, not a solid
 	-- statue) and let it collapse under gravity. The weld-only placeholder rig can't ragdoll, so it falls
 	-- back to a gentle physics topple.
 	if record.deathTrack then
 		record.deathTrack:Play()
-	elseif not setRagdoll(record) then
+	elseif fastPool or not setRagdoll(record) then
 		local root = record.root
 		if root and root.Parent then
 			local dir = record.knockDir or Vector3.new(0, 0, -1)
@@ -978,7 +987,7 @@ local function onZombieDied(record)
 	end
 
 	-- Then sink the corpse into the ground and return it to the pool.
-	task.spawn(sinkAndRelease, record)
+	task.spawn(sinkAndRelease, record, fastPool)
 end
 
 -- ===== SPAWN =====
@@ -1120,10 +1129,12 @@ end
 
 -- Don't spawn on top of a zombie that's still climbing out — keep clear of any active grave (graves linger
 -- until that zombie is fully out and the headstone has sunk away).
-local function tooCloseToActiveGrave(pos: Vector3): boolean
+-- Horizontal distance from `pos` to the NEAREST active grave (math.huge = no graves).
+local function graveClearance(pos: Vector3): number
 	if not graveFolder then
-		return false
+		return math.huge
 	end
+	local best = math.huge
 	for _, g in graveFolder:GetChildren() do
 		local gp
 		if g:IsA("Model") then
@@ -1133,13 +1144,15 @@ local function tooCloseToActiveGrave(pos: Vector3): boolean
 		end
 		if gp then
 			local dx, dz = pos.X - gp.X, pos.Z - gp.Z
-			if dx * dx + dz * dz < MIN_SPAWN_DIST * MIN_SPAWN_DIST then
-				return true
+			local d = dx * dx + dz * dz
+			if d < best then
+				best = d
 			end
 		end
 	end
-	return false
+	return best == math.huge and math.huge or math.sqrt(best)
 end
+
 
 -- Spawn AT a ZombieSpawn-tagged part (place these where zombies should appear — e.g. in the shallows on
 -- Islands so they wade ashore). Prefers points near a living player; falls back to any tagged point.
@@ -1350,13 +1363,29 @@ local function getSpawnCFrame(): CFrame?
 	if #candidates == 0 then
 		return nil
 	end
+	-- CHANGED (launch pass — the "deep waves crawl in" stall): a fixed 35-stud ring around one player
+	-- saturates fast (each grave blocks MIN_SPAWN_DIST of it and graves linger ~8s), and when all 12
+	-- tries failed the spawn loop just slept a whole interval and rolled again — deep waves dribbled in
+	-- one zombie at a time. The ring radius now varies, and the tries remember the roomiest spot, which
+	-- is used when nothing is perfectly clear (never inside the out-of-bounds fog, never ON a grave).
+	local best, bestClear = nil, -1
 	for _ = 1, 12 do
 		local root = candidates[math.random(#candidates)]
 		local angle = math.random() * 2 * math.pi
-		local cf = CFrame.new(root.Position + Vector3.new(math.cos(angle) * 35, SPAWN_HEIGHT, math.sin(angle) * 35))
-		if not tooCloseToActiveGrave(cf.Position) and not SpawnZones.IsBlocked(cf.Position) then
-			return cf -- clear of other graves AND outside the out-of-bounds fog
+		local radius = SPAWN_RING_MIN + math.random() * (SPAWN_RING_MAX - SPAWN_RING_MIN)
+		local pos = root.Position + Vector3.new(math.cos(angle) * radius, SPAWN_HEIGHT, math.sin(angle) * radius)
+		if not SpawnZones.IsBlocked(pos) then
+			local clear = graveClearance(pos)
+			if clear >= MIN_SPAWN_DIST then
+				return CFrame.new(pos) -- clear of other graves AND outside the out-of-bounds fog
+			end
+			if clear > bestClear then
+				best, bestClear = pos, clear
+			end
 		end
+	end
+	if best and bestClear >= MIN_SPAWN_DIST * 0.4 then
+		return CFrame.new(best) -- crowded ring: take the roomiest spot rather than stalling the wave
 	end
 	return nil
 end
@@ -1928,6 +1957,57 @@ local function statusSpeed(record, now)
 	end
 end
 
+-- ===== RAYCAST PARAMS (cached — launch pass) =====
+-- hover()/grounded() run every steer for every zombie and used to allocate a RaycastParams per call
+-- (80 zombies × 60Hz ≈ 5k throwaway objects a second), and every sight/jump/edge probe rebuilt a
+-- world-only exclusion list by walking Players:GetPlayers(). One shared params per purpose now; the
+-- exclusion list rebuilds only when the roster or a character changes (ZombieService.Start hooks it).
+local groundParams: RaycastParams? = nil                    -- every zombie excluded: "is there floor under me"
+local worldParamsByGroup: { [string]: RaycastParams } = {}  -- zombies + characters excluded, per collision group
+local worldParamsDirty = true
+
+-- World-only params (zombies + every character excluded). `group` = a CollisionGroup for the ray (the
+-- Islands edge probe needs "ZombieRig" to see the ocean, which ignores Default-group rays).
+local function worldOnlyParams(group: string?): RaycastParams
+	local key = group or ""
+	local params = worldParamsByGroup[key]
+	if not params then
+		params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.IgnoreWater = true
+		if group then
+			params.CollisionGroup = group
+		end
+		worldParamsByGroup[key] = params
+		worldParamsDirty = true
+	end
+	if worldParamsDirty then
+		worldParamsDirty = false
+		local filter: { Instance } = { zombieFolder }
+		for _, pl in Players:GetPlayers() do
+			if pl.Character then
+				table.insert(filter, pl.Character)
+			end
+		end
+		for _, p in worldParamsByGroup do
+			p.FilterDescendantsInstances = filter
+		end
+	end
+	return params
+end
+
+-- Ground probe params: ignore ALL zombies (a packed horde-mate is not footing — the old "stacking" bug).
+local function groundOnlyParams(): RaycastParams
+	local params = groundParams
+	if not params then
+		params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { zombieFolder }
+		groundParams = params
+	end
+	return params
+end
+
 -- ===== CUSTOM LOCOMOTION (no Humanoid) ===== velocity-driven walking + an AlignOrientation upright.
 -- setVel: horizontal velocity toward `dir` at record.speed (gravity keeps the Y component). Also turns
 -- the rig to face its travel. Passing a ~zero dir stops it (grounded zombies don't slide).
@@ -1956,13 +2036,10 @@ local function grounded(record): boolean
 	if not root then
 		return false
 	end
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
 	-- Exclude EVERY zombie, not just this one: zombies don't collide with each other, so a ray that
 	-- lands on a packed horde-mate must not count as footing (that was the "stacking" bug — hover
-	-- perched walkers on each other's heads).
-	params.FilterDescendantsInstances = { zombieFolder }
-	return Workspace:Raycast(root.Position, Vector3.new(0, -4.5, 0), params) ~= nil
+	-- perched walkers on each other's heads). Cached params (see RAYCAST PARAMS).
+	return Workspace:Raycast(root.Position, Vector3.new(0, -4.5, 0), groundOnlyParams()) ~= nil
 end
 
 local function jump(record)
@@ -1986,9 +2063,7 @@ local function hover(record)
 	if not root or root.Anchored then
 		return
 	end
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { zombieFolder } -- ignore ALL zombies (see grounded) — real ground only
+	local params = groundOnlyParams() -- ignore ALL zombies (see grounded) — real ground only; cached
 	-- Cast from ABOVE the root: if the rig has already punched into the floor, a ray from root height
 	-- starts INSIDE the floor part and sails through it (that was the freeze-ray "zombie in the ground"
 	-- bug — rapid knockback resets let it penetrate, then the ray missed the surface it was under).
@@ -2028,19 +2103,7 @@ end
 -- real time instead of following a point that only updates when the path recomputes.
 
 -- RaycastParams that ignore all zombies + player characters, so probes only hit world geometry.
-local function worldOnlyParams(): RaycastParams
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.IgnoreWater = true
-	local filter: { Instance } = { zombieFolder }
-	for _, pl in Players:GetPlayers() do
-		if pl.Character then
-			table.insert(filter, pl.Character)
-		end
-	end
-	params.FilterDescendantsInstances = filter
-	return params
-end
+-- (worldOnlyParams moved up to RAYCAST PARAMS — cached, no per-call allocation.)
 
 -- Is there solid world geometry directly between two points?
 local function sightBlocked(fromPos: Vector3, toPos: Vector3): boolean
@@ -2295,8 +2358,7 @@ local function steer(record, now: number)
 			record.nextEdgeProbe = now2 + 0.2
 			local aheadFlat = Vector3.new(targetRoot.Position.X - root.Position.X, 0, targetRoot.Position.Z - root.Position.Z)
 			if aheadFlat.Magnitude > 0.1 then
-				local params = worldOnlyParams()
-				params.CollisionGroup = "ZombieRig" -- see the ocean (OceanZ ignores Default-group rays)
+				local params = worldOnlyParams("ZombieRig") -- sees the ocean (OceanZ ignores Default-group rays)
 				-- A zombie still ON the ocean must keep wading ashore (the water is solid for it) —
 				-- only steer away from water once it's standing on real land. Then it STAYS on land.
 				local under = Workspace:Raycast(root.Position + Vector3.new(0, 3, 0), Vector3.new(0, -25, 0), params)
@@ -2709,6 +2771,22 @@ function ZombieService.Start()
 	loadWaterTemplates()
 
 	RunService.Heartbeat:Connect(onHeartbeat)
+
+	-- Cached world-only raycast params: re-list the excluded characters whenever the roster changes.
+	local function rosterDirty()
+		worldParamsDirty = true
+	end
+	local function hookRoster(pl: Player)
+		rosterDirty()
+		pl.CharacterAdded:Connect(rosterDirty)
+	end
+	for _, pl in Players:GetPlayers() do
+		hookRoster(pl)
+	end
+	Players.PlayerAdded:Connect(hookRoster)
+	Players.PlayerRemoving:Connect(function()
+		task.defer(rosterDirty) -- after the leaver is out of GetPlayers()
+	end)
 
 	print(("[ZombieService] started (graves: %d regular, %d big, %d huge)"):format(#graveTemplates, #bigGraveTemplates, #hugeGraveTemplates))
 end

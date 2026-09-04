@@ -14,6 +14,9 @@
         "$className": "StarterPlayerScripts",
         "LobbyClient": {
           "$path": "lobby-src/StarterPlayer/StarterPlayerScripts/LobbyClient.client.lua"
+        },
+        "LobbyExtras": {
+          "$path": "lobby-src/StarterPlayer/StarterPlayerScripts/LobbyExtras.client.lua"
         }
       }
     },

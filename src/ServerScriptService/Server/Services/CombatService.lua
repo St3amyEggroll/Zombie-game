@@ -71,6 +71,38 @@ local function getCombat(player: Player)
 	return c
 end
 
+-- ===== PER-SHOT SCRATCH (perf — launch pass) =====
+-- A shot used to allocate a RaycastParams, a fresh exclusion list (walking every player), one table per
+-- zombie in the arc, the target/pellet tables and a sort comparator closure — at 40 shots/s × 4 players
+-- into an 80-zombie horde that was tens of thousands of short-lived tables a second for the GC to chew,
+-- which is exactly the "shooting feels laggy once the horde is up" symptom. Allocated ONCE, reused.
+local worldParams = RaycastParams.new() -- world-only LOS: zombies + every character excluded (no friendly fire)
+worldParams.FilterType = Enum.RaycastFilterType.Exclude
+worldParams.IgnoreWater = true
+local worldParamsDirty = true          -- roster/character changed -> rebuild the exclusion list lazily
+local candPool = {}                    -- reusable { record, root, dist } entries
+local cands = {}                       -- this shot's in-arc zombies (cleared per shot; keeps its capacity)
+local targets = {}                     -- this shot's chosen targets
+local pelletsOn = {}                   -- pellets per target index
+
+local function byDist(a, b)
+	return a.dist < b.dist
+end
+
+local function refreshWorldParams(): RaycastParams
+	if worldParamsDirty then
+		worldParamsDirty = false
+		local exclude = { ZombieService.GetFolder() }
+		for _, pl in Players:GetPlayers() do
+			if pl.Character then
+				table.insert(exclude, pl.Character)
+			end
+		end
+		worldParams.FilterDescendantsInstances = exclude
+	end
+	return worldParams
+end
+
 -- ===== HELPERS =====
 -- The player's current in-run buff total for a stat (additive fraction; 0 if none). Set by BuffService.
 local function buffOf(ps, key: string): number
@@ -118,16 +150,7 @@ local function applyAoE(player: Player, weaponId: string, center: Vector3, cfg)
 	if dmg > 0 then
 		-- NEW: blasts respect cover — a world-only ray from the blast center (zombies/players
 		-- excluded as blockers) must reach the zombie, so rockets no longer damage through walls.
-		local blastParams = RaycastParams.new()
-		blastParams.FilterType = Enum.RaycastFilterType.Exclude
-		blastParams.IgnoreWater = true
-		local blastExclude = { ZombieService.GetFolder() }
-		for _, pl in Players:GetPlayers() do
-			if pl.Character then
-				table.insert(blastExclude, pl.Character)
-			end
-		end
-		blastParams.FilterDescendantsInstances = blastExclude
+		local blastParams = refreshWorldParams() -- (shared, cached — see PER-SHOT SCRATCH)
 		for _, rec in ZombieService.GetActive() do
 			local root = rec.root
 			if root then
@@ -193,7 +216,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 
 	-- Effective stats = base weapon stats at the gun's PERSISTENT level (leveled up in the lobby with
 	-- case copies + Coins; saved on the profile, read-only during a run).
-	local data = DataService.Get(player)
+	local data = DataService.Get(player) -- (read once per shot; the class mult below reuses it)
 	local gunLevel = (data and typeof(data.gunLevels) == "table" and tonumber(data.gunLevels[weaponId])) or 1
 	local eff = GunLevelConfig.EffectiveStats(weapon, gunLevel)
 
@@ -242,7 +265,6 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	-- times the SOLDIER class's damage multiplier when equipped (picked in the lobby showcase).
 	local baseDamage = eff.damage * (1 + buffOf(ps, "damage"))
 	do
-		local data = DataService.Get(player)
 		local cls = data and ClassConfig.Get(data.class)
 		if cls and cls.damageMult then
 			baseDamage *= cls.damageMult
@@ -257,16 +279,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 
 	-- LOS ray ignores zombies AND every player's character: there is no friendly fire, so a teammate
 	-- crossing your line must not silently absorb your shot (bodies are not cover).
-	local losParams = RaycastParams.new()
-	losParams.FilterType = Enum.RaycastFilterType.Exclude
-	losParams.IgnoreWater = true
-	local losExclude = { ZombieService.GetFolder() }
-	for _, pl in Players:GetPlayers() do
-		if pl.Character then
-			table.insert(losExclude, pl.Character)
-		end
-	end
-	losParams.FilterDescendantsInstances = losExclude
+	local losParams = refreshWorldParams() -- cached; rebuilt only when the roster/characters change
 
 	-- Shotguns fire `pellets` per shot; everything else fires 1. The effective reach is the shorter of the
 	-- global arc range and the weapon's (upgraded) range — so a shotgun is genuinely short-range.
@@ -274,26 +287,33 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	local pellets = math.max(1, eff.pellets)
 
 	-- Collect in-arc, in-range zombies, nearest first (flat angle test — see flatDir above).
-	local cands = {}
+	-- Pooled entries + a cleared (capacity-keeping) list: zero allocation on the hot path.
+	table.clear(cands)
+	local n = 0
 	for _, record in ZombieService.GetActive() do
 		local root = record.root
 		local toZombie = root.Position - origin
 		local dist = toZombie.Magnitude
 		local flatTo = Vector3.new(toZombie.X, 0, toZombie.Z)
 		if dist > 0.01 and dist <= effRange and flatTo.Magnitude > 0.01 and flatTo.Unit:Dot(flatDir) >= dotThreshold then
-			table.insert(cands, { record = record, root = root, dist = dist })
+			n += 1
+			local e = candPool[n]
+			if not e then
+				e = {}
+				candPool[n] = e
+			end
+			e.record, e.root, e.dist = record, root, dist
+			cands[n] = e
 		end
 	end
-	table.sort(cands, function(a, b)
-		return a.dist < b.dist
-	end)
+	table.sort(cands, byDist)
 
 	-- How many distinct zombies the pellets may spread across. Default 1 = all pellets dump into the
 	-- closest zombie (the shotgun focuses one target). A weapon can set maxTargets > 1 to spread.
 	local maxTargets = math.max(1, weapon.maxTargets or 1)
 
 	-- Take up to `maxTargets` distinct VISIBLE targets (line of sight checked), nearest first.
-	local targets = {}
+	table.clear(targets)
 	for _, c in cands do
 		if #targets >= maxTargets then
 			break
@@ -333,7 +353,7 @@ local function onFire(player: Player, weaponId: any, origin: any, direction: any
 	if #targets > 0 then
 		-- Distribute pellets round-robin across the targets (nearest get the extras): all pellets dump into
 		-- one zombie up close, but spread across a crowd. For a 1-pellet gun this is just "hit the closest".
-		local pelletsOn = {}
+		table.clear(pelletsOn)
 		if weapon.pierce and weapon.pierce > 1 then
 			for i = 1, #targets do
 				pelletsOn[i] = 1 -- pierce: every lined-up zombie takes one FULL hit
@@ -465,7 +485,9 @@ end
 
 local function hookPlayer(player: Player)
 	getCombat(player)
+	worldParamsDirty = true -- new roster member: the LOS exclusion list must include their character
 	player.CharacterAdded:Connect(function()
+		worldParamsDirty = true -- fresh character instance → re-exclude it from LOS rays
 		-- Small delay lets MatchService assign player state on join before we read it.
 		task.defer(onCharacterAdded, player)
 	end)
@@ -482,6 +504,7 @@ function CombatService.Start()
 	Players.PlayerAdded:Connect(hookPlayer)
 	Players.PlayerRemoving:Connect(function(player)
 		combat[player.UserId] = nil
+		worldParamsDirty = true
 	end)
 
 	Remotes.Get("FireWeapon").OnServerEvent:Connect(onFire)

@@ -35,6 +35,29 @@ GameConfig.CoinBundleProducts = {
 	{ id = 0, coins = 50000, bonus = "+30%" },
 }
 
+-- ===== FRIEND BONUS (launch pass — the organic-growth lever) =====
+-- Playing in a server with at least one Roblox FRIEND multiplies every Coin grant in the run (kills +
+-- wave clears + event payouts) by this. Checked server-side with Player:IsFriendsWith on join/leave;
+-- the HUD shows a "FRIEND BONUS" chip above the coins pill while it's active. 1 = off.
+GameConfig.FriendCoinMult = 1.25
+
+-- ===== BADGES (launch pass) ===== create each badge in Creator Hub -> your experience -> Badges and
+-- paste its id here. 0 = that badge is skipped (nothing errors). Awarded server-side (BadgeAwardService):
+-- wave5/10/25/50 = clear that wave alive; bloodmoon/apocalypse = survive a whole wave under that event.
+-- The lobby has its own two (raygun pull, first crate) in LobbyServer's LAUNCH.Badges.
+GameConfig.BadgeIds = {
+	wave5 = 0,
+	wave10 = 0,
+	wave25 = 0,
+	wave50 = 0,
+	bloodmoon = 0,
+	apocalypse = 0,
+}
+
+-- ===== ANALYTICS (launch pass) ===== Roblox AnalyticsService funnels + economy events (Creator Hub ->
+-- Analytics). false = TelemetryService drops every event (nothing else changes).
+GameConfig.Analytics = true
+
 -- ===== GAMEPASSES ===== (owner-created in Creator Hub → Passes). Benefits are server-side:
 -- 2x Coins doubles every Coin grant in a run, 2x XP doubles account XP, VIP = overhead tag + a free
 -- rare crate daily (the lobby handles the crate). Keep ids in sync with the lobby's GAMEPASSES table.
@@ -43,7 +66,11 @@ GameConfig.GamepassXP2x    = 1907131130
 GameConfig.GamepassVIP     = 1906069123
 
 -- ===== PERFORMANCE (critical with hordes — see §13 of CLAUDE.md) =====
-GameConfig.MaxAliveZombies   = 200     -- HARD cap on simultaneous zombies (owed extras wait for a kill,
+-- CHANGED (launch pass): 200 was a Studio number. Every live zombie is a server-simulated rig with a
+-- per-frame steer + hover raycast AND a replicated CFrame stream to every client; on real connections
+-- 200 bodies is where shooting starts to feel laggy. 80 keeps deep waves a wall of zombies (owed extras
+-- still stream in as others die) without melting phones.
+GameConfig.MaxAliveZombies   = 80      -- HARD cap on simultaneous zombies (owed extras wait for a kill,
                                        -- then spawn in — they don't despawn to make room)
 GameConfig.ZombieAITickRate  = 0.45    -- seconds between AI re-targets (staggered across zombies)
 GameConfig.PathRecompute     = 3.5    -- seconds between a zombie's path recomputes

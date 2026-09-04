@@ -553,6 +553,158 @@ local ShopTicker    = mk("ShopTicker")    -- S->C broadcast: {name, item, rarity
 local BuyGun    = mk("BuyGun")    -- C->S: {weaponId} buy a gun outright with Coins
 -- Sound
 local SetSoundSettings = mk("SetSoundSettings") -- C->S: ({master, music, sfx} 0..1) persist volume sliders
+
+-- ===== LAUNCH PASS (policy / analytics / badges / run recap) =====
+-- ONE table for all of it so this file stays under Luau's 200-local ceiling. Functions that need
+-- later locals (pushShop, markDirty) are attached further down in the LAUNCH (late) block.
+local LAUNCH = {
+	-- BADGES: create them in Creator Hub -> your experience -> Badges and paste the ids (0 = skipped).
+	-- The game place's wave/event badges live in GameConfig.BadgeIds.
+	Badges = { raygun = 0, firstcrate = 0 },
+	-- ONBOARDING funnel steps. MUST match the game place's TelemetryService.Onboard numbers (it logs
+	-- 4/5/6/8/9 for the in-run steps).
+	Onboard = { LobbyJoined = 1, TutorialDone = 2, RunLaunched = 3, FirstCrate = 7 },
+	OnboardNames = { [1] = "lobby_joined", [2] = "tutorial_done", [3] = "run_launched", [7] = "first_crate" },
+	Analytics = true,      -- false = drop every analytics event (nothing else changes)
+	Policy = game:GetService("PolicyService"),
+	AnalyticsSvc = game:GetService("AnalyticsService"),
+	BadgeSvc = game:GetService("BadgeService"),
+	restricted = {},       -- userId -> true when Roblox policy bars PAID RANDOM ITEMS for this player
+	badgeDone = {},        -- userId -> { key = true } (one API round-trip per badge per session)
+	budget = {},           -- analytics: per-player events this minute
+	serverBudget = { n = 0, at = 0 },
+	recap = {},            -- userId -> last run's recap payload (re-sent when the client asks)
+}
+LAUNCH.RunRecap = mk("RunRecap") -- S->C: {id, wave, kills, money, newBest, best} · C->S: (please re-send)
+
+-- Custom-field keys: Roblox wants the enum's .Name ("customField01".."03"); literals as a fallback.
+LAUNCH.fieldKeys = { "customField01", "customField02", "customField03" }
+pcall(function()
+	LAUNCH.fieldKeys[1] = Enum.AnalyticsCustomFieldKeys.CustomField01.Name
+	LAUNCH.fieldKeys[2] = Enum.AnalyticsCustomFieldKeys.CustomField02.Name
+	LAUNCH.fieldKeys[3] = Enum.AnalyticsCustomFieldKeys.CustomField03.Name
+end)
+function LAUNCH.fields(a, b, c)
+	if a == nil and b == nil and c == nil then
+		return nil
+	end
+	local t = {}
+	if a ~= nil then t[LAUNCH.fieldKeys[1]] = tostring(a) end
+	if b ~= nil then t[LAUNCH.fieldKeys[2]] = tostring(b) end
+	if c ~= nil then t[LAUNCH.fieldKeys[3]] = tostring(c) end
+	return t
+end
+
+-- Analytics budget: 30 events / player / minute, 110 / server / minute (Roblox throttles ~120).
+-- A dropped analytics event must never cost gameplay, so overflow is silent.
+function LAUNCH.allowEvent(player)
+	local now = os.clock()
+	if now - LAUNCH.serverBudget.at >= 60 then
+		LAUNCH.serverBudget.n, LAUNCH.serverBudget.at = 0, now
+	end
+	local pb = LAUNCH.budget[player.UserId]
+	if not pb then
+		pb = { n = 0, at = now }
+		LAUNCH.budget[player.UserId] = pb
+	elseif now - pb.at >= 60 then
+		pb.n, pb.at = 0, now
+	end
+	if LAUNCH.serverBudget.n >= 110 or pb.n >= 30 then
+		return false
+	end
+	LAUNCH.serverBudget.n += 1
+	pb.n += 1
+	return true
+end
+function LAUNCH.send(player, what, fn)
+	if not LAUNCH.Analytics or typeof(player) ~= "Instance" or not player.Parent or not LAUNCH.allowEvent(player) then
+		return
+	end
+	task.spawn(function()
+		local ok, err = pcall(fn)
+		if not ok then
+			warn(("[LobbyServer] analytics %s failed: %s"):format(what, tostring(err)))
+		end
+	end)
+end
+-- Onboarding funnel step (see LAUNCH.Onboard). Roblox counts each step once per player.
+function LAUNCH.onboarding(player, step, f1)
+	local name = LAUNCH.OnboardNames[step] or ("step_" .. tostring(step))
+	LAUNCH.send(player, "onboarding " .. name, function()
+		LAUNCH.AnalyticsSvc:LogOnboardingFunnelStepEvent(player, step, name, LAUNCH.fields(f1))
+	end)
+end
+-- Coins in/out. flow = "Source" | "Sink"; txType = "IAP" | "TimedReward" | "Shop" | "Gameplay" | "Onboarding".
+function LAUNCH.economy(player, flow, amount, balance, txType, sku, f1)
+	amount = math.floor(tonumber(amount) or 0)
+	if amount < 1 then
+		return
+	end
+	balance = math.max(0, math.floor(tonumber(balance) or 0))
+	LAUNCH.send(player, "economy " .. flow .. "/" .. tostring(sku), function()
+		local flowEnum = (flow == "Sink") and Enum.AnalyticsEconomyFlowType.Sink or Enum.AnalyticsEconomyFlowType.Source
+		local txEnum = Enum.AnalyticsEconomyTransactionType[txType] or Enum.AnalyticsEconomyTransactionType.Gameplay
+		LAUNCH.AnalyticsSvc:LogEconomyEvent(player, flowEnum, "Coins", amount, balance, txEnum.Name, sku, LAUNCH.fields(f1))
+	end)
+end
+function LAUNCH.custom(player, name, value, f1, f2, f3)
+	LAUNCH.send(player, "custom " .. name, function()
+		LAUNCH.AnalyticsSvc:LogCustomEvent(player, name, value, LAUNCH.fields(f1, f2, f3))
+	end)
+end
+
+-- Award badge `key` (LAUNCH.Badges) — idempotent per session, pcall'd, off-thread.
+function LAUNCH.badge(player, key)
+	local id = tonumber(LAUNCH.Badges[key]) or 0
+	if id <= 0 or typeof(player) ~= "Instance" then
+		return
+	end
+	local uid = player.UserId
+	local mine = LAUNCH.badgeDone[uid]
+	if not mine then
+		mine = {}
+		LAUNCH.badgeDone[uid] = mine
+	end
+	if mine[key] then
+		return
+	end
+	mine[key] = true
+	task.spawn(function()
+		local okHas, owned = pcall(LAUNCH.BadgeSvc.UserHasBadgeAsync, LAUNCH.BadgeSvc, uid, id)
+		if okHas and owned == true then
+			return
+		end
+		local ok, err = pcall(LAUNCH.BadgeSvc.AwardBadge, LAUNCH.BadgeSvc, uid, id)
+		if not ok then
+			mine[key] = nil
+			warn(("[LobbyServer] badge %s for %s failed: %s"):format(key, player.Name, tostring(err)))
+		end
+	end)
+end
+
+-- PAID RANDOM ITEMS (Roblox policy): a player PolicyService flags must not be offered random-reward
+-- purchases — here that's the paid wheel re-spin, the legacy Robux crate packs, the Starter Pack's
+-- crates and the VIP daily crate. nil (not fetched yet) reads as restricted: fail closed.
+function LAUNCH.isRestricted(player)
+	local r = LAUNCH.restricted[player.UserId]
+	if r == nil then
+		return true
+	end
+	return r
+end
+-- Block (up to `secs`) until the policy fetch for this player has landed — receipts and the VIP prime
+-- can run before it does.
+function LAUNCH.waitPolicy(player, secs)
+	local deadline = os.clock() + (secs or 6)
+	while LAUNCH.restricted[player.UserId] == nil and player.Parent and os.clock() < deadline do
+		task.wait(0.1)
+	end
+	return LAUNCH.isRestricted(player)
+end
+-- What a crate is worth in Coins when policy forbids handing the crate itself over (its shop price).
+function LAUNCH.caseCoinValue(caseId)
+	return (typeof(SHOP.Prices) == "table" and tonumber(SHOP.Prices[caseId])) or 1000
+end
 local SetShake      = mk("SetShake")      -- C->S: (bool) persist the camera-shake on/off preference (shared with the game place)
 
 -- ===== PROFILE =====
@@ -742,6 +894,7 @@ local function readProfile(player)
 		pity = math.max(0, math.floor(tonumber(data.pity) or 0)), -- crate opens since the last legendary+ pull
 		starter = data.starter == true, -- STARTER PACK is one purchase ever
 		tutDone = data.tutDone == true, -- first-join pointer tour already shown (once per account)
+		onboard = (typeof(data.onboard) == "table") and data.onboard or {}, -- launch pass: once-per-account funnel flags (crate)
 		vipDay = math.floor(tonumber(data.vipDay) or 0), -- last day the VIP daily crate was granted
 		wheel = (function() -- daily wheel: last claim day, claim streak, paid re-spins today
 			local w = (typeof(data.wheel) == "table") and data.wheel or {}
@@ -837,6 +990,7 @@ local function persist(player)
 				old.quests = prof.quests
 				old.class = prof.class
 				old.tutDone = prof.tutDone
+				old.onboard = prof.onboard -- launch pass: onboarding-funnel flags
 				return old
 			end)
 		end)
@@ -1335,6 +1489,9 @@ local function grantRolledGun(player, prof, caseId, wonGun)
 			refreshCarry(player)
 		end
 		local wr = WEAPONS[wonGun].rarity
+		if wonGun == "raygun" then
+			LAUNCH.badge(player, "raygun") -- the wonder weapon, pulled early
+		end
 		if wr == "legendary" then
 			-- the live pull TICKER: brag about big pulls to the whole server. CHANGED: legendary ONLY —
 			-- epics are up to ~44% of crate weights, and a ticker that fires constantly brags about nothing.
@@ -1443,6 +1600,7 @@ OpenCase.OnServerEvent:Connect(function(player, req)
 	end
 	local result = doOpenCase(player, prof, caseId)
 	bumpQuest(player, "crates", 1) -- daily quests count every crate you open
+	LAUNCH.onCrate(player, prof, caseId, result)
 	markDirty(player)
 	CaseResult:FireClient(player, result)
 	pushInv(player)
@@ -1504,6 +1662,9 @@ local function shopSnapshot(prof, enter)
 		},
 		-- PITY meter: opens left until the guaranteed legendary+.
 		pityLeft = math.max(1, SHOP.PityEvery - (prof.pity or 0)),
+		-- PAID RANDOM ITEMS policy (launch pass): true = hide the paid re-spin + starter-pack prompts.
+		-- nil (policy not fetched yet) reads as restricted; fetchPolicy re-pushes the shop when it lands.
+		restricted = prof.restricted ~= false,
 		-- PASSES & COINS tab: bundles + the one-time starter pack.
 		bundles = (function()
 			local t = {}
@@ -1577,9 +1738,13 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	if prof.noPersist then
 		return fail()
 	end
+	if LAUNCH.isRestricted(player) then
+		return fail() -- PAID RANDOM ITEMS restricted for this player (Coins are Robux-purchasable)
+	end
 	-- BUY ALL: sweep every slot's remaining stock cheapest-first until the coins run out.
 	if req.all == true then
 		local shop = ensureShopState(prof)
+		local coinsBefore = prof.lobbyMoney
 		local order = {}
 		for i in shop.slots do
 			table.insert(order, i)
@@ -1606,6 +1771,7 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 		if total < 1 then
 			return fail()
 		end
+		LAUNCH.economy(player, "Sink", coinsBefore - prof.lobbyMoney, prof.lobbyMoney, "Shop", "crate_all")
 		markDirty(player)
 		pushShop(player)
 		pushInv(player)
@@ -1649,10 +1815,12 @@ ShopBuy.OnServerEvent:Connect(function(player, req)
 	prof.lobbyMoney -= slot.price * n
 	prof.shop.bought[key] = boughtCount + n
 	prof.cases[slot.caseId] = (prof.cases[slot.caseId] or 0) + n
+	LAUNCH.economy(player, "Sink", slot.price * n, prof.lobbyMoney, "Shop", "crate_" .. tostring(slot.caseId))
 	local result = nil
 	if wantOpen then
 		result = doOpenCase(player, prof, slot.caseId)
 		bumpQuest(player, "crates", 1)
+		LAUNCH.onCrate(player, prof, slot.caseId, result)
 	end
 	markDirty(player)
 	if result then
@@ -1691,6 +1859,7 @@ ShopRedeem.OnServerEvent:Connect(function(player, code)
 	if typeof(def.coins) == "number" and def.coins > 0 then
 		prof.lobbyMoney += def.coins
 		table.insert(parts, "🪙 " .. def.coins)
+		LAUNCH.economy(player, "Source", def.coins, prof.lobbyMoney, "Onboarding", "code_" .. clean)
 	end
 	if def.case and CASES[def.case] then
 		local n = tonumber(def.caseCount) or 1
@@ -1702,6 +1871,60 @@ ShopRedeem.OnServerEvent:Connect(function(player, code)
 	pushShop(player)
 	StatsRemote:FireClient(player, prof)
 	reply(true, "REDEEMED!  +" .. table.concat(parts, "  +"))
+end)
+
+-- ===== LAUNCH PASS (late: needs pushShop / markDirty / pushInv above) =====
+-- Fetch the player's policy once per session (3 tries, then restricted), mirror it onto the profile
+-- (shopSnapshot reads prof.restricted) + a player attribute, and refresh an open shop panel.
+function LAUNCH.fetchPolicy(player)
+	local restricted = true
+	for attempt = 1, 3 do
+		local ok, info = pcall(LAUNCH.Policy.GetPolicyInfoForPlayerAsync, LAUNCH.Policy, player)
+		if ok and typeof(info) == "table" then
+			restricted = info.ArePaidRandomItemsRestricted == true
+			break
+		end
+		if not player.Parent then
+			return
+		end
+		task.wait(attempt)
+	end
+	if not player.Parent then
+		return
+	end
+	LAUNCH.restricted[player.UserId] = restricted
+	local prof = profileCache[player.UserId]
+	if prof then
+		prof.restricted = restricted
+	end
+	player:SetAttribute("PaidRandomRestricted", restricted or nil)
+	pushShop(player) -- an already-open panel picks up the real flag (it defaulted to restricted)
+end
+
+-- Every crate open funnels through here: first-crate badge + onboarding step (once per account),
+-- the "crate_open" analytics event, and dupe coins as an economy Source.
+function LAUNCH.onCrate(player, prof, caseId, result)
+	prof.onboard = (typeof(prof.onboard) == "table") and prof.onboard or {}
+	if not prof.onboard.crate then
+		prof.onboard.crate = true
+		markDirty(player)
+		LAUNCH.onboarding(player, LAUNCH.Onboard.FirstCrate, caseId)
+	end
+	LAUNCH.badge(player, "firstcrate")
+	local won = result and result.wonId
+	local rarity = won and WEAPONS[won] and WEAPONS[won].rarity or "?"
+	LAUNCH.custom(player, "crate_open", 1, caseId, rarity, (result and result.unlocked) and "new" or "dupe")
+	if result and (tonumber(result.coins) or 0) > 0 then
+		LAUNCH.economy(player, "Source", result.coins, prof.lobbyMoney, "Gameplay", "dupe_" .. tostring(rarity))
+	end
+end
+
+-- The client asks for the recap once its UI is up (the join-time push can beat the client script).
+LAUNCH.RunRecap.OnServerEvent:Connect(function(player)
+	local r = LAUNCH.recap[player.UserId]
+	if r then
+		LAUNCH.RunRecap:FireClient(player, r)
+	end
 end)
 
 -- ===== DAILY WHEEL ===== roll a segment (streak fattens the jackpot slice), grant it, tell the client
@@ -1759,6 +1982,12 @@ WheelSpin.OnServerEvent:Connect(function(player)
 	end
 	wheelClaimDay(prof)
 	local idx, rewardText = doWheelSpin(player, prof)
+	do
+		local seg = WHEEL.Segments[idx]
+		if seg and seg.kind == "coins" then
+			LAUNCH.economy(player, "Source", seg.amount, prof.lobbyMoney, "TimedReward", "wheel_free")
+		end
+	end
 	WheelSpin:FireClient(player, { seg = idx, reward = rewardText, streak = prof.wheel.streak })
 	pushShop(player)
 	pushInv(player)
@@ -1836,6 +2065,24 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		table.remove(prof.receipts, 1)
 	end
 
+	-- PAID RANDOM ITEMS policy (launch pass): the prompts are hidden for restricted players, but a
+	-- receipt can still land (retry from an older session, a modified client). Never eat the Robux —
+	-- convert the random reward into its Coin value: crate packs -> coins, paid re-spin -> 1,000 coins,
+	-- the Starter Pack's crates -> their shop price (handled in the starter branch).
+	local restricted = LAUNCH.waitPolicy(player, 6)
+	if restricted and packCount then
+		bundle = { coins = LAUNCH.caseCoinValue("rare") * packCount, fallback = "pack" }
+		packCount = nil
+	elseif restricted and isWheel then
+		bundle = { coins = 1000, fallback = "wheel" }
+		isWheel = false
+	end
+	if bundle and bundle.fallback == "wheel" then
+		WheelSpin:FireClient(player, { failed = true, msg = ("RE-SPINS AREN'T AVAILABLE IN YOUR REGION — PAID %d COINS INSTEAD"):format(bundle.coins) })
+	elseif bundle and bundle.fallback == "pack" then
+		ShopGift:FireClient(player, { from = "SHOP", name = ("%d Coins (crates aren't available in your region)"):format(bundle.coins), count = 1 })
+	end
+
 	-- CHANGED (receipt-safety): the reward + the receipt id are applied to the profile, THEN written
 	-- atomically. We only tell Roblox PurchaseGranted once the write is CONFIRMED durable — a failed
 	-- write returns NotProcessedYet so Roblox retries later (and the flush loop keeps retrying too),
@@ -1896,11 +2143,13 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 			end
 		end
 		prof.lobbyMoney += SHOP.ExclusivePack.coins
+		LAUNCH.economy(player, "Source", SHOP.ExclusivePack.coins + dupeCoins, prof.lobbyMoney, "IAP", "exclusive_pack")
 		saved = persist(player)
 		PackGranted:FireClient(player, { guns = granted, coins = SHOP.ExclusivePack.coins, dupeCoins = dupeCoins })
 		print(("[LobbyServer] %s bought the exclusive bundle (+%d coins, %d dupe coins)"):format(player.Name, SHOP.ExclusivePack.coins, dupeCoins))
 	elseif bundle then
 		prof.lobbyMoney += bundle.coins
+		LAUNCH.economy(player, "Source", bundle.coins, prof.lobbyMoney, "IAP", bundle.fallback and ("fallback_" .. bundle.fallback) or ("bundle_" .. tostring(bundle.coins)))
 		saved = persist(player)
 		print(("[LobbyServer] %s bought a coin bundle: +%d"):format(player.Name, bundle.coins))
 	elseif isStarter then
@@ -1910,10 +2159,15 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		else
 			prof.starter = true
 			for cid, n in SHOP.StarterCases do
-				prof.cases[cid] = (prof.cases[cid] or 0) + n
+				if restricted then
+					prof.lobbyMoney += LAUNCH.caseCoinValue(cid) * n -- policy: the crates' Coin value instead
+				else
+					prof.cases[cid] = (prof.cases[cid] or 0) + n
+				end
 			end
 			prof.lobbyMoney += SHOP.StarterCoins
 		end
+		LAUNCH.economy(player, "Source", SHOP.StarterCoins, prof.lobbyMoney, "IAP", "starter")
 		saved = persist(player)
 	elseif isWheel then
 		-- CHANGED: enforce the paid-spin cap server-side (was buyable past MaxPaidSpins). On a fresh day
@@ -1926,6 +2180,12 @@ MarketplaceService.ProcessReceipt = function(receiptInfo)
 		else
 			prof.wheel.paid = (prof.wheel.paid or 0) + 1
 			local idx, rewardText = doWheelSpin(player, prof)
+			do
+				local seg = WHEEL.Segments[idx]
+				if seg and seg.kind == "coins" then
+					LAUNCH.economy(player, "Source", seg.amount, prof.lobbyMoney, "IAP", "wheel_paid")
+				end
+			end
 			saved = persist(player)
 			WheelSpin:FireClient(player, { seg = idx, reward = rewardText, streak = prof.wheel.streak, paid = true })
 		end
@@ -2341,6 +2601,13 @@ local function dissolveAndLaunch(party)
 		end
 		if #safe == 0 then
 			return
+		end
+		for _, pl in safe do
+			local pr = profileCache[pl.UserId]
+			if pr and (tonumber(pr.bestWave) or 0) <= 0 then
+				LAUNCH.onboarding(pl, LAUNCH.Onboard.RunLaunched, party.map) -- first-ever PLAY
+			end
+			LAUNCH.custom(pl, "run_launched", #safe, party.map)
 		end
 		local ok, code = pcall(function()
 			return TeleportService:ReserveServer(GAME_PLACE_ID)
@@ -2830,10 +3097,19 @@ local function primeVip(player)
 		local today = todayStamp()
 		if prof.vipDay ~= today and not prof.noPersist then
 			prof.vipDay = today
-			prof.cases.rare = (prof.cases.rare or 0) + 1
-			markDirty(player)
-			pushInv(player)
-			ShopGift:FireClient(player, { from = "VIP DAILY", name = "Rare Gun Crate", count = 1 })
+			if LAUNCH.waitPolicy(player, 6) then
+				-- PAID RANDOM ITEMS restricted: a pass-granted crate is a paid random item — pay its value.
+				local c = LAUNCH.caseCoinValue("rare")
+				prof.lobbyMoney += c
+				markDirty(player)
+				StatsRemote:FireClient(player, prof)
+				ShopGift:FireClient(player, { from = "VIP DAILY", name = c .. " Coins", count = 1 })
+			else
+				prof.cases.rare = (prof.cases.rare or 0) + 1
+				markDirty(player)
+				pushInv(player)
+				ShopGift:FireClient(player, { from = "VIP DAILY", name = "Rare Gun Crate", count = 1 })
+			end
 		end
 	end)
 end
@@ -2877,6 +3153,7 @@ local function onJoin(player)
 	task.spawn(function()
 		local profile = readProfile(player)
 		profileCache[player.UserId] = profile
+		task.spawn(LAUNCH.fetchPolicy, player) -- paid-random-items policy (fails closed until it lands)
 		StatsRemote:FireClient(player, profile)
 		pushInv(player)
 		refreshCarry(player)
@@ -2897,8 +3174,30 @@ local function onJoin(player)
 				bumpQuest(player, "wins", 1)
 			end
 			markDirty(player)
+			-- RUN RECAP (launch pass): the lobby never showed the run you just finished. LobbyExtras
+			-- renders this card (+ the "new personal best" like-nudge). Stored so the client can re-ask.
+			local wave = math.floor(tonumber(sum.wave) or 0)
+			local newBest
+			if sum.newBest ~= nil then
+				newBest = sum.newBest == true
+			else
+				newBest = wave > 0 and wave == math.floor(tonumber(profile.bestWave) or 0) -- older game build
+			end
+			LAUNCH.recap[player.UserId] = {
+				id = sum.id, wave = wave, kills = math.floor(tonumber(sum.kills) or 0),
+				money = math.floor(tonumber(sum.money) or 0), newBest = newBest,
+				best = math.floor(tonumber(profile.bestWave) or 0),
+			}
+			LAUNCH.RunRecap:FireClient(player, LAUNCH.recap[player.UserId])
 		end
 		pushQuests(player)
+		-- ONBOARDING funnel: a brand-new account (never ran) joined the lobby. Veterans skip the step.
+		if (tonumber(profile.bestWave) or 0) <= 0 then
+			LAUNCH.onboarding(player, LAUNCH.Onboard.LobbyJoined)
+		end
+		if table.find(profile.ownedWeapons, "raygun") then
+			LAUNCH.badge(player, "raygun") -- level-unlocked (or pulled on another server) — badge it here
+		end
 	end)
 end
 
@@ -2918,6 +3217,10 @@ Players.PlayerRemoving:Connect(function(pl)
 	lastMode[pl.UserId] = nil
 	pendingGift[pl.UserId] = nil -- FIX: gift arm-state was never cleared on leave (leak)
 	squadInvites[pl.UserId] = nil
+	LAUNCH.restricted[pl.UserId] = nil
+	LAUNCH.badgeDone[pl.UserId] = nil
+	LAUNCH.budget[pl.UserId] = nil
+	LAUNCH.recap[pl.UserId] = nil
 end)
 
 -- ===== GLOBAL BEST-WAVE LEADERBOARD ===== the game place writes each new personal best to the
@@ -3045,6 +3348,7 @@ BuyGun.OnServerEvent:Connect(function(player, req)
 		return
 	end
 	prof.lobbyMoney -= price
+	LAUNCH.economy(player, "Sink", price, prof.lobbyMoney, "Shop", "gun_" .. weaponId)
 	table.insert(prof.ownedWeapons, weaponId)
 	prof.gunLevels[weaponId] = 1 -- legacy field kept in sync
 	-- Auto-equip into the gun's own slot if it's currently empty.
@@ -3076,6 +3380,7 @@ QuestClaim.OnServerEvent:Connect(function(player, req)
 	end
 	q.claimed[i] = true
 	prof.lobbyMoney += d.coins or 0
+	LAUNCH.economy(player, "Source", d.coins or 0, prof.lobbyMoney, "TimedReward", "quest_" .. tostring(d.id))
 	local all = true
 	for k in defs do
 		if not q.claimed[k] then
@@ -3168,6 +3473,7 @@ TutorialDone.OnServerEvent:Connect(function(player)
 	end
 	prof.tutDone = true
 	markDirty(player)
+	LAUNCH.onboarding(player, LAUNCH.Onboard.TutorialDone)
 end)
 
 -- Volume sliders -> the shared profile's settings.vol (read by BOTH places at join).

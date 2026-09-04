@@ -5,6 +5,7 @@
 -- per kill + per wave — pushing the running total to the HUD. All of it persists to the shared DataStore;
 -- the LOBBY place reads it back (read-only) to show level / coins / best wave on its menu.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -19,8 +20,34 @@ local Remotes = require(Modules.Remotes)
 local DataService = require(script.Parent.DataService)
 local CombatService = require(script.Parent.CombatService)
 local MatchService = require(script.Parent.MatchService)
+local TelemetryService = require(script.Parent.TelemetryService)
 
 local ProgressionService = {}
+
+-- ===== FRIEND BONUS (launch pass) ===== a player with at least one Roblox FRIEND in the server earns
+-- GameConfig.FriendCoinMult × Coins all run. Recomputed on every join/leave (Player:IsFriendsWith is
+-- cached by Roblox, but it's still pcall'd off-thread); mirrored to a player attribute for the HUD chip.
+local friendBonus: { [number]: boolean } = {}
+
+local function refreshFriendBonus()
+	local list = Players:GetPlayers()
+	for _, p in list do
+		local has = false
+		for _, o in list do
+			if o ~= p then
+				local ok, isFriend = pcall(p.IsFriendsWith, p, o.UserId)
+				if ok and isFriend == true then
+					has = true
+					break
+				end
+			end
+		end
+		friendBonus[p.UserId] = has
+		if p.Parent then
+			p:SetAttribute("FriendBonus", has or nil)
+		end
+	end
+end
 
 -- Grant persistent "Coins" (lobby money): save it, track this run's earnings for the end-of-run summary,
 -- and push the new total so the in-game HUD ticks up live.
@@ -35,12 +62,21 @@ local function awardCoins(player: Player, amount: number)
 			amount = math.floor(amount * cls.coinsMult + 0.5)
 		end
 	end
+	-- NEW (launch pass): FRIEND BONUS — stacks after the class mult, before the 2x Coins pass.
+	local friendMult = tonumber(GameConfig.FriendCoinMult) or 1
+	if friendMult > 1 and friendBonus[player.UserId] then
+		amount = math.floor(amount * friendMult + 0.5)
+	end
+	local before = DataService.GetMoney(player)
 	DataService.AddMoney(player, amount)
+	local after = DataService.GetMoney(player)
 	local ps = MatchService.GetPlayerState(player)
 	if ps then
 		ps.lobbyEarned = (ps.lobbyEarned or 0) + amount
+		-- Analytics: Coins are aggregated per WAVE (flushed on wave clear below) — never one event per kill.
+		ps.telemCoins = (ps.telemCoins or 0) + math.max(0, after - before)
 	end
-	Remotes.Get("LobbyMoneyChanged"):FireClient(player, DataService.GetMoney(player))
+	Remotes.Get("LobbyMoneyChanged"):FireClient(player, after)
 end
 -- NEW: public entry for event payouts (Bodyguards vault) — same pipe as kill coins, so the
 -- Scavenger class mult applies and the amount counts in the end-of-run summary.
@@ -60,6 +96,9 @@ local function awardXP(player: Player, amount: number)
 			-- REAL-TIME overhead tag: a mid-run level-up restamps "LVL n" immediately (it used to wait
 			-- for the next respawn).
 			require(script.Parent.PlayerTagService).Refresh(player)
+			if data.level == 2 then
+				TelemetryService.Onboarding(player, TelemetryService.Onboard.FirstLevelUp)
+			end
 		end
 	end
 end
@@ -82,11 +121,28 @@ function ProgressionService.Start()
 	-- Per-wave Coins pay out on WAVE CLEAR. Paying on clear (not wave start) also means the FINAL
 	-- wave pays out. CHANGED: the bonus now honors the ended wave's coin event — surviving a Blood
 	-- Moon / Gold Rush wave multiplies the clear payout too, not just the per-kill trickle.
-	MatchService.WaveCleared:Connect(function(_round)
+	MatchService.WaveCleared:Connect(function(round)
 		local mult = require(script.Parent.EventService).WaveCoinMult()
-		MatchService.ForEachPlayer(function(player)
+		local world = MatchService.GetState().map or GameConfig.DefaultMap
+		MatchService.ForEachPlayer(function(player, ps)
 			awardCoins(player, math.floor(GameConfig.LobbyMoneyPerWave * mult + 0.5))
+			-- Analytics: this wave's Coins (kills + clear + event payouts) as ONE economy Source event.
+			local earned = ps.telemCoins or 0
+			if earned > 0 then
+				ps.telemCoins = 0
+				TelemetryService.Economy(player, "Source", earned, DataService.GetMoney(player), "Gameplay", "run_wave", world)
+			end
 		end)
+	end)
+
+	-- FRIEND BONUS bookkeeping: recompute whenever the server's roster changes.
+	task.spawn(refreshFriendBonus)
+	Players.PlayerAdded:Connect(function()
+		task.delay(1, refreshFriendBonus) -- a beat so the newcomer's friend data is ready
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		friendBonus[player.UserId] = nil
+		task.defer(refreshFriendBonus) -- after the leaver is out of GetPlayers()
 	end)
 
 	-- Per-wave: small XP bonus + best-wave record for everyone currently playing.

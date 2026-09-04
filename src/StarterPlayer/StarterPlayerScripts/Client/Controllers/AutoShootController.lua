@@ -14,7 +14,10 @@ local AutoShootController = {}
 -- ===== TUNABLES =====
 local TOGGLE_KEY = Enum.KeyCode.T
 
-local on = false -- default OFF (press T or the dock button to enable)
+-- Default OFF on mouse/keyboard (press T or the dock button). CHANGED (mobile pass): ON on phones and
+-- tablets — a thumb can't aim AND tap fast enough for manual fire to be the default there, and the
+-- on-screen FIRE button (TouchControlsController) still works for players who want control.
+local on = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 local changedEvent = Instance.new("BindableEvent")
 AutoShootController.Changed = changedEvent.Event
 

@@ -20,6 +20,7 @@ local Remotes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("M
 local MatchService = require(script.Parent.MatchService)
 local ZombieService = require(script.Parent.ZombieService)
 local DataService = require(script.Parent.DataService)
+local TelemetryService = require(script.Parent.TelemetryService)
 
 local ProductService = {}
 
@@ -66,6 +67,7 @@ function ProductService.Start()
 				if ok then
 					Remotes.Get("LobbyMoneyChanged"):FireClient(player, total)
 					print(("[ProductService] %s bought a coin bundle (+%d)"):format(player.Name, b.coins))
+					TelemetryService.Economy(player, "Source", b.coins, total, "IAP", "bundle_" .. tostring(b.coins))
 				end
 				return ok and Enum.ProductPurchaseDecision.PurchaseGranted
 					or Enum.ProductPurchaseDecision.NotProcessedYet

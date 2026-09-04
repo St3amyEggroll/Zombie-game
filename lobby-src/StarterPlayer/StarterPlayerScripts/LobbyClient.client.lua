@@ -3872,6 +3872,12 @@ do
 			if not w then
 				return
 			end
+			if S.data.restricted then
+				-- PAID RANDOM ITEMS policy (launch pass): Roblox bars this player from paid random rewards.
+				lplay("Error")
+				S.say("PAID RE-SPINS AREN'T AVAILABLE IN YOUR REGION", ORANGE)
+				return
+			end
 			local pid = tonumber(w.respinProduct) or 0
 			if pid < 1 then
 				lplay("Error")
@@ -4394,6 +4400,12 @@ do
 				S.say("STARTER PACK ALREADY OWNED", DIMTEXT)
 				return
 			end
+			if S.data.restricted then
+				-- PAID RANDOM ITEMS policy (launch pass): the pack's crates are random rewards.
+				lplay("Error")
+				S.say("THE STARTER PACK ISN'T AVAILABLE IN YOUR REGION", ORANGE)
+				return
+			end
 			local pid = tonumber(st.productId) or 0
 			if pid < 1 then
 				lplay("Error")
@@ -4596,12 +4608,13 @@ do
 				S.spinBtnLbl.Text = "SPIN FREE"
 				S.spinBtnLbl.TextSize = 21
 			end
-			if w.respinRobux then
+			if w.respinRobux and not (S.data and S.data.restricted) then
 				S.respinLbl.Text = fmt(w.respinRobux) .. " SPIN AGAIN"
 				S.respinGem.Visible = true
 				S.respinNote.Text = ("(Robux re-spins, %d left today)"):format(tonumber(w.paidLeft) or 0)
 			else
-				S.respinLbl.Text = "RE-SPINS COMING SOON"
+				-- COMING SOON (no product id) or policy-restricted (paid random items barred for this player).
+				S.respinLbl.Text = (S.data and S.data.restricted) and "RE-SPINS UNAVAILABLE IN YOUR REGION" or "RE-SPINS COMING SOON"
 				S.respinGem.Visible = false
 				S.respinNote.Text = ""
 			end
